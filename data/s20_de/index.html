@@ -1,0 +1,125 @@
+<!doctype html>
+<html>
+<style>
+	input[type=range] {
+		width: 100%;
+	}
+	input[type=checkbox] {
+		width: 44px;
+		height: 44px;
+	}
+</style>
+<head>
+	<!--
+	Copyright 2017-2020, Thomas Maier-Komor
+	Atrium Firmware Package for ESP Devices.
+	Use is subject to license terms.
+	-->
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<meta charset="utf-8"/>
+</head>
+<title id="title">S20 Control</title>
+<body>
+<h1 id="main_header"></h1>
+<p id="version"/>
+<table><tbody align="left">
+	<tr><th>Uhrzeit:</th><td id="time"/></tr>
+	<tr><th>Stromversorgung:</th><td id="relay"/><td><input id="powerbtn" type="button" value="-"/></td></tr>
+	<tr><th>Zeitsteuerung:</th><td id="timers"/><td><input id="timerbtn" type="button" value="-"/></td></tr>
+	<tr><th>Letztes Einschalten:</th><td id="last_on"/></tr>
+	<tr><th>Letztes Ausschalten:</th><td id="last_off"/></tr>
+</tbody></table>
+
+<br>
+<a href="alarms.html">Zeitsteuerung anpassen</a>
+<br>
+<a href="config.html">Konfiguration</a>
+<br>
+<a href="update.html">Firmware Update</a>
+<br>
+<a href="license">License</a>
+<br>
+<a href="copyright">Copyright</a>
+<br>
+<input id="sc_start" type="button" value="Start SmartConfig" onclick="run_exe('sc start');"/>
+<br>
+
+<script>
+
+function run_exe(cmd)
+{
+	var exe = new XMLHttpRequest();
+	exe.onreadystatechange = function() { 
+		if (exe.readyState == 4 && req.status == 200)
+			get_update();
+	}
+	exe.open('POST','run_exe',true);
+	exe.setRequestHeader("command",cmd);
+	exe.setRequestHeader("Content-type","application/x-www-form-urlencoded");
+	exe.send(null);
+}
+
+function on_device_data(responseText)
+{
+	var obj = JSON.parse(responseText);
+	document.getElementById("main_header").innerHTML = obj.node;
+	v.innerHTML = obj.version;
+	if (obj.hasOwnProperty('ltime'))
+		document.getElementById("time").innerHTML = obj.ltime;
+	if (obj.relay) {
+		r.innerHTML = "an";
+		r.style.background = "green";
+		p.value="ausschalten";
+		p.setAttribute("onclick","run_exe('action relay_off');");
+	} else {
+		r.innerHTML = "aus";
+		r.style.background = "red";
+		p.value="einschalten";
+		p.setAttribute("onclick","run_exe('action relay_on');");
+	}
+	if (obj.hasOwnProperty('laston'))
+		lon.innerHTML = obj.laston;
+	else
+		lon.innerHTML = "";
+	if (obj.hasOwnProperty('lastoff'))
+		loff.innerHTML = obj.lastoff;
+	else
+		loff.innerHTML = "";
+	if (obj.timers_enabled) {
+		t.innerHTML = "aktiv";
+		t.style.background = "green";
+		tb.value="deaktivieren";
+		tb.setAttribute("onclick","run_exe('at -0');");
+	} else {
+		t.innerHTML = "aus";
+		t.style.background = "red";
+		tb.value="aktivieren";
+		tb.setAttribute("onclick","run_exe('at -1');");
+	}
+}
+
+function get_update()
+{
+	req.open('GET','data.json',true);
+	req.send(null);
+}
+
+var req = new XMLHttpRequest();
+req.overrideMimeType("application/json");
+req.onreadystatechange = function() { 
+	if (req.readyState == 4 && req.status == 200)
+		on_device_data(req.responseText);
+}
+var v = document.getElementById("version");
+var timer = setInterval(get_update,1000);
+var r = document.getElementById("relay");
+var t = document.getElementById('timers');
+var p = document.getElementById("powerbtn");
+var lon = document.getElementById("last_on");
+var loff = document.getElementById("last_off");
+var tb = document.getElementById("timerbtn");
+get_update();
+
+</script>
+</body>
+</html>

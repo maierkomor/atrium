@@ -1,0 +1,89 @@
+<!doctype html>
+<html>
+<style>
+	input[type=range] {
+		width: 100%;
+	}
+	input[type=checkbox] {
+		width: 44px;
+		height: 44px;
+	}
+</style>
+<head>
+	<!--
+	Copyright 2017-2020, Thomas Maier-Komor
+	Atrium Firmware Package for ESP Devices.
+	Use is subject to license terms.
+	-->
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<meta charset="utf-8"/>
+</head>
+<title>Atrium Home Automation</title>
+<body>
+<form method="post" id="setting">
+<table><tbody align="left">
+	<tr><th>Umgebungstemperatur [Celsius]</th></tr>
+	<tr><td id="temperature"/></tr>
+	<tr><th>Relative Luftfeuchtigkeit [%]</th></tr>
+	<tr><td id="humidity"/></tr>
+	<tr><th>Dimmer Steuerung</th></tr>
+	<tr><td><input type="range" id="set_pwm" min="0" max="100" step="1"></tr>
+	<tr><th>Dimmer Automatik</th></tr>
+	<tr><td><input type="checkbox" id="set_mode"></tr>
+	<tr><th>LED Dimmer [0-100]</th></tr>
+	<tr><td id="pwm"/></tr>
+	<tr><th>Umgebungslicht [100-1000]</th></tr>
+	<tr><td id="adc"/></tr>
+</tbody></table>
+</form>
+<script>
+var initialized=false;
+function get_update()
+{
+	req.send(null);
+	//document.getElementById("json").innerHTML = req.responseText;
+	var obj = JSON.parse(req.responseText);
+	document.getElementById("adc").innerHTML = obj.adc;
+	document.getElementById("pwm").innerHTML = obj.pwm;
+	if (!initialized) {
+		document.getElementById("set_pwm").value = obj.pwm;
+		//initialized = true;
+	}
+	if (obj.hasOwnProperty('temperature'))
+		document.getElementById("temperature").innerHTML = obj.temperature;
+	else
+		document.getElementById("temperature").innerHTML = "n/a";
+	if (obj.hasOwnProperty('humidity'))
+		document.getElementById("humidity").innerHTML = obj.humidity;
+	else
+		document.getElementById("humidity").innerHTML = "n/a";
+	if (obj.manual)
+		document.getElementById('set_mode').checked = false;
+	else
+		document.getElementById('set_mode').checked = true;
+}
+
+function submit_setting()
+{
+	var req = new XMLHttpRequest();
+	//req.overrideMimeType("application/json");
+	req.open('POST','post_settings',false);
+	var set_mode = document.getElementById('set_mode');
+	var set_pwm = document.getElementById('set_pwm');
+	var data = "set_mode="+set_mode.checked+"&set_pwm="+set_pwm.value;
+	req.send(data);
+}
+
+var timer = setInterval(get_update,1000);
+var mode = document.getElementById('set_mode');
+mode.addEventListener('change', submit_setting);
+var pwm = document.getElementById('set_pwm');
+pwm.addEventListener('change', submit_setting);
+var req = new XMLHttpRequest();
+req.overrideMimeType("application/json");
+req.open('GET','data.json',false);
+
+
+</script>
+</body>
+</html>

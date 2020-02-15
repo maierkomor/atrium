@@ -1,0 +1,148 @@
+<!doctype html>
+<html> 
+<head>
+	<!-- 
+	Copyright 2017-2020, Thomas Maier-Komor
+	Atrium Firmware Package for ESP Devices.
+	Use is subject to license terms.
+	-->
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+</head>
+<title>Konfiguration</title>
+<body>
+
+<h1>Konfiguration</h1>
+<form action="post_config" method="post" id="konfiguration">
+<table><tbody align="left">
+	<tr><th><label for="passwd">Passwort:</label></th></tr>
+	<tr><td><input id="passwd" name="passwd" type="password"></td></tr>
+	<tr><th><label for="newpass0">Neues Passwort (1):</label></th></tr>
+	<tr><td><input id="newpass0" name="newpass0" type="password"></td></tr>
+	<tr><th><label for="newpass1">Neues Passwort (2):</label></th></tr>
+	<tr><td><input id="newpass1" name="newpass1" type="password"></td></tr>
+	<tr><th><label for="nodename">Hostname:</label></th></tr>
+	<tr><td><input id="nodename" name="nodename"></td></tr>
+	<tr><th><label for="baudrate">Baudrate:</label></th></tr>
+	<tr><td><select id="baudrate" name="baudrate">
+		<option>9600</option>
+		<option>19200</option>
+		<option>38400</option>
+		<option>57600</option>
+		<option>115200</option>
+		</select></td></tr>
+	<tr><th><label for="otapass">OTA Passwort:</label></th></tr>
+	<tr><td><input id="otapass" name="otapass"></td></tr>
+	<tr><th><label for="station_ssid">Station SSID:</label></th></tr>
+	<tr><td><input id="station_ssid" name="station_ssid"></td></tr>
+	<tr><th><label for="station_pass">Station Passwort:</label></th></tr>
+	<tr><td><input id="station_pass" name="station_pass"></td></tr>
+	<tr><th><label for="station_active">Station aktivieren:</label></th></tr>
+	<tr><td><input id="station_active" name="station_active" type="checkbox"></td></tr>
+	<tr><th><label for="ap_ssid">Accesspoint SSID:</label></th></tr>
+	<tr><td><input id="ap_ssid" name="ap_ssid"></td></tr>
+	<tr><th><label for="ap_pass">Accesspoint Passwort:</label></th></tr>
+	<tr><td><input id="ap_pass" name="ap_pass"></td></tr>
+	<tr><th><label for="ap_active">Accesspoint aktivieren:</label></th></tr>
+	<tr><td><input id="ap_active" name="ap_active" type="checkbox"></td></tr>
+	<tr><th><label for="mqtt_server">MQTT Server:</label></th></tr>
+	<tr><td><input id="mqtt_server" name="mqtt_server"></td></tr>
+	<tr><th><label for="mqtt_port">MQTT Port:</label></th></tr>
+	<tr><td><input id="mqtt_port" name="mqtt_port" type="number" min=0 max=65535></td></tr>
+	<tr><th><label for="mqtt_connect">MQTT kontaktieren:</label></th></tr>
+	<tr><td><input id="mqtt_connect" name="mqtt_connect" type="checkbox"></td></tr>
+	<tr><th><label for="dns_server">DNS Server:</label></th></tr>
+	<tr><td><input id="dns_server" name="dns_server"></td></tr>
+	<tr><th><label for="sntp_server">SNTP Server:</label></th></tr>
+	<tr><td><input id="sntp_server" name="sntp_server"></td></tr>
+	<tr><th><label for="timezone">Zeitzone:</label></th></tr>
+	<tr><td><input id="timezone" name="timezone" type=number min="-11" max="13"></td></tr>
+	<tr><th><label for="cpu_freq">CPU Takt:</label></th></tr>
+	<tr><td><input id="cpu_freq" name="cpu_freq" type=number></td></tr>
+	<tr><th><label for="threshold_on">Einschaltschwelle:</label></th></tr>
+	<tr><td><input id="threshold_on" name="threshold_on" type="number" min="0" max="1023"></td></tr>
+	<tr><th><label for="threshold_off">Ausschaltschwelle:</label></th></tr>
+	<tr><td><input id="threshold_off" name="threshold_off" type="number" min="0" max="1023"></td></tr>
+
+	<tr><th><input type="button" onclick="submit_config()" name="Sichern" value="Submit"/></th></tr>
+</tbody></table>
+</form>
+<code id="output"></code>
+
+<script>
+function init()
+{
+	var req = new XMLHttpRequest();
+	req.overrideMimeType("application/json");
+	req.open('GET','config.json',false);
+	req.send(null);
+	var config = JSON.parse(req.responseText);
+	document.getElementById("nodename").value = config.nodename;
+	document.getElementById("baudrate").value = config.baudrate;
+	// must not be shown
+	//document.getElementById("otapass").value = config.otapass;
+	if (config.accesspoint.hasOwnProperty('ssid'))
+		document.getElementById("ap_ssid").value = config.accesspoint.ssid;
+	// must not be shown
+	//document.getElementById("ap_pass").value = config.accesspoint.pass;
+	document.getElementById("ap_active").checked = config.accesspoint.activate;
+	if (config.station.hasOwnProperty('ssid'))
+		document.getElementById("station_ssid").value = config.station.ssid;
+	// must not be shown
+	//document.getElementById("station_pass").value = config.station.pass;
+	document.getElementById("station_active").checked = config.station.activate;
+	if (config.hasOwnProperty('mqtt_server'))
+		document.getElementById("mqtt_server").value = config.mqtt_server;
+	document.getElementById("mqtt_port").value = config.mqtt_port;
+	document.getElementById("mqtt_connect").checked = config.mqtt_connect;
+	if (config.hasOwnProperty('dns_server'))
+		document.getElementById("dns_server").value = config.dns_server;
+	if (config.hasOwnProperty('sntp_server'))
+		document.getElementById("sntp_server").value = config.sntp_server;
+	if (config.hasOwnProperty('timezone'))
+		document.getElementById("timezone").value = config.timezone;
+	if (config.hasOwnProperty('cpu_freq'))
+		document.getElementById("cpu_freq").value = config.cpu_freq;
+	document.getElementById("threshold_on").value = config.threshold_on;
+	document.getElementById("threshold_off").value = config.threshold_off;
+}
+
+function submit_config()
+{
+	var pass0 = document.getElementById('newpass0');
+	var pass1 = document.getElementById('newpass1');
+	if (pass0.value != pass1.value) {
+		document.getElementById("output").innerText = "neues Passwort ist nicht identisch";
+		return;
+	}
+	var resp = document.getElementById('konfiguration').submit();
+	documennt.getElementById("output").innerText = resp;
+}
+
+function validatePassword()
+{
+	var newpass0 = document.getElementById('newpass0');
+	var newpass1 = document.getElementById('newpass1');
+	if (newpass0.value != newpass1.value) {
+		newpass1.setCustomValidity('korrekte Wiederholung notwendig');
+        } else {
+		newpass1.setCustomValidity('');
+	}        
+}
+
+function propagatePassword()
+{
+	var passwd = document.getElementById("passwd").value;
+	document.getElementById('newpass0').value = passwd;
+	document.getElementById('newpass1').value = passwd;
+}
+
+var newpass0 = document.getElementById('newpass0');
+newpass0.addEventListener('change', validatePassword);
+var newpass1 = document.getElementById('newpass1');
+newpass1.addEventListener('change', validatePassword);
+var password = document.getElementById('passwd');
+password.addEventListener('change', propagatePassword);
+window.onload = init;
+</script>
+</body>
+</html>

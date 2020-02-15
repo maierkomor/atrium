@@ -1,0 +1,45 @@
+<!doctype html>
+<html> 
+<head>
+	<!-- 
+	Copyright 2017-2020, Thomas Maier-Komor
+	Atrium Firmware Package for ESP Devices.
+	Use is subject to license terms.
+	-->
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<meta charset="utf-8"/>
+</head>
+<title>Command Shell</title>
+<body>
+<form id="shell">
+<table><tbody align="left">
+	<tr><th><label for="pass">Password:</label></th></tr>
+	<tr><td><input id="pass" name="pass" type="password"></td></tr>
+	<tr><th><label for="command">Command:</label></th></tr>
+	<tr><td><input id="command" name="command" type="text"></td></tr>
+	<tr><td><button type="submit">Execute</input></td></tr>
+	<tr><td><label for"output">Output</label></td></tr>
+	<tr><td><output><code id="output"/></output></td></tr>
+</form>
+<br>
+
+<script type="text/javascript">
+function run_exe()
+{
+	req.open('POST','run_exe',true);
+	req.setRequestHeader("command",document.getElementById('command').value);
+	req.setRequestHeader("password",document.getElementById('pass').value);
+	req.send(null);
+	return false;	// no page refresh
+}
+
+var req = new XMLHttpRequest();
+req.onreadystatechange = function() { 
+	document.getElementById("output").innerText = req.responseText;
+}
+document.getElementById('shell').onsubmit=run_exe;
+
+</script>
+
+</body>
+</html>

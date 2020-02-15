@@ -1,0 +1,40 @@
+<!doctype html>
+<html>
+<head>
+	<!-- 
+	Copyright 2017-2020, Thomas Maier-Komor
+	Atrium Firmware Package for ESP Devices.
+	Use is subject to license terms.
+	-->
+</head>
+<title>SPIFFS Zugriff</title>
+<body>
+<script>
+function upload()
+{
+	var input = document.getElementById("filesel");
+	if (input.files.length == 0) {
+		return;
+	}
+	http = new XMLHttpRequest();
+	//http.onreadystatechange = processPost;
+	var data = new FormData();
+	data.append("file",input.files[0],input.value);
+	http.open("POST","/upload");
+	http.send(data);
+}
+</script>
+
+<table><tbody align="left">
+	<tr>
+		<label for="filesel">Datei hochladen:</label>
+		<input type="file" id="filesel" multiple="false">
+	</tr>
+	<tr>
+		<input type="button" name="upload" value="Hochladen" onclick="upload()">
+	</tr>
+</tbody></table>
+
+</body>
+</html>
+

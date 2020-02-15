@@ -1,0 +1,48 @@
+set(COMPONENT_SRCS
+	actions.cpp
+	alive.cpp
+	astream.cpp
+	binformats.cpp
+	bme.cpp
+	button.cpp
+	clock.cpp
+	console.cpp
+	cyclic.cpp
+	dht.cpp
+	dimmer.cpp
+	distance.cpp
+	fs.cpp
+	ftpd.cpp
+	globals.cpp
+	httpd.cpp
+	HttpReq.cpp
+	HttpResp.cpp
+	HttpServer.cpp
+	inetd.cpp
+	influx.cpp
+	ledstrip.cpp
+	lightctrl.cpp
+	log.cpp
+	mem_term.cpp
+	mqtt.cpp
+	mstream.cpp
+	nightsky.cpp
+	ota.c
+	relay.cpp
+	romfs.cpp
+	settings.cpp
+	shell.cpp
+	startup.c
+	strstream.cpp
+	support.c
+	tcp_terminal.cpp
+	telnet.cpp
+	terminal.cpp
+	uart_terminal.cpp
+	udpctrl.cpp
+	webcam.cpp
+	wifi.cpp
+)
+
+register_component(
+	REQUIRES logging)

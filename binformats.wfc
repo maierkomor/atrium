@@ -1,0 +1,193 @@
+/*
+ *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Atrium Firmware Package for ESP
+ *
+ *  This program is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+option pc {
+	toSink="";
+}
+
+option esp {
+	withEqual=true;
+	toString="";
+	toSink="";
+	toWire="";
+	toASCII=off;
+	intsize=32;
+	varintbits=32;
+	streamtype=stream;
+	header="stream.h";
+}
+
+option esp32 : esp {
+	optimize=speed;
+	endian=little;		// not for esp8266, does not allow unaligned access
+	withUnequal=true;
+}
+
+option esp8266 : esp {
+	ssize_t=_ssize_t;
+	optimize=speed;
+	withUnequal=false;
+}
+
+option dht_term : esp8266 {
+	/NodeConfig/holidays:		used=false;
+	/NodeConfig/at_actions:		used=false;
+}
+
+option d1_lite : esp8266 {
+	withUnequal=false;
+	/NodeConfig/dhts:		used=false;
+	/RunTimeData/dhts:		used=false;
+}
+
+option termserv : d1_lite {
+	/NodeConfig/holidays:		used=false;
+	/NodeConfig/at_actions:		used=false;
+}
+
+
+enum rstrsn_t {
+	unknown = 0;
+	powerup = 1;
+	external = 2;
+	software = 3;
+	panic = 4;
+	internal_wdt = 5;
+	task_wdt = 6;
+	watchdog = 7;
+	deepsleep = 8;
+	brownout = 9;
+	sdio = 10;
+	option toString=strReset;
+}
+
+
+message RunTimeData
+{
+	string node = 1; 
+	string version = 2;
+	uint32 uptime = 3;
+	rstrsn_t reset_reason = 4;
+	string ltime = 5;
+	string location = 6;
+	string laston = 7;
+	string lastoff = 8;
+	bool relay = 9;
+	bool timers_enabled = 10;
+	unsigned adc = 11;
+	string update_part = 12;
+	string update_state = 13;
+	float temperature = 14;
+	float humidity = 15;
+	float pressure = 16;
+}
+
+
+message WifiConfig
+{
+	string ssid = 1			[ unset = "" ];
+	string pass = 2			[ unset = "" ];
+	bytes mac = 3;
+	required bool activate = 4;
+	fixed32 addr4 = 5;
+	fixed8 netmask4 = 6;
+	fixed32 gateway4 = 7;
+}
+
+
+message MQTT
+{
+	string uri = 1			[ unset = "" ];
+	bool enable = 2			[ unset = false ];
+	string username = 3		[ unset = "" ];
+	string password = 4		[ unset = "" ];
+}
+
+
+message Date
+{
+	fixed8 day = 1;
+	fixed8 month = 2;
+	fixed16 year = 3;
+}
+
+
+enum WeekDay 
+{ 
+	Sunday = 0; 
+	Monday = 1; 
+	Tuesday = 2; 
+	Wednesday = 3; 
+	Thursday = 4;
+	Friday = 5;
+	Saturday = 6;
+	WorkDay = 7;
+	WeekEnd = 8;
+	EveryDay = 9;
+	Holiday = 10;
+}
+
+
+message AtAction
+{
+	optional WeekDay day = 1;
+	unsigned min_of_day = 2;
+	string action = 3;
+	required bool enable = 4        [ default = true ];
+}
+
+
+message Influx
+{
+	string hostname = 1	[ unset = "" ];
+	fixed16 port = 2	[ unset = 0 ];
+	string database = 3	[ unset = "" ];
+}
+
+
+message NodeConfig
+{
+	string nodename = 1;
+	bytes pass_hash = 2;
+	unsigned cpu_freq = 3;
+	WifiConfig station = 4;
+	WifiConfig softap = 5;
+	string dns_server = 6	[ unset = "" ];
+	string syslog_host = 7	[ unset = "" ];
+	string sntp_server = 8	[ unset = "" ];
+	string timezone = 9	[ unset = "" ];
+	MQTT mqtt = 10;
+	Influx influx = 12;
+	unsigned station2ap_time = 13;	// failover time from station to ap mode [s]
+
+	// action timers
+	repeated Date holidays = 16;
+	repeated AtAction at_actions = 17;
+	bool actions_enable = 18		[ default = true ];
+
+	// relay control (e.g. s20)
+	unsigned max_on_time = 34;
+
+	// application: light sensor controlled LED
+	unsigned threshold_off = 35;
+	unsigned threshold_on = 36;
+	unsigned dim_step = 37;		// ms per step
+	bool lightctrl = 38;		// true=auto, false=manual
+}
+
+

@@ -1,0 +1,56 @@
+<!doctype html>
+<html> 
+<head>
+	<!-- 
+	Copyright 2017-2020, Thomas Maier-Komor
+	Atrium Firmware Package for ESP Devices.
+	Use is subject to license terms.
+	-->
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+</head>
+<title>Passwort setzen</title>
+<body>
+
+<h1>Passwort</h1>
+<form action="post_config" method="post" id="konfiguration">
+<table><tbody align="left">
+	<tr><th><label for="passwd">Passwort:</label></th></tr>
+	<tr><td><input id="passwd" name="passwd" type="password"></td></tr>
+	<tr><th><label for="newpass0">Neues Passwort (1):</label></th></tr>
+	<tr><td><input id="newpass0" name="newpass0" type="password"></td></tr>
+	<tr><th><label for="newpass1">Neues Passwort (2):</label></th></tr>
+	<tr><td><input id="newpass1" name="newpass1" type="password"></td></tr>
+</tbody></table>
+</form>
+<code id="output"></code>
+
+<script>
+function submit_config()
+{
+	var pass0 = document.getElementById('newpass0');
+	var pass1 = document.getElementById('newpass1');
+	if (pass0.value != pass1.value) {
+		document.getElementById("output").innerText = "neues Passwort ist nicht identisch";
+		return;
+	}
+	document.getElementById('konfiguration').submit();
+}
+
+function validatePassword()
+{
+	var newpass0 = document.getElementById('newpass0');
+	var newpass1 = document.getElementById('newpass1');
+	if (newpass0.value != newpass1.value) {
+		newpass1.setCustomValidity('korrekte Wiederholung notwendig');
+        } else {
+		newpass1.setCustomValidity('');
+	}
+}
+
+var newpass0 = document.getElementById('newpass0');
+newpass0.addEventListener('change', validatePassword);
+var newpass1 = document.getElementById('newpass1');
+newpass1.addEventListener('change', validatePassword);
+</script>
+</body>
+</html>

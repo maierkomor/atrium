@@ -1,0 +1,149 @@
+#
+#  Copyright (C) 2018-2020, Thomas Maier-Komor
+#  Atrium Firmware Package for ESP
+#
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation, either version 3 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#  
+
+# no default project set
+#PROJECT=
+
+# place following variables in settings.mk or use setupenv.sh to create it
+# IDF_ESP8266
+# IDF_ESP32
+# XTOOLS_ESP32
+# XTOOLS_ESP8266
+# WFC
+-include settings.mk
+
+#####
+
+CXXFLAGS=-g
+
+PWD=$(shell pwd)
+
+p_ok=$(if $(wildcard $(PWD)/projects/$(PROJECT)),, $(error project file not found))
+SDKCONFIG=$(PWD)/projects/$(PROJECT)
+
+include $(SDKCONFIG)	# needed for romfs .bin generation
+
+CHIP=$(shell grep ESP8266 projects/$(PROJECT) > /dev/null && echo ESP8266 || echo ESP32)
+export CHIP
+
+IDF_PATH:=$(IDF_$(CHIP))
+ESPTOOL:=$(IDF_PATH)/components/esptool_py/esptool/esptool.py
+FLASH_PORT:=$(CONFIG_ESPTOOLPY_PORT)
+ROMFS_FILES=$(shell echo $(CONFIG_ROMFS_FILES) | sed 's/"//g')
+ROMFS_ADDR=$(CONFIG_ROMFS_ADDR)
+IDF_VER:=$(shell cd $(IDF_PATH); git describe --tags | sed 's/\.//;s/v//;s/-.*//;s/\..*//')
+CPPFLAGS=-DIDF_VERSION=$(IDF_VER)
+PATH+=:$(XTOOLS_ESP32)/bin:$(XTOOLS_ESP8266)/bin
+BUILD_DIR_BASE=$(PWD)/build.$(PROJECT)
+PROJECT_ROOT=$(PWD)
+WFCINC=$(WFCDIR)/include
+ifneq ($(ROMFS_FILES),)
+ESPTOOL_ALL_FLASH_ARGS=$(ROMFS_ADDR) build.$(PROJECT)/romfs.bin
+endif
+
+export BUILD_DIR_BASE CHIP CPPFLAGS IDF_PATH PATH PTABLE PROJECT_ROOT PROJECT SDKCONFIG WFC WFCDIR ESPTOOL_ALL_FLASH_ARGS
+
+
+default: all
+
+settings:
+	echo SDKCONFIG=$(SDKCONFIG)
+	echo BUILD=build.$(PROJECT)
+	echo CHIP=$(CHIP)
+	echo CONFIG_ROMFS_FILES=$(CONFIG_ROMFS_FILES)
+	echo ROMFS_FILES=$(ROMFS_FILES:%=data/%)
+	echo ROMFS_ADDR=$(ROMFS_ADDR)
+	echo PATH=$(PATH)
+	echo IDF_PATH=$(IDF_PATH)
+	echo IDF_VERSION=$(IDF_VER)
+	echo CPPFLAGS=$(CPPFLAGS)
+
+$(IDF_PATH):
+	echo please run setupenv.sh before running make
+	exit 1
+
+prepare: $(IDF_PATH)
+	bash bin/prebuild.sh
+
+all: prepare
+	+$(MAKE) -f $(CHIP).mk all
+
+app-flash: prepare
+	+$(MAKE) -f $(CHIP).mk app-flash
+
+flash: prepare
+	+$(MAKE) -f $(CHIP).mk flash
+	#if [ "data/" != "$(ROMFS_FILES)" ]; then $(MAKE) romfs-flash; fi
+
+ota: prepare
+	+$(MAKE) -f $(CHIP).mk ota
+
+menuconfig:
+	+$(MAKE) -f $(CHIP).mk menuconfig
+
+oldconfig: prepare
+	+$(MAKE) -f $(CHIP).mk oldconfig
+
+size-symbols: prepare
+	+$(MAKE) -f $(CHIP).mk size-symbols
+
+size: prepare
+	+$(MAKE) -f $(CHIP).mk size
+
+monitor: prepare
+	+$(MAKE) -f $(CHIP).mk monitor
+
+help: 
+	+$(MAKE) -f $(CHIP).mk help
+
+erase:
+	esptool.py --port $(FLASH_PORT) erase_flash
+
+bin:
+	mkdir $@
+
+wfc/bin/wfc: prepare
+	cd wfc; ./configure
+	+$(MAKE) -C wfc
+
+bin/mkromfs: bin tools/mkromfs.cpp
+	g++ -g tools/mkromfs.cpp -o $@
+
+tools/binformats.cpp: binformats.wfc
+	$(WFC) -tpc binformats.wfc -o tools
+
+bin/decodecfg: tools/decodecfg.cpp tools/binformats.cpp main/strstream.cpp $(WFCDIR)/lib/wfc_support.cpp 
+	$(CXX) $(CSSFLAGS) -I$(WFCINC) -Imain $^ -o $@
+
+bin/atrium-logd: bin tools/binformats.cpp tools/atrium-logd.cpp
+	$(CXX) $(CXXFLAGS) -I$(WFCINC) tools/atrium-logd.cpp tools/binformats.cpp $(WFCDIR)/lib/wfc_support.cpp -o $@
+
+bin/atrium-gencsv: bin tools/binformats.cpp tools/atrium-gencsv.cpp
+	$(CXX) $(CXXFLAGS) -I$(WFCINC) tools/atrium-gencsv.cpp tools/binformats.cpp $(WFCDIR)/lib/wfc_support.cpp -o $@
+
+build.$(PROJECT)/romfs.bin: bin/mkromfs $(ROMFS_FILES:%=data/%)
+	if [ "" != "$(ROMFS_FILES)" ]; then bin/mkromfs -o $@ $(ROMFS_FILES:%=data/%); else rm -f $@; fi
+
+romfs: build.$(PROJECT)/romfs.bin
+
+romfs-flash: build.$(PROJECT)/romfs.bin
+	if [ -f $<  -a "" != "$(ROMFS_ADDR)" -a "" != "$(ROMFS_FILES)" ]; then $(ESPTOOL) --port $(FLASH_PORT) write_flash $(ROMFS_ADDR) build.$(PROJECT)/romfs.bin; fi
+
+build.$(PROJECT)/spiffs.bin: $(ROMFS_FILES:%=data/%)
+	if [ "" != "$(ROMFS_FILES)" ]; then mkspiffs -o $@ $(ROMFS_FILES:%=data/%); else rm -f $@; fi
+

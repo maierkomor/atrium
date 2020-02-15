@@ -1,0 +1,99 @@
+<!doctype html>
+<html>
+<style>
+	input[type=range] {
+		width: 100%;
+	}
+	input[type=checkbox] {
+		width: 44px;
+		height: 44px;
+	}
+</style>
+<head>
+	<!-- 
+	Copyright 2017-2020, Thomas Maier-Komor
+	Atrium Firmware Package for ESP Devices.
+	Use is subject to license terms.
+	-->
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<meta charset="utf-8"/>
+</head>
+<title id="title">Firmware Update</title>
+<body>
+<h1>Firmware Update</h1>
+<h3>Current Version:</h3>
+<p id="version"/>
+<h3>Updating to Partition:</h3>
+<p id="update_part"/>
+<br>
+<h3>Update State:</h3>
+<p id="update_state"/>
+<br>
+<form onsubmit="javascript:return do_update()">
+<label>Password:
+	<input id="pass" type="password"/>
+</label>
+<br>
+<label>Firmware file:
+	<input id="firmware" type="file" accept="text/*"/>
+</label>
+<label>App or Data:
+	<select id="partition">
+		<option>app</option>
+		<option>storage</option>
+	</select>
+</label>
+<br>
+<button type="submit">Update</button>
+</form>
+<code id="output"></code>
+
+<script type="text/javascript">
+function do_update(evt)
+{
+	var req = new XMLHttpRequest();
+	req.open('POST','do_update',true);
+	req.setRequestHeader("password",document.getElementById('pass').value);
+	req.setRequestHeader("partition",document.getElementById('partition').value);
+	var file = document.getElementById('firmware').files[0];
+	var fr = new FileReader();
+	fr.readAsArrayBuffer(file);
+	fr.onloadend = function() {
+		req.send(fr.result);
+	}
+	fr.onerror = function() {
+		document.getElementById("output").innerText = fr.error.message;
+	}
+	req.onreadystatechange = function() { 
+		document.getElementById("output").innerText = req.responseText;
+	}
+	document.getElementById("output").innerText = "triggered updated";
+	return false;	// no page refresh
+}
+
+function on_device_data(responseText)
+{
+	var obj = JSON.parse(responseText);
+	document.getElementById("version").innerHTML = obj.version;
+	document.getElementById("update_part").innerHTML = obj.update_part;
+	document.getElementById("update_state").innerHTML = obj.update_state;
+}
+
+function get_update()
+{
+	req.open('GET','data.json',true);
+	req.send(null);
+}
+
+var req = new XMLHttpRequest();
+req.overrideMimeType("application/json");
+req.open('GET','data.json',true);
+req.onreadystatechange = function() { 
+	if (req.readyState == 4 && req.status == 200)
+		on_device_data(req.responseText);
+}
+setInterval(get_update,2000);
+get_update();
+</script>
+</body>
+</html>

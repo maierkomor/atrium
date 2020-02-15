@@ -1,0 +1,190 @@
+<!doctype html>
+	<!-- 
+	Copyright 2017-2020, Thomas Maier-Komor
+	Atrium Firmware Package for ESP Devices.
+	Use is subject to license terms.
+	-->
+<html lang="de">
+<style>
+	input[type=range] {
+		width: 100%;
+	}
+	input[type=checkbox] {
+		width: 20px;
+		height: 20px;
+	}
+</style>
+<head>
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<meta charset="utf-8"/>
+</head>
+<title id="title">Atrium - Zeitsteuerung</title>
+<body>
+
+<h2>Zeitsteuerung:</h2>
+
+<table><thead align="left">
+	<tr><th>Wochentag</th><th>Uhrzeit</th><th>Aktion</th><th>Status</th><th></th></tr>
+</thead>
+<tbody id="alarms"></tbody>
+</table>
+
+<h2>Neue Aktion:</h2>
+<table><thead align="left">
+	<tr><th>Wochentag</th><th>Uhrzeit</th><th>Aktion</th><th/></tr>
+</thead>
+<tbody>
+<tr>
+<td><select id="wday">
+	<option value="mon">Montag</option>
+	<option value="tue">Dienstag</option>
+	<option value="wed">Mittwoch</option>
+	<option value="thu">Donnerstag</option>
+	<option value="fri">Freitag</option>
+	<option value="sat">Samstag</option>
+	<option value="sun">Sonntag</option>
+	<option value="wd">Mo-Fr</option>
+	<option value="we">Sa,So</option>
+	<option value="ed">immer</option>
+	<option value="hd">Feiertag</option>
+</select></td>
+<td><input type="time" id="time"/></td>
+<td><select id="action">
+	<option value="relay_on">einschalten</option>
+	<option value="relay_off">ausschalten</option>
+</select></td>
+<td><input type="button" onclick="add_alarm()" value="hinzufügen"/></td>
+</tr>
+</tbody>
+</table>
+
+<h2>Feiertage:</h2>
+<table><thead align="left">
+	<tr><th>Tag</th><th>Monat</th><th>Jahr</th><th><th/></tr>
+</thead>
+<tbody id="holidays">
+<tr>
+<td><input type="number" id="mday" min="1" max="31" step="1"></td>
+<td><input type="number" id="month" min="1" max="12" step="1"></td>
+<td><input type="number" id="year" min="0" max="2099" step="1"></td>
+<td><input type="button" onclick="add_holiday()" value="hinzufügen"/></td>
+</tr>
+</tbody>
+</table>
+<br>
+<input type="button" onclick="save()" value="speichern"/>
+<script>
+
+function run_exe(cmd)
+{
+	exe.open('POST','run_exe',true);
+	exe.setRequestHeader("command",cmd);
+	exe.send(null);
+	//var data = "command="+cmd;
+	//exe.send(data);
+}
+
+function save()
+{
+	run_exe("at -s");
+}
+
+function mod_alarm(a)
+{
+	run_exe("at "+a,get_alarms);
+}
+
+function on_alarm_data(responseText)
+{
+	var adata = JSON.parse(responseText);
+	var alarms = document.getElementById("alarms");
+	while (alarms.rows.length > 0) {
+		alarms.deleteRow(0);
+	}
+	for (var i = 0; i < adata.alarms.length; ++i) {
+		var newrow = alarms.insertRow(-1);
+		var c = newrow.insertCell(0);
+		c.innerHTML = adata.alarms[i].day;
+		c = newrow.insertCell(1);
+		var min = adata.alarms[i].min_of_day%60;
+		if (min < 10)
+			min = '0' + min;
+		c.innerHTML = Math.floor(adata.alarms[i].min_of_day/60) + ":" + min;
+		c = newrow.insertCell(2);
+		c.innerHTML = adata.alarms[i].action;
+		c = newrow.insertCell(3);
+		c.innerHTML = adata.alarms[i].enable ? "aktiv" : "pausiert";
+		c = newrow.insertCell(4);
+		if (adata.alarms[i].enabled)
+			c.innerHTML = "<input type=\"button\" onclick=\"mod_alarm('-d "+i+"')\" value=\"pausieren\"/>";
+		else
+			c.innerHTML = "<input type=\"button\" onclick=\"mod_alarm('-e "+i+"')\" value=\"aktivieren\"/>";
+		c = newrow.insertCell(5);
+		c.innerHTML = "<input type=\"button\" onclick=\"mod_alarm('-D "+i+"')\" value=\"löschen\"/>";
+	}
+	var hols = document.getElementById("holidays");
+	while (hols.rows.length > 1) {
+		hols.deleteRow(0);
+	}
+	for (var i = 0; i < adata.holidays.length; ++i) {
+		var newrow = hols.insertRow(0);
+		var c = newrow.insertCell(0);
+		c.innerHTML = adata.holidays[i].day;
+		c = newrow.insertCell(1);
+		c.innerHTML = adata.holidays[i].month;
+		var y = adata.holidays[i].year;
+		c = newrow.insertCell(2);
+		if (y)
+			c.innerHTML = adata.holidays[i].year;
+		c = newrow.insertCell(3);
+		c.innerHTML = "<input type=\"button\" onclick=\"delete_holiday('"+i+"')\" value=\"löschen\"/>";
+	}
+}
+
+function get_alarms()
+{
+	req.open('GET','alarms.json',true);
+	req.send(null);
+}
+
+function add_alarm()
+{
+	var d = "at " + document.getElementById('wday').value;
+	d += " "
+	d += document.getElementById('time').value;
+	d += " "
+	d += document.getElementById('action').value;
+	run_exe(d);
+}
+
+function add_holiday()
+{
+	var data = "holiday " + document.getElementById('mday').value;
+	data += "."
+	data += document.getElementById('month').value;
+	data += "."
+	var year = document.getElementById('year').value;
+	if ((year != "") && (year != "0"))
+		data += year;
+	run_exe(data);
+}
+
+function delete_holiday(h)
+{
+	var data = "holiday -D " + h;
+	run_exe(data,get_holidays);
+}
+
+var req = new XMLHttpRequest();
+req.overrideMimeType("application/json");
+req.onreadystatechange = function() { 
+	if (req.readyState == 4 && req.status == 200)
+		on_alarm_data(req.responseText);
+}
+var exe = new XMLHttpRequest();
+exe.onreadystatechange = get_alarms;
+get_alarms()
+
+</script>
+</body>
+</html>

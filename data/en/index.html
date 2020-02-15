@@ -1,0 +1,66 @@
+<!doctype html>
+<html>
+<style>
+	input[type=range] {
+		width: 100%;
+	}
+	input[type=checkbox] {
+		width: 44px;
+		height: 44px;
+	}
+</style>
+<head>
+	<!-- 
+	Copyright 2017-2020, Thomas Maier-Komor
+	Atrium Firmware Package for ESP Devices.
+	Use is subject to license terms.
+	-->
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<meta charset="utf-8"/>
+</head>
+<title id="title">Home automation project</title>
+<body>
+<h1 id="main_header"></h1>
+<p id="version"/>
+<br>
+<a href="config.html">Configuration</a>
+<br>
+<a href="update.html">firmware update</a>
+<br>
+
+<script>
+
+function run_exe(cmd)
+{
+	var req = new XMLHttpRequest();
+	req.open('POST','run_exe',true);
+	req.setRequestHeader("Content-type","application/x-www-form-urlencoded");
+	var data = "command="+cmd;
+	req.send(data);
+}
+
+function on_device_data(responseText)
+{
+	var obj = JSON.parse(responseText);
+	document.getElementById("main_header").innerHTML = obj.node;
+	document.getElementById("version").innerHTML = obj.version;
+}
+
+function get_update()
+{
+	var req = new XMLHttpRequest();
+	req.overrideMimeType("application/json");
+	req.open('GET','data.json',true);
+	req.onreadystatechange = function() { 
+		if (req.readyState == 4 && req.status == 200)
+			on_device_data(req.responseText);
+	}
+	req.send(null);
+}
+
+var timer = setInterval(get_update,1000);
+get_update();
+
+</script>
+</body>
+</html>

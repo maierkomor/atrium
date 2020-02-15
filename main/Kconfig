@@ -1,0 +1,452 @@
+menu "Atrium"
+
+menu "software services"
+
+config WFC_TARGET
+	string "WFC target name"
+	default ""
+	help
+		name of WFC configuration target
+
+config MQTT
+	bool "MQTT"
+	default true
+	help
+		MQTT support
+
+config SUBTASKS
+	bool "subtasks"
+	default true
+	help
+		execute cyclic tasks in a common tasks
+
+config AT_ACTIONS
+	bool "at service"
+	default true
+	help
+		support for triggering actions at predefined times
+
+config HOLIDAYS
+	depends on AT_ACTIONS
+	bool "holidays"
+	default true
+	help
+		holiday database for time triggered actions
+
+config INETD
+	bool "inetd"
+	default false
+	help
+		shared TCP connection listener inetd
+
+config HTTP
+	bool "http"
+	help
+		http server
+if HTTP
+menu "http settings"
+config HTTP_ROOT
+	string "www root"
+	default "/flash"
+	help
+		Root directory for running the http server. Set to filesystem root.
+config HTTP_UPLOAD
+	string "directory in which uploads should be placed. Leave empty to disable uploads."
+	default ""
+endmenu
+endif
+
+config FTP
+	bool "ftp"
+	help
+		ftp server
+if FTP
+menu "ftp settings"
+config FTP_ROOT
+	string	"ftp root directory"
+	default	"/flash"
+	help
+		Root directory for running the ftp server. Set to filesystem root.
+config FTP_PORT
+	int	"ftp port"
+	default	21
+	help
+		port on which the ftp server will listen
+endmenu
+endif # FTP
+
+config TELNET
+	bool "telnet"
+	help
+		telnet server
+
+config TELNET_PORT
+	depends on TELNET
+	int "telnet port"
+	default 23
+	help
+		port on which telnet should be listening
+
+config TERMSERV
+	bool "uart terminal server"
+	help
+		console server function for UART 1
+
+config TERMSERV_UART
+	depends on TERMSERV
+	int "UART of terminal server"
+	default	1
+	help
+		UART number to which terminal server should connect
+
+config TERMSERV_BAUDRATE
+	depends on TERMSERV
+	int "baudrate for terminal server"
+	default	115200
+	help
+		terminal baudrate
+
+config SNTP
+	bool "sntp"
+	default true
+	help
+		sntp client
+
+config SYSLOG
+	bool "syslog"
+	default false
+	help
+		send log messages to syslog host
+
+config DMESG_SIZE
+	int "dmesg size"
+	default 1024
+	help
+		RAM buffered log that can be queried via dmesg; set to 0 to disable
+
+config INFLUX
+	bool "influx"
+	default false
+	help
+		Support for sending measurements as UDP packets to Influx DB 
+
+config MDNS
+	bool "mdns"
+	default true
+	help
+		mdns service
+
+config OTA
+	bool "ota"
+	default false
+	help
+		over-the-air update support
+
+config SMARTCONFIG
+	bool "SmartConfig"
+	default false
+	help
+		WiFi configuration with EPS smart config
+
+config WPS
+	bool "wps"
+	default false
+	help
+		WiFi auto-configuration with WPS
+
+endmenu	# software services
+
+choice FILESYSTEM_SUPPORT
+	prompt "file system"
+	default SPIFFS
+config SPIFFS
+	bool "SPIFFS"
+	help
+		SPI Flash File-System
+config FATFS
+	bool "fatfs"
+	help
+		FAT file-system
+config ROMFS
+	bool "romfs"
+	help
+		ROM file-system
+config NOFS
+	bool "none"
+	help
+		no file-system
+endchoice
+
+config MOUNT_POINT
+	depends on SPIFFS || FATFS
+	string "mount point"
+	default "/flash"
+	help
+		mount point of file-system (/ is currently not possible)
+
+if ROMFS
+menu "romfs settings"
+config ROMFS_FILES
+	string "romfs files"
+	help
+		files to store in romfs
+config ROMFS_PARTITION
+	string "name of romfs partition"
+	default "storage"
+	help
+		Name of the partition to mount and look for a romfs.
+config ROMFS_ADDR
+	string "romfs base address"
+	default "0xf0000"
+	help
+		Base address in flash of section for romfs binary. This address should be the address of the partition with the name set in ROMFS_PARTITION.
+endmenu
+endif	# ROMFS
+	
+
+menu "hardware support"
+
+config ALIVELED
+	bool "alive LED"
+	help
+		alive LED
+if ALIVELED
+menu "alive LED configuration"
+config ALIVELED_GPIO
+	int "gpio"
+	default 0
+	range 0 16 if CONFIG_ESP8266_DEFAULT_CPU_FREQ_MHZ
+	range 0 39 # esp32 range
+	help
+		GPIO of alive LED
+config ALIVELED_ON
+	int	"0: active low, 1: active high"
+	default 0
+	help
+		LED is active high
+endmenu
+endif
+
+
+config BUTTON
+	bool	"button"
+	help
+		button for device control
+if BUTTON
+menu "button configuration"
+config BUTTON_GPIO
+	int	"gpio of button"
+	default 0
+	range 0 16 if CONFIG_ESP8266_DEFAULT_CPU_FREQ_MHZ != 0
+	range 0 39 # esp32 range
+	help
+		GPIO port to which the button is attached
+config BUTTON_PRESSED
+	int	"0: active low, 1: active high"
+	default	0
+	help
+		Usually buttons are wired active low.
+endmenu
+endif # button
+
+
+
+config CLOCK
+	bool	"7-segment LED clock"
+	default false
+	help
+		7-segment LED clock
+if CLOCK
+config CLOCK_CLK
+	int	"gpio of clk pin"
+config CLOCK_CS
+	int	"gpio of cs pin"
+config CLOCK_DOUT
+	int	"gpio of dout pin"
+config CLOCK_OD
+	int	"gpio of od pin"
+endif # CLOCK
+
+
+config DHT
+	bool "DHT measurements"
+	default false
+	help
+		temperature/humidity measurement with a DHTxx sensor
+
+if DHT
+choice DHT_KIND
+	prompt "DHT kind"
+	default DHT22
+config DHT11
+	bool "DHT11"
+	help
+		DHT11
+config DHT21
+	bool "DHT21/AM2302"
+	help
+		DHT21, AM2301
+config DHT22
+	bool "DHT22/AM2302/RHT03"
+	help
+		DHT22, AM2302, RHT03
+endchoice
+config DHT_GPIO
+	depends on DHT
+	int	"gpio of DHT"
+	default 0
+	range 0 16 if CONFIG_ESP8266_DEFAULT_CPU_FREQ_MHZ != 0
+	range 0 39 # esp32 range
+	help
+		GPIO port to which the DHT is attached
+endif # DHT
+
+
+config BME280
+	bool "BME280 sensor"
+	default false
+	help
+		temperature, pressure, humidity measurements with BME280
+
+config BME280_SDA
+	depends on BME280
+	int "SDA"
+	default 0
+	range 0 16 if CONFIG_ESP8266_DEFAULT_CPU_FREQ_MHZ != 0
+	range 0 39 # esp32 range
+	help
+		SDA GPIO for BME280
+
+config BME280_SCL
+	depends on BME280
+	int "SCL"
+	default 0
+	range 0 16 if CONFIG_ESP8266_DEFAULT_CPU_FREQ_MHZ != 0
+	range 0 39 # esp32 range
+	help
+		SCL GPIO for BME280
+
+
+config DIST
+	bool "distance measurement"
+	default false
+	help
+		distance measurement with HC-SR04
+
+config DIST_TRIGGER
+	depends on DIST
+	int	"gpio to trigger HC-SR04"
+	default 0
+
+config DIST_ECHO
+	depends on DIST
+	int	"gpio for echo of HC-SR04"
+	default 0
+
+config LIGHTCTRL
+	bool "light control"
+	default false
+	help
+		light sensor read from A/D driving pwm dimmer
+
+config DIMMER
+	bool "single-PWM dimmer support"
+	default false
+	help
+		hardware-timer 1-channel high-performance dimmer
+
+config DIMMER_GPIO
+	depends on DIMMER
+	int "gpio of dimmer PWM output"
+	default 0
+	help
+		GPIO of dimmer PWM output
+
+config DIMMER_START
+	depends on DIMMER
+	bool "start dimmer on"
+	default false
+	help
+		start value of dimmer (on/off)
+
+config DIMMER_ACTIVE_HIGH
+	depends on DIMMER
+	bool "dimmer output is active high"
+	default false
+	help
+		GPIO output for dimmer is active high
+
+config LEDSTRIP
+	bool	"LED strip support"
+	default false
+	help
+		LED stripes based on WS8212b
+if LEDSTRIP
+menu "LED strip configuration"
+config LEDSTRIP_CHANNEL
+	int	"RMT channel for LED strip"
+	default	0
+	help
+		RMT channel for LED strip (used on ESP32 only)
+config LEDSTRIP_GPIO
+	int	"GPIO for LED strip"
+	default	0
+config LEDSTRIP_NUMLEDS
+	int	"number of LEDs on strip"
+	default	1
+endmenu
+endif # LEDSTRIP
+
+
+config RELAY
+	bool "relay"
+	default false
+	help
+		relay control
+if RELAY
+menu "relay configuration"
+config RELAY_GPIO
+	int "gpio of relay"
+	default 0
+	range 0 16 if CONFIG_ESP8266_DEFAULT_CPU_FREQ_MHZ
+	range 0 39 # esp32 range
+	help
+		GPIO port of relay (ESP8266: 0-16, ESP32: 0-39)
+config RELAY_ON
+	int	"0: active low, 1: active high"
+	default	0
+	help
+		set relay output to active high or active low
+endmenu # relay configuration
+endif
+
+config CAMERA
+	bool	"ESP32 camera support"
+	default false
+
+config NIGHTSKY
+	bool	"TLC5947 based led control"
+	default false
+
+if NIGHTSKY
+menu "nightsky configuration"
+config NIGHTSKY_NTLC
+	int	"number of TCL5947 devices"
+	default	8
+	help
+		number of attached leds
+config NIGHTSKY_IO_SIN
+	int	"gpio for SIN of tcl5947"
+config NIGHTSKY_IO_SCLK
+	int	"gpio for SCLK of tcl5947"
+config NIGHTSKY_IO_XLAT
+	int	"gpio for XLAT of tcl5947"
+config NIGHTSKY_IO_BLANK
+	int	"gpio for BLANK of tcl5947"
+endmenu # "nightsky"
+endif	# NIGHTSKY
+
+endmenu # harware support
+
+
+endmenu
