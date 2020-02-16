@@ -86,11 +86,10 @@ all: prepare
 app-flash: prepare
 	+$(MAKE) -f $(CHIP).mk app-flash
 
-flash: prepare
+flash: prepare romfs
 	+$(MAKE) -f $(CHIP).mk flash
-	#if [ "data/" != "$(ROMFS_FILES)" ]; then $(MAKE) romfs-flash; fi
 
-ota: prepare
+ota: prepare romfs
 	+$(MAKE) -f $(CHIP).mk ota
 
 menuconfig:
@@ -136,7 +135,10 @@ bin/atrium-logd: bin tools/binformats.cpp tools/atrium-logd.cpp
 bin/atrium-gencsv: bin tools/binformats.cpp tools/atrium-gencsv.cpp
 	$(CXX) $(CXXFLAGS) -I$(WFCINC) tools/atrium-gencsv.cpp tools/binformats.cpp $(WFCDIR)/lib/wfc_support.cpp -o $@
 
-build.$(PROJECT)/romfs.bin: bin/mkromfs $(ROMFS_FILES:%=data/%)
+build.$(PROJECT):
+	-mkdir $@
+
+build.$(PROJECT)/romfs.bin: bin/mkromfs $(ROMFS_FILES:%=data/%) build.$(PROJECT)
 	if [ "" != "$(ROMFS_FILES)" ]; then bin/mkromfs -o $@ $(ROMFS_FILES:%=data/%); else rm -f $@; fi
 
 romfs: build.$(PROJECT)/romfs.bin

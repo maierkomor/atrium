@@ -37,7 +37,7 @@ elif [ -d $PROJECT_ROOT/.hg ]; then
 	echo "#define HG_REV \"$HG_REV\"" >> version.h.new
 	echo "#define HG_BRANCH \"$HG_BRANCH\"" >> version.h.new
 elif [ -d $PROJECT_ROOT/.git ]; then
-	VER=`git describe --long`
+	VER=`git describe --long --dirty`
 	echo "#define VERSION \"$VER\"" > version.h.new
 else
 	# Bail out with an error, if no version information an be gathered.

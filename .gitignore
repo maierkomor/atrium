@@ -1,0 +1,9 @@
+components/memfiles/*.cpp
+components/memfiles/memfiles.h
+main/binformats.cpp
+main/binformats.h
+main/version.h
+settings.mk
+bin/mkromfs
+build
+build.*

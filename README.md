@@ -38,6 +38,7 @@ Filesystem support:
 
 Hardware drivers:
 - DHTxx temperature/humidity sensor support
+- BME280 temperature/humidity/pressure sensor support
 - single button support with debouncing
 - single relay control support
 - alive status LED support with different blinking schemes
@@ -58,8 +59,19 @@ To build a project, run:
 ```
 > make PROJECT=<project-name>
 ```
-
 This will build the project in a subdirectory called `build.<project>`.
+
+To flash a target, run:
+```
+> make PROJECT=<project-name> flash
+```
+
+To build for live update, always do a clean build, by running:
+```
+> rm -r build.<project-name>
+> make PROJECT=<project-name> ota
+```
+
 
 
 Project Configuration:
