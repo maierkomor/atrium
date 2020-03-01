@@ -156,6 +156,16 @@ static int set_nodename(const char *v)
 }
 
 
+static int set_domainname(const char *v)
+{
+	if (v == 0)
+		Config.clear_domainname();
+	else
+		Config.set_domainname(v);
+	return 0;
+}
+
+
 static int set_dns_server(const char *v)
 {
 	if (v == 0) {
@@ -351,6 +361,7 @@ pair<const char *, int (*)(const char *)> SetFns[] = {
 	{"mqtt_enable", set_mqtt_enable},
 #endif
 	{"nodename", set_nodename},
+	{"domainname", set_domainname},
 	{"password", setPassword},
 	{"dns_server", set_dns_server},
 	{"sntp_server", set_sntp_server},
@@ -376,6 +387,26 @@ int change_setting(const char *name, const char *value)
 			return SetFns[i].second(value);
 	}
 	return -1;
+}
+
+
+uint8_t read_nvs_u8(const char *id, uint8_t d)
+{
+	uint8_t v;
+	if (esp_err_t e = nvs_get_u8(NVS,id,&v)) {
+		log_error(TAG,"error setting %s to %u: %s",id,(unsigned)v,esp_err_to_name(e));
+		return d;
+	}
+	return v;
+}
+
+
+void store_nvs_u8(const char *id, uint8_t v)
+{
+	if (esp_err_t e = nvs_set_u8(NVS,id,v))
+		log_error(TAG,"error setting %s to %u: %s",id,(unsigned)v,esp_err_to_name(e));
+	else if (esp_err_t e = nvs_commit(NVS))
+		log_error(TAG,"error committing %s to %u: %s",id,(unsigned)v,esp_err_to_name(e));
 }
 
 
@@ -566,7 +597,6 @@ void storeSettings()
 
 uint8_t *readNVconfig(size_t *len)
 {
-	log_info(TAG,"reading settings");
 	size_t s = 0;
 	if (ESP_OK != nvs_get_blob(NVS,"node.cfg",0,&s)) {
 		log_error(TAG,"cannot determine size of node.cfg");
@@ -584,6 +614,7 @@ uint8_t *readNVconfig(size_t *len)
 		return 0;
 	}
 	*len = s;
+	log_info(TAG,"loaded config from NVS");
 	return buf;
 }
 
@@ -595,7 +626,9 @@ bool readSettings()
 	if (buf == 0)
 		return false;
 	Config.clear();
-	Config.fromMemory(buf,s);
+	int r = Config.fromMemory(buf,s);
+	if (r < 0)
+		log_error(TAG,"parsing hw.cfg returend %d",r);
 	free(buf);
 	return true;
 }

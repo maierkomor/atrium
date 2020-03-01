@@ -26,6 +26,7 @@
 #include "log.h"
 #include "support.h"
 #include "terminal.h"
+#include "wifi.h"
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>

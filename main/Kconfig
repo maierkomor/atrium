@@ -417,6 +417,18 @@ config RELAY_ON
 	default	0
 	help
 		set relay output to active high or active low
+
+config RELAY_RESTORE
+	bool	"restore last relay state on power-up"
+	default false
+	help
+		restore last relay state on power-up
+
+config RELAY_POWERUP_ON
+	int	"default relay state on power-on"
+	default	0
+	help
+		if set to 1 relay will be turned on on power-up when no last state is known
 endmenu # relay configuration
 endif
 

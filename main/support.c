@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2019, Thomas Maier-Komor
+ *  Copyright (C) 2018-2020, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -139,7 +139,7 @@ static uint32_t ns_cache_lookup(const char *h)
 }
 
 
-uint32_t resolve_hostname(const char *h)
+uint32_t resolve_fqhn(const char *h)
 {
 	if ((h[0] >= '0') && (h[0] <= '9')) {
 		uint32_t i4 = ipaddr_addr(h);

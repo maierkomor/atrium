@@ -31,6 +31,7 @@
 #include "log.h"
 #include "mqtt.h"
 #include "relay.h"
+#include "settings.h"
 
 #include <driver/gpio.h>
 #include <freertos/FreeRTOS.h>
@@ -78,6 +79,9 @@ void relay_on()
 #ifdef CONFIG_INFLUX
 	influx_send("relay=1");
 #endif
+#ifdef CONFIG_RELAY_RESTORE
+	store_nvs_u8("relay",1);
+#endif
 }
 
 
@@ -104,6 +108,9 @@ void relay_off()
 #endif
 #ifdef CONFIG_INFLUX
 	influx_send("relay=-1");
+#endif
+#ifdef CONFIG_RELAY_RESTORE
+	store_nvs_u8("relay",0);
 #endif
 }
 
@@ -159,7 +166,19 @@ void relay_setup()
 	add_action("relay_off",relay_off,"Strom ausschalten");
 	gpio_pad_select_gpio((gpio_num_t)CONFIG_RELAY_GPIO);
 	gpio_set_direction((gpio_num_t)CONFIG_RELAY_GPIO,GPIO_MODE_OUTPUT);
+#ifdef CONFIG_RELAY_RESTORE
+	if (read_nvs_u8("relay",CONFIG_RELAY_POWERUP_ON ? CONFIG_RELAY_ON : CONFIG_RELAY_OFF)) {
+		log_info(TAG,"restoring state to on");
+		relay_on();
+	} else {
+		log_info(TAG,"restoring state to off");
+		relay_off();
+	}
+#elif CONFIG_RELAY_POWERUP_ON == 1
+	relay_on();
+#else
 	relay_off();
+#endif
 #ifdef CONFIG_MQTT
 	mqtt_subscribe("set_relay",mqtt_callback);
 #endif

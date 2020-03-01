@@ -1,0 +1,9 @@
+R2002:
+======
+- added option to restore relay state on power-up
+- added command to modify MAC addresses
+- fix: version not picked up correctly from repository
+- hostname must be possible to query without privileges
+- added support to set domainname, use domainname for host lookups
+- changed setupenv.sh to pick esp8266/v3.2 idf, because
+  v3.3 produces corrupt OTA binaries

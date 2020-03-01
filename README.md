@@ -248,7 +248,9 @@ To update via telnet you need to perform the following steps:
 
 8. Finally, trigger a reboot, by executing `reboot`.
 
-Never switch boot partition if updating returned an error.  If your system doesn't boot anymore, you will need to flash via serial boot loader.
+Never switch boot partition if updating returned an error.  If your system doesn't boot anymore, you will need to flash via serial boot loader. 
+
+If your system reports out of memory while flashing, try to turn of some services (e.g. MQTT by `mqtt disable` via telnet or serial console). This should free enough RAM to make the update possible.
 
 
 Known Issues:

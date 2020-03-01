@@ -211,7 +211,7 @@ if [ "$IDF_ESP8266" == "" ]; then
 	pushd $installdir
 	git clone https://github.com/espressif/ESP8266_RTOS_SDK.git idf-esp8266 || exit 1
 	cd idf-esp8266
-	git checkout release/v3.3
+	git checkout release/v3.2
 	git submodule update --init
 	IDF_ESP8266=`pwd`
 	popd > /dev/null

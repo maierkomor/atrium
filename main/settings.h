@@ -50,6 +50,8 @@ void settings_setup();
 int change_setting(const char *name, const char *value);
 int set_cpu_freq(unsigned mhz);
 int set_timezone(const char *v);
+void store_nvs_u8(const char *, uint8_t);
+uint8_t read_nvs_u8(const char *, uint8_t);
 
 #ifdef __cplusplus
 }

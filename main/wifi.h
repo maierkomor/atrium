@@ -31,10 +31,10 @@ typedef enum { station_stopped, station_starting, station_connected, station_dis
 extern sta_mode_t StationMode;
 
 #ifdef __cplusplus
-extern "C"
+extern "C" {
 #endif
 bool wifi_setup();
-
+uint32_t resolve_hostname(const char *h);
 void wifi_wait();
 void wifi_wait_station();
 bool wifi_start_station(const char *ssid, const char *pass);
@@ -48,5 +48,8 @@ void wps_start();
 int smartconfig_start();
 void smartconfig_stop();
 bool smartconfig_running();
+#ifdef __cplusplus
+}
+#endif
 
 #endif

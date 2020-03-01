@@ -612,15 +612,68 @@ static int mem(Terminal &term, int argc, const char *args[])
 int mac(Terminal &term, int argc, const char *args[])
 {
 	uint8_t mac[6];
-	if (ESP_OK == esp_wifi_get_mac(ESP_IF_WIFI_AP,mac))
-		term.printf("softap mac:   %02x:%02x:%02x:%02x:%02x:%02x\n",mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
-	if (ESP_OK == esp_wifi_get_mac(ESP_IF_WIFI_STA,mac))
-		term.printf("station mac:  %02x:%02x:%02x:%02x:%02x:%02x\n",mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
+	if (argc == 1) {
+		term.printf(	"mac -l      : list mac addresses\n"
+				"mac -s <mac>: set station mac\n"
+				"mac -a <mac>: set softap mac\n"
+				"mac -c      : clear mac settings\n"
+			   );
+		return 0;
+	} else if (argc == 2) {
+		if (!strcmp("-l",args[1])) {
+			if (ESP_OK == esp_wifi_get_mac(ESP_IF_WIFI_AP,mac))
+				term.printf("softap mac:   %02x:%02x:%02x:%02x:%02x:%02x\n",mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
+			if (ESP_OK == esp_wifi_get_mac(ESP_IF_WIFI_STA,mac))
+				term.printf("station mac:  %02x:%02x:%02x:%02x:%02x:%02x\n",mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
 #ifdef ESP32
-	if (ESP_OK == esp_wifi_get_mac(ESP_IF_ETH,mac))
-		term.printf("ethernet mac: %02x:%02x:%02x:%02x:%02x:%02x\n",mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
+			if (ESP_OK == esp_wifi_get_mac(ESP_IF_ETH,mac))
+				term.printf("ethernet mac: %02x:%02x:%02x:%02x:%02x:%02x\n",mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
 #endif
-	return 0;
+			return 0;
+		}
+	}
+	if (0 == term.getPrivLevel()) {
+		term.printf("Insufficient privileges - execute 'su 1' to gain access.\n");
+		return 1;
+	}
+	// priveleged commands
+	if (argc == 2) {
+		if (!strcmp("-c",args[1])) {
+			Config.mutable_station()->clear_mac();
+			Config.mutable_softap()->clear_mac();
+			return 0;
+		}
+	} else if (argc == 3) {
+		unsigned inp[6];
+		if (6 != sscanf(args[2],"%x:%x:%x:%x:%x:%x",inp+0,inp+1,inp+2,inp+3,inp+4,inp+5)) {
+			term.printf("invalid mac\n");
+			return 1;
+		}
+		for (int i = 0; i < 6; ++i) {
+			if (inp[i] & ~0xff) {
+				term.printf("mac element %d out of range",i);
+				return 1;
+			}
+			mac[i] = inp[i];
+		}
+		wifi_interface_t w;
+		if (!strcmp("-s",args[1])) {
+			w = ESP_IF_WIFI_AP;
+			Config.mutable_station()->set_mac(mac,6);
+		}
+		else if (!strcmp("-a",args[1])) {
+			w = ESP_IF_WIFI_AP;
+			Config.mutable_softap()->set_mac(mac,6);
+		} else {
+			return 1;
+		}
+		if (esp_err_t e = esp_wifi_set_mac(w,mac)) {
+			term.printf("error setting mac: %s",esp_err_to_name(e));
+			return 1;
+		}
+		return 0;
+	}
+	return 1;
 }
 
 
@@ -778,15 +831,23 @@ static int hostname(Terminal &term, int argc, const char *args[])
 		term.printf("%s: 0-1 arguments expected, got %u\n",args[0],argc-1);
 		return 1;
 	}
+	if (argc == 1) {
+		if (Config.has_nodename())
+			term.printf("hostname: %s\n",Config.nodename().c_str());
+		else
+			term.printf("hostname not set\n");
+		return 0;
+	}
+	if (0 == term.getPrivLevel()) {
+		term.printf("Insufficient privileges - execute 'su 1' to gain access.\n");
+		return 1;
+	}
 	if (argc == 2) {
 		setHostname(args[1]);
 		Config.set_nodename(args[1]);
 		RTData.set_node(args[1]);
 	} else {
-		if (Config.has_nodename())
-			term.printf("hostname: %s\n",Config.nodename().c_str());
-		else
-			term.printf("hostname not set\n");
+		return 1;
 	}
 	return 0;
 }
@@ -1834,7 +1895,7 @@ ExeName ExeNames[] = {
 #ifdef CONFIG_HOLIDAYS
 	{"holiday",0,holiday,"holiday settings"},
 #endif
-	{"hostname",1,hostname,"get or set hostname"},
+	{"hostname",0,hostname,"get or set hostname"},
 	{"ifconfig",0,ifconfig,"network interface settings"},
 #ifdef CONFIG_INETD
 	{"inetadm",1,inetadm,"manage network services"},

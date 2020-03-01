@@ -27,7 +27,7 @@ extern "C" {
 #endif
 
 char *streol(char *b, size_t n);
-uint32_t resolve_hostname(const char *h);
+uint32_t resolve_fqhn(const char *h);
 const char *strneterr(int socket);
 const char *float_to_str(char *buf, float f);
 

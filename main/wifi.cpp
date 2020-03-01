@@ -23,6 +23,7 @@
 #include "log.h"
 #include "mqtt.h"
 #include "settings.h"
+#include "support.h"
 #include "wifi.h"
 
 #include <esp_err.h>
@@ -349,6 +350,19 @@ bool eth_isup()
 }
 
 
+uint32_t resolve_hostname(const char *h)
+{
+	if (!Config.has_domainname() || (0 != strchr(h,'.')))
+		return resolve_fqhn(h);
+	size_t hl = strlen(h);
+	size_t dl = Config.domainname().size();
+	char buf[strlen(h)+dl+2];
+	memcpy(buf,h,hl);
+	buf[hl] = '.';
+	memcpy(buf+hl+1,Config.domainname().c_str(),dl+1);
+	return resolve_fqhn(buf);
+}
+
 bool wifi_start_station(const char *ssid, const char *pass)
 {
 	//if (station_starting == StationMode)
@@ -364,6 +378,11 @@ bool wifi_start_station(const char *ssid, const char *pass)
 		if (esp_err_t e = esp_wifi_set_mode(nm))
 			log_error(TAG,"wifi set mode %s",esp_err_to_name(e));
 	}
+	const WifiConfig &station = Config.station();
+	if (station.has_mac() && (station.mac().size() == 6)) {
+		if (esp_err_t e = esp_wifi_set_mac(ESP_IF_WIFI_STA,(const uint8_t *)station.mac().data()))
+			log_warn(TAG,"error setting station mac: %s",esp_err_to_name(e));
+	}
 	wifi_config_t wifi_config;
 	strcpy((char*)wifi_config.sta.ssid,ssid);
 	strcpy((char*)wifi_config.sta.password,pass);
@@ -375,7 +394,6 @@ bool wifi_start_station(const char *ssid, const char *pass)
 		log_warn(TAG,"unable to configure station");
 		return false;
 	}
-	const WifiConfig &station = Config.station();
 	if (station.has_addr4() && station.has_netmask4() && station.has_gateway4()) {
 		tcpip_adapter_dhcpc_stop(TCPIP_ADAPTER_IF_STA);
 		tcpip_adapter_ip_info_t ipi;
@@ -433,6 +451,11 @@ bool wifi_start_softap(const char *ssid, const char *pass)
 	wifi_mode_t m = WIFI_MODE_NULL;
 	if (esp_err_t e = esp_wifi_get_mode(&m))
 		log_error(TAG,"error getting wifi mode: %s",esp_err_to_name(e));
+	const WifiConfig &softap = Config.softap();
+	if (softap.has_mac() && (softap.mac().size() == 6)) {
+		if (esp_err_t e = esp_wifi_set_mac(ESP_IF_WIFI_AP,(const uint8_t *)softap.mac().data()))
+			log_warn(TAG,"error setting softap mac: %s",esp_err_to_name(e));
+	}
 	if (m == WIFI_MODE_NULL) {
 		if (esp_err_t e = esp_wifi_set_mode(WIFI_MODE_AP))
 			log_error(TAG,"error setting station mode %s",esp_err_to_name(e));
