@@ -34,7 +34,7 @@ set(COMPONENT_SRCS
 	shell.cpp
 	startup.c
 	strstream.cpp
-	support.c
+	support.cpp
 	tcp_terminal.cpp
 	telnet.cpp
 	terminal.cpp

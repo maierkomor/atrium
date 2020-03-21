@@ -30,6 +30,7 @@ option esp {
 	varintbits=32;
 	streamtype=stream;
 	header="stream.h";
+	header="support.h";
 }
 
 option esp32 : esp {
@@ -104,9 +105,9 @@ message WifiConfig
 	string pass = 2			[ unset = "" ];
 	bytes mac = 3;
 	required bool activate = 4;
-	fixed32 addr4 = 5;
+	fixed32 addr4 = 5		[ to_ascii=ip4_to_ascii, to_json=ip4_to_ascii, parse_ascii=parse_ipv4 ];
 	fixed8 netmask4 = 6;
-	fixed32 gateway4 = 7;
+	fixed32 gateway4 = 7		[ to_ascii=ip4_to_ascii, to_json=ip4_to_ascii, parse_ascii=parse_ipv4 ];
 }
 
 

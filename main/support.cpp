@@ -16,9 +16,9 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "support.h"
-
 #include "log.h"
+#include "stream.h"
+#include "support.h"
 
 #include <errno.h>
 #include <math.h>
@@ -214,4 +214,38 @@ const char *float_to_str(char *buf, float f)
 	sprintf(o,"%u.%u",a,b);
 	return buf;
 }
+
+
+int parse_ipv4(uint32_t *ip, const char *str)
+{
+	int v[4];
+	int n;
+	int r = sscanf(str,"%d.%d.%d.%d%n",v,v+1,v+2,v+3,&n);
+	if (r != 4)
+		return -1;
+	if (v[0] & ~0xff)
+		return -2;
+	if (v[1] & ~0xff)
+		return -2;
+	if (v[2] & ~0xff)
+		return -2;
+	if (v[3] & ~0xff)
+		return -2;
+	*ip = (v[0]) | (v[1] << 8) | (v[2] << 16) | (v[3] << 24);
+	return n;
+}
+
+
+void ip4_to_ascii(stream &o, uint32_t ip)
+{
+	o       << (ip & 0xff)
+		<< '.'
+		<< ((ip >> 8) & 0xff)
+		<< '.'
+		<< ((ip >> 16) & 0xff)
+		<< '.'
+		<< ((ip >> 24) & 0xff)
+		;
+}
+
 

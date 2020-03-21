@@ -23,6 +23,8 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
+void ip4_to_ascii(class stream &o, uint32_t ip);
+
 extern "C" {
 #endif
 
@@ -30,6 +32,7 @@ char *streol(char *b, size_t n);
 uint32_t resolve_fqhn(const char *h);
 const char *strneterr(int socket);
 const char *float_to_str(char *buf, float f);
+int parse_ipv4(uint32_t *ip, const char *str);
 
 #ifdef __cplusplus
 }
