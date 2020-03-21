@@ -113,7 +113,7 @@ function on_alarm_data(responseText)
 		c = newrow.insertCell(3);
 		c.innerHTML = adata.alarms[i].enable ? "active" : "inactive";
 		c = newrow.insertCell(4);
-		if (adata.alarms[i].enabled)
+		if (adata.alarms[i].enable)
 			c.innerHTML = "<input type=\"button\" onclick=\"mod_alarm('-d "+i+"')\" value=\"suspend\"/>";
 		else
 			c.innerHTML = "<input type=\"button\" onclick=\"mod_alarm('-e "+i+"')\" value=\"activate\"/>";

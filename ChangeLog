@@ -1,3 +1,9 @@
+R2003:
+======
+- mqtt should resolve hostnames
+- at should check time boundaries
+- fix: de/activate buttons not working on alarms.html
+
 R2002:
 ======
 - added option to restore relay state on power-up

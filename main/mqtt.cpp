@@ -142,7 +142,34 @@ void mqtt_start(void)
 		cfg.username = m.username().c_str();
 	if (m.has_password())
 		cfg.password = m.password().c_str();
-	cfg.uri = m.uri().c_str();
+	const char *u = m.uri().c_str();
+	if (strncmp(u,"mqtt://",7)) {
+		log_error(TAG,"invalid URI format");
+		return;
+	}
+	const char *h = u + 7;
+	const char *c = strchr(h,':');
+	if (c == 0) {
+		log_error(TAG,"port missing");
+		return;
+	}
+	string hn;
+	if (c)
+		hn.assign(h,c-h);
+	else
+		hn.assign(h);
+	uint32_t ip = resolve_hostname(hn.c_str());
+	char uri[32];
+	int n = snprintf(uri,sizeof(uri),"mqtt://%d.%d.%d.%d:%s"
+		, ip & 0xff
+		, (ip >> 8) & 0xff
+		, (ip >> 16) & 0xff
+		, (ip >> 24) & 0xff
+		, c+1
+		);
+	if (n >= sizeof(uri))
+		return;
+	cfg.uri = uri;
 	cfg.event_handle = mqtt_event_handler;
 	if (Config.has_nodename())
 		cfg.client_id = Config.nodename().c_str();

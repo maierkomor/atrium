@@ -391,8 +391,9 @@ int at(Terminal &t, int argc, const char *args[])
 		}
 	}
 	int h,m;
-	if (2 != sscanf(args[2],"%d:%d",&h,&m)) {
-		t.printf("invalid time spec\n");
+	int n = sscanf(args[2],"%d:%d",&h,&m);
+	if ((2 != n) || (h < 0) || (h > 23) || (m < 0) || (m > 59)) {
+		t.printf("invalid time spec (n=%d, h=%d, m=%d)\n",n,h,m);
 		return 1;
 	}
 	Action *x = get_action(args[3]);
