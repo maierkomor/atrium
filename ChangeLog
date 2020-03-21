@@ -3,6 +3,7 @@ R2003:
 - mqtt should resolve hostnames
 - at should check time boundaries
 - fix: de/activate buttons not working on alarms.html
+- ota could be more verbose on telnet
 
 R2002:
 ======

@@ -1514,17 +1514,17 @@ static int update(Terminal &term, int argc, const char *args[])
 	vTaskPrioritySet(0, p > 4 ? p-3 : 1);
 	int r = 1;
 	if ((argc == 3) && (0 == strcmp(args[1],"-b"))) {
-		r = perform_ota((char*)args[2],true);
+		r = perform_ota(term,(char*)args[2],true);
 		term.printf("restarting system...\n");
 		term.disconnect();
 		vTaskDelay(400);
 		esp_restart();
 #ifdef CONFIG_ROMFS
 	} else if ((argc == 3) && (0 == strcmp(args[1],"-r"))) {
-		r = update_romfs((char*)args[2]);
+		r = update_romfs(term,(char*)args[2]);
 #endif
 	} else if (argc == 2) {
-		r = perform_ota((char*)args[1],false);
+		r = perform_ota(term,(char*)args[1],false);
 	} else {
 		term.printf("synopsys: %s [-b|-r] <source>\n",args[0]);
 	}

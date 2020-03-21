@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018, Thomas Maier-Komor
+ *  Copyright (C) 2018-2020, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -22,15 +22,11 @@
 #include <stdbool.h>
 
 #ifdef __cplusplus
-extern "C" {
-#endif
+class Terminal;
 
-bool http_download(char *addr, const char *fn);
-int perform_ota(char *source, bool changeboot);
-int update_romfs(char *source);
-
-#ifdef __cplusplus
-}
+int perform_ota(Terminal &t, char *source, bool changeboot);
+int update_romfs(Terminal &t, char *source);
+bool http_download(Terminal &t, char *addr, const char *fn);
 #endif
 
 #endif

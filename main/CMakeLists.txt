@@ -27,7 +27,7 @@ set(COMPONENT_SRCS
 	mqtt.cpp
 	mstream.cpp
 	nightsky.cpp
-	ota.c
+	ota.cpp
 	relay.cpp
 	romfs.cpp
 	settings.cpp
