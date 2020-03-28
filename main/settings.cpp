@@ -757,7 +757,7 @@ void settings_setup()
 		activateSettings();
 		if (!Config.has_station()) {
 #ifdef CONFIG_WPS
-			wps_start();
+			wifi_wps_start();
 #elif defined CONFIG_SMARTCONFIG
 			smartconfig_start();
 #endif

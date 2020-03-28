@@ -347,7 +347,7 @@ config LIGHTCTRL
 	bool "light control"
 	default false
 	help
-		light sensor read from A/D driving pwm dimmer
+		light sensor read from A/D driving pwm dimmer (currently ESP8266 only)
 
 config DIMMER
 	bool "single-PWM dimmer support"

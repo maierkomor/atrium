@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2019, Thomas Maier-Komor
+ *  Copyright (C) 2019-2020, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -19,6 +19,10 @@
 #include <sdkconfig.h>
 
 #ifdef CONFIG_LIGHTCTRL
+
+#ifndef ESP8266
+#error lightctrl is currntly only supported on ESP8266
+#endif
 
 #include <driver/adc.h>
 

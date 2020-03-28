@@ -1,5 +1,23 @@
 #!/bin/bash
 
+#
+#  Copyright (C) 2018-2020, Thomas Maier-Komor
+#  Atrium Firmware Package for ESP
+#
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation, either version 3 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#  
+
 if [ "$PROJECT" == "" ]; then
 	echo error: target not set
 	exit 1
@@ -17,7 +35,14 @@ if [ "$TARGET" == "" ]; then
 fi
 echo generating wfc for target $TARGET, project $PROJECT
 
-${WFC:=$WFC_DIR/bin/wfc} -t $TARGET binformats.wfc
+WFC=${WFC:=$WFC_DIR/bin/wfc}
+v=`$WFC -V | head -1 | sed 's/.*Version //'`
+if [[ "$v" < "R2003" ]]; then
+	echo WFC is too old. Please update WFC.
+	exit 1
+fi
+
+$WFC -t $TARGET binformats.wfc
 if [ "$?" != "0" ]; then
 	exit 1
 fi

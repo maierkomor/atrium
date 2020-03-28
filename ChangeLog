@@ -5,6 +5,7 @@ R2003:
 - fix: de/activate buttons not working on alarms.html
 - ota could be more verbose on telnet
 - fixed32 encoded IPs should be output in dot notation as ASCII
+- WFC minimum version updated to R2003
 
 R2002:
 ======

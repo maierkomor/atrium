@@ -928,7 +928,7 @@ static int wps(Terminal &term, int argc, const char *args[])
 		term.printf("%s: 0 arguments expected, got %u\n",args[0],argc-1);
 		return 1;
 	}
-	wps_start();
+	wifi_wps_start();
 	return 0;
 }
 #endif
@@ -1079,7 +1079,7 @@ static int download(Terminal &term, int argc, const char *args[])
 		term.printf("%s: 1-2 arguments expected, got %u\n",args[0],argc-1);
 		return 1;
 	}
-	return http_download((char*)args[1], (argc == 3) ? args[2] : 0) ? 0 : 1;
+	return http_download(term,(char*)args[1], (argc == 3) ? args[2] : 0) ? 0 : 1;
 }
 #endif
 

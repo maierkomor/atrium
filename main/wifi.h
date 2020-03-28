@@ -44,7 +44,7 @@ bool wifi_stop_softap();
 bool wifi_station_isup();
 bool wifi_softap_isup();
 bool eth_isup();
-void wps_start();
+void wifi_wps_start();
 int smartconfig_start();
 void smartconfig_stop();
 bool smartconfig_running();

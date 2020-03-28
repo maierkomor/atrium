@@ -527,7 +527,7 @@ void wifi_wait_station()
 
 
 #ifdef CONFIG_WPS
-void wps_start()
+void wifi_wps_start()
 {
 	log_info(TAG,"starting wps");
 	wifi_mode_t m;
