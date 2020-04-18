@@ -453,7 +453,7 @@ char *format_hash(char *buf, const uint8_t *hash)
 int setPassword(const char *p)
 {
 	//log_info(TAG,"setPassword('%s')",p);
-	if ((p == 0) || (p[0] == 0)) {
+	if ((p == 0) || (p[0] == 0) || (0 == strcmp(p,"-c"))) {
 		Config.clear_pass_hash();
 		return 0;
 	}
@@ -544,10 +544,6 @@ void setupDefaults()
 	Config.set_nodename(hostname);
 	Config.mutable_softap()->set_activate(true);
 	Config.mutable_softap()->set_ssid(hostname);
-	Config.mutable_softap()->set_pass("");
-	Config.mutable_station()->set_activate(false);
-	Config.mutable_station()->set_ssid("");
-	Config.mutable_station()->set_pass("");
 	Config.set_actions_enable(true);
 	Config.set_sntp_server("0.pool.ntp.org");
 #ifdef CONFIG_MQTT
@@ -559,8 +555,7 @@ void setupDefaults()
 
 void clearSettings()
 {
-	NodeConfig c;
-	Config = c;
+	Config.clear();
 }
 
 
@@ -754,14 +749,15 @@ void settings_setup()
 			setupDefaults();
 			set_cfg_err(2);
 		}
-		activateSettings();
 		if (!Config.has_station()) {
 #ifdef CONFIG_WPS
 			wifi_wps_start();
 #elif defined CONFIG_SMARTCONFIG
 			smartconfig_start();
 #endif
+			storeSettings();
 		}
+		activateSettings();
 	} else if (setup == 1) {
 		setupDefaults();
 		set_cfg_err(2);
@@ -781,71 +777,4 @@ void settings_setup()
 	set_cfg_err(0);
 }
 
-
-#ifdef NO_EXTRA_4K_HEAP		// with WPS
-static const char WpsTag[] = "wps";
-void wps_status_cb(wps_cb_status status)
-{
-	log_info(WpsTag,"cb status: %d", status);
-	switch(status) {
-	case WPS_CB_ST_SUCCESS:
-		log_info(WpsTag,"sucess\n");
-		wifi_wps_disable();
-		wifi_station_connect();
-		station_config sc;
-		wifi_station_get_config(&sc);
-		log_info(WpsTag,"ssid: %s, pass: %s\n",sc.ssid,sc.password);
-		Config.mutable_station()->set_ssid((char*)sc.ssid);
-		Config.mutable_station()->set_pass((char*)sc.password);
-		Config.mutable_station()->set_activate(true);
-		if (Config.has_softap() && !Config.accesspoint().activate())
-			wifi_set_opmode_current(1);
-		break;
-	case WPS_CB_ST_FAILED:
-		log_info(WpsTag,"FAILED\n");
-		wifi_set_opmode_current(2);
-		break;
-	case WPS_CB_ST_TIMEOUT:
-		log_info(WpsTag,"TIMEOUT\n");
-		wifi_set_opmode_current(2);
-		break;
-	case WPS_CB_ST_WEP:
-		log_info(WpsTag,"WEP\n");
-		break;
-	case WPS_CB_ST_UNK:
-		log_info(WpsTag,"station unknown\n");
-		wifi_wps_disable();
-		wifi_set_opmode_current(2);
-		break;
-	default:
-		abort();
-	}
-	esp_schedule();
-	log_info(WpsTag,"continue\n");
-}
-
-
-void startWPS()
-{
-	log_info(WpsTag,"start");
-	wifi_set_opmode_current(3);
-	wifi_wps_disable();
-	if (!wifi_wps_enable(WPS_TYPE_PBC)) {
-		log_info(WpsTag,"enable failed");
-		return;
-	}
-	if (!wifi_set_wps_cb((wps_st_cb_t) wps_status_cb)) {
-		log_info(WpsTag,"cb failed");
-		return;
-	}
-	if (!wifi_wps_start()) {
-		log_info(WpsTag,"start failed");
-		return;
-	}
-
-	log_info(WpsTag,"waiting for status update");
-	// yield until WPS status update is available
-	esp_yield();
-}
-#endif
 

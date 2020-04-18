@@ -23,11 +23,17 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-void ip4_to_ascii(class stream &o, uint32_t ip);
+class stream;
+
+void ip4_to_ascii(stream &o, uint32_t ip);
+void degC_to_ascii(stream &o, float f);
+void min_of_day_to_ascii(stream &o, uint16_t m);
+
 
 extern "C" {
 #endif
 
+char *concat(const char *s0, const char *s1);
 char *streol(char *b, size_t n);
 uint32_t resolve_fqhn(const char *h);
 const char *strneterr(int socket);

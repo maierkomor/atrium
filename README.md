@@ -26,7 +26,7 @@ Software services:
 - console shell with many commands
 - persistent system configuration handling
 - syslog support for sending log messages to a syslog server
-- WPS support on ESP32 (ESP8266 seems to have an SDK bug)
+- WPS support
 - SmartConfig support (compatible hardware required)
 
 Filesystem support:
@@ -87,7 +87,9 @@ and hardware feature and specify which type of file-system should be used.
 
 Accessing and configuring a device:
 ===================================
-After flashing a device, the device defaults to Soft-AP mode. I.e. it opens up its own WiFi without password, and you can access the device at the IP address `192.168.4.1`. Pointing your browser to `http://192.168.4.1/config.html` will bring up the config page. Per default no password is set, so leave it empty, but set a new password by filling the two new password fields with an appropriate password (10-15 characters). Also set the ssid of your WiFi and its password. After saving the configuration, the ESP will access the new WiFi and ask via DHCP for its IP address.
+After flashing a device and if there is no valid WiFi station configuration, WPS will be triggered during boot and booting will only continue after WPS has terminated. This is due to ESP8266 running out of RAM if all services have started before WPS is finished.
+
+If WPS failed, the device defaults to Soft-AP mode. I.e. it opens up its own WiFi without password, and you can access the device at the IP address `192.168.4.1`. Pointing your browser to `http://192.168.4.1/config.html` will bring up the config page. Per default no password is set, so leave it empty, but set a new password by filling the two new password fields with an appropriate password (10-15 characters). Also set the ssid of your WiFi and its password. After saving the configuration, the ESP will access the new WiFi and ask via DHCP for its IP address.
 
 After that you can access the device in your own WiFi. Sometimes switching the WiFi might not work out of the box. In that case it might be necessary to power-cycle the device.
 
@@ -248,14 +250,13 @@ To update via telnet you need to perform the following steps:
 
 8. Finally, trigger a reboot, by executing `reboot`.
 
-Never switch boot partition if updating returned an error.  If your system doesn't boot anymore, you will need to flash via serial boot loader. 
+Never switch boot partition if updating returned an error.  If your system doesn't boot anymore, you will need to flash via serial boot loader.
 
 If your system reports out of memory while flashing, try to turn of some services (e.g. MQTT by `mqtt disable` via telnet or serial console). This should free enough RAM to make the update possible.
 
 
 Known Issues:
 =============
-- WPS may crash, and its IDF support seems to be broken in several ways
 - PWM dimmer of ESP8266 may cause flickering output
 - S20/ESP8266 OTA scheme with 1MB ROM works with release/v3.2 but fails
   with release/v3.3

@@ -25,6 +25,7 @@
 #define WIFI_UP 1
 #define STATION_UP 2
 #define SOFTAP_UP 4
+#define WPS_TERM 8
 
 extern EventGroupHandle_t WifiEvents;
 typedef enum { station_stopped, station_starting, station_connected, station_disconnected } sta_mode_t;

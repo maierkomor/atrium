@@ -249,3 +249,25 @@ void ip4_to_ascii(stream &o, uint32_t ip)
 }
 
 
+void min_of_day_to_ascii(stream &o, uint16_t m)
+{
+	o.printf("%02u:%02u",(m / 60),(m % 60));
+}
+
+
+void degC_to_ascii(stream &o, float f)
+{
+        o << f;
+        o << "\u00b0C";
+}
+
+
+char *concat(const char *s0, const char *s1)
+{
+	size_t l0 = strlen(s0);
+	size_t l1 = strlen(s1) + 1;
+	char *r = (char *)malloc(l0+l1);
+	memcpy(r,s0,l0);
+	memcpy(r+l0,s1,l1);
+	return r;
+}

@@ -1,3 +1,7 @@
+R2004:
+======
+- fixed WPS
+
 R2003:
 ======
 - mqtt should resolve hostnames

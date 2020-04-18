@@ -58,10 +58,6 @@ static const char TAG[] = "net";
 static bool WifiStarted = false;
 static uptime_t StationDownTS = 0;
 
-#ifdef CONFIG_WPS
-esp_wps_config_t WPS_Config; // = WPS_CONFIG_INIT_DEFAULT(WPS_TYPE_PBC);
-#endif
-
 
 static esp_err_t wifi_event_handler(void *ctx, system_event_t *event)
 {
@@ -186,33 +182,33 @@ static esp_err_t wifi_event_handler(void *ctx, system_event_t *event)
 		esp_wifi_wps_disable();
 		if (esp_err_t e = esp_wifi_connect()) {
 			log_error(TAG,"connect returned %s",esp_err_to_name(e));
-		}
-		{
+		} else {
 			wifi_config_t wifi_config;
 			esp_wifi_get_config(ESP_IF_WIFI_STA, &wifi_config);
 			WifiConfig *conf = Config.mutable_station();
 			conf->set_ssid((char*)wifi_config.sta.ssid);
 			conf->set_pass((char*)wifi_config.sta.password);
 			conf->set_activate(true);
+			log_info(TAG,"wps success: ssid=%s, pass=%s",wifi_config.sta.ssid,wifi_config.sta.password);
 			//storeSettings();
 		}
+		xEventGroupSetBits(WifiEvents,WPS_TERM);
 		break;
 	case SYSTEM_EVENT_STA_WPS_ER_FAILED:
 		log_info(TAG,"WPS failed");
 		if (esp_err_t e = esp_wifi_wps_disable()) 
 			log_error(TAG,"WPS disable returned %s",esp_err_to_name(e));
-		if (esp_err_t e = esp_wifi_wps_enable(&WPS_Config))
-			log_error(TAG,"WPS enable returned %s",esp_err_to_name(e));
-		if (esp_err_t e = esp_wifi_wps_start(0))
-			log_error(TAG,"WPS start returned %s",esp_err_to_name(e));
+		xEventGroupSetBits(WifiEvents,WPS_TERM);
 		break;
 	case SYSTEM_EVENT_STA_WPS_ER_TIMEOUT:
 		log_info(TAG,"WPS timeout");
 		if (esp_err_t e = esp_wifi_wps_disable()) 
 			log_error(TAG,"wps disable returned %s",esp_err_to_name(e));
+		xEventGroupSetBits(WifiEvents,WPS_TERM);
 		break;
 	case SYSTEM_EVENT_STA_WPS_ER_PIN:
 		log_info(TAG,"WPS PIN: " PINSTR, PIN2STR(event->event_info.sta_er_pin.pin_code));
+		xEventGroupSetBits(WifiEvents,WPS_TERM);
 		break;
 #endif
 	default:
@@ -532,28 +528,34 @@ void wifi_wps_start()
 	log_info(TAG,"starting wps");
 	wifi_mode_t m;
 	esp_wifi_get_mode(&m);
-	if ((m & WIFI_MODE_STA) == 0) {
-		m = (wifi_mode_t)(m | WIFI_MODE_STA);
-		if (esp_err_t e = esp_wifi_set_mode(m))
-			log_error(TAG,"set wifi mode %d: 0x%x",m,e);
+	if (m != WIFI_MODE_STA) {
+		if (esp_err_t e = esp_wifi_set_mode(WIFI_MODE_STA))
+			log_warn(TAG,"set wifi mode %d: 0x%x",m,e);
 		if (esp_err_t e = esp_wifi_start())
-			log_error(TAG,"error starting wifi: %s",esp_err_to_name(e));
+			log_warn(TAG,"error starting wifi: %s",esp_err_to_name(e));
 	}
-	WPS_Config.wps_type = WPS_TYPE_PBC;
+	esp_wps_config_t config;
+	bzero(&config,sizeof(config));
+	config.wps_type = WPS_TYPE_PBC;
 #ifdef ESP32
-	WPS_Config.crypto_funcs = &g_wifi_default_wps_crypto_funcs;
+	config.crypto_funcs = &g_wifi_default_wps_crypto_funcs;
 #endif
-	strcpy(WPS_Config.factory_info.manufacturer,"make");
-	strcpy(WPS_Config.factory_info.model_number,"0");
-	strcpy(WPS_Config.factory_info.model_name,"proto0");
-	strcpy(WPS_Config.factory_info.device_name,"esp_proto");
+	strcpy(config.factory_info.manufacturer,"make");
+	strcpy(config.factory_info.model_number,"0");
+	strcpy(config.factory_info.model_name,"proto0");
+	strcpy(config.factory_info.device_name,"esp_proto");
 
-	if (esp_err_t e = esp_wifi_wps_enable(&WPS_Config)) {
+	xEventGroupClearBits(WifiEvents,WPS_TERM);
+	if (esp_err_t e = esp_wifi_wps_enable(&config)) {
 		log_error(TAG,"wps enable failed with error %s",esp_err_to_name(e));
 		return;
 	}
-	if (esp_err_t e = esp_wifi_wps_start(0))
+	if (esp_err_t e = esp_wifi_wps_start(0)) {
 		log_error(TAG,"wps start failed with error %s",esp_err_to_name(e));
+		return;
+	}
+	log_info(TAG,"wps started, waiting to complete");
+	xEventGroupWaitBits(WifiEvents,WPS_TERM,0,0,portMAX_DELAY);
 }
 #endif
 
@@ -572,8 +574,8 @@ bool wifi_setup()
 #if defined ESP8266 && IDF_VERSION > 32
 	// for esp8266 post v3.2
 	wifi_init_config_t cfg;
-	cfg.event_handler = &esp_event_send ;
-	cfg.osi_funcs = NULL ;
+	cfg.event_handler = &esp_event_send;
+	cfg.osi_funcs = NULL;
 	cfg.ampdu_rx_enable = WIFI_AMPDU_RX_ENABLED;
 	cfg.qos_enable = WIFI_QOS_ENABLED;
 	cfg.rx_ampdu_buf_len = WIFI_AMPDU_RX_AMPDU_BUF_LEN;
@@ -614,6 +616,7 @@ bool wifi_setup()
 	esp_wifi_set_mode(WIFI_MODE_NULL);
 	if (esp_err_t e = esp_wifi_start()) {
 		log_error(TAG,"error starting wifi: %s",esp_err_to_name(e));
+		return false;
 	}
 	return true;
 }

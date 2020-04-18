@@ -78,7 +78,7 @@ static unsigned button_loop()
 	} else
 	if (DownTime > 3000) {
 #ifdef CONFIG_WPS
-		wps_start();
+		wifi_wps_start();
 #elif defined CONFIG_SMARTCONFIG
 		smartconfig_start();
 #endif
