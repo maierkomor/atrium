@@ -189,8 +189,7 @@ static esp_err_t wifi_event_handler(void *ctx, system_event_t *event)
 			conf->set_ssid((char*)wifi_config.sta.ssid);
 			conf->set_pass((char*)wifi_config.sta.password);
 			conf->set_activate(true);
-			log_info(TAG,"wps success: ssid=%s, pass=%s",wifi_config.sta.ssid,wifi_config.sta.password);
-			//storeSettings();
+			log_info(TAG,"connected to: ssid=%s, pass=%s",wifi_config.sta.ssid,wifi_config.sta.password);
 		}
 		xEventGroupSetBits(WifiEvents,WPS_TERM);
 		break;

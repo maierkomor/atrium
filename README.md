@@ -101,8 +101,8 @@ Recommended steps to set up the configuration at the beginning are:
 > station pass <wiif-password>
 > station on
 > ap off
-> set dns\_server <dns>
-> set sntp\_server <sntp>
+> set dns_server <dns>
+> set sntp_server <sntp>
 > set timezone <timezone offset or CET>
 > passwd -s
 > su 1
