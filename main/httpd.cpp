@@ -64,15 +64,13 @@ static HttpServer *WWW = 0;
 static char TAG[] = "httpd";
 
 
-static void send_json(HttpRequest *req, void (*f)(strstream&))
+static void send_json(HttpRequest *req, void (*f)(stream&))
 {
-	string json;
-	strstream jsonstr(json);
-	f(jsonstr);
 	HttpResponse res;
+	strstream jsonstr(res.contentString());
+	f(jsonstr);
 	res.setResult(HTTP_OK);
 	res.setContentType(CT_APP_JSON);
-	res.addContent(json.c_str());
 	res.senddata(req->getConnection());
 }
 
@@ -83,7 +81,7 @@ static void webdata_json(HttpRequest *req)
 }
 
 
-static void publish_config(strstream &json)
+static void publish_config(stream &json)
 {
 	// security: do not publish confidential data!
 	NodeConfig publish(Config);
@@ -119,7 +117,7 @@ static void config_bin(HttpRequest *req)
 #endif
 
 
-static void write_alarms(strstream &json)
+static void write_alarms(stream &json)
 {
 #ifdef CONFIG_AT_ACTIONS
 	json << "{\"alarms\":[";

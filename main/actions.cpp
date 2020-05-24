@@ -23,7 +23,7 @@
 #include "log.h"
 #include "globals.h"
 #include "settings.h"
-#include "strstream.h"
+#include "termstream.h"
 #include "terminal.h"
 
 #include <assert.h>
@@ -227,14 +227,12 @@ int holiday(Terminal &t, int argc, const char *args[])
 	}
 	if (!strcmp(args[1],"-j")) {
 		t.printf("{\"holidays\":[");
-		string str;
-		strstream ss(str);
+		TermStream ts(t);
 		for (size_t i = 0; i < Config.holidays_size(); ++i) {
-			Config.holidays(i).toJSON(ss);
+			Config.holidays(i).toJSON(ts);
 			if (i + 1 != Config.holidays_size())
-				ss << ',';
+				ts << ',';
 		}
-		t.print(str.c_str(),str.size());
 		t.print("]}\n");
 		return 0;
 	}
@@ -324,14 +322,12 @@ int at(Terminal &t, int argc, const char *args[])
 			storeSettings();
 		} else if (!strcmp(args[1],"-j")) {
 			t.printf("{\"alarms\":[");
-			string str;
-			strstream ss(str);
+			TermStream ts(t);
 			for (size_t i = 0; i < Config.at_actions_size(); ++i) {
-				Config.at_actions(i).toJSON(ss);
+				Config.at_actions(i).toJSON(ts);
 				if (i + 1 != Config.at_actions_size())
-					ss << ',';
+					ts << ',';
 			}
-			t.print(str.c_str(),str.size());
 			t.print("]}\n");
 		} else {
 			t.printf("invalid argument\n");

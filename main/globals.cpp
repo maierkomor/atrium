@@ -19,7 +19,6 @@
 #include "globals.h"
 #include "binformats.h"
 #include "log.h"
-#include "strstream.h"
 
 #include <esp_timer.h>
 #include <string.h>
@@ -37,7 +36,7 @@ unsigned DHTInterval = 5000;
 static char TAG[] = "time";
 
 
-void runtimedata_to_json(strstream &json)
+void runtimedata_to_json(stream &json)
 {
 	static bool b = false;
 	if (RTData.relay() != b) {

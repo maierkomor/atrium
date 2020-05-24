@@ -19,6 +19,7 @@
 #ifndef TERMINAL_H
 #define TERMINAL_H
 
+#include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
@@ -37,6 +38,7 @@ class Terminal
 
 	// formatted print with nl->crnl translation
 	virtual void printf(const char *, ...);
+	virtual void vprintf(const char *, va_list);
 
 	// print with nl->crnl translation
 	virtual void print(const char *s, size_t = 0);

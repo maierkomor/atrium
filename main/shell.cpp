@@ -30,9 +30,9 @@
 #include "profiling.h"
 #include "romfs.h"
 #include "settings.h"
-#include "strstream.h"
 #include "support.h"
 #include "terminal.h"
+#include "termstream.h"
 #include "wifi.h"
 
 #include <string>
@@ -1410,10 +1410,10 @@ static int config(Terminal &term, int argc, const char *args[])
 		return 1;
 	}
 	if (!strcmp(args[1],"print")) {
-		string json;
-		strstream jsonstr(json);
-		Config.toJSON(jsonstr);
-		term.printf("current config:\n%s\n\n",json.c_str());
+		term.printf("current config:\n");
+		TermStream ts(term);
+		Config.toJSON(ts);
+		term.printf("\n");
 	} else if (!strcmp(args[1],"write")) {
 		storeSettings();
 	} else if (!strcmp(args[1],"read")) {
@@ -1482,10 +1482,8 @@ static int print_data(Terminal &term, int argc, const char *args[])
 		term.printf("%s: 0 arguments expected, got %u\n",args[0],argc-1);
 		return 1;
 	}
-	string json;
-	strstream jsonstr(json);
+	TermStream jsonstr(term);
 	runtimedata_to_json(jsonstr);
-	term.print(json.data(),json.size());
 	term.write("\n",1);
 	return 0;
 }

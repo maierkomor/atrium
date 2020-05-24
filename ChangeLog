@@ -2,6 +2,7 @@ R2005:
 ======
 - fix: some memory leaks
 - fix: esp8266_4m ptable addresses
+- enhancement: reduced use of termporary buffers
 
 R2004:
 ======

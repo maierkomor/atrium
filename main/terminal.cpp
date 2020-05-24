@@ -70,6 +70,25 @@ void Terminal::printf(const char *fmt, ...)
 	free(a);
 }
 
+void Terminal::vprintf(const char *fmt, va_list v)
+{
+        char buf[120], *b;
+        int n = vsnprintf(buf,sizeof(buf),fmt,v);
+        if (n <= sizeof(buf)) {
+                b = buf;
+        } else {
+                b = (char *) malloc(n+1);
+                if (b == 0) {
+                        // TODO: report/handle oom somehow
+                        return;
+                }
+                n = vsprintf(b,fmt,v);
+        }
+        print(b,n);
+        if (b != buf)
+                free(b);
+}
+
 
 int Terminal::get_ch(char *c)
 {

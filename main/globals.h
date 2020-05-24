@@ -30,7 +30,7 @@ extern NodeConfig Config;
 extern RunTimeData RTData;
 extern bool StationUp, DhtDebug;
 
-void runtimedata_to_json(class strstream &json);
+void runtimedata_to_json(class stream &json);
 void get_time_of_day(uint8_t *h, uint8_t *m, uint8_t *s = 0, uint8_t *wd = 0, uint8_t *md = 0, uint8_t *mon = 0, unsigned *year = 0);
 #endif
 
