@@ -7,4 +7,4 @@ factory,  0,    0,        0x10000, 0x100000
 ota_0,    0,    ota_0,   0x110000, 0x100000
 ota_1,    0,    ota_1,   0x210000, 0x100000
 settings, data,	nvs,     0x310000,  0x10000
-storage,  data, spiffs,  0x311000,  0xe0000
+storage,  data, spiffs,  0x321000,  0xd0000

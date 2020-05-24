@@ -338,8 +338,6 @@ HttpRequest *HttpRequest::parseRequest(int con)
 		free(buf);
 		return 0;
 	}
-	HttpRequest *r = new HttpRequest(con);
-	r = new HttpRequest(con);
 	if (n == 0) {
 		log_info(TAG,"empty request");	// this is normal for certain types of requests
 		n = recv(con,buf,bs-1,0);
@@ -353,6 +351,7 @@ HttpRequest *HttpRequest::parseRequest(int con)
 	buf[n] = 0;
 //	log_dbug(TAG,"http-req:");
 //	con_write(buf,n);
+	HttpRequest *r = new HttpRequest(con);
 	char *cr = strchr(buf,'\r');
 	if (cr == 0) {
 		log_warn(TAG,"header line too long (%u)\n%-256s",n,buf);
