@@ -1,3 +1,7 @@
+R2006:
+======
+- enhancement: influx tunable intervals
+
 R2005:
 ======
 - fix: some memory leaks

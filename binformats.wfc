@@ -158,6 +158,7 @@ message Influx
 	string hostname = 1	[ unset = "" ];
 	fixed16 port = 2	[ unset = 0 ];
 	string database = 3	[ unset = "" ];
+	unsigned interval = 4	[ default = 60000 ];
 }
 
 

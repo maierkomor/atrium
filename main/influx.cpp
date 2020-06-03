@@ -86,7 +86,7 @@ void influx_send(const char *data)
 	tmp += ' ';
 	tmp += data;
 	tmp += '\n';
-	log_dbug(TAG,"sending '%s'",tmp.c_str());
+	//log_dbug(TAG,"sending '%s'",tmp.c_str());
 	if (-1 == sendto(Sock,tmp.data(),tmp.size(),0,(const struct sockaddr *) &Addr,sizeof(Addr)))
 		log_error(TAG,"sendto failed: %s",strneterr(Sock));
 }
@@ -110,7 +110,7 @@ void influx_send(const vector< pair<string,string> > &data)
 		tmp += '=';
 		tmp += i.second.c_str();
 	}
-	log_info(TAG,"sending '%s'",tmp.c_str());
+	//log_dbug(TAG,"sending '%s'",tmp.c_str());
 	if (-1 == sendto(Sock,tmp.data(),tmp.size(),0,(const struct sockaddr *) &Addr,sizeof(Addr)))
 		log_error(TAG,"sendto failed: %s",strneterr(Sock));
 }
@@ -118,6 +118,9 @@ void influx_send(const vector< pair<string,string> > &data)
 
 static unsigned monitor()
 {
+	unsigned itv = Config.influx().interval();
+	if (itv == 0)
+		return 60000;
 	char buf[128];
 	int n;
 	n = sprintf(buf,"uptime=%u,mem32=%u,mem8=%u,memd=%u"
@@ -129,7 +132,7 @@ static unsigned monitor()
 	n += sprintf(buf+n,",relay=%d",RTData.relay() ? 1 : -1);
 #endif
 	influx_send(buf);
-	return 60000;
+	return itv;
 }
 
 
@@ -155,6 +158,7 @@ int influx(Terminal &term, int argc, const char *args[])
 				term.printf("port: %u\n",i.port());
 			if (i.has_database())
 				term.printf("database: %s\n",i.database().c_str());
+			term.printf("interval: %u\n",i.interval());
 		} else {
 			term.printf("not configured\n");
 		}
@@ -166,6 +170,7 @@ int influx(Terminal &term, int argc, const char *args[])
 				"influx port <port>\n"
 				"influx db <database>\n"
 				"influx send <text>\n"
+				"influx interval <msec>\n"
 				"influx clear\n"
 				);
 		} else {
@@ -187,6 +192,13 @@ int influx(Terminal &term, int argc, const char *args[])
 		} else if (0 == strcmp(args[1],"db")) {
 			Config.mutable_influx()->set_database(args[2]);
 			influx_init();
+		} else if (0 == strcmp(args[1],"interval")) {
+			long l = strtol(args[2],0,0);
+			if (l < 0) {
+				term.printf("interval must be >0\n");
+				return 1;
+			}
+			Config.mutable_influx()->set_interval(l);
 		} else if (0 == strcmp(args[1],"config")) {
 			char *c = strchr(args[2],':');
 			if (c == 0) {
