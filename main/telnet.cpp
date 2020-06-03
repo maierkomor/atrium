@@ -303,8 +303,8 @@ static void telnet_session(void *arg)
 		if (r > 0) {
 			buf[r] = 0;
 			if ((r == 4) && !memcmp(buf,"exit",4))
-				return;
-			r = shellexe(session,buf);
+				break;
+			shellexe(session,buf);
 		}
 	} while (r >= 0);
 	close(con);
