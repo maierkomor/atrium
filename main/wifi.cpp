@@ -110,25 +110,7 @@ static esp_err_t wifi_event_handler(void *ctx, system_event_t *event)
 		if (Config.has_nodename())
 			setHostname(Config.nodename().c_str());
 		StationMode = station_connected;
-#ifdef CONFIG_SNTP
-#if 0
-		if (Config.sntp().dhcp()) {
-			sntp_servermode_dhcp(1);
-		} else if (int n = Config.sntp().servers_size()) {
-			sntp_servermode_dhcp(0);
-			for (int i = 0; i < n; ++i)
-				sntp_setservername(i,(char*)Config.sntp().servers(i).c_str());
-		}
-		if (Config.sntp().enable())
-			sntp_init();
-#else
-		sntp_stop();
-		if (Config.has_sntp_server()) {
-			sntp_setservername(0,(char*)Config.sntp_server().c_str());
-			sntp_init();
-		}
-#endif
-#endif
+		sntp_start();
 #ifdef CONFIG_MQTT
 		mqtt_start();
 #endif

@@ -41,6 +41,7 @@ uint8_t *readNVconfig(size_t *len);
 bool readSettings();
 void setupDefaults();
 void storeSettings();
+void sntp_start();
 void factoryReset();
 int setHostname(const char *hn);
 void clearSettings();

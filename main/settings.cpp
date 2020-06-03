@@ -668,6 +668,36 @@ void initDns()
 }
 
 
+void sntp_start()
+{
+#ifdef CONFIG_SNTP
+	if (Config.has_timezone())
+		setenv("TZ",Config.timezone().c_str(),1);
+	if (Config.has_sntp_server()) {
+		sntp_stop();
+		const char *server = Config.sntp_server().c_str();
+		bool set = false;
+		if (strchr(server,'.')) {
+			const char *s = Config.sntp_server().c_str();
+			sntp_setservername(0,(char*)s);
+			log_dbug(TAG,"sntp server %s",s);
+			set = true;
+		} else if (Config.has_domainname()) {
+			char s[128];
+			int n = snprintf(s,sizeof(s),"%s.%s",server,Config.domainname().c_str());
+			if (n < sizeof(s)) {
+				set = true;
+				sntp_setservername(0,s);
+				log_dbug(TAG,"sntp server %s",s);
+			}
+		}
+		if (set)
+			sntp_init();
+	}
+#endif
+}
+
+
 void activateSettings()
 {
 	log_info(TAG,"activating config");
@@ -680,27 +710,7 @@ void activateSettings()
 
 	if (Config.has_station() && Config.station().has_ssid() && Config.station().has_pass() && Config.station().activate())
 		wifi_start_station(Config.station().ssid().c_str(),Config.station().pass().c_str());
-#ifdef CONFIG_SNTP
-#if 0
-	if (int n = Config.sntp().servers_size()) {
-		sntp_stop();
-		for (int i = 0; i < n; ++i)
-			sntp_setservername(i,(char*)Config.sntp().servers(i).c_str());
-	}
-	if (Config.sntp().has_timezone())
-		setenv("TZ",Config.sntp().timezone().c_str(),1);
-	if (Config.sntp().enable())
-		sntp_init();
-#else
-	if (Config.has_timezone())
-		setenv("TZ",Config.timezone().c_str(),1);
-	if (Config.has_sntp_server()) {
-		sntp_stop();
-		sntp_setservername(0,(char*)Config.sntp_server().c_str());
-		sntp_init();
-	}
-#endif
-#endif
+	sntp_start();
 	if (Config.has_cpu_freq())
 		set_cpu_freq(Config.cpu_freq());
 #if 0
