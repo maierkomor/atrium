@@ -1284,10 +1284,10 @@ static int sntp(Terminal &term, int argc, const char *args[])
 		return 1;
 	}
 	if (argc == 1) {
-		if (Config.has_sntp_server())
-			term.printf("sntp server: %s\n",Config.sntp_server().c_str());
-		if (Config.has_timezone())
-			term.printf("timezone %s\n",Config.timezone().c_str());
+		if (char *s = sntp_getservername(0))
+			term.printf("sntp server: %s\n",s);
+		if (const char *tz = getenv("TZ"))
+			term.printf("timezone %s\n",tz);
 		time_t now;
 		time(&now);
 		char buf[64];

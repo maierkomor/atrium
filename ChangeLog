@@ -2,6 +2,7 @@ R2006:
 ======
 - enhancement: influx tunable intervals
 - enhancement: sntp should use domainname to determine server IP
+- enhancement: added support for vacation periods
 
 R2005:
 ======

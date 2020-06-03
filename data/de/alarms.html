@@ -64,10 +64,21 @@
 </thead>
 <tbody id="holidays">
 <tr>
-<td><input type="number" id="mday" min="1" max="31" step="1"></td>
-<td><input type="number" id="month" min="1" max="12" step="1"></td>
-<td><input type="number" id="year" min="0" max="2099" step="1"></td>
-<td><input type="button" onclick="add_holiday()" value="hinzufügen"/></td>
+<td><input type="date" id="day"></td>
+<td><input type="checkbox" id="everyyear"></td>
+<td><input type="button" onclick="add_holiday()" value="add"/></td>
+</tr>
+</tbody>
+</table>
+<h2>Vacations:</h2>
+<table><thead align="left">
+	<tr><th>Start</th><th>Ende</th>
+</thead>
+<tbody id="vacations">
+<tr>
+<td><input type="date" id="start"></td>
+<td><input type="date" id="end"></td>
+<td><input type="button" onclick="add_vacation()" value="add"/></td>
 </tr>
 </tbody>
 </table>
@@ -80,8 +91,6 @@ function run_exe(cmd)
 	exe.open('POST','run_exe',true);
 	exe.setRequestHeader("command",cmd);
 	exe.send(null);
-	//var data = "command="+cmd;
-	//exe.send(data);
 }
 
 function save()
@@ -91,7 +100,7 @@ function save()
 
 function mod_alarm(a)
 {
-	run_exe("at "+a,get_alarms);
+	run_exe("at "+a);
 }
 
 function on_alarm_data(responseText)
@@ -126,18 +135,37 @@ function on_alarm_data(responseText)
 	while (hols.rows.length > 1) {
 		hols.deleteRow(0);
 	}
+	var vacs = document.getElementById("vacations");
+	while (vacs.rows.length > 1) {
+		vacs.deleteRow(0);
+	}
 	for (var i = 0; i < adata.holidays.length; ++i) {
-		var newrow = hols.insertRow(0);
-		var c = newrow.insertCell(0);
-		c.innerHTML = adata.holidays[i].day;
-		c = newrow.insertCell(1);
-		c.innerHTML = adata.holidays[i].month;
-		var y = adata.holidays[i].year;
-		c = newrow.insertCell(2);
-		if (y)
-			c.innerHTML = adata.holidays[i].year;
-		c = newrow.insertCell(3);
-		c.innerHTML = "<input type=\"button\" onclick=\"delete_holiday('"+i+"')\" value=\"löschen\"/>";
+		var a = adata.holidays[i];
+		var nr;
+		if (a.hasOwnProperty("endday")) {
+			nr = vacs.insertRow(0);
+		} else {
+			nr = hols.insertRow(0);
+		}
+		var c = nr.insertCell(0);
+		c.innerHTML = a.month + "/" + a.day + "/";
+		if (a.hasOwnProperty("year"))
+			c.innerHTML += a.year;
+		else
+			c.innerHTML += "*";
+		if (a.hasOwnProperty("endday")) {
+			c = nr.insertCell(1);
+			c.innerHTML = a.endmonth + "/" + a.endday + "/";
+			if (a.hasOwnProperty("endyear"))
+				c.innerHTML += a.endyear + a.year;
+			else
+				c.innerHTML += a.year;
+			c = nr.insertCell(2);
+		} else {
+			c = nr.insertCell(1);
+			c = nr.insertCell(2);
+		}
+		c.innerHTML = "<input type=\"button\" onclick=\"delete_holiday('"+i+"')\" value=\"delete\"/>";
 	}
 }
 
@@ -159,20 +187,26 @@ function add_alarm()
 
 function add_holiday()
 {
-	var data = "holiday " + document.getElementById('mday').value;
-	data += "."
-	data += document.getElementById('month').value;
-	data += "."
-	var year = document.getElementById('year').value;
-	if ((year != "") && (year != "0"))
-		data += year;
-	run_exe(data);
+	var d = document.getElementById('day').valueAsDate;
+	var c = "holiday " + d.getDate() + "." + (d.getMonth()+1) + ".";
+	if (!document.getElementById('everyyear').checked)
+		c += d.getYear() + 1900;
+	run_exe(c);
+}
+
+function add_vacation()
+{
+	var d = "holiday ";
+	d += document.getElementById('start').value;
+	d += " ";
+	d += document.getElementById('end').value;
+	run_exe(d);
 }
 
 function delete_holiday(h)
 {
 	var data = "holiday -D " + h;
-	run_exe(data,get_holidays);
+	run_exe(data);
 }
 
 var req = new XMLHttpRequest();

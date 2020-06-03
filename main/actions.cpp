@@ -23,6 +23,7 @@
 #include "log.h"
 #include "globals.h"
 #include "settings.h"
+#include "strstream.h"
 #include "termstream.h"
 #include "terminal.h"
 
@@ -118,12 +119,25 @@ static const char *get_action_text(const char *name)
 #ifdef CONFIG_HOLIDAYS
 static bool is_holiday(uint8_t d, uint8_t m, unsigned y)
 {
-	for (size_t i = 0; i < Config.holidays_size(); ++i) {
-		const Date &hd = Config.holidays(i);
-		if ((d == hd.day()) 
-			&& (m == hd.month()) 
-			&& (!hd.has_year() || (y == hd.year())))
+	for (const Date &hd : Config.holidays()) {
+		unsigned sd = hd.day();
+		unsigned sm = hd.month();
+		if (hd.has_endday()) {
+			unsigned sy = hd.year();
+			unsigned ey = sy + hd.endyear();
+			unsigned doy = d + m*31 + y * 31 * 12;
+			unsigned em = hd.endmonth();
+			unsigned ed = hd.endday();
+			unsigned so = sd + sm*31 + sy * 31 * 12;
+			unsigned eo = ed + em*31 + ey * 31 * 12;
+			log_info(TAG,"doy = %u, so = %u, eo = %u",doy,so,eo);
+			if ((doy >= so) && (doy <= eo))
+				return true;
+		} else if ((d == sd) && (m == sm) 
+			&& (!hd.has_year() || (y == hd.year()))) {
+			log_info(TAG,"direct match d=%u, m=%u, y=%u, sd=%u, sm=%u",d,m,y,sd,sm);
 			return true;
+		}
 	}
 	return false;
 }
@@ -198,31 +212,33 @@ int holiday(Terminal &t, int argc, const char *args[])
 			"<dd.mm.yyyy|mm/dd/yyyy|yyyy-mm-dd>> to add a holiday for the specified date\n");
 		return 0;
 	}
-	if (argc == 3) {
-		if (!strcmp(args[1],"-D")) {
-			long l = strtol(args[2],0,10);
-			if ((l < 0) || (l >= (long)Config.holidays_size())) {
-				t.printf("value out of range\n");
-				return 1;
-			}
-			if (!strcmp(args[2],"all"))
-				Config.clear_holidays();
-			else
-				Config.mutable_holidays()->erase(Config.mutable_holidays()->begin()+l);
-			return 0;
+	if (!strcmp(args[1],"-D") && (argc == 3)) {
+		long l = strtol(args[2],0,10);
+		if ((l < 0) || (l >= (long)Config.holidays_size())) {
+			t.printf("value out of range\n");
+			return 1;
 		}
-		t.printf("invalid option/argument %s\n",args[1]);
-		return 1;
+		if (!strcmp(args[2],"all"))
+			Config.clear_holidays();
+		else
+			Config.mutable_holidays()->erase(Config.mutable_holidays()->begin()+l);
+		return 0;
 	}
 	// 2 arguments
 	if (!strcmp(args[1],"-l")) {
 		for (size_t i = 0; i < Config.holidays_size(); ++i) {
 			const Date &h = Config.holidays(i);
-			if (h.has_year())
+			if (h.has_endday())
+				t.printf("%d: %d.%d.%d-%d.%d.%d\n",i,h.day(),h.month(),h.year(),h.endday(),h.endmonth(),h.year()+h.endyear());
+			else if (h.has_year())
 				t.printf("%d: %d.%d.%d\n",i,h.day(),h.month(),h.year());
 			else
 				t.printf("%d: %d.%d\n",i,h.day(),h.month());
 		}
+		uint8_t hr,m,s,d,md,mon;
+		unsigned y;
+		get_time_of_day(&hr,&m,&s,&d,&md,&mon,&y);
+		t.printf("today is %sa holiday\n", is_holiday(md,mon,y) ? "" : "not ");
 		return 0;
 	}
 	if (!strcmp(args[1],"-j")) {
@@ -256,11 +272,36 @@ int holiday(Terminal &t, int argc, const char *args[])
 		t.printf("day out of range\n");
 		return 1;
 	}
-	Date *h = Config.add_holidays();
-	h->set_month(m);
-	h->set_day(d);
-	if (n == 3)
-		h->set_year(y);
+	Date h;
+	h.set_month(m);
+	h.set_day(d);
+	if ((n == 3) && (y != 0))
+		h.set_year(y);
+	if (argc == 3) {
+		n = sscanf(args[2],"%d.%d.%d",&d,&m,&y);
+		if (n < 3) {
+			n = sscanf(args[2],"%d/%d/%d",&m,&d,&y);
+			if (n < 3) {
+				n = sscanf(args[2],"%d-%d-%d",&y,&m,&d);
+				if (n < 2) {
+					t.printf("invalid input format\n");
+					return 1;
+				}
+			}
+		}
+		if ((m <= 0) || (m > 12)) {
+			t.printf("invalid month\n");
+			return 1;
+		}
+		if ((d <= 0) || (d > 31)) {
+			t.printf("invalid day\n");
+			return 1;
+		}
+		h.set_endday(d);
+		h.set_endmonth(m);
+		h.set_endyear(y-h.year());
+	}
+	*Config.add_holidays() = h;
 	return 0;
 }
 #endif

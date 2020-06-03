@@ -124,7 +124,10 @@ message Date
 {
 	fixed8 day = 1;
 	fixed8 month = 2;
-	fixed16 year = 3;
+	fixed16 year = 3	[ unset = 0 ];
+	fixed8 endday = 4	[ unset = 0 ];
+	fixed8 endmonth = 5	[ unset = 0 ];
+	fixed8 endyear = 6	[ unset = 0 ];
 }
 
 
