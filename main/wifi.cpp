@@ -21,7 +21,6 @@
 #include "alive.h"
 #include "globals.h"
 #include "log.h"
-#include "mqtt.h"
 #include "settings.h"
 #include "support.h"
 #include "wifi.h"
@@ -111,9 +110,7 @@ static esp_err_t wifi_event_handler(void *ctx, system_event_t *event)
 			setHostname(Config.nodename().c_str());
 		StationMode = station_connected;
 		sntp_start();
-#ifdef CONFIG_MQTT
-		mqtt_start();
-#endif
+		// mqtt handles restart itself
 		StationDownTS = 0;
 		break;
 	case SYSTEM_EVENT_STA_DISCONNECTED:
@@ -548,6 +545,7 @@ bool wifi_setup()
 	tcpip_adapter_init();
 	StationMode = station_disconnected;
 	WifiEvents = xEventGroupCreate();
+	xEventGroupClearBits(WifiEvents, 0xffffffff);
 	if (esp_err_t e = esp_event_loop_init(wifi_event_handler,0)) {
 		log_error(TAG,"esp_event_loop_init failed: %s",esp_err_to_name(e));
 		return false;

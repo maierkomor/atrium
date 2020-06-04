@@ -3,7 +3,11 @@ R2006:
 - enhancement: influx tunable intervals
 - enhancement: sntp should use domainname to determine server IP
 - enhancement: added support for vacation periods
+- enhancement: syslog should use logging infrastructure
+- enhancement: reordered startup
+- fix: some MQTT issues
 - fix: exit in telnet session may cause crash
+- fix: leaking socket
 
 R2005:
 ======

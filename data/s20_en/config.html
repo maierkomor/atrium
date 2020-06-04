@@ -13,7 +13,7 @@
 <body>
 
 <h1>Configuration</h1>
-<form action="post_config" method="post" id="konfiguration">
+<form action="post_config" method="post" id="configuration">
 <table><tbody align="left">
 	<tr><th><label for="passwd">Password:</label></th></tr>
 	<tr><td><input id="passwd" name="passwd" type="password"></td></tr>
@@ -37,9 +37,9 @@
 	<tr><th><label for="ap_activate">Activate accesspoint:</label></th></tr>
 	<tr><td><input id="ap_activate" name="ap_activate" type="hidden" value="0"></td></tr>
 	<tr><td><input id="ap_activate_cb" type="checkbox">
-	<tr><th><label for="dns_server">DNS Server:</label></th></tr>
+	<tr><th><label for="dns_server">DNS server:</label></th></tr>
 	<tr><td><input id="dns_server" name="dns_server"></td></tr>
-	<tr><th><label for="sntp_server">SNTP Server:</label></th></tr>
+	<tr><th><label for="sntp_server">SNTP server:</label></th></tr>
 	<tr><td><input id="sntp_server" name="sntp_server"></td></tr>
 	<tr><th><label for="timezone">Timezone:</label></th></tr>
 	<tr><td><input id="timezone" name="timezone"></td></tr>
@@ -101,10 +101,10 @@ function submit_config()
 	var pass0 = document.getElementById('newpass0');
 	var pass1 = document.getElementById('newpass1');
 	if (pass0.value != pass1.value) {
-		document.getElementById("output").innerText = "neues Passwort ist nicht identisch";
+		document.getElementById("output").innerText = "passwords are not identical";
 		return;
 	}
-	var conf = document.getElementById('konfiguration');
+	var conf = document.getElementById('configuration');
 	if (document.getElementById("ap_activate_cb").checked)
 		conf.ap_activate.value = "1";
 	else

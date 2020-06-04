@@ -173,35 +173,11 @@ void app_main()
 #endif
 	settings_setup();
 
-#ifdef CONFIG_TERMSERV
-	termserv_setup();
-#endif
-#ifdef CONFIG_SYSLOG
-	syslog_setup();
-#endif
 #ifdef CONFIG_SUBTASKS
 	subtasks_setup();
 #endif
 #ifdef CONFIG_AT_ACTIONS
 	actions_setup();
-#endif
-#ifdef CONFIG_TELNET
-	telnet_setup();
-#endif
-#ifdef CONFIG_FTP
-	ftpd_setup();
-#endif
-#ifdef CONFIG_HTTP
-	httpd_setup();
-#endif
-#ifdef CONFIG_INETD
-	inetd_setup();
-#endif
-#ifdef CONFIG_UDPCTRL
-	udpctrl_setup();
-#endif
-#ifdef CONFIG_MQTT
-	mqtt_setup();
 #endif
 #ifdef CONFIG_DIST
 	distance_setup();
@@ -230,14 +206,45 @@ void app_main()
 #ifdef CONFIG_DIMMER
 	dimmer_setup();
 #endif
+#ifdef CONFIG_BME280
+	bme_setup();
+#endif
 #ifdef CONFIG_LIGHTCTRL
 	lightctrl_setup();
 #endif
+	
+	// network services
+#ifdef CONFIG_INETD
+	inetd_setup();
+#endif
+#ifdef CONFIG_TELNET
+	telnet_setup();
+#endif
+#ifdef CONFIG_TERMSERV
+	termserv_setup();
+#endif
+#ifdef CONFIG_HTTP
+	httpd_setup();
+#endif
+#ifdef CONFIG_FTP
+	ftpd_setup();
+#endif
+#ifdef CONFIG_UDPCTRL
+	udpctrl_setup();
+#endif
+
+	// wait for station to come up
+	wifi_wait();
+	wifi_wait_station();
+
+#ifdef CONFIG_SYSLOG
+	syslog_setup();
+#endif
+#ifdef CONFIG_MQTT
+	mqtt_setup();
+#endif
 #ifdef CONFIG_INFLUX
 	influx_setup();
-#endif
-#ifdef CONFIG_BME280
-	bme_setup();
 #endif
 	//esp_ota_mark_app_valid_cancel_rollback();
 	log_info(TAG,"done");

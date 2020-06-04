@@ -167,37 +167,30 @@ bool HttpServer::runFile(HttpRequest *req)
 	log_info(TAG,"found %s in romfs, size %u",uri,s);
 	HttpResponse ans;
 	int con = req->getConnection();
-	if (s <= 1024) {
+	if (s <= 512) {
 		ans.setResult(HTTP_OK);
 		string &content = ans.contentString();
 		content.resize(s);
 		romfs_read_at(r,(char*)content.data(),s,0);
 		ans.senddata(con);
 	} else {
-		const unsigned bs = 1024;
-		char *tmp = new char[bs];
-		if (tmp == 0) {
-			ans.setResult(HTTP_INTERNAL_ERR);
-			ans.senddata(con);
-			return false;
-		}
+		const unsigned bs = 512;
+		char tmp[bs];
 		ans.setResult(HTTP_OK);
 		ans.setContentLength(s);
 		ans.senddata(con);
 		int off = 0;
 		do {
-			unsigned n = s > bs ? bs : s;
+			unsigned n = s > sizeof(tmp) ? sizeof(tmp) : s;
 			romfs_read_at(r,tmp,n,off);
 			off += n;
 			if (-1 == send(con,tmp,n,0)) {
 				log_error(TAG,"error sending: %s",strerror(errno));
-				delete [] tmp;
 				return false;
 			}
 			//ans.addContent(tmp,n);
 			s -= n;
 		} while (s > 0);
-		delete [] tmp;
 	}
 	return true;
 #endif

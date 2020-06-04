@@ -73,7 +73,7 @@ static void found_hostname(const char *hn, const ip_addr_t *addr, void *arg)
 		return;
 	}
 	if (addr == 0) {
-		log_warn(TAG,"got negative reply for host %s");
+		log_warn(TAG,"got negative reply for host %s",hn);
 		xSemaphoreGive(NscSem);
 		return;
 	}

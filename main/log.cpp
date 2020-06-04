@@ -88,7 +88,7 @@ uint32_t Debug = UINT32_MAX;
 #ifdef CONFIG_SYSLOG
 #define SYSLOG_PORT 514
 static SemaphoreHandle_t SyslogLock, SyslogBufSem, SyslogSendSem;
-static char *SyslogQ[16];
+static char *SyslogQ[16], TAG[] = "rlog";
 static uint8_t SyslogIn = 0, SyslogOut = 0;
 static bool SyslogRunning = false;
 #endif
@@ -483,20 +483,20 @@ static void report_error(int s, const char *m)
 	}
 	if (errstr == 0)
 		errstr = "unknown error";
-	con_printf("rlog: %s: %s",m,errstr);
+	log_info(TAG,"%s: %s",m,errstr);
 }
 
 
 static void syslog(void *param)
 {
 	in_addr_t ip = INADDR_NONE;
-	con_printf("rlog: starting...");
+	log_info(TAG,"starting...");
 	for (;;) {
 		wifi_wait();
 		int sock = socket(AF_INET,SOCK_DGRAM,IPPROTO_UDP);
 		if (sock == -1) {
 			if (-2 != LastErr) {
-				con_printf("rlog: unable to create socket");
+				log_warn(TAG,"unable to create socket");
 				LastErr = -2;
 			}
 			vTaskDelay(3000/portTICK_PERIOD_MS);
@@ -513,9 +513,10 @@ static void syslog(void *param)
 			ip = resolve_hostname(Config.syslog_host().c_str());
 			if (ip == INADDR_NONE) {
 				if (-3 != LastErr) {
-					con_printf("rlog: unable to resolve host %s",Config.syslog_host().c_str());
+					log_warn(TAG,"unable to resolve host %s",Config.syslog_host().c_str());
 					LastErr = -3;
 				}
+				close(sock);
 				vTaskDelay(3000/portTICK_PERIOD_MS);
 				continue;
 			}
@@ -525,7 +526,7 @@ static void syslog(void *param)
 		addr.sin_family = AF_INET;
 		addr.sin_addr.s_addr = ip;
 		addr.sin_port = htons(SYSLOG_PORT);
-		con_printf("rlog: ready");
+		log_info(TAG,"ready");
 		SyslogRunning = true;
 		int r;
 		do {
@@ -537,7 +538,7 @@ static void syslog(void *param)
 			xSemaphoreGive(SyslogBufSem);
 			r = sendto(sock,buf,strlen(buf),0,(const struct sockaddr *) &addr,sizeof(addr));
 			if (-1 == r)
-				con_printf("syslog: send %s",strerror(errno));
+				log_warn(TAG,"send %s",strerror(errno));
 			free(buf);
 		} while (r != -1);
 		SyslogRunning = false;

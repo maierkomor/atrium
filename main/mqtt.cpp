@@ -42,11 +42,10 @@ using namespace std;
 
 
 static char TAG[] = "mqtt";
-static bool Running, Connected;
+static bool Connected;
 static esp_mqtt_client_handle_t Client = 0;
 static multimap<string,void(*)(const char *,size_t)> Subscriptions;
 static string DMesg;
-static SemaphoreHandle_t Mtx = 0;
 
 
 static void execute_callbacks(const char *t, size_t tl, const char *d, size_t dl)
@@ -64,15 +63,15 @@ static void execute_callbacks(const char *t, size_t tl, const char *d, size_t dl
 
 static void subscribe_topics()
 {
+	mqtt_publish("version",Version,strlen(Version),1);
 	for (auto i = Subscriptions.begin(), e = Subscriptions.end(); i != e; ++i) {
 		const char *t = i->first.c_str();
 		int id = esp_mqtt_client_subscribe(Client,t,0);
-		if (id)
+		if (id != -1)
 			log_info(TAG,"subscribed to %s",t);
 		else
 			log_warn(TAG,"failed to subscribe %s",t);
 	}
-
 }
 
 
@@ -82,11 +81,10 @@ static int mqtt_event_handler(esp_mqtt_event_handle_t e)
 	case MQTT_EVENT_CONNECTED:
 		log_info(TAG,"connected");
 		Connected = true;
-		mqtt_publish("version",Version,strlen(Version),1);
 		subscribe_topics();
 		break;
 	case MQTT_EVENT_DISCONNECTED:
-		log_info(TAG,"disconnected");
+		log_warn(TAG,"disconnected");
 		Connected = false;
 		break;
 	case MQTT_EVENT_SUBSCRIBED:
@@ -115,8 +113,9 @@ static int mqtt_event_handler(esp_mqtt_event_handle_t e)
 
 void mqtt_start(void)
 {
-	if (Running) {
-		log_warn(TAG,"mqtt already running");
+	log_info(TAG,"start");
+	if (Client) {
+		log_warn(TAG,"mqtt already started");
 		return;
 	}
 	if (!Config.has_mqtt()) {
@@ -128,13 +127,15 @@ void mqtt_start(void)
 		return;
 	}
 	if (!Config.mqtt().has_uri()) {
-		log_warn(TAG,"mqtt disabled");
+		log_warn(TAG,"mqtt has no URI");
 		return;
 	}
+	/*
 	if (!wifi_station_isup()) {
 		log_warn(TAG,"wifi station is not up");
 		return;
 	}
+	*/
 	esp_mqtt_client_config_t cfg;
 	memset(&cfg,0,sizeof(cfg));
 	const MQTT &m = Config.mqtt();
@@ -153,13 +154,13 @@ void mqtt_start(void)
 		log_error(TAG,"port missing");
 		return;
 	}
-	string hn;
-	if (c)
-		hn.assign(h,c-h);
-	else
-		hn.assign(h);
-	uint32_t ip = resolve_hostname(hn.c_str());
-	char uri[32];
+	char hn[c-h+1];
+	memcpy(hn,h,c-h);
+	hn[c-h] = 0;
+	uint32_t ip = resolve_hostname(hn);
+	if (0 == ip)
+		return;
+	char uri[48];
 	int n = snprintf(uri,sizeof(uri),"mqtt://%d.%d.%d.%d:%s"
 		, ip & 0xff
 		, (ip >> 8) & 0xff
@@ -167,62 +168,59 @@ void mqtt_start(void)
 		, (ip >> 24) & 0xff
 		, c+1
 		);
-	if (n >= sizeof(uri))
+	if (n >= sizeof(uri)) {
+		log_error(TAG,"db name too long");
 		return;
+	}
 	cfg.uri = uri;
+	cfg.keepalive = 60;
 	cfg.event_handle = mqtt_event_handler;
 	if (Config.has_nodename())
 		cfg.client_id = Config.nodename().c_str();
-	Client = esp_mqtt_client_init(&cfg);
-	if (esp_err_t e = esp_mqtt_client_start(Client)) {
-		log_error(TAG,"mqtt start failed: %x\n",e);
-		Running = false;
-	} else {
-		Running = true;
+	if (Client) {
+		esp_mqtt_client_stop(Client);
+		esp_mqtt_client_destroy(Client);
 	}
+	Client = esp_mqtt_client_init(&cfg);
+	if (esp_err_t e = esp_mqtt_client_start(Client))
+		log_error(TAG,"mqtt start failed: %x\n",e);
 }
 
 
 void mqtt_stop(void)
 {
-	if (!Running)
-		log_warn(TAG,"mqtt not running");
-	if (esp_err_t e = esp_mqtt_client_stop(Client))
+	if (Client == 0)
+		log_warn(TAG,"mqtt not initialized");
+	else if (esp_err_t e = esp_mqtt_client_stop(Client))
 		log_error(TAG,"stop failed %x",e);
 	else
 		log_info(TAG,"stopped");
-	Running = false;
+	Client = 0;
 }
 
 
 int mqtt_publish(const char *t, const char *v, int len, int retain)
 {
-	if (!Connected)
+	if (Client == 0)
 		return ENOTCONN;
 	char topic[128];
 	int n = snprintf(topic,sizeof(topic),"%s/%s",Config.nodename().c_str(),t);
 	if (n >= sizeof(topic))
 		return EINVAL;
-	xSemaphoreTake(Mtx,portMAX_DELAY);
 	int e = (int) esp_mqtt_client_publish(Client,topic,v,len,0,retain);
-	xSemaphoreGive(Mtx);
 	return e;
 }
 
 
 void mqtt_set_dmesg(const char *m, size_t s)
 {
-	if (0 == Mtx)
-		Mtx = xSemaphoreCreateMutex();
-	xSemaphoreTake(Mtx,portMAX_DELAY);
 	if (s > 120)
 		s = 120;
 	DMesg.assign(m,s);
-	xSemaphoreGive(Mtx);
 }
 
 
-void mqtt_subscribe(const char *topic, void (*callback)(const char *,size_t))
+int mqtt_subscribe(const char *topic, void (*callback)(const char *,size_t))
 {
 	size_t ns = Config.nodename().size();
 	size_t tl = strlen(topic);
@@ -231,27 +229,27 @@ void mqtt_subscribe(const char *topic, void (*callback)(const char *,size_t))
 	t[ns] = '/';
 	memcpy(t+ns+1,topic,tl+1);
 	log_info(TAG,"add callback %s",topic);
-	if (Client != 0) {
-		int id = esp_mqtt_client_subscribe(Client,t,0);
-		if (id)
-			log_info(TAG,"subscribed to %s, id %d",topic,id);
-		else
-			log_warn(TAG,"subscribe %s failed",topic);
+	if (Client == 0) {
+		log_warn(TAG,"client not initialized");
+		return 1;
 	}
 	Subscriptions.insert(pair<string,void(*)(const char*,size_t)>(string(t),callback));
+	int id = esp_mqtt_client_subscribe(Client,t,0);
+	if (id != -1) {
+		log_info(TAG,"subscribed to %s, id %d",topic,id);
+		return 0;
+	}
+	log_warn(TAG,"subscribe %s failed",topic);
+	return 1;
 }
 
 
 static unsigned mqtt_cyclic()
 {
 	static unsigned ltime = 0;
-	if (!Running) {
-		if (Config.has_mqtt() && Config.mqtt().enable() && wifi_station_isup())
-			mqtt_start();
+	if (Client == 0)
 		return 1000;
-	}
-	if (!Connected)
-		return 1000;
+	//log_dbug(TAG,"cyclic");
 #ifdef _POSIX_MONOTONIC_CLOCK
 	struct timespec ts;
 	clock_gettime(CLOCK_MONOTONIC,&ts);
@@ -274,15 +272,12 @@ static unsigned mqtt_cyclic()
 		else
 			n = snprintf(value,sizeof(value),"%d:%02u",h,m);
 	}
-	if (0 == Mtx)
-		xSemaphoreTake(Mtx,portMAX_DELAY);
 	if ((n > 0) && (n <= sizeof(value)))
 		mqtt_publish("uptime",value,n,0);
 	if (!DMesg.empty()) {
 		mqtt_publish("dmesg",DMesg.data(),DMesg.size(),0);
 		DMesg.clear();
 	}
-	xSemaphoreGive(Mtx);
 	return 1000;
 }
 
@@ -326,15 +321,11 @@ int mqtt(Terminal &term, int argc, const char *args[])
 		else
 			term.printf("invalid argument\n");
 	} else if (!strcmp(args[1],"enable")) {
-		if (!Config.mqtt().enable()) {
-			mqtt_start();
+		if (!Config.mqtt().enable())
 			Config.mutable_mqtt()->set_enable(true);
-		}
 	} else if (!strcmp(args[1],"disable")) {
-		if (Config.mqtt().enable()) {
-			mqtt_stop();
+		if (Config.mqtt().enable())
 			Config.mutable_mqtt()->set_enable(false);
-		}
 	} else if (!strcmp(args[1],"clear")) {
 		Config.mutable_mqtt()->clear();
 	} else if (!strcmp(args[1],"start")) {
@@ -351,10 +342,8 @@ int mqtt(Terminal &term, int argc, const char *args[])
 
 void mqtt_setup(void)
 {
-	Running = false;
 	Connected = false;
-	if (0 == Mtx)
-		Mtx = xSemaphoreCreateMutex();
+	mqtt_start();
 	add_cyclic_task("mqtt",mqtt_cyclic);
 }
 

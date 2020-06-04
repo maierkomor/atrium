@@ -1,5 +1,5 @@
 <!doctype html>
-<html> 
+<html>
 <head>
 	<!-- 
 	Copyright 2017-2020, Thomas Maier-Komor
@@ -44,7 +44,7 @@
 	<tr><th><label for="timezone">Timezone:</label></th></tr>
 	<tr><td><input id="timezone" name="timezone"></td></tr>
 
-	<tr><th><input type="button" onclick="submit_config()" name="Save" value="Save"/></th></tr>
+	<tr><th><input type="button" onclick="submit_config()" name="save" value="save"/></th></tr>
 </tbody></table>
 </form>
 <code id="output"></code>
@@ -102,7 +102,7 @@ function submit_config()
 		document.getElementById("output").innerText = "passwords are not identical";
 		return;
 	}
-	var conf = document.getElementById('konfiguration');
+	var conf = document.getElementById('configuration');
 	if (document.getElementById("ap_activate_cb").checked)
 		conf.ap_activate.value = "1";
 	else
