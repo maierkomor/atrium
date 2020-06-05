@@ -168,20 +168,25 @@ static unsigned actions_loop()
 			continue;
 		if (((a.min_of_day()/60) != h) || ((a.min_of_day()%60) != m))
 			continue;
-		if ((a.day() == (WeekDay)d)
-			|| (a.day() == EveryDay)
-			|| ((a.day() == WorkDay) && ((d > 0) && (d < 6)))
+		bool x = false;
+		WeekDay wd = a.day();
 #ifdef CONFIG_HOLIDAYS
-			|| ((a.day() == Holiday) && is_holiday(md,mon,y))
+		if (is_holiday(md,mon,y))
+			x = (wd == Holiday);
+		else
 #endif
-			|| ((a.day() == WeekEnd) && ((d == 0) || (d == 6)))) {
+		if ((wd == (WeekDay)d) || (wd == EveryDay)
+			|| ((wd == WorkDay) && ((d > 0) && (d < 6)))
+			|| ((wd == WeekEnd) && ((d == 0) || (d == 6)))) {
+			x = true;
+		}
+		if (x) {
 			const char *aname = a.action().c_str();
 			if (Action *x = get_action(aname)) {
 				log_info(TAG,"check_alarm() triggering %s\n",aname);
 				x->func();
 			} else {
 				log_warn(TAG,"check_alarm() unable to execute unknown action '%s'\n",aname);
-
 			}
 		}
 	}

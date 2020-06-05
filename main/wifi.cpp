@@ -109,7 +109,9 @@ static esp_err_t wifi_event_handler(void *ctx, system_event_t *event)
 		if (Config.has_nodename())
 			setHostname(Config.nodename().c_str());
 		StationMode = station_connected;
+#ifdef CONFIG_SNTP
 		sntp_start();
+#endif
 		// mqtt handles restart itself
 		StationDownTS = 0;
 		break;

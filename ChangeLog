@@ -8,6 +8,7 @@ R2006:
 - fix: some MQTT issues
 - fix: exit in telnet session may cause crash
 - fix: leaking socket
+- fix: on holidays only holiday actions should be performed
 
 R2005:
 ======
