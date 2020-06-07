@@ -231,7 +231,7 @@ If the project has a ROMFS partition, you will also need to execute: make
 PROJECT=<projectname> romfs
 ```
 
-To update via the integrated webserver, just point your browser to the IP of the device on page `/update.html`. E.g. `http://192.168.1.89/update.html`.  Always update the romfs/data partition first, and then the application, because a successful application update will trigger the reboot which will require an updated romfs partition.
+To update via the integrated webserver, just point your browser to the IP of the device on page `/update.html`. E.g. `http://192.168.1.89/update.html`. Before starting the update, it is recommended to disable and stop MQTT. Always update the romfs/data partition first, and then the application, because a successful application update will trigger the reboot which will require an updated romfs partition. 
 
 To update via telnet you need to perform the following steps:
 1. upload all necessary files for download to a webserver.
@@ -258,11 +258,6 @@ If your system reports out of memory while flashing, try to turn of some service
 Known Issues:
 =============
 - PWM dimmer of ESP8266 may cause flickering output
-- S20/ESP8266 OTA scheme with 1MB ROM works with release/v3.2 but fails
-  with release/v3.3
-- OTA generation seems to have issues with 4MB flash size for ESP8266.
-  The root cause seems to be in the IDF. The issue does not occur on
-  ESP32 or with 1MB flash size.
 - CMake based builds do not support OTA image generation
 
 

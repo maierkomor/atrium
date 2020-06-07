@@ -118,7 +118,7 @@ void button_setup()
 		log_error(TAG,"registering isr handler returned %s",esp_err_to_name(e));
 		return;
 	}
-	add_cyclic_task(TAG,button_loop);
+	add_cyclic_task(TAG,button_loop,0);
 }
 
 #endif

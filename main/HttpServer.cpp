@@ -334,7 +334,7 @@ void HttpServer::handleConnection(int con)
 		delete req;
 		if (!a || e)
 			break;
-		if (++count > 15)	// limit connection to 8 requests
+		if (++count > 40)	// limit number of requirests per connection
 			break;
 		req = HttpRequest::parseRequest(con);
 	}

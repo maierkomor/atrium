@@ -42,7 +42,7 @@ using namespace std;
 
 
 static char TAG[] = "mqtt";
-static bool Connected;
+static uint32_t DownSince;
 static esp_mqtt_client_handle_t Client = 0;
 static multimap<string,void(*)(const char *,size_t)> Subscriptions;
 static string DMesg;
@@ -54,7 +54,7 @@ static void execute_callbacks(const char *t, size_t tl, const char *d, size_t dl
 	auto r = Subscriptions.equal_range(topic);
 	log_info(TAG,"callbacks for %s",topic.c_str());
 	while (r.first != r.second) {
-		log_info(TAG,"execute callback %p",r.first->second);
+		log_dbug(TAG,"execute callback %p",r.first->second);
 		r.first->second(d,dl);
 		++r.first;
 	}
@@ -68,7 +68,7 @@ static void subscribe_topics()
 		const char *t = i->first.c_str();
 		int id = esp_mqtt_client_subscribe(Client,t,0);
 		if (id != -1)
-			log_info(TAG,"subscribed to %s",t);
+			log_info(TAG,"subscribed to %s, id %d",t,id);
 		else
 			log_warn(TAG,"failed to subscribe %s",t);
 	}
@@ -80,21 +80,22 @@ static int mqtt_event_handler(esp_mqtt_event_handle_t e)
 	switch (e->event_id) {
 	case MQTT_EVENT_CONNECTED:
 		log_info(TAG,"connected");
-		Connected = true;
+		DownSince = 0;
 		subscribe_topics();
 		break;
 	case MQTT_EVENT_DISCONNECTED:
 		log_warn(TAG,"disconnected");
-		Connected = false;
+		if (DownSince == 0)
+			DownSince = uptime();
 		break;
 	case MQTT_EVENT_SUBSCRIBED:
-		log_info(TAG, "subscribed msg_id=%d", e->msg_id);
+		log_info(TAG, "subscribed to %.s, id=%d",e->topic_len,e->topic,e->msg_id);
 		break;
 	case MQTT_EVENT_UNSUBSCRIBED:
-		log_info(TAG, "unsubscribed msg_id=%d", e->msg_id);
+		log_info(TAG, "unsubscribed %.s, id=%d",e->topic_len,e->topic,e->msg_id);
 		break;
 	case MQTT_EVENT_PUBLISHED:
-		log_info(TAG, "pusblished msg_id=%d", e->msg_id);
+		log_info(TAG, "published %.s, id=%d",e->topic_len,e->topic,e->msg_id);
 		break;
 	case MQTT_EVENT_DATA:
 		log_info(TAG, "data: topic='%.*s', data='%.*s'",e->topic_len,e->topic,e->data_len,e->data);
@@ -111,31 +112,17 @@ static int mqtt_event_handler(esp_mqtt_event_handle_t e)
 }
 
 
-void mqtt_start(void)
+void mqtt_init(void)
 {
-	log_info(TAG,"start");
-	if (Client) {
-		log_warn(TAG,"mqtt already started");
-		return;
-	}
+	log_info(TAG,"init");
 	if (!Config.has_mqtt()) {
 		log_warn(TAG,"mqtt not configured");
-		return;
-	}
-	if (!Config.mqtt().enable()) {
-		log_warn(TAG,"mqtt disabled");
 		return;
 	}
 	if (!Config.mqtt().has_uri()) {
 		log_warn(TAG,"mqtt has no URI");
 		return;
 	}
-	/*
-	if (!wifi_station_isup()) {
-		log_warn(TAG,"wifi station is not up");
-		return;
-	}
-	*/
 	esp_mqtt_client_config_t cfg;
 	memset(&cfg,0,sizeof(cfg));
 	const MQTT &m = Config.mqtt();
@@ -158,8 +145,10 @@ void mqtt_start(void)
 	memcpy(hn,h,c-h);
 	hn[c-h] = 0;
 	uint32_t ip = resolve_hostname(hn);
-	if (0 == ip)
+	if (0 == ip) {
+		log_error(TAG,"host not found");
 		return;
+	}
 	char uri[48];
 	int n = snprintf(uri,sizeof(uri),"mqtt://%d.%d.%d.%d:%s"
 		, ip & 0xff
@@ -182,6 +171,23 @@ void mqtt_start(void)
 		esp_mqtt_client_destroy(Client);
 	}
 	Client = esp_mqtt_client_init(&cfg);
+}
+
+
+void mqtt_start()
+{
+	if (!Config.mqtt().enable()) {
+		log_warn(TAG,"mqtt disabled");
+		return;
+	}
+	if (!wifi_station_isup()) {
+		log_warn(TAG,"wifi station is not up");
+		return;
+	}
+	if (Client == 0)
+		mqtt_init();
+	if (Client == 0)
+		log_warn(TAG,"mqtt not initialized");
 	if (esp_err_t e = esp_mqtt_client_start(Client))
 		log_error(TAG,"mqtt start failed: %x\n",e);
 }
@@ -195,7 +201,6 @@ void mqtt_stop(void)
 		log_error(TAG,"stop failed %x",e);
 	else
 		log_info(TAG,"stopped");
-	Client = 0;
 }
 
 
@@ -229,17 +234,17 @@ int mqtt_subscribe(const char *topic, void (*callback)(const char *,size_t))
 	t[ns] = '/';
 	memcpy(t+ns+1,topic,tl+1);
 	log_info(TAG,"add callback %s",topic);
+	Subscriptions.insert(pair<string,void(*)(const char*,size_t)>(string(t),callback));
 	if (Client == 0) {
 		log_warn(TAG,"client not initialized");
 		return 1;
 	}
-	Subscriptions.insert(pair<string,void(*)(const char*,size_t)>(string(t),callback));
 	int id = esp_mqtt_client_subscribe(Client,t,0);
 	if (id != -1) {
-		log_info(TAG,"subscribed to %s, id %d",topic,id);
+		log_info(TAG,"subscribed to %s, id %d",t,id);
 		return 0;
 	}
-	log_warn(TAG,"subscribe %s failed",topic);
+	log_warn(TAG,"subscribe %s failed",t);
 	return 1;
 }
 
@@ -247,8 +252,16 @@ int mqtt_subscribe(const char *topic, void (*callback)(const char *,size_t))
 static unsigned mqtt_cyclic()
 {
 	static unsigned ltime = 0;
-	if (Client == 0)
-		return 1000;
+	if (DownSince) {
+		unsigned dt = uptime() - DownSince;
+		if (dt > 8000) {
+			mqtt_start();
+		} else if (dt > 5000) {
+			log_info(TAG,"stopping stalled connection");
+			mqtt_stop();
+			return 2000;
+		}
+	}
 	//log_dbug(TAG,"cyclic");
 #ifdef _POSIX_MONOTONIC_CLOCK
 	struct timespec ts;
@@ -295,7 +308,10 @@ int mqtt(Terminal &term, int argc, const char *args[])
 			term.printf("user: %s\n",mqtt.username().c_str());
 			term.printf("pass: %s\n",mqtt.password().c_str());
 			term.printf("MQTT %sabled\n",mqtt.enable() ? "en" : "dis");
-			term.printf("MQTT is %sconnected\n",Connected ? "" : "not ");
+			if (DownSince)
+				term.printf("MQTT is down sincu %us\n",DownSince/1000);
+			else
+				term.printf("MQTT is connected\n");
 		} else {
 			term.printf("MQTT is not configured\n");
 		}
@@ -342,9 +358,16 @@ int mqtt(Terminal &term, int argc, const char *args[])
 
 void mqtt_setup(void)
 {
-	Connected = false;
-	mqtt_start();
-	add_cyclic_task("mqtt",mqtt_cyclic);
+	if (!Config.has_mqtt()) {
+		log_info(TAG,"not configured");
+		return;
+	}
+	if (!Config.mqtt().enable()) {
+		log_info(TAG,"not enabled");
+		return;
+	}
+	DownSince = uptime() - 10000;
+	add_cyclic_task("mqtt",mqtt_cyclic,2000);
 }
 
 #endif // CONFIG_MQTT

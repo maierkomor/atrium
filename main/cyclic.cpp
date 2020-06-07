@@ -31,6 +31,7 @@
 #include <sys/time.h>
 #include <unistd.h>
 
+#include <esp_timer.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <freertos/task.h>
@@ -54,10 +55,10 @@ static char TAG[] = "cyclic";
 #ifdef CONFIG_SUBTASKS
 struct SubTask
 {
-	SubTask(const char *n, unsigned(*c)(void))
+	SubTask(const char *n, unsigned(*c)(void), unsigned nr)
 	: name(n)
 	, code(c)
-	, nextrun(0)
+	, nextrun(nr)
 	, cputime(0)
 	, peaktime(0)
 	, calls(0)
@@ -83,29 +84,39 @@ static vector<SubTask> SubTasks;
 static SemaphoreHandle_t Lock;
 
 
-void add_cyclic_task(const char *name, unsigned (*loop)(void))
+int add_cyclic_task(const char *name, unsigned (*loop)(void), unsigned initdelay)
 {
 	log_info(TAG,"add subtask %s",name);
 	xSemaphoreTake(Lock,portMAX_DELAY);
-	SubTasks.push_back(SubTask(name,loop));
+	for (const auto &s : SubTasks) {
+		if (0 == strcmp(s.name,name)) {
+			xSemaphoreGive(Lock);
+			log_error(TAG,"subtask %s already exists",name);
+			return 1;
+		}
+	}
+	SubTasks.push_back(SubTask(name,loop,timestamp()+initdelay*1000));
 	xSemaphoreGive(Lock);
+	return 0;
 }
 
 
+/*
 int rm_cyclic_task(const char *name)
 {
 	xSemaphoreTake(Lock,portMAX_DELAY);
 	for (auto i = SubTasks.begin(), e = SubTasks.end(); i != e; ++i) {
 		if (!strcmp(name,i->name)) {
-			log_info(TAG,"remove subtask %s",name);
 			SubTasks.erase(i);
 			xSemaphoreGive(Lock);
+			log_info(TAG,"removed subtask %s",name);
 			return 0;
 		}
 	}
 	xSemaphoreGive(Lock);
 	return 1;
 }
+*/
 
 
 static void cyclic_tasks(void *)
@@ -158,22 +169,53 @@ int subtasks(Terminal &term, int argc, const char *args[])
 
 #else	// no CONFIG_SUBTASKS
 
+struct subtask_args
+{
+	unsigned initdelay;
+	unsigned (*loopfnc)();
+};
+
 static void cyclic_task(void *param)
 {
-	unsigned (*func)() = (unsigned (*)())param;
+	struct subtask_args *st = (struct subtask_args*) param;
+	if (st->initdelay)
+		vTaskDelay(st->initdelay/portTICK_PERIOD_MS);
+	unsigned (*func)() = (unsigned (*)())st->loopfnc;
+	free(param);
 	for (;;) {
 		unsigned d = func();
+		if (d == 0)
+			vTaskDelete(0);
 		vTaskDelay(d/portTICK_PERIOD_MS);
 	}
 }
 
 
-void add_cyclic_task(const char *name, unsigned (*loop_fcn)(void))
+int add_cyclic_task(const char *name, unsigned (*loop_fcn)(void), unsigned initdelay)
 {
+	struct subtask_args *st = (struct subtask_args*) malloc(sizeof(struct subtask_args));
+	st->initdelay = initdelay;
 	BaseType_t r = xTaskCreatePinnedToCore(&cyclic_task, name, 2048, (void*)loop_fcn, 1, NULL, 1);
-	if (r != pdPASS)
-		log_error(TAG,"error creating task %s",name);
+	if (r != pdPASS) {
+		log_error(TAG,"error creating task %s: %s",name,esp_err_to_name(r));
+		return 1;
+	}
+	return 0;
 }
+
+
+/*
+void rm_cyclic_task(const char *name)
+{
+	TaskHandle_t t = xTaskGetHandle(name);
+	if (t == 0) {
+		log_error(TAG,"cannot remove task %s: no such handle",name);
+		return;
+	}
+	vTaskDelete(t);
+	log_info(TAG,"removed task %s",name);
+}
+*/
 
 #endif // CONFIG_SUBTASKS
 

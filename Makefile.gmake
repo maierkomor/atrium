@@ -36,11 +36,12 @@ PWD=$(shell pwd)
 p_ok=$(if $(wildcard $(PWD)/projects/$(PROJECT)),, $(error project file not found))
 SDKCONFIG=$(PWD)/projects/$(PROJECT)
 
-include $(SDKCONFIG)	# needed for romfs .bin generation
+-include $(SDKCONFIG)	# needed for romfs .bin generation
 
-CHIP=$(shell grep ESP8266 projects/$(PROJECT) > /dev/null && echo ESP8266 || echo ESP32)
+CHIP=$(shell grep ESP8266 projects/$(PROJECT) 2>&1 > /dev/null && echo ESP8266 || echo ESP32)
 IDF_PATH:=$(IDF_$(CHIP))
 ESPTOOL:=$(IDF_PATH)/components/esptool_py/esptool/esptool.py
+PARTTOOL:=$(IDF_PATH)/components/partition_table/parttool.py
 FLASH_PORT:=$(CONFIG_ESPTOOLPY_PORT)
 ROMFS_FILES=$(shell echo $(CONFIG_ROMFS_FILES) | sed 's/"//g')
 ROMFS_ADDR=$(CONFIG_ROMFS_ADDR)
@@ -55,7 +56,6 @@ ESPTOOL_ALL_FLASH_ARGS=$(ROMFS_ADDR) build.$(PROJECT)/romfs.bin
 endif
 
 export BUILD_DIR_BASE CHIP CPPFLAGS IDF_PATH IDF_VER PATH PTABLE PROJECT_ROOT PROJECT SDKCONFIG WFC WFCDIR ESPTOOL_ALL_FLASH_ARGS
-
 
 default: all
 
@@ -81,6 +81,9 @@ prepare: $(IDF_PATH)
 all: prepare
 	+$(MAKE) -f $(CHIP).mk all
 
+app2: prepare
+	+$(MAKE) -f $(CHIP).mk app2
+
 app-flash: prepare
 	+$(MAKE) -f $(CHIP).mk app-flash
 
@@ -88,7 +91,12 @@ flash: prepare romfs
 	+$(MAKE) -f $(CHIP).mk flash
 
 ota: prepare romfs
-	+$(MAKE) -f $(CHIP).mk ota
+	-rm $(BUILD_DIR_BASE)/firmware.elf $(BUILD_DIR_BASE)/esp8266/esp8266_out.ld
+	+$(MAKE) -f $(CHIP).mk all
+	cp $(BUILD_DIR_BASE)/firmware.bin $(BUILD_DIR_BASE)/firmware.app1
+	-rm $(BUILD_DIR_BASE)/firmware.elf $(BUILD_DIR_BASE)/esp8266/esp8266_out.ld
+	+$(MAKE) -f $(CHIP).mk app2
+	cp $(BUILD_DIR_BASE)/firmware.bin $(BUILD_DIR_BASE)/firmware.app2
 
 menuconfig:
 	+$(MAKE) -f $(CHIP).mk menuconfig
@@ -109,7 +117,10 @@ help:
 	+$(MAKE) -f $(CHIP).mk help
 
 erase:
-	esptool.py --port $(FLASH_PORT) erase_flash
+	$(ESPTOOL) --port $(FLASH_PORT) erase_flash
+
+erase-nvs:
+	$(PARTTOOL) --port $(FLASH_PORT) erase_partition --partition-name=nvs
 
 bin:
 	mkdir $@

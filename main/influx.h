@@ -24,10 +24,10 @@
 #include <vector>
 
 void influx_send(const std::vector< std::pair<std::string,std::string> > &data);
+void influx_send(const char *data, size_t l = 0);
 
 extern "C" {
 #endif
-void influx_send(const char *data);
 void influx_setup(void);
 
 #ifdef __cplusplus

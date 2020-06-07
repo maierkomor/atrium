@@ -71,7 +71,7 @@ static void influx_init()
 }
 
 
-void influx_send(const char *data)
+void influx_send(const char *data, size_t l)
 {
 	if (Sock == -1) {
 		influx_init();
@@ -84,7 +84,10 @@ void influx_send(const char *data)
 		tmp += Config.nodename();
 	}
 	tmp += ' ';
-	tmp += data;
+	if (l)
+		tmp.append(data,l);
+	else
+		tmp.append(data);
 	tmp += '\n';
 	//log_dbug(TAG,"sending '%s'",tmp.c_str());
 	if (-1 == sendto(Sock,tmp.data(),tmp.size(),0,(const struct sockaddr *) &Addr,sizeof(Addr)))
@@ -131,15 +134,15 @@ static unsigned monitor()
 #ifdef CONFIG_RELAY
 	n += sprintf(buf+n,",relay=%d",RTData.relay() ? 1 : -1);
 #endif
-	influx_send(buf);
+	influx_send(buf,n);
 	return itv;
 }
 
 
 void influx_setup()
 {
-	influx_init();
-	add_cyclic_task("monitor",monitor);
+	Sock = -1;
+	add_cyclic_task("influx",monitor,2000);
 }
 
 

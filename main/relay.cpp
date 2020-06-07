@@ -182,7 +182,7 @@ void relay_setup()
 #ifdef CONFIG_MQTT
 	mqtt_subscribe("set_relay",mqtt_callback);
 #endif
-	add_cyclic_task("relay_check",relay_check);
+	add_cyclic_task("relay_check",relay_check,0);
 }
 
 #endif	// CONFIG_RELAY

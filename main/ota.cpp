@@ -61,7 +61,7 @@ extern "C" {
 #include <sys/socket.h>
 #include <unistd.h>
 
-#define OTABUF_SIZE (4096*2)
+#define OTABUF_SIZE (4096)
 
 
 
@@ -77,7 +77,7 @@ static char *skip_http_header(Terminal &t, char *text, int len)
 	//t.printf("header:\n%s\n",text);
 	if (strstr(text,"200 OK\r\n"))
 		return data;
-	t.printf("http server returned error\n");
+	t.printf("http error: %s\n",text);
 	return 0;
 }
 
@@ -179,50 +179,43 @@ static bool to_ota(Terminal &t, void *arg, char *buf, size_t s)
 
 static bool socket_to_x(Terminal &t, int hsock, bool (*sink)(Terminal&,void*,char*,size_t), void *arg)
 {
-	char *buf = (char*)malloc(OTABUF_SIZE);
+	char *buf = (char*)malloc(OTABUF_SIZE), *data;
 	if (buf == 0) {
 		t.printf("out of memory\n");
 		return false;
 	}
+	bool ret = false;
+	size_t numD = 0;
 	int r = recv(hsock,buf,OTABUF_SIZE,0);
-	if (r < 0) {
-		free(buf);
-		return false;
-	}
+	if (r < 0)
+		goto done;
 	if (memcmp(buf,"HTTP",4) || memcmp(buf+8," 200 OK\r",8)) {
 		char *nl = strchr(buf,'\n');
 		if (nl) {
 			*nl = 0;
 			t.printf("unexpted server answer: %s\n",buf);
 		}
-		free(buf);
-		return false;
+		goto done;
 	}
-	char *data = skip_http_header(t,buf,r);
+	data = skip_http_header(t,buf,r);
 	if (data == 0) {
 		t.printf("unable to find end of header\n");
-		free(buf);
-		return false;
+		goto done;
 	}
-	if (!sink(t,arg,data,r-(data-buf))) {
-		free(buf);
-		return false;
-	}
-	size_t numD = r-(data-buf);
-	size_t numW = numD;
-	r = recv(hsock,buf,OTABUF_SIZE,0);
+	r -= (data-buf);
 	while (r > 0) {
 		numD += r;
-		if (!sink(t,arg,buf,r)) {
-			free(buf);
-			return false;
-		}
-		numW += r;
+		if (!sink(t,arg,data,r))
+			goto done;
 		r = recv(hsock,buf,OTABUF_SIZE,0);
+		data = buf;
+		t.printf("wrote %d bytes\r",numD);
 	}
+	t.printf("\n");
+	ret = true;
+done:
 	free(buf);
-	t.printf("received %d bytes, wrote %d bytes\n",numD,numW);
-	return true;
+	return ret;
 }
 
 
@@ -231,30 +224,32 @@ static bool file_to_flash(Terminal &t, int fd, esp_ota_handle_t ota)
 	size_t numD = 0;
 	char *buf = (char*)malloc(OTABUF_SIZE);
 	if (buf == 0) {
-		t.printf("not enough RAM to perform update\n");
+		t.printf("out of memory\n");
 		return false;
 	}
+	bool r = false;
 	for (;;) {
-		int r = read(fd,buf,OTABUF_SIZE);
-		if (r < 0) {
+		int n = read(fd,buf,OTABUF_SIZE);
+		if (n < 0) {
 			t.printf("OTA read error: %s\n",strerror(errno));
-			free(buf);
-			return false;
+			break;
 		}
-		if (r == 0) {
+		if (n == 0) {
 			//t.printf( "ota received %d bytes, wrote %d bytes",numD,numU);
-			free(buf);
-			return true;
+			r = true;
+			break;
 		}
-		numD += r;
-		esp_err_t err = esp_ota_write(ota,buf,r);
+		numD += n;
+		esp_err_t err = esp_ota_write(ota,buf,n);
 		if (err != ESP_OK) {
 			t.printf("ota write failed: %s\n",esp_err_to_name(err));
-			free(buf);
-			return false;
+			break;
 		}
-		t.printf("%d bytes flashed\n",r);
+		t.printf("wrote %d bytes\r",r);
 	}
+	t.printf("\n");
+	free(buf);
+	return r;
 }
 
 
@@ -384,7 +379,7 @@ int perform_ota(Terminal &t, char *source, bool changeboot)
 		t.printf("no OTA partition\n");
 		return 1;
 	}
-	t.printf("updating '%s' at 0x%x\n",updatep->label,updatep->address);
+	t.printf("erasing '%s' at 0x%x\n",updatep->label,updatep->address);
 	esp_ota_handle_t ota = 0;
 	esp_err_t err = esp_ota_begin(updatep, OTA_SIZE_UNKNOWN, &ota);
 	if (err != ESP_OK) {

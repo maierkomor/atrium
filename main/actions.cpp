@@ -199,7 +199,7 @@ void actions_setup()
 {
 	if (Config.actions_enable())
 		RTData.set_timers_enabled(true);
-	add_cyclic_task("actions",actions_loop);
+	add_cyclic_task("actions",actions_loop,0);
 }
 
 

@@ -179,7 +179,7 @@ int dimmer_setup()
 	add_action("dimmer_on",dimmer_on,"turn on with PWM ramp");
 	add_action("dimmer_off",dimmer_off,"turn on with PWM ramp");
 #endif
-	add_cyclic_task("dimmer",dimmer_fade);
+	add_cyclic_task("dimmer",dimmer_fade,0);
 	log_info(TAG,"running");
 	return 0;
 }

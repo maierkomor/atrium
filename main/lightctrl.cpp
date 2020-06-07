@@ -120,8 +120,7 @@ void lightctrl_setup()
 	c.mode = ADC_READ_TOUT_MODE;
 	c.clk_div = 8;
 	adc_init(&c);
-	//add_cyclic_task("dimmer",lightctrl_dimmer);
-	add_cyclic_task("lightctrl",lightctrl_measure);
+	add_cyclic_task("lightctrl",lightctrl_measure,0);
 }
 
 

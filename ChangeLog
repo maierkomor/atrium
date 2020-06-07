@@ -5,6 +5,7 @@ R2006:
 - enhancement: added support for vacation periods
 - enhancement: syslog should use logging infrastructure
 - enhancement: reordered startup
+- enhancmennt: upgrade to idf release/v3.3 for esp8266
 - fix: some MQTT issues
 - fix: exit in telnet session may cause crash
 - fix: leaking socket

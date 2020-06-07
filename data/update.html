@@ -49,23 +49,25 @@
 <code id="output"></code>
 
 <script type="text/javascript">
+var lup = Date.now();
+
 function do_update(evt)
 {
-	var req = new XMLHttpRequest();
-	req.open('POST','do_update',true);
-	req.setRequestHeader("password",document.getElementById('pass').value);
-	req.setRequestHeader("partition",document.getElementById('partition').value);
+	var x = new XMLHttpRequest();
+	x.open('POST','do_update',true);
+	x.setRequestHeader("password",document.getElementById('pass').value);
+	x.setRequestHeader("partition",document.getElementById('partition').value);
 	var file = document.getElementById('firmware').files[0];
 	var fr = new FileReader();
 	fr.readAsArrayBuffer(file);
 	fr.onloadend = function() {
-		req.send(fr.result);
+		x.send(fr.result);
 	}
 	fr.onerror = function() {
 		document.getElementById("output").innerText = fr.error.message;
 	}
-	req.onreadystatechange = function() { 
-		document.getElementById("output").innerText = req.responseText;
+	x.onreadystatechange = function() { 
+		document.getElementById("output").innerText = x.responseText;
 	}
 	document.getElementById("output").innerText = "triggered updated";
 	return false;	// no page refresh
@@ -77,6 +79,8 @@ function on_device_data(responseText)
 	document.getElementById("version").innerHTML = obj.version;
 	document.getElementById("update_part").innerHTML = obj.update_part;
 	document.getElementById("update_state").innerHTML = obj.update_state;
+	setTimeout(get_update,1000);
+	lup = Date.now();
 }
 
 function get_update()
@@ -85,15 +89,23 @@ function get_update()
 	req.send(null);
 }
 
+function check_timeout()
+{
+	var n = Date.now();
+	if (n - lup > 20000) {
+		get_update();
+		lup = n;
+	}
+}
+
 var req = new XMLHttpRequest();
 req.overrideMimeType("application/json");
-req.open('GET','data.json',true);
 req.onreadystatechange = function() { 
 	if (req.readyState == 4 && req.status == 200)
 		on_device_data(req.responseText);
 }
-setInterval(get_update,2000);
 get_update();
+setInterval(check_timeout,10000);
 </script>
 </body>
 </html>

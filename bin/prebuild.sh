@@ -10,10 +10,6 @@ echo preparing build for device $PROJECT
 case "$CHIP" in
 "ESP32");;
 "ESP8266")
-	if [ "$IDF_VER" != "32" ]; then
-		echo "OTA builds are only supported with IDF v3.2"
-		exit 1
-	fi
 	;;
 *)
 	echo "architecture not set or invalid ($CHIP)"

@@ -119,7 +119,7 @@ void dht_setup(void)
 {
 	if (0 == dht_init())
 		return;
-	add_cyclic_task("dht",gatherDHTdata);
+	add_cyclic_task("dht",gatherDHTdata,0);
 }
 
 
