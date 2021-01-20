@@ -1,0 +1,4 @@
+synopsis: event <option> [<e> <a>]
+-l        : list available events
+-a <e> <a>: add action <a> to event <e>
+-d <e> <a>: delete action <a> from event <e>

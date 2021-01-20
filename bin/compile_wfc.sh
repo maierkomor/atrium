@@ -23,7 +23,7 @@ if [ "$PROJECT" == "" ]; then
 	exit 1
 fi
 
-if [ ! -x $WFC ]; then
+if [ ! -x "$WFC" ]; then
 	echo "unable to find wfc"
 	exit 1
 fi
@@ -44,6 +44,7 @@ fi
 
 $WFC -t $TARGET binformats.wfc
 if [ "$?" != "0" ]; then
+	echo WFC compilation failed
 	exit 1
 fi
 
@@ -51,7 +52,7 @@ update_h=0
 if [ -f main/binformats.h ]; then
 	diffsize=`diff binformats.h main/binformats.h|wc -l`
 	if [ "$diffsize" -gt "4" ]; then
-		echo binformats.h is out-of-date
+		#echo binformats.h is out-of-date
 		update_h=1
 	fi
 else
@@ -62,7 +63,7 @@ update_cpp=0
 if [ -f main/binformats.cpp ]; then
 	diffsize=`diff binformats.cpp main/binformats.cpp|wc -l`
 	if [ "$diffsize" -gt "4" ]; then
-		echo binformats.cpp is out-of-date
+		#echo binformats.cpp is out-of-date
 		update_cpp=1
 	fi
 else

@@ -69,6 +69,11 @@ do
 	fi
 done
 
+if [ ! -e /usr/include/md5.h ]; then
+	echo please install libmd-dev package with md5.h and libmd
+	exit 1
+fi
+
 if [ "$interactive" != "0" ]; then
 	echo This script will download crosstools, SDKs and WFC to a directory given with option -d, if needed.
 	echo Press enter to continue or CTRL-C to abort.
@@ -80,6 +85,14 @@ if [ -e settings.mk ]; then
 		echo settings.mk already exists. Please remove it and restart.
 		exit 1
 	fi
+fi
+
+if [ "$XTOOLS_ESP32" != "" ]; then
+	PATH=$PATH:$XTOOLS_ESP32/bin
+fi
+
+if [ "$XTOOLS_ESP8266" != "" ]; then
+	PATH=$PATH:$XTOOLS_ESP8266/bin
 fi
 
 ## esp8266 crosstools
@@ -139,9 +152,9 @@ if [ "" == "$ESP32_GCC" ]; then
 	fi
 	pushd $installdir
 	if [ `uname -m` == "x86_64" ]; then
-		xtools=xtensa-esp32-elf-gcc8_2_0-esp32-2019r1-linux-amd64.tar.gz
+		xtools=xtensa-esp32-elf-linux64-1.22.0-96-g2852398-5.2.0.tar.gz
 	else
-		xtools=xtensa-esp32-elf-gcc8_2_0-esp32-2019r1-linux-amd32.tar.gz
+		xtools=xtensa-esp32-elf-linux32-1.22.0-96-g2852398-5.2.0.tar.gz
 	fi
 	if [ "1" == "$interactive" ]; then
 		echo OK to start download of esp32 xtools? Press CTRL-C to cancel.
@@ -187,6 +200,8 @@ if [ "$IDF_ESP32" == "" ]; then
 	git submodule update --init
 	IDF_ESP32=`pwd`
 	popd > /dev/null
+	cp lwip32.mk $installdir/idf-esp32/components/lwip/component.mk
+	/usr/bin/python -m pip install --user -r $installdir/idf-esp32/requirements.txt
 fi
 echo "IDF_ESP32=$IDF_ESP32" >> $settings
 
@@ -215,6 +230,8 @@ if [ "$IDF_ESP8266" == "" ]; then
 	git submodule update --init
 	IDF_ESP8266=`pwd`
 	popd > /dev/null
+	cp lwip8266.mk $installdir/idf-esp8266/components/lwip/component.mk
+	/usr/bin/python -m pip install --user -r $installdir/idf-esp8266/requirements.txt
 fi
 echo "IDF_ESP8266=$IDF_ESP8266" >> $settings
 

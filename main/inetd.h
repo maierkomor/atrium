@@ -25,9 +25,7 @@
 extern "C" {
 #endif
 
-void inetd_setup(void);
-
-void listen_tcp(unsigned port, void (*session)(void*), const char *basename, const char *service, unsigned prio, unsigned stack);
+int listen_tcp(unsigned port, void (*session)(void*), const char *basename, const char *service, unsigned prio, unsigned stack);
 
 #ifdef __cplusplus
 }

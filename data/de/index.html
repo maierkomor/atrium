@@ -30,15 +30,6 @@
 
 <script>
 
-function run_exe(cmd)
-{
-	var req = new XMLHttpRequest();
-	req.open('POST','run_exe',true);
-	req.setRequestHeader("Content-type","application/x-www-form-urlencoded");
-	var data = "command="+cmd;
-	req.send(data);
-}
-
 function on_device_data(responseText)
 {
 	var obj = JSON.parse(responseText);
@@ -48,17 +39,19 @@ function on_device_data(responseText)
 
 function get_update()
 {
-	var req = new XMLHttpRequest();
 	req.overrideMimeType("application/json");
 	req.open('GET','data.json',true);
 	req.onreadystatechange = function() { 
 		if (req.readyState == 4 && req.status == 200)
 			on_device_data(req.responseText);
+		setTimeout(get_update,1000);
 	}
 	req.send(null);
 }
 
-var timer = setInterval(get_update,1000);
+var req = new XMLHttpRequest();
+//var timer = setInterval(get_update,1000);
+var timer = setTimeout(get_update,1000);
 get_update();
 
 </script>

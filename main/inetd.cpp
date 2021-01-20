@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -21,6 +21,8 @@
 #include "globals.h"
 #include "inetd.h"
 #include "log.h"
+#include "netsvc.h"
+#include "shell.h"
 #include "support.h"
 #include "terminal.h"
 #include "wifi.h"
@@ -39,7 +41,7 @@
 #include <mdns.h>	// requires ipv6 on ESP8266
 #endif
 
-#ifdef ESP32
+#ifdef CONFIG_IDF_TARGET_ESP32
 #include <soc/soc.h>
 #else
 #define PRO_CPU_NUM 0
@@ -75,7 +77,7 @@ static int create_socket(int port)
 {
 	int sock = socket(AF_INET,SOCK_STREAM,0);
 	if (sock < 0) {
-		log_error(TAG,"error creating server socket: %s",strneterr(sock));
+		log_error(TAG,"create socket: %s",strneterr(sock));
 		return -1;
 	}
 	if (-1 == fcntl(sock,F_SETFL,O_NONBLOCK)) {
@@ -129,12 +131,12 @@ static int initialize(fd_set *portfds)
 
 void inet_server(void *ignored)
 {
-	Started = true;
 	MaxFD = initialize(&PortFDs) + 1;
-	log_info(TAG,"maximum fd number: %d",MaxFD);
+	//log_dbug(TAG,"maximum fd number: %d",MaxFD);
 	for (;;) {
 		//log_dbug(TAG,"wifi_wait()");
 		wifi_wait();
+		Started = true;
 
 		fd_set rfds = PortFDs;
 		//log_dbug(TAG,"select()");
@@ -145,7 +147,7 @@ void inet_server(void *ignored)
 		int n = lwip_select(MaxFD,&rfds,0,0,&tv);
 		if (n == -1) {
 			if (errno != 0) {
-				log_warn(TAG,"select returned error: %s",strerror(errno));
+				log_warn(TAG,"select failed: %s",strerror(errno));
 				vTaskDelay(200/portTICK_PERIOD_MS);
 			}
 			continue;
@@ -162,7 +164,7 @@ void inet_server(void *ignored)
 			int con = accept(sock, (struct sockaddr *)&client_addr, &socklen);
 			if (con < 0) {
 				// TODO: what is a better way to deal with error: no more processes
-				log_error(TAG,"error accepting connection: %s",strneterr(sock));
+				log_error(TAG,"accept: %s",strneterr(sock));
 				break;
 			}
 			log_info(TAG,"connection established from %d.%d.%d.%d:%d"
@@ -175,14 +177,14 @@ void inet_server(void *ignored)
 			tv.tv_sec = TCP_TIMEOUT;
 			tv.tv_usec = 0;
 			if (0 > setsockopt(con,SOL_SOCKET,SO_RCVTIMEO,&tv,sizeof(tv)))
-				log_warn(TAG,"error setting receive timeout: %s",strneterr(sock));
+				log_warn(TAG,"set receive timeout: %s",strneterr(sock));
 			char name[configMAX_TASK_NAME_LEN+8];
 			snprintf(name,sizeof(name),"%s%02d",Ports[i].name,con);
 			name[configMAX_TASK_NAME_LEN] = 0;
 			BaseType_t r = xTaskCreatePinnedToCore(Ports[i].session,name,Ports[i].stack,(void*)con,Ports[i].prio,NULL,APP_CPU_NUM);
 			if (r != pdPASS) {
-				log_error(TAG,"task creation failed: %s",esp_err_to_name(r));
 				close(con);
+				log_warn(TAG,"create task: %s",esp_err_to_name(r));
 				vTaskDelay(100/portTICK_PERIOD_MS);
 			}
 		}
@@ -190,11 +192,12 @@ void inet_server(void *ignored)
 }
 
 
-void listen_tcp(unsigned port, void (*session)(void*), const char *name, const char *service, unsigned prio, unsigned stack)
+int listen_tcp(unsigned port, void (*session)(void*), const char *name, const char *service, unsigned prio, unsigned stack)
 {
 	// inetd version
 	if (Started) {
-		log_error(TAG,"adding inetd ports after starting inetd has no effect");
+		log_error(TAG,"inetd already started");
+		return 1;
 	}
 	inet_arg_t a;
 	a.port = port;
@@ -206,41 +209,33 @@ void listen_tcp(unsigned port, void (*session)(void*), const char *name, const c
 	a.stack = stack;
 	Ports.push_back(a);
 	log_info(TAG,"added %s on port %u",name,port);
+	return 0;
 }
 
 
-void inetd_setup(void)
+int inetd_setup(void)
 {
-	log_info(TAG,"starting inetd");
-	BaseType_t r = xTaskCreatePinnedToCore(&inet_server, "inetd", 4096, 0, 2, NULL, PRO_CPU_NUM);
-	if (r != pdPASS)
-		log_error(TAG,"inetd creation failed: %s",esp_err_to_name(r));
+	BaseType_t r = xTaskCreatePinnedToCore(&inet_server, "inetd", 2560, 0, 12, NULL, PRO_CPU_NUM);
+	if (r != pdPASS) {
+		log_error(TAG,"create inetd: %s",esp_err_to_name(r));
+		return 1;
+	}
+	return 0;
 }
 
 
 int inetadm(Terminal &term, int argc, const char *args[])
 {
-	if ((argc == 1) || (argc > 3)) {
-		term.printf("%s: missing/invalid arguments, use -h for synopsis\n",args[0]);
-		return 1;
-	}
 	if (argc == 2) {
 		if (!strcmp(args[1],"-l")) {
 			for (size_t i = 0, n = Ports.size(); i < n; ++i)
 				term.printf("%s on %u: %s\n",Ports[i].name,Ports[i].port,Ports[i].sock == -1 ? "offline" : "active");
 			return 0;
 		}
-		if (!strcmp(args[1],"-h")) {
-			term.printf("inetadm: synopsis\n"
-					"list status    : inetadm -l\n"
-					"enable service : inetadm -e <service>\n"
-					"disable service: inetadm -d <service>\n"
-				   );
-			return 0;
-		}
-		term.printf("%s: invalid number of arguments, use -h for synopsis\n",args[0]);
-		return 1;
+		return arg_invalid(term,args[1]);;
 	}
+	if (argc != 3)
+		return arg_invnum(term);
 	long p = strtol(args[2],0,0);
 	inet_arg_t *serv = 0;
 	for (size_t i = 0, n = Ports.size(); i < n; ++i) {
@@ -249,13 +244,11 @@ int inetadm(Terminal &term, int argc, const char *args[])
 			break;
 		}
 	}
-	if (serv == 0) {
-		term.printf("unable to find service\n");
-		return 1;
-	}
+	if (serv == 0)
+		return arg_invalid(term,args[1]);;
 	if (!strcmp(args[1],"-e")) {
 		if (serv->sock != -1) {
-			term.printf("service already enabled\n");
+			term.printf("already enabled\n");
 			return 1;
 		}
 		serv->sock = create_socket(serv->port);
@@ -274,7 +267,7 @@ int inetadm(Terminal &term, int argc, const char *args[])
 	if (!strcmp(args[1],"-d")) {
 		term.printf("disable service\n");
 		if (serv->sock == -1) {
-			term.printf("service already disabled\n");
+			term.printf("already disabled\n");
 			return 1;
 		}
 		FD_CLR(serv->sock,&PortFDs);
@@ -286,8 +279,7 @@ int inetadm(Terminal &term, int argc, const char *args[])
 #endif
 		return 0;
 	}
-	term.printf("%s: invalid argument, use -h for synopsis\n",args[0]);
-	return 1;
+	return arg_invalid(term,args[1]);;
 }
 
 #else // !CONFIG_INETD
@@ -316,10 +308,10 @@ void tcp_listener(void *arg)
 	for (;;) {
 		wifi_wait();
 		if (sock < 0) {
-			log_info(basename, "starting tcp listener on port %d", port);
+			log_info(basename, "listening on port %d", port);
 			sock = socket(AF_INET, SOCK_STREAM, 0);
 			if (sock < 0) {
-				log_error(basename,"error creating server socket: %s",strneterr(sock));
+				log_error(basename,"create socket: %s",strneterr(sock));
 				continue;
 			}
 			struct sockaddr_in server_addr;
@@ -327,13 +319,13 @@ void tcp_listener(void *arg)
 			server_addr.sin_port = htons(port);
 			server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
 			if (bind(sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-				log_error(basename,"error binding server socket: %s",strneterr(sock));
+				log_error(basename,"bind server socket: %s",strneterr(sock));
 				close(sock);
 				sock = -1;
 				continue;
 			}
 			if (listen(sock,1) < 0) {
-				log_error(basename,"error listening on server socket: %s",strneterr(sock));
+				log_error(basename,"listen on server socket: %s",strneterr(sock));
 				close(sock);
 				sock = -1;
 				continue;
@@ -368,7 +360,7 @@ void tcp_listener(void *arg)
 }
 
 
-void listen_tcp(unsigned port, void (*session)(void*), const char *basename, const char *service, unsigned prio, unsigned stack)
+int listen_tcp(unsigned port, void (*session)(void*), const char *basename, const char *service, unsigned prio, unsigned stack)
 {
 	// listener version
 	tcp_listener_args_t *args = (tcp_listener_args_t*)malloc(sizeof(tcp_listener_args_t));
@@ -382,9 +374,11 @@ void listen_tcp(unsigned port, void (*session)(void*), const char *basename, con
 #endif
 	BaseType_t r = xTaskCreatePinnedToCore(&tcp_listener, basename, 2048, (void*)args, 5, 0, PRO_CPU_NUM);
 	if (r != pdPASS) {
-		log_error(basename,"task creation failed: %s",esp_err_to_name(r));
+		log_error(basename,"create task: %s",esp_err_to_name(r));
 		free(args);
+		return 1;
 	}
+	return 0;
 }
 
 #endif // CONFIG_INETD

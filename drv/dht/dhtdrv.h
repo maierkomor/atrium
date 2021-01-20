@@ -22,6 +22,10 @@
 #include <math.h>
 #include <stdint.h>
 
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
+
+
 // DHTModel_t
 typedef enum {
 	DHT_MODEL_DHT11 = 11,
@@ -36,10 +40,11 @@ typedef enum {
 class DHT
 {
 	public:
-	DHT(uint8_t pin, DHTModel_t model);
-	~DHT();
+	DHT()
+	: m_ready(false)
+	{ }
 
-	bool begin(void);
+	int init(uint8_t pin, uint16_t model);
 	float getTemperature() const;
 	float getHumidity() const;
 	bool read(bool force=false);
@@ -77,8 +82,10 @@ class DHT
 	char *m_error;
 	unsigned long m_lastReadTime;
 	long m_lastEdge;
+	SemaphoreHandle_t m_mtx;
 	uint8_t m_data[5];
 	uint8_t m_bit, m_edges, m_errors;
+	uint16_t m_start;
 	bool m_ready;
 
 	protected:

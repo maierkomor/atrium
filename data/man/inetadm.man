@@ -1,0 +1,5 @@
+synopsis: inetadm: <option> [<service>]
+valid <option> are:
+-l: list status
+-e: enable <service>
+-d: disable <service>

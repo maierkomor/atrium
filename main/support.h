@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2019, Thomas Maier-Komor
+ *  Copyright (C) 2018-2020, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -22,23 +22,25 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define null_indent(a,b)
+
 #ifdef __cplusplus
 class stream;
 
+void id64_to_ascii(stream &o, uint64_t id);
 void ip4_to_ascii(stream &o, uint32_t ip);
 void degC_to_ascii(stream &o, float f);
+void humid_to_ascii(stream &o, float f);
+void press_to_ascii(stream &o, float f);
 void min_of_day_to_ascii(stream &o, uint16_t m);
 
 
 extern "C" {
 #endif
 
-char *concat(const char *s0, const char *s1);
 char *streol(char *b, size_t n);
-uint32_t resolve_fqhn(const char *h);
-const char *strneterr(int socket);
-const char *float_to_str(char *buf, float f);
 int parse_ipv4(uint32_t *ip, const char *str);
+
 
 #ifdef __cplusplus
 }

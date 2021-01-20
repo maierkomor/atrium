@@ -1,0 +1,6 @@
+synopsis: signal <option>
+valid options are:
+-f : list functions
+-l : list
+-s <sig> <value> : set signal to value
+-a <sig> <func>  : attach signal to function

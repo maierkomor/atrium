@@ -1,0 +1,12 @@
+synopsis: config <cmd>
+where <cmd> is:
+read    : read config from NVS
+write   : write config to NVS
+defaults: init config with defaults
+actviate: activate config
+clear   : clear config or given field
+erase   : erase complete NVS
+xxd     : xxd in memory config
+nvsxxd  : xxd in config in NVS
+show    : ASCII output of config
+size    : print size of config

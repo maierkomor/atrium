@@ -1,0 +1,8 @@
+syopsis: holiday <option>
+-l to list all holidays
+-j to print json output
+-D {<id>|all} to delete all holidays or holiday with id <id>
+
+synopsis: holiday <date> [<date]
+where <date> is of format: dd.mm.yyyy|mm/dd/yyyy|yyyy-mm-dd>
+to add a holiday for the specified date or date range

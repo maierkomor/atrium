@@ -1,0 +1,4 @@
+synopsis: boot [<part>]
+Without further argument boot prints the current boot partitions.
+With <part> argument, boot sets the boot partition to the relevant
+partition.

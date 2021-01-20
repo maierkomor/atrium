@@ -1,0 +1,5 @@
+syopsis: mac <option> [<addr>]
+mac -l       : list mac addresses\n"
+mac -s <addr>: set station mac to <addr>\n"
+mac -a <addr>: set softap mac to <addr>\n"
+mac -c       : clear mac settings\n"

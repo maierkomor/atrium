@@ -20,6 +20,9 @@
 
 #ifdef CONFIG_BME280
 
+// This drivers operates the BME280 in I2C mode.
+// Connect CSB to 3.3V and SDO to GND
+
 //#define USE_DOUBLE
 
 #include <driver/i2c.h>
@@ -42,6 +45,7 @@
 #define BME280_REG_PMSB		0xf7
 #define BME280_REG_CONFIG	0Xf5
 #define BME280_REG_CTRLMEAS	0xf4
+#define BME280_REG_CTRLHUM	0xf2
 
 #define I2C_NUM 0
 
@@ -170,6 +174,7 @@ static uint32_t calc_press(int32_t adc_P, int32_t t_fine)
 	var1 = (((int64_t)dig_P9) * (p>>13) * (p>>13)) >> 25;
 	var2 = (((int64_t)dig_P8) * p) >> 19;
 	p = ((p + var1 + var2) >> 8) + (((int64_t)dig_P7)<<4);
+	log_dbug(TAG,"calc_press(%d,%d) = %d",adc_P,t_fine,p);
 	return (uint32_t) p;
 }
 
@@ -186,9 +191,11 @@ static uint32_t calc_humid(int32_t adc_H, int32_t t_fine)
 		x1 = 0;
 	if (x1 > 419430400)
 		x1 = 419430400;
+	log_dbug(TAG,"calc_humid(%d,%d) = %u",adc_H,t_fine+76800,x1>>12);
 	return (uint32_t)(x1>>12);
 }
-#endif
+
+#endif	// USE_DOUBLE
 
 
 int bme280_read(double *t, double *h, double *p)
@@ -202,15 +209,16 @@ int bme280_read(double *t, double *h, double *p)
 			 * bit 1,0: sensor mode			00: sleep, 01/10: force, 11: normal
 			 */
 			, BME280_REG_CTRLMEAS, 0b00100101);	// ctrl_meas: t*1, p*1, force
-	if (bme280_read_registers(0,0xf7,data,sizeof(data)))
-		return 1;
+	int r = bme280_read_registers(0,0xf7,data,sizeof(data));
+	if (r)
+		return r;
+	log_dbug(TAG,"%02x %02x %02x %02x  %02x %02x %02x %02x",data[0],data[1],data[2],data[3],data[4],data[5],data[6],data[7]);
+	int32_t t_fine = calc_tfine((data[3] << 12) | (data[4] << 4) | (data[5] >> 4));
 #ifdef USE_DOUBLE
-	int32_t t_fine = calc_tfine((data[3] << 12) | (data[4] << 4) | (data[5] >> 4));
 	*t = ((double)t_fine * 5 + 128) / 256.0 / 100.0;
-	*h = compensate_P_double((data[0] << 12) | (data[1] << 4) | (data[2] >> 4), t_fine);
-	*p = compensate_H_double((data[6] << 8) | data[7], t_fine);
+	*h = compensate_H_double((data[6] << 8) | data[7], t_fine);
+	*p = compensate_P_double((data[0] << 12) | (data[1] << 4) | (data[2] >> 4), t_fine);
 #else
-	int32_t t_fine = calc_tfine((data[3] << 12) | (data[4] << 4) | (data[5] >> 4));
 	*t = (double)((t_fine * 5 + 128) >> 8) / 100.0;
 	*p = (double)calc_press((data[0] << 12) | (data[1] << 4) | (data[2] >> 4), t_fine)/256.0;
 	*h = (double)calc_humid((data[6] << 8) | data[7], t_fine)/1024.0;
@@ -224,27 +232,36 @@ uint8_t bme280_status()
 	uint8_t d;
 	esp_err_t e = bme280_read_registers(0,0xf3,&d,1);
 	if (e) {
-		log_error(TAG,"read status failed: %d",e);
+		log_error(TAG,"read status failed: %d, %s",e,esp_err_to_name(e));
 		return 0;
 	}
 	return d;
 }
 
 
-int bme280_init(unsigned sda, unsigned scl)
+int bme280_init(unsigned port, unsigned sda, unsigned scl, unsigned freq)
 {
 	i2c_config_t conf;
 	conf.mode = I2C_MODE_MASTER;
 	conf.sda_io_num = sda;
-	conf.sda_pullup_en = 0;
+	conf.sda_pullup_en = GPIO_PULLUP_ENABLE;
 	conf.scl_io_num = scl;
-	conf.scl_pullup_en = 0;
-	esp_err_t e = i2c_driver_install(I2C_NUM_0, conf.mode);
-	if (e)
+	conf.scl_pullup_en = GPIO_PULLUP_ENABLE;
+#ifdef CONFIG_IDF_TARGET_ESP32
+	conf.master.clk_speed = freq;
+	esp_err_t e = i2c_driver_install((i2c_port_t) port, conf.mode, 0, 0, 0);
+#else
+	esp_err_t e = i2c_driver_install((i2c_port_t) port, conf.mode);
+#endif
+	if (e) {
+		log_error(TAG,"i2c driver install failed: %s",esp_err_to_name(e));
 		return e;
+	}
 	e = i2c_param_config(I2C_NUM_0, &conf);
-	if (e)
+	if (e) {
+		log_error(TAG,"i2c param config failed: %s",esp_err_to_name(e));
 		return e;
+	}
 	log_info(TAG,"status %d",bme280_status());
 	uint8_t id = 0;
 	int r = bme280_read_registers(0,0xd0,&id,1);
@@ -257,8 +274,10 @@ int bme280_init(unsigned sda, unsigned scl)
 		return 2;
 	}
 
-	bme280_write1	( 0
+	bme280_write2	( 0
 
+			/* enable humidity sampling */
+			, BME280_REG_CTRLHUM, 1
 			/*
 			 * bit 7-5: sampling time interval: 101=1000ms
 			 * bit 4-2: iir filter time
@@ -288,14 +307,13 @@ int bme280_init(unsigned sda, unsigned scl)
 	r = bme280_read_registers(0,0xe1,calib_h,sizeof(calib_h));
 	if (r) 
 		log_error(TAG,"error reading calib_h: %d",r);
-	dig_H2 = (calib_h[1] << 8) | calib_h[0];
+	dig_H2 = (int16_t)(calib_h[1] << 8) | calib_h[0];
 	dig_H3 = calib_h[2];
-	dig_H4 = (calib_h[3] << 4) | (calib_h[4] & 0xf);
-	dig_H5 = (calib_h[4] >> 4) | (calib_h[5] << 4);
+	dig_H4 = ((int16_t)(int8_t)calib_h[3] << 4) | ((int16_t)calib_h[4] & 0xf);
+	dig_H5 = (int16_t)(calib_h[4] >> 4) | (calib_h[5] << 4);
 	dig_H6 = (int8_t)calib_h[6];
 
 	return 0;
 }
-
 
 #endif

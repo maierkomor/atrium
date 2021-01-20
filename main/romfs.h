@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2019, Thomas Maier-Komor
+ *  Copyright (C) 2019-2020, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -21,6 +21,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <sys/types.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -29,13 +30,15 @@ extern "C" {
 extern uint32_t RomfsBaseAddr, RomfsSpace;
 
 size_t romfs_num_entries();
-size_t romfs_size(int);
+ssize_t romfs_size_fd(int);
+ssize_t romfs_size(const char *);
 size_t romfs_offset(int);
 void romfs_getentry(const char *n, size_t *s, size_t *o);
 int romfs_open(const char *n);
 int romfs_read_at(int i, char *buf, size_t s, size_t o);
 const char *romfs_name(int i);
 void romfs_setup();
+void *romfs_mmap(int i);
 
 #ifdef __cplusplus
 }

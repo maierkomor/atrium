@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -19,20 +19,28 @@
 #include <sdkconfig.h>
 
 #ifdef CONFIG_MQTT
+#include "actions.h"
 #include "binformats.h"
-#include "cyclic.h"
+#ifdef CONFIG_SIGNAL_PROC
+#include "dataflow.h"
+#endif
+#include "func.h"
 #include "globals.h"
 #include "log.h"
 #include "mqtt.h"
+#include "mstream.h"
 #include "settings.h"
+#include "shell.h"
 #include "support.h"
 #include "terminal.h"
+#include "ujson.h"
 #include "wifi.h"
+#include "versions.h"
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
+#include <lwip/apps/mqtt.h>
 
-#include <mqtt_client.h>
 #include <string.h>
 #include <time.h>
 
@@ -41,228 +49,116 @@
 using namespace std;
 
 
-static char TAG[] = "mqtt";
-static uint32_t DownSince;
-static esp_mqtt_client_handle_t Client = 0;
-static multimap<string,void(*)(const char *,size_t)> Subscriptions;
-static string DMesg;
+static mqtt_client_t *Client = 0;
+static const char TAG[] = "mqtt";
+static multimap<estring,void(*)(const char *,const void*,size_t)> Subscriptions;
+static map<estring,estring> Values;
+static estring CurrentTopic;
+static unsigned LTime = 0;
+static estring DMesg;
+static SemaphoreHandle_t Sem = 0, Mtx = 0, DMtx = 0;
 
 
-static void execute_callbacks(const char *t, size_t tl, const char *d, size_t dl)
+#ifdef CONFIG_SIGNAL_PROC
+class FnMqttSend: public Function
 {
-	string topic(t,tl);
-	auto r = Subscriptions.equal_range(topic);
-	log_info(TAG,"callbacks for %s",topic.c_str());
-	while (r.first != r.second) {
-		log_dbug(TAG,"execute callback %p",r.first->second);
-		r.first->second(d,dl);
-		++r.first;
-	}
-}
+	public:
+	explicit FnMqttSend(const char *name, bool retain = false)
+	: Function(name)
+	, m_retain(retain)
+	{ }
+
+	void operator () (DataSignal *);
+	int setParam(unsigned x, DataSignal *s);
+
+	const char *type() const
+	{ return FuncName; }
+
+	static const char FuncName[];
+
+	private:
+	bool m_retain;	// currently not usable - no factory
+};
+
+const char FnMqttSend::FuncName[] = "mqtt_send";
 
 
-static void subscribe_topics()
+int FnMqttSend::setParam(unsigned x, DataSignal *s)
 {
-	mqtt_publish("version",Version,strlen(Version),1);
-	for (auto i = Subscriptions.begin(), e = Subscriptions.end(); i != e; ++i) {
-		const char *t = i->first.c_str();
-		int id = esp_mqtt_client_subscribe(Client,t,0);
-		if (id != -1)
-			log_info(TAG,"subscribed to %s, id %d",t,id);
-		else
-			log_warn(TAG,"failed to subscribe %s",t);
-	}
-}
-
-
-static int mqtt_event_handler(esp_mqtt_event_handle_t e)
-{
-	switch (e->event_id) {
-	case MQTT_EVENT_CONNECTED:
-		log_info(TAG,"connected");
-		DownSince = 0;
-		subscribe_topics();
-		break;
-	case MQTT_EVENT_DISCONNECTED:
-		log_warn(TAG,"disconnected");
-		if (DownSince == 0)
-			DownSince = uptime();
-		break;
-	case MQTT_EVENT_SUBSCRIBED:
-		log_info(TAG, "subscribed to %.s, id=%d",e->topic_len,e->topic,e->msg_id);
-		break;
-	case MQTT_EVENT_UNSUBSCRIBED:
-		log_info(TAG, "unsubscribed %.s, id=%d",e->topic_len,e->topic,e->msg_id);
-		break;
-	case MQTT_EVENT_PUBLISHED:
-		log_info(TAG, "published %.s, id=%d",e->topic_len,e->topic,e->msg_id);
-		break;
-	case MQTT_EVENT_DATA:
-		log_info(TAG, "data: topic='%.*s', data='%.*s'",e->topic_len,e->topic,e->data_len,e->data);
-		execute_callbacks(e->topic,e->topic_len,e->data,e->data_len);
-		break;
-	case MQTT_EVENT_ERROR:
-		log_info(TAG, "MQTT_EVENT_ERROR");
-		break;
-	default:
-		log_info(TAG, "unknown event %d", e->event_id);
-		break;
-	}
+	s->addFunction(this);
 	return 0;
 }
 
 
-void mqtt_init(void)
+void FnMqttSend::operator () (DataSignal *s)
 {
-	log_info(TAG,"init");
-	if (!Config.has_mqtt()) {
-		log_warn(TAG,"mqtt not configured");
+	if (s == 0)
+		return;
+	char buf[64];
+	mstream str(buf,sizeof(buf));
+	s->toStream(str);
+	log_dbug(TAG,"FnMqttSend: %s %s",s->signalName(),str.c_str());
+	mqtt_pub(s->signalName(),str.c_str(),str.size(),m_retain);
+}
+#endif
+
+
+static void update_signal(const char *t, const void *d, size_t s)
+{
+	auto i = Values.find(t);
+	if (i == Values.end()) {
+		log_warn(TAG,"no value for topic %s",t);
 		return;
 	}
-	if (!Config.mqtt().has_uri()) {
-		log_warn(TAG,"mqtt has no URI");
-		return;
-	}
-	esp_mqtt_client_config_t cfg;
-	memset(&cfg,0,sizeof(cfg));
-	const MQTT &m = Config.mqtt();
-	if (m.has_username())
-		cfg.username = m.username().c_str();
-	if (m.has_password())
-		cfg.password = m.password().c_str();
-	const char *u = m.uri().c_str();
-	if (strncmp(u,"mqtt://",7)) {
-		log_error(TAG,"invalid URI format");
-		return;
-	}
-	const char *h = u + 7;
-	const char *c = strchr(h,':');
-	if (c == 0) {
-		log_error(TAG,"port missing");
-		return;
-	}
-	char hn[c-h+1];
-	memcpy(hn,h,c-h);
-	hn[c-h] = 0;
-	uint32_t ip = resolve_hostname(hn);
-	if (0 == ip) {
-		log_error(TAG,"host not found");
-		return;
-	}
-	char uri[48];
-	int n = snprintf(uri,sizeof(uri),"mqtt://%d.%d.%d.%d:%s"
-		, ip & 0xff
-		, (ip >> 8) & 0xff
-		, (ip >> 16) & 0xff
-		, (ip >> 24) & 0xff
-		, c+1
-		);
-	if (n >= sizeof(uri)) {
-		log_error(TAG,"db name too long");
-		return;
-	}
-	cfg.uri = uri;
-	cfg.keepalive = 60;
-	cfg.event_handle = mqtt_event_handler;
-	if (Config.has_nodename())
-		cfg.client_id = Config.nodename().c_str();
-	if (Client) {
-		esp_mqtt_client_stop(Client);
-		esp_mqtt_client_destroy(Client);
-	}
-	Client = esp_mqtt_client_init(&cfg);
+	i->second.assign((const char *)d,s);
+	log_dbug(TAG,"topic %s update to '%.s'",t,s,d);
 }
 
 
-void mqtt_start()
+static void connect_cb(mqtt_client_t *client, void *arg, mqtt_connection_status_t status)
 {
-	if (!Config.mqtt().enable()) {
-		log_warn(TAG,"mqtt disabled");
-		return;
-	}
-	if (!wifi_station_isup()) {
-		log_warn(TAG,"wifi station is not up");
-		return;
-	}
-	if (Client == 0)
-		mqtt_init();
-	if (Client == 0)
-		log_warn(TAG,"mqtt not initialized");
-	if (esp_err_t e = esp_mqtt_client_start(Client))
-		log_error(TAG,"mqtt start failed: %x\n",e);
+	log_dbug(TAG,"connection status %d",status);
 }
 
 
-void mqtt_stop(void)
+static void request_cb(void *arg, err_t e)
 {
-	if (Client == 0)
-		log_warn(TAG,"mqtt not initialized");
-	else if (esp_err_t e = esp_mqtt_client_stop(Client))
-		log_error(TAG,"stop failed %x",e);
+	xSemaphoreGive(Sem);
+	//auto x = xSemaphoreGive(Sem);
+	//assert(x == pdTRUE); Not! May fail on timeout!
+}
+
+
+static void subscribe_cb(void *arg, err_t e)
+{
+	const char *topic = (const char *)arg;
+	log_dbug(TAG,"subscribe on %s returned %d",topic,e);
+	xSemaphoreGive(Sem);
+}
+
+
+static void incoming_data_cb(void *arg, const uint8_t *data, uint16_t len, uint8_t flags)
+{
+	log_dbug(TAG,"incoming data for %s",CurrentTopic.c_str());
+	auto i = Subscriptions.find(CurrentTopic);
+	if (i != Subscriptions.end())
+		i->second(CurrentTopic.c_str(),data,len);
 	else
-		log_info(TAG,"stopped");
+		log_warn(TAG,"unknown topic %s",CurrentTopic.c_str());
 }
 
 
-int mqtt_publish(const char *t, const char *v, int len, int retain)
+static void incoming_publish_cb(void *arg, const char *topic, unsigned len)
 {
-	if (Client == 0)
-		return ENOTCONN;
-	char topic[128];
-	int n = snprintf(topic,sizeof(topic),"%s/%s",Config.nodename().c_str(),t);
-	if (n >= sizeof(topic))
-		return EINVAL;
-	int e = (int) esp_mqtt_client_publish(Client,topic,v,len,0,retain);
-	return e;
+	CurrentTopic = topic;
+	log_dbug(TAG,"incoming topic %s",topic);
 }
 
 
-void mqtt_set_dmesg(const char *m, size_t s)
+static void mqtt_pub_uptime(void * = 0)
 {
-	if (s > 120)
-		s = 120;
-	DMesg.assign(m,s);
-}
-
-
-int mqtt_subscribe(const char *topic, void (*callback)(const char *,size_t))
-{
-	size_t ns = Config.nodename().size();
-	size_t tl = strlen(topic);
-	char t[tl+2+ns];
-	memcpy(t,Config.nodename().data(),ns);
-	t[ns] = '/';
-	memcpy(t+ns+1,topic,tl+1);
-	log_info(TAG,"add callback %s",topic);
-	Subscriptions.insert(pair<string,void(*)(const char*,size_t)>(string(t),callback));
-	if (Client == 0) {
-		log_warn(TAG,"client not initialized");
-		return 1;
-	}
-	int id = esp_mqtt_client_subscribe(Client,t,0);
-	if (id != -1) {
-		log_info(TAG,"subscribed to %s, id %d",t,id);
-		return 0;
-	}
-	log_warn(TAG,"subscribe %s failed",t);
-	return 1;
-}
-
-
-static unsigned mqtt_cyclic()
-{
-	static unsigned ltime = 0;
-	if (DownSince) {
-		unsigned dt = uptime() - DownSince;
-		if (dt > 8000) {
-			mqtt_start();
-		} else if (dt > 5000) {
-			log_info(TAG,"stopping stalled connection");
-			mqtt_stop();
-			return 2000;
-		}
-	}
-	//log_dbug(TAG,"cyclic");
+	if ((Client == 0) || !mqtt_client_is_connected(Client))
+		return;
 #ifdef _POSIX_MONOTONIC_CLOCK
 	struct timespec ts;
 	clock_gettime(CLOCK_MONOTONIC,&ts);
@@ -278,96 +174,363 @@ static unsigned mqtt_cyclic()
 	unsigned t = m + h * 60 + d * 60 * 24;
 	int n = 0;
 	char value[32];
-	if (t != ltime) {
-		ltime = t;
+	if (t != LTime) {
+		LTime = t;
 		if (d > 0)
-			n = snprintf(value,sizeof(value),"%u days, %d:%02u",d,h,m);
-		else
-			n = snprintf(value,sizeof(value),"%d:%02u",h,m);
+			n = snprintf(value,sizeof(value),"%u days, ",d);
+		n += snprintf(value+n,sizeof(value)-n,"%d:%02u",h,m);
 	}
-	if ((n > 0) && (n <= sizeof(value)))
-		mqtt_publish("uptime",value,n,0);
+	if ((n > 0) && (n <= sizeof(value))) {
+		if (err_t e = mqtt_pub("uptime",value,n,0))
+			log_error(TAG,"publish failed: %d",e);
+		else
+			log_dbug(TAG,"published uptime %s",value);
+	}
+}
+
+
+static void mqtt_pub_dmesg(void *)
+{
+	xSemaphoreTake(DMtx,portMAX_DELAY);
 	if (!DMesg.empty()) {
-		mqtt_publish("dmesg",DMesg.data(),DMesg.size(),0);
+		mqtt_pub("dmesg",DMesg.c_str(),DMesg.size(),0);
 		DMesg.clear();
 	}
-	return 1000;
+	xSemaphoreGive(DMtx);
+}
+
+
+int mqtt_pub(const char *t, const char *v, int len, int retain)
+{
+	if (Client == 0)
+		return 1;
+	const char *hn = Config.nodename().c_str();
+	size_t hl = Config.nodename().size();
+	size_t tl = strlen(t);
+	char topic[hl+tl+2];
+	memcpy(topic,hn,hl);
+	topic[hl] = '/';
+	memcpy(topic+hl+1,t,tl+1);
+	if (pdFALSE == xSemaphoreTake(Mtx,20/portTICK_PERIOD_MS)) {
+	//if (pdFALSE == xSemaphoreTake(Mtx,portMAX_DELAY)) {
+		log_dbug(TAG,"publish '%s': mutex failure",topic);
+		return 1;
+	}
+	err_t e = mqtt_publish(Client,topic,v,len,0,retain,request_cb,0);
+	if (e) {
+		log_dbug(TAG,"publish '%s' returned %d",topic,e);
+	} else {
+//		Waiting for the final result may hang long!
+//		We want processing to continue.
+//		Therefore we don't gather the final result.
+//		Reporting the final result would require the callback
+//		to refer to data on heap and do a cleanup...
+//		But we should wait a little bit to take pressure
+//		from the TCP stack.
+		//auto x = xSemaphoreTake(Sem,20/portTICK_PERIOD_MS);
+		auto x = xSemaphoreTake(Sem,portMAX_DELAY);
+		log_dbug(TAG,"publish '%s' %s",topic,x ? "OK" : "timed out");
+	}
+	xSemaphoreGive(Mtx);
+	return e;
+}
+
+
+int mqtt_sub(const char *t, void (*callback)(const char *,const void *,size_t))
+{
+	if (Mtx == 0)	// subscription should be possible before mqtt is initialized!
+		Mtx = xSemaphoreCreateMutex();
+	const char *hn = Config.nodename().c_str();
+	size_t hl = strlen(hn);
+	if (hl == 0) {
+		log_error(TAG,"hostname not set");
+		return -1;
+	}
+	size_t tl = strlen(t);
+	char topic[hl+tl+2];
+	memcpy(topic,hn,hl);
+	topic[hl] = '/';
+	memcpy(topic+hl+1,t,tl+1);
+	log_dbug(TAG,"subscribe '%s'",topic);
+	xSemaphoreTake(Mtx,portMAX_DELAY);
+	Subscriptions.insert(make_pair((estring)topic,callback));
+	err_t e = 1;
+	if (Client != 0) {
+		e = mqtt_sub_unsub(Client,topic,0,subscribe_cb,(void*)topic,1);
+		if (e)
+			log_warn(TAG,"subscribe '%s' returned %d",topic,e);
+		else
+			xSemaphoreTake(Sem,portMAX_DELAY);
+	}
+	xSemaphoreGive(Mtx);
+	return e;
+
+}
+
+
+void mqtt_start(void)
+{
+	log_info(TAG,"start");
+	if (Client != 0)
+		log_warn(TAG,"already initialized");
+	if (!Config.has_mqtt()) {
+		log_warn(TAG,"not configured");
+		return;
+	}
+	if (!Config.mqtt().enable()) {
+		log_warn(TAG,"disabled");
+		return;
+	}
+	if (!Config.mqtt().has_uri()) {
+		log_warn(TAG,"no URI");
+		return;
+	}
+	if (!wifi_station_isup()) {
+		log_warn(TAG,"wifi station down");
+		return;
+	}
+	if (!Config.has_nodename()) {
+		log_error(TAG,"no nodename");
+		Config.mutable_mqtt()->set_enable(false);
+		return;
+	}
+	Lock lock(Mtx);
+	mqtt_connect_client_info_t ci;
+	memset(&ci,0,sizeof(ci));
+	ci.client_id = Config.nodename().c_str();
+	const MQTT &m = Config.mqtt();
+	if (m.has_username())
+		ci.client_user = m.username().c_str();
+	if (m.has_password())
+		ci.client_pass = m.password().c_str();
+	const char *u = m.uri().c_str();
+	if (strncmp(u,"mqtt://",7)) {
+		log_error(TAG,"invalid URI format");
+		return;
+	}
+	const char *h = u + 7;
+	const char *c = strchr(h,':');
+	long port = 1883;
+	size_t hl;
+	if (c != 0) {
+		long l = strtol(c+1,0,0);
+		if ((l <= 0) || (l > UINT16_MAX)) {
+			log_error(TAG,"invalid port");
+			return;
+		}
+		port = l;
+		hl = c-h;
+	} else
+		hl = strlen(h);
+	char hn[hl+1];
+	memcpy(hn,h,hl);
+	hn[hl] = 0;
+	uint32_t ip4 = resolve_hostname(hn);
+	if (ip4 == 0) {
+		log_error(TAG,"unable to resolve host %s",hn);
+		return;
+	}
+	ip_addr_t ip;
+#if defined CONFIG_LWIP_IPV6 || defined CONFIG_IDF_TARGET_ESP32
+	ip.type = IPADDR_TYPE_V4;
+	ip.u_addr.ip4.addr = ip4;
+#else
+	ip.addr = ip4;
+#endif
+	ci.client_id = Config.nodename().c_str();
+	ci.keep_alive = 30;
+	if (Client == 0)
+		Client = mqtt_client_new();
+	if (err_t e = mqtt_client_connect(Client,&ip,port,connect_cb,0,&ci)) {
+		log_error(TAG,"error connecting %d",e);
+		return;
+	}
+	mqtt_set_inpub_callback(Client,incoming_publish_cb,incoming_data_cb,0);
+	LTime = 0;
+	mqtt_pub("version",VERSION,strlen(VERSION),0);
+	for (const auto &s : Subscriptions) {
+		const char *topic = s.first.c_str();
+		if (err_t e = mqtt_sub_unsub(Client,topic,0,subscribe_cb,(void*)topic,1))
+			log_error(TAG,"subscribe %s: %d",topic,e);
+	}
+}
+
+
+void mqtt_stop(void)
+{
+	Lock lock(Mtx);
+	if (Client) {
+		mqtt_disconnect(Client);
+		free(Client);
+		Client = 0;
+	}
+}
+
+
+static void mqtt_startstop(void *a)
+{
+	if ((int)a) 
+		mqtt_start();
+	else
+		mqtt_stop();
+}
+
+
+void mqtt_set_dmesg(const char *m, size_t s)
+{
+	if (s > 120)
+		s = 120;
+	if (DMtx == 0)
+		DMtx = xSemaphoreCreateMutex();
+	xSemaphoreTake(DMtx,portMAX_DELAY);
+	DMesg.assign(m,s);
+	xSemaphoreGive(DMtx);
+}
+
+
+static void pub_element(JsonElement *e, const char *parent = "")
+{
+	char name[strlen(parent)+strlen(e->name())+2];
+	if (parent[0]) {
+		strcpy(name,parent);
+		strcat(name,"/");
+	} else {
+		name[0] = 0;
+	}
+	strcat(name,e->name());
+	char buf[128];
+	mstream str(buf,sizeof(buf));
+	e->writeValue(str);
+	if (const char *dim = e->getDimension()) {
+		str << ' ';
+		str << dim;
+	}
+	log_dbug(TAG,"pub_element '%s'",str.c_str());
+	mqtt_pub(name,str.c_str(),str.size(),0);
+}
+
+
+void mqtt_pub_rtdata(void *)
+{
+	if ((Client == 0) || !mqtt_client_is_connected(Client)) {
+		if (Config.mqtt().enable())
+			mqtt_start();
+		return;
+	}
+	mqtt_pub_uptime();
+	rtd_lock();
+	JsonElement *e = RTData->first();
+	while (e) {
+		if (JsonObject *o = e->toObject()) {
+			const char *n = e->name();
+			JsonElement *c = o->first();
+			while (c) {
+				pub_element(c,n);
+				c = c->next();
+			}
+		} else {
+			pub_element(e);
+		}
+		e = e->next();
+	}
+	rtd_unlock();
+}
+
+
+int mqtt_setup(void)
+{
+	Client = 0;
+	if (Mtx == 0)
+		Mtx = xSemaphoreCreateMutex();
+	if (DMtx == 0)
+		DMtx = xSemaphoreCreateMutex();
+	Sem = xSemaphoreCreateBinary();
+	action_add("mqtt!pub_rtdata",mqtt_pub_rtdata,0,"publish run-time data via MQTT");
+	action_add("mqtt!pub_dmesg",mqtt_pub_dmesg,0,"publish dmesg via MQTT");
+#ifdef CONFIG_SIGNAL_PROC
+	new FuncFact<FnMqttSend>;
+#endif
+	action_add("mqtt!stop",mqtt_startstop,0,"mqtt stop");
+	Action *a = action_add("mqtt!start",mqtt_startstop,(void*)1,"mqtt start");
+	event_callback(StationUpEv,a);
+
+	if (Config.has_mqtt() && Config.mqtt().enable())
+		mqtt_start();
+	for (const auto &s : Config.mqtt().subscribtions())
+		mqtt_sub(s.c_str(),update_signal);
+	return 0;
 }
 
 
 int mqtt(Terminal &term, int argc, const char *args[])
 {
-	if (argc > 3) {
-		term.printf("%s: 1-2 arguments expected, got %u\n",args[0],argc-1);
-		return 1;
-	}
+	if (argc > 3)
+		return arg_invnum(term);
+	MQTT *m = Config.mutable_mqtt();
 	if ((argc == 1) || (!strcmp(args[1],"status"))) {
 		if (Config.has_mqtt()) {
-			const MQTT &mqtt = Config.mqtt();
-			term.printf("URI: %s\n",mqtt.uri().c_str());
-			term.printf("user: %s\n",mqtt.username().c_str());
-			term.printf("pass: %s\n",mqtt.password().c_str());
-			term.printf("MQTT %sabled\n",mqtt.enable() ? "en" : "dis");
-			if (DownSince)
-				term.printf("MQTT is down sincu %us\n",DownSince/1000);
-			else
-				term.printf("MQTT is connected\n");
+			term.printf("URI: %s\n"
+				"user: %s\n"
+				"pass: %s\n"
+				"%sabled, %sconnected\n"
+				,m->uri().c_str()
+				,m->username().c_str()
+				,m->password().c_str()
+				,m->enable() ? "en" : "dis"
+				,Client && mqtt_client_is_connected(Client) ? "" : "not ");
 		} else {
-			term.printf("MQTT is not configured\n");
+			term.printf("not configured\n");
 		}
 		return 0;
 	}
 	if (!strcmp(args[1],"uri")) {
 		if (argc == 3)
-			Config.mutable_mqtt()->set_uri(args[2]);
+			m->set_uri(args[2]);
 		else
-			term.printf("invalid argument\n");
+			return arg_invalid(term,args[1]);
 	} else if (!strcmp(args[1],"user")) {
 		if (argc == 3)
-			Config.mutable_mqtt()->set_username(args[2]);
+			m->set_username(args[2]);
 		else if (argc == 2)
-			Config.mutable_mqtt()->clear_username();
+			m->clear_username();
 		else
-			term.printf("invalid argument\n");
+			return arg_invalid(term,args[1]);
 	} else if (!strcmp(args[1],"pass")) {
 		if (argc == 3)
-			Config.mutable_mqtt()->set_password(args[2]);
+			m->set_password(args[2]);
 		else if (argc == 2)
-			Config.mutable_mqtt()->clear_password();
+			m->clear_password();
 		else
-			term.printf("invalid argument\n");
+			return arg_invalid(term,args[1]);
 	} else if (!strcmp(args[1],"enable")) {
-		if (!Config.mqtt().enable())
-			Config.mutable_mqtt()->set_enable(true);
+		m->set_enable(true);
 	} else if (!strcmp(args[1],"disable")) {
-		if (Config.mqtt().enable())
-			Config.mutable_mqtt()->set_enable(false);
+		m->set_enable(false);
 	} else if (!strcmp(args[1],"clear")) {
-		Config.mutable_mqtt()->clear();
+		m->clear();
 	} else if (!strcmp(args[1],"start")) {
 		mqtt_start();
 	} else if (!strcmp(args[1],"stop")) {
 		mqtt_stop();
-	} else if (!strcmp(args[1],"-h"))
-		term.printf("valid arguments: status, uri, user, pass, enable, disable, clear\n");
-	else
-		return 1;
+	} else if (!strcmp(args[1],"sub")) {
+		if (argc == 2) {
+			for (const auto &s : Subscriptions)
+				term.println(s.first.c_str());
+		} else {
+			for (const auto &s : m->subscribtions()) {
+				if (s == args[2]) {
+					term.println("already subscribed");
+					return 1;
+				}
+			}
+			m->add_subscribtions(args[2]);
+			mqtt_sub(args[2],update_signal);
+		}
+	} else {
+		return arg_invalid(term,args[1]);
+	}
 	return 0;
 }
 
-
-void mqtt_setup(void)
-{
-	if (!Config.has_mqtt()) {
-		log_info(TAG,"not configured");
-		return;
-	}
-	if (!Config.mqtt().enable()) {
-		log_info(TAG,"not enabled");
-		return;
-	}
-	DownSince = uptime() - 10000;
-	add_cyclic_task("mqtt",mqtt_cyclic,2000);
-}
 
 #endif // CONFIG_MQTT

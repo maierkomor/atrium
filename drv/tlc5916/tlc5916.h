@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018, Thomas Maier-Komor
+ *  Copyright (C) 2018-2020, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -27,16 +27,11 @@
 class TLC5916
 {
 	public:
-	TLC5916(gpio_num_t clk, gpio_num_t sdi, gpio_num_t le, gpio_num_t oe, gpio_num_t sdo)
-	: m_clk(clk)
-	, m_sdi(sdi)
-	, m_le(le)
-	, m_oe(oe)
-	, m_sdo(sdo)
-	, m_config(0)
+	TLC5916()
+	: m_initialized(false)
 	{ }
 
-	void init();
+	int init(gpio_num_t clk, gpio_num_t sdi, gpio_num_t le, gpio_num_t oe, gpio_num_t sdo);
 	void set_config(bool cm, bool hc, uint8_t cc);
 	void set1(uint8_t);
 	void set_all(uint8_t);
@@ -54,6 +49,7 @@ class TLC5916
 
 	gpio_num_t m_clk,m_sdi,m_le,m_oe,m_sdo;
 	uint8_t m_config;	// in reverse bit order
+	bool m_initialized;
 };
 
 

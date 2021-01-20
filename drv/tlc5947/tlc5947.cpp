@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2019, Thomas Maier-Komor
+ *  Copyright (C) 2018-2020, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -20,49 +20,48 @@
 #include "log.h"
 
 #include <stdlib.h>
-
-static char TAG[] = "TLC5946";
-
-#define OE_high		gpio_set_level(m_oe,1)
-#define OE_low		gpio_set_level(m_oe,0)
-#define LE_high		gpio_set_level(m_le,1)
-#define LE_low		gpio_set_level(m_le,0)
-#define CLK_high	gpio_set_level(m_clk,1)
-#define CLK_low		gpio_set_level(m_clk,0)
-#define SDI_high	gpio_set_level(m_sdi,1)
-#define SDI_low		gpio_set_level(m_sdi,0)
-#define SDO		gpio_get_level(m_sdo)
+#include <strings.h>
+#include <rom/gpio.h>
 
 
-TLC5947::TLC5947(gpio_num_t sin, gpio_num_t sclk, gpio_num_t xlat, gpio_num_t blank, unsigned num)
-: m_sin(sin)
-, m_sclk(sclk)
-, m_xlat(xlat)
-, m_blank(blank)
-, m_nled(num*24)
-, m_data(0)
+static char TAG[] = "TLC5947";
+
+
+int TLC5947::init(gpio_num_t sin, gpio_num_t sclk, gpio_num_t xlat, gpio_num_t blank, unsigned num)
 {
-}
+	if (m_initialized) {
+		log_error(TAG,"already initialized");
+		return 1;
+	}
+	m_sin = sin;
+	m_sclk = sclk;
+	m_xlat = xlat;
+	m_blank = blank;
+	m_nled = num * 24;
 
-
-void TLC5947::init()
-{
 	log_info(TAG,"initializing for %u leds",m_nled);
+	gpio_pad_select_gpio(sin);
+	gpio_pad_select_gpio(sclk);
+	gpio_pad_select_gpio(xlat);
+	gpio_pad_select_gpio(blank);
 	m_data = (uint16_t *) malloc(m_nled*sizeof(uint16_t));
 	if (esp_err_t e = gpio_set_direction(m_sclk,GPIO_MODE_OUTPUT)) {
 		log_error(TAG,"unable to gpio for SCLK to output: 0x%x",e);
-	}
-	if (esp_err_t e = gpio_set_direction(m_sin,GPIO_MODE_OUTPUT)) {
+	} else if (esp_err_t e = gpio_set_direction(m_sin,GPIO_MODE_OUTPUT)) {
 		log_error(TAG,"unable to gpio for SIN to output: 0x%x",e);
-	}
-	if (esp_err_t e = gpio_set_direction(m_blank,GPIO_MODE_OUTPUT)) {
+	} else if (esp_err_t e = gpio_set_direction(m_blank,GPIO_MODE_OUTPUT)) {
 		log_error(TAG,"unable to gpio for BLANK to output: 0x%x",e);
-	}
-	if (esp_err_t e = gpio_set_direction(m_xlat,GPIO_MODE_OUTPUT)) {
+	} else if (esp_err_t e = gpio_set_direction(m_xlat,GPIO_MODE_OUTPUT)) {
 		log_error(TAG,"unable to gpio for XLAT to output: 0x%x",e);
+	} else {
+		gpio_set_level(m_xlat,0);
+		gpio_set_level(m_blank,0);
+		for (int i = 0; i < m_nled; ++i)
+			m_data[i] = (1<<12)-1;
+//		commit();
+		return 0;
 	}
-	gpio_set_level(m_xlat,0);
-	gpio_set_level(m_blank,1);
+	return 1;
 }
 
 
@@ -70,34 +69,41 @@ void TLC5947::commit()
 {
 	size_t nled = m_nled;
 	uint16_t *l = m_data;
+//	char buf[256], *b = buf;
+//	for (int i = 0; i < nled; ++i)
+//		b += snprintf(b,sizeof(buf)-(b-buf),"%u ",(unsigned)m_data[i]);
+//	log_dbug(TAG,"%s",buf);
 	do {
 		uint16_t d = *l++;
+//		log_dbug(TAG,"%u",(unsigned)d);
 		for (int b = 0; b < 12; ++b) {
-			gpio_set_level(m_sclk,1);
-			gpio_set_level(m_sin,(d & (1<<11)) ? 1 : 0);
-			d <<= 1;
 			gpio_set_level(m_sclk,0);
+			gpio_set_level(m_sin,(d & (1<<12)) ? 1 : 0);
+			d <<= 1;
+			gpio_set_level(m_sclk,1);
 		}
 	} while (--nled);
 	gpio_set_level(m_xlat,1);
 	gpio_set_level(m_xlat,0);
-	log_info(TAG,"commit()");
+//	log_info(TAG,"commit()");
 }
 
 
 void TLC5947::on()
 {
-	if (esp_err_t e = gpio_set_level(m_blank,0)) {
-		log_error(TAG,"unable to set blank to low: 0x%x",e);
-	}
+	if (esp_err_t e = gpio_set_level(m_blank,0))
+		log_error(TAG,"unable to set blank to low: %s",esp_err_to_name(e));
+	else
+		m_on = true;
 }
 
 
 void TLC5947::off()
 {
-	if (esp_err_t e = gpio_set_level(m_blank,1)) {
-		log_error(TAG,"unable to set blank to high: 0x%x",e);
-	}
+	if (esp_err_t e = gpio_set_level(m_blank,1))
+		log_error(TAG,"unable to set blank to high: %s",esp_err_to_name(e));
+	else
+		m_on = false;
 }
 
 
@@ -107,7 +113,11 @@ void TLC5947::set_led(unsigned x, uint16_t v)
 		log_error(TAG,"set_led(): led %u out of range",x);
 		return;
 	}
-	log_info(TAG,"set_led(%u,%u)",x,v);
+	if (v >= (1<<12)) {
+		log_error(TAG,"set_led(): value %u out of range",v);
+		return;
+	}
+//	log_info(TAG,"set_led(%u,%u)",x,v);
 	m_data[x] = v;
 }
 

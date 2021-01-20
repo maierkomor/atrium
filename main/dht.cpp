@@ -20,158 +20,110 @@
 
 #ifdef CONFIG_DHT
 
-#include "cyclic.h"
+#include "actions.h"
+#include "binformats.h"
 #include "dht.h"
 #include "dhtdrv.h"
 #include "globals.h"
 #include "influx.h"
+#include "ujson.h"
 #include "log.h"
 #include "mqtt.h"
+#include "shell.h"
 #include "support.h"
 #include "terminal.h"
 
 #include <driver/gpio.h>
 
-#ifdef CONFIG_DHT11
-#define DHT_MODEL 11
-#elif defined  CONFIG_DHT21
-#define DHT_MODEL 21
-#elif defined  CONFIG_DHT22
-#define DHT_MODEL 22
-#else
-#error unknown DHT model
-#endif
-
-static DHT *Dht = 0;
+static DHT Dht;
 static char TAG[] = "DHT";
 static bool Enabled = false;
-static unsigned Interval;
-
-
-/*
-int16_t dht_temperature()
-{
-	if (Dht == 0)
-		return INT16_MIN;
-	return Dht->getRawTemperature();
-}
-
-
-uint8_t dht_humidity()
-{
-	if (Dht == 0)
-		return UINT8_MAX;
-	return Dht->getRawHumidity();
-}
-*/
 
 
 int dht_init()
 {
-	if (Dht != 0) {
-		delete Dht;
-		Dht = 0;
-	}
-	Interval = 60000;
-	Dht = new DHT(CONFIG_DHT_GPIO,(DHTModel_t)DHT_MODEL);
-	Enabled = Dht->begin();
-	return Enabled ? 1 : 0;
+	if (!HWConf.has_dht())
+		return 1;
+	if (Enabled)
+		return 1;
+	const DhtConfig &c = HWConf.dht();
+	if (Dht.init(c.gpio(), c.model()))
+		return 1;
+	Enabled = true;
+	return 0;
 }
 
 
-static unsigned gatherDHTdata()
+static void gatherData(void *)
 {
-	if (Dht == 0)
-		return 300000;
 	if (!Enabled)
-		return Interval;
-	Dht->read();
-	if (const char *err = Dht->getError()) {
-		log_info(TAG,"driver error: %s",err);
-		RTData.clear_temperature();
-		RTData.clear_humidity();
-	} else {
-		char temp[8],humid[8];
-		float_to_str(temp,Dht->getTemperature());
-		log_info(TAG,"temperature %sC",temp);
-#ifdef CONFIG_MQTT
-		mqtt_publish("temperature",temp,strlen(temp),0);
-#endif
-		float_to_str(humid,Dht->getHumidity());
-		log_info(TAG,"humidity %s%%",humid);
-#ifdef CONFIG_MQTT
-		mqtt_publish("humidity",humid,strlen(humid),0);
-#endif
-		RTData.set_temperature(Dht->getTemperature());
-		RTData.set_humidity(Dht->getHumidity());
-#ifdef CONFIG_INFLUX
-		char buf[128];
-		if (sizeof(buf) > snprintf(buf,sizeof(buf),"temperature=%s,humidity=%s",temp,humid))
-			influx_send(buf);
-#endif
-	}
-	return Interval;
-}
-
-
-extern "C"
-void dht_setup(void)
-{
-	if (0 == dht_init())
 		return;
-	add_cyclic_task("dht",gatherDHTdata,0);
+	Dht.read();
+	if (const char *err = Dht.getError()) {
+		log_info(TAG,"driver error: %s",err);
+		Temperature->set(NAN);
+		Humidity->set(NAN);
+	} else {
+		double t = Dht.getTemperature();
+		double h = Dht.getHumidity();
+		rtd_lock();
+		Temperature->set(t);
+		Humidity->set(h);
+		rtd_unlock();
+		char buf[8];
+		float_to_str(buf,t);
+		log_info(TAG,"temperature %s\u00b0C",buf);
+		float_to_str(buf,h);
+		log_info(TAG,"humidity %s%%",buf);
+	}
 }
 
 
 int dht(Terminal &term, int argc, const char *args[])
 {
-	if (argc > 3) {
-		term.printf("%s: 0-2 arguments expected, got %u\n",args[0],argc-1);
-		return 1;
-	}
-	if (argc == 3) {
-		if (0 == strcmp(args[1],"interval")) {
-			long l = strtol(args[2],0,0);
-			if (l < 1000) {
-				term.printf("minimum value is 1000");
-				return 1;
-			}
-			Interval = l;
-			return 0;
-		}
-		term.printf("invalid argument\n");
-		return 1;
-	}
+	if (argc > 3)
+		return arg_invnum(term);
 	if (argc == 2) {
 		if (!strcmp(args[1],"enable"))
 			Enabled = true;
 		else if (!strcmp(args[1],"disable"))
 			Enabled = false;
 		else if (!strcmp(args[1],"sample"))
-			gatherDHTdata();
-		else if (!strcmp(args[1],"-h"))
-			term.printf("valid arguments are <none>,sample,enable,disable\n");
-		else {
-			term.printf("invalid argument\n");
-			return 1;
-		}
-		return 0;
-	}
-	if (Dht == 0) {
-		term.printf("dht not intialized\n");
-	} else if (const char *e = Dht->getError()) {
+			gatherData(0);
+		else
+			return arg_invalid(term,args[1]);
+	} else if (!Enabled) {
+		term.printf("not intialized\n");
+	} else if (const char *e = Dht.getError()) {
 		term.printf("dht error: %s\n",e);
 	} else {
-#ifdef ESP8266
-		char buf[8];
-		term.printf("dht temperature: %sC\n",float_to_str(buf,Dht->getTemperature()));
-		term.printf("dht humidity   : %s%\n",float_to_str(buf,Dht->getHumidity()));
-#else
-		term.printf("dht temperature: %gC\n",(double) Dht->getTemperature());
-		term.printf("dht humidity   : %g%\n",(double) Dht->getHumidity());
-#endif
+		char buf[12];
+		float_to_str(buf,Dht.getTemperature());
+		term.printf("temperature: %s \u00bC\n",buf);
+		float_to_str(buf,Dht.getHumidity());
+		term.printf("humidity  : %s %%\n",buf);
 	}
 	return 0;
 }
+
+
+int dht_setup(void)
+{
+	if (!HWConf.has_dht())
+		return 0;
+	if (Temperature == 0) {
+		Temperature = RTData->add("temperature",NAN);
+		Temperature->setDimension("\u00b0C");
+	}
+	if (Humidity == 0) {
+		Humidity = RTData->add("humidity",NAN);
+		Humidity->setDimension("%");
+	}
+	if (dht_init())
+		return 1;
+	action_add("dht!sample",gatherData,0,"poll DHT data");
+	return 0;
+}
+
 
 #endif

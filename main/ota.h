@@ -26,7 +26,9 @@ class Terminal;
 
 int perform_ota(Terminal &t, char *source, bool changeboot);
 int update_romfs(Terminal &t, char *source);
-bool http_download(Terminal &t, char *addr, const char *fn);
+int update_part(Terminal &t, char *source, const char *dest);
+int http_download(Terminal &t, char *addr, const char *fn);
+int boot(Terminal &t, int argc, const char *args[]);
 #endif
 
 #endif

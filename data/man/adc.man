@@ -1,0 +1,1 @@
+synopsis: adc {init|print|sample}

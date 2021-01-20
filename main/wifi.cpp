@@ -18,12 +18,18 @@
 
 #include <sdkconfig.h>
 
-#include "alive.h"
+#include "actions.h"
+#include "binformats.h"
+#include "event.h"
 #include "globals.h"
 #include "log.h"
+#include "mqtt.h"
+#include "netsvc.h"
 #include "settings.h"
+#include "status.h"
 #include "support.h"
 #include "wifi.h"
+#include "versions.h"
 
 #include <esp_err.h>
 #include <esp_wifi.h>
@@ -35,10 +41,12 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/event_groups.h>
 
-#ifdef ESP8266
-#include <apps/sntp/sntp.h>
-#elif IDF_VERSION >= 32
-#include <lwip/apps/sntp.h>	// >= v3.2
+#ifdef CONFIG_IDF_TARGET_ESP8266
+#include <lwip/apps/sntp.h>
+#elif IDF_VERSION >= 33
+#include <esp_sntp.h>
+#elif IDF_VERSION == 32
+#include <lwip/apps/sntp.h>	// v3.2
 #else
 #include <apps/sntp/sntp.h>	// <= v3.1
 #endif
@@ -53,9 +61,46 @@ EventGroupHandle_t WifiEvents;
 
 sta_mode_t StationMode;
 
-static const char TAG[] = "net";
+static const char TAG[] = "wlan";
 static bool WifiStarted = false;
 static uptime_t StationDownTS = 0;
+event_t StationUpEv = 0;
+
+
+#if IDF_VERSION >= 40
+static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
+{
+	static uint8_t WifiRetry = 0;
+	log_info(TAG,"event %d/%d",event_base,event_id);
+	if (event_base == WIFI_EVENT) {
+		if (event_id == WIFI_EVENT_STA_START) {
+			esp_wifi_connect();
+			WifiRetry = 0;
+		} else if (event_id == WIFI_EVENT_STA_DISCONNECTED) {
+			if (WifiRetry < 255) {
+				esp_wifi_connect();
+				WifiRetry++;
+				log_info(TAG, "retry to connect to the AP");
+			} else {
+				log_info(TAG,"WiFi fail");
+				xEventGroupSetBits(WifiEvents, WIFI_FAIL);
+			}
+			log_info(TAG,"connect to the AP fail");
+		} else 
+			log_info(TAG,"unhandled WiFi event with event_id %d",event_id);
+	} else if (event_base == IP_EVENT) {
+		if (event_id == IP_EVENT_STA_GOT_IP) {
+			ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
+			log_info(TAG, "got ip:%s",
+					ip4addr_ntoa(&event->ip_info.ip));
+			WifiRetry = 0;
+			xEventGroupSetBits(WifiEvents, WIFI_UP);
+		} else 
+			log_info(TAG,"unhandled IP event with event_id %d",event_id);
+	} else
+		log_info(TAG,"unhandled event %d/%d",event_base,event_id);
+}
+#endif
 
 
 static esp_err_t wifi_event_handler(void *ctx, system_event_t *event)
@@ -103,16 +148,13 @@ static esp_err_t wifi_event_handler(void *ctx, system_event_t *event)
 		// TODO? station disconnects from esp
 		break;
 	case SYSTEM_EVENT_STA_GOT_IP:
-		log_info(TAG,"station got IP %s",ip4addr_ntoa(&event->event_info.got_ip.ip_info.ip));
+		log_info(TAG,"station got IP %s",ip4addr_ntoa((ip4_addr_t*)&event->event_info.got_ip.ip_info.ip));
 		xEventGroupSetBits(WifiEvents, STATION_UP);
 		xEventGroupSetBits(WifiEvents, WIFI_UP);
 		if (Config.has_nodename())
-			setHostname(Config.nodename().c_str());
+			cfg_set_hostname(Config.nodename().c_str());
 		StationMode = station_connected;
-#ifdef CONFIG_SNTP
-		sntp_start();
-#endif
-		// mqtt handles restart itself
+		event_trigger(StationUpEv);
 		StationDownTS = 0;
 		break;
 	case SYSTEM_EVENT_STA_DISCONNECTED:
@@ -178,7 +220,6 @@ static esp_err_t wifi_event_handler(void *ctx, system_event_t *event)
 		log_info(TAG,"WPS failed");
 		if (esp_err_t e = esp_wifi_wps_disable()) 
 			log_error(TAG,"WPS disable returned %s",esp_err_to_name(e));
-		xEventGroupSetBits(WifiEvents,WPS_TERM);
 		break;
 	case SYSTEM_EVENT_STA_WPS_ER_TIMEOUT:
 		log_info(TAG,"WPS timeout");
@@ -236,7 +277,7 @@ static void sc_callback(smartconfig_status_t status, void *pdata)
 	case SC_STATUS_LINK_OVER:
 		log_info(TAG,"smart config link over");
 		if (pdata) {
-#ifdef ESP8266
+#ifdef CONFIG_IDF_TARGET_ESP8266
 			sc_callback_data_t *sc_callback_data = (sc_callback_data_t *)pdata;
 			switch (sc_callback_data->type) {
 			case SC_ACK_TYPE_ESPTOUCH:
@@ -339,10 +380,13 @@ uint32_t resolve_hostname(const char *h)
 	return resolve_fqhn(buf);
 }
 
+
 bool wifi_start_station(const char *ssid, const char *pass)
 {
 	//if (station_starting == StationMode)
 		//return true;
+	if (ESP_OK != esp_wifi_start())
+		log_error(TAG,"error starting wifi");
 	log_info(TAG,"wifi_start_station(%s,%s)",ssid,pass);
 	wifi_mode_t m = WIFI_MODE_NULL;
 	if (esp_err_t e = esp_wifi_get_mode(&m))
@@ -364,8 +408,12 @@ bool wifi_start_station(const char *ssid, const char *pass)
 	strcpy((char*)wifi_config.sta.password,pass);
 	wifi_config.sta.scan_method = WIFI_ALL_CHANNEL_SCAN;
         wifi_config.sta.sort_method = WIFI_CONNECT_AP_BY_SIGNAL;
-	wifi_config.sta.threshold.rssi = -127;
+//	wifi_config.sta.threshold.rssi = -127;
 	wifi_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
+#if IDF_VERSION >= 40
+	wifi_config.sta.pmf_cfg.capable = true;
+	wifi_config.sta.pmf_cfg.required = false;
+#endif
 	if (ESP_OK != esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config)) {
 		log_warn(TAG,"unable to configure station");
 		return false;
@@ -387,9 +435,9 @@ bool wifi_start_station(const char *ssid, const char *pass)
 		tcpip_adapter_set_ip_info(TCPIP_ADAPTER_IF_STA,&ipi);
 		initDns();
 	} else if (station.has_addr4() || station.has_netmask4() || station.has_gateway4()) {
-		log_warn(TAG,"static IP only works if address, netmask, and gateway are set");
+		log_warn(TAG,"static IP needs address, netmask, and gateway");
 	}
-	if (ESP_OK != esp_wifi_start() ) {
+	if (ESP_OK != esp_wifi_start()) {
 		log_error(TAG,"error starting wifi");
 		return false;
 	}
@@ -399,10 +447,10 @@ bool wifi_start_station(const char *ssid, const char *pass)
 
 bool wifi_stop_station()
 {
-	if (!WifiStarted) {
-		log_warn(TAG,"request to stop wifi station, while wifi offline");
-		return false;
-	}
+//	if (!WifiStarted) {
+//		log_warn(TAG,"request to stop wifi station, while wifi offline");
+//		return false;
+//	}
 	wifi_mode_t m = WIFI_MODE_NULL;
 	if (esp_err_t e = esp_wifi_get_mode(&m))
 		log_error(TAG,"error getting wifi mode: %s",esp_err_to_name(e));
@@ -423,6 +471,10 @@ bool wifi_stop_station()
 
 bool wifi_start_softap(const char *ssid, const char *pass)
 {
+	if (ssid == 0)
+		ssid = Config.nodename().c_str();
+	if (pass == 0)
+		pass = "";
 	log_info(TAG, "start WiFi soft-ap with SSID '%s', pass '%s'",ssid,pass);
 	wifi_mode_t m = WIFI_MODE_NULL;
 	if (esp_err_t e = esp_wifi_get_mode(&m))
@@ -431,13 +483,6 @@ bool wifi_start_softap(const char *ssid, const char *pass)
 	if (softap.has_mac() && (softap.mac().size() == 6)) {
 		if (esp_err_t e = esp_wifi_set_mac(ESP_IF_WIFI_AP,(const uint8_t *)softap.mac().data()))
 			log_warn(TAG,"error setting softap mac: %s",esp_err_to_name(e));
-	}
-	if (m == WIFI_MODE_NULL) {
-		if (esp_err_t e = esp_wifi_set_mode(WIFI_MODE_AP))
-			log_error(TAG,"error setting station mode %s",esp_err_to_name(e));
-	} else if (m == WIFI_MODE_STA) {
-		if (esp_err_t e = esp_wifi_set_mode(WIFI_MODE_APSTA))
-			log_error(TAG,"error setting station+ap mode %s",esp_err_to_name(e));
 	}
 	wifi_config_t wifi_config;
 	memset(&wifi_config,0,sizeof(wifi_config_t));
@@ -450,7 +495,14 @@ bool wifi_start_softap(const char *ssid, const char *pass)
 	wifi_config.ap.max_connection = 4;
 	wifi_config.ap.beacon_interval = 300;
 	if (esp_err_t e = esp_wifi_set_config(ESP_IF_WIFI_AP, &wifi_config))
-		log_error(TAG,"error setting wifi config %s",esp_err_to_name(e));
+		log_error(TAG,"setting wifi config %s",esp_err_to_name(e));
+	if (m == WIFI_MODE_NULL) {
+		if (esp_err_t e = esp_wifi_set_mode(WIFI_MODE_AP))
+			log_error(TAG,"setting station mode %s",esp_err_to_name(e));
+	} else if (m == WIFI_MODE_STA) {
+		if (esp_err_t e = esp_wifi_set_mode(WIFI_MODE_APSTA))
+			log_error(TAG,"setting station+ap mode %s",esp_err_to_name(e));
+	}
 	if (!WifiStarted) {
 		if (esp_err_t e = esp_wifi_start())
 			log_error(TAG,"error starting wifi %s",esp_err_to_name(e));
@@ -468,7 +520,7 @@ bool wifi_start_softap(const char *ssid, const char *pass)
 bool wifi_stop_softap()
 {
 	if (!WifiStarted) {
-		log_warn(TAG,"request to stop wifi station, while wifi offline");
+		log_warn(TAG,"request to stop AP, while offline");
 		return  false;
 	}
 	wifi_mode_t m = WIFI_MODE_NULL;
@@ -503,7 +555,7 @@ void wifi_wait_station()
 
 
 #ifdef CONFIG_WPS
-void wifi_wps_start()
+void wifi_wps_start(void *)
 {
 	log_info(TAG,"starting wps");
 	wifi_mode_t m;
@@ -517,13 +569,26 @@ void wifi_wps_start()
 	esp_wps_config_t config;
 	bzero(&config,sizeof(config));
 	config.wps_type = WPS_TYPE_PBC;
-#ifdef ESP32
+#if 0 //def CONFIG_IDF_TARGET_ESP32
 	config.crypto_funcs = &g_wifi_default_wps_crypto_funcs;
 #endif
-	strcpy(config.factory_info.manufacturer,"make");
-	strcpy(config.factory_info.model_number,"0");
-	strcpy(config.factory_info.model_name,"proto0");
-	strcpy(config.factory_info.device_name,"esp_proto");
+	const SystemConfig &cfg = HWConf.system();
+	if (cfg.has_manufacturer())
+		strcpy(config.factory_info.manufacturer,cfg.manufacturer().c_str());
+	else
+		strcpy(config.factory_info.manufacturer,"no manufacturer");
+	if (cfg.has_model_number())
+		strcpy(config.factory_info.model_number,cfg.model_number().c_str());
+	else
+		strcpy(config.factory_info.model_number,"0");
+	if (cfg.has_model_name())
+		strcpy(config.factory_info.model_name,cfg.model_name().c_str());
+	else
+		strcpy(config.factory_info.model_name,"no model");
+	if (Config.has_nodename())
+		strcpy(config.factory_info.device_name,Config.nodename().c_str());
+	else
+		strcpy(config.factory_info.device_name,"unnamed");
 
 	xEventGroupClearBits(WifiEvents,WPS_TERM);
 	if (esp_err_t e = esp_wifi_wps_enable(&config)) {
@@ -537,22 +602,46 @@ void wifi_wps_start()
 	log_info(TAG,"wps started, waiting to complete");
 	xEventGroupWaitBits(WifiEvents,WPS_TERM,0,0,portMAX_DELAY);
 }
+
 #endif
 
 
-extern "C"
-bool wifi_setup()
+#ifdef CONFIG_SNTP
+static void start_sntp(void *)
+{
+	sntp_start();
+}
+#endif
+
+
+int wifi_setup()
 {
 	log_info(TAG,"init");
 	tcpip_adapter_init();
+	if (esp_err_t e = esp_event_loop_create_default())
+		log_error(TAG,"esp_event_loop_init failed: %s",esp_err_to_name(e));
 	StationMode = station_disconnected;
 	WifiEvents = xEventGroupCreate();
-	xEventGroupClearBits(WifiEvents, 0xffffffff);
+	StationUpEv = event_register("wifi`station_up");
+#ifdef CONFIG_SNTP
+	Action *a = action_add("sntp!start",start_sntp,0,"sntp: start");
+	event_callback(StationUpEv,a);
+#endif
+#if IDF_VERSION >= 40
+	if (esp_err_t e = esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, 0))
+		log_error(TAG,"set wifi event handler: %s",esp_err_to_name(e));
+	if (esp_err_t e = esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, 0))
+		log_error(TAG,"set got-IP event handler: %s",esp_err_to_name(e));
+	if (esp_err_t e = esp_event_handler_register(IP_EVENT, IP_EVENT_STA_LOST_IP, &event_handler, 0))
+		log_error(TAG,"set lost-IP event handler: %s",esp_err_to_name(e));
+#else
 	if (esp_err_t e = esp_event_loop_init(wifi_event_handler,0)) {
 		log_error(TAG,"esp_event_loop_init failed: %s",esp_err_to_name(e));
-		return false;
+		return 1;
 	}
-#if defined ESP8266 && IDF_VERSION > 32
+#endif
+
+#if defined CONFIG_IDF_TARGET_ESP8266 && IDF_VERSION > 32
 	// for esp8266 post v3.2
 	wifi_init_config_t cfg;
 	cfg.event_handler = &esp_event_send;
@@ -577,7 +666,7 @@ bool wifi_setup()
 #endif
 	if (esp_err_t e = esp_wifi_init(&cfg)) {
 		log_error(TAG,"esp_wifi_init failed: %s",esp_err_to_name(e));
-		return false;
+		return 1;
 	}
 	uint8_t mac[6];
 	if (ESP_OK == esp_wifi_get_mac(ESP_IF_WIFI_AP,mac)) {
@@ -592,12 +681,8 @@ bool wifi_setup()
 	}
 	if (esp_err_t e = esp_wifi_set_storage(WIFI_STORAGE_RAM)) {
 		log_error(TAG,"esp_wifi_set_storage failed: %s",esp_err_to_name(e));
-		return false;
+		return 1;
 	}
 	esp_wifi_set_mode(WIFI_MODE_NULL);
-	if (esp_err_t e = esp_wifi_start()) {
-		log_error(TAG,"error starting wifi: %s",esp_err_to_name(e));
-		return false;
-	}
-	return true;
+	return 0;
 }

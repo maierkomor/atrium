@@ -1,0 +1,6 @@
+synopsis: sntp [<command>] [<server>]
+where <command> is:
+start : start sntp client
+stop  : stop sntp client
+set   : set sntp server to <server>
+clear : clear sntp server

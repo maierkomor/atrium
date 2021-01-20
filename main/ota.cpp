@@ -22,7 +22,7 @@
 
 #include "ota.h"
 #include "shell.h"
-#include "romfs.h"
+#include "status.h"
 #include "support.h"
 #include "terminal.h"
 #include "wifi.h"
@@ -33,10 +33,10 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <freertos/event_groups.h>
-#ifdef ESP32
+#ifdef CONFIG_IDF_TARGET_ESP32
 #include <mdns.h>
 #include <mbedtls/base64.h>
-#elif defined ESP8266
+#elif defined CONFIG_IDF_TARGET_ESP8266
 extern "C" {
 #include <esp_base64.h>
 }
@@ -61,8 +61,7 @@ extern "C" {
 #include <sys/socket.h>
 #include <unistd.h>
 
-#define OTABUF_SIZE (4096)
-
+#define OTABUF_SIZE 4096
 
 
 static char *skip_http_header(Terminal &t, char *text, int len)
@@ -90,7 +89,7 @@ static int send_http_get(Terminal &t, const char *server, int port, const char *
 	si.sin_family = AF_INET;
 	si.sin_port = htons(port);
 	si.sin_addr.s_addr = resolve_hostname(server);
-	if (si.sin_addr.s_addr == IPADDR_NONE) {
+	if ((si.sin_addr.s_addr == IPADDR_NONE) || (si.sin_addr.s_addr == 0)) {
 		t.printf("could not resolve hostname %s\n",server);
 		return -1;
 	}
@@ -122,7 +121,7 @@ static int send_http_get(Terminal &t, const char *server, int port, const char *
 	if (auth) {
 		strcpy(http_request+get_len,"Authorization: Basic ");
 		get_len += 21;
-#ifdef ESP8266
+#ifdef CONFIG_IDF_TARGET_ESP8266
 		int n = esp_base64_encode(auth,strlen(auth),http_request+get_len,sizeof(http_request)-get_len);
 		if (n < 0) {
 			t.printf("base64: 0x%x\n",n);
@@ -151,40 +150,40 @@ static int send_http_get(Terminal &t, const char *server, int port, const char *
 		t.printf("unable to send get request: %s\n",strerror(errno));
     		return -1;
 	}
-	t.printf("GET request submitted\n");
+	t.println("sent GET");
 	return hsock;
 }
 
 
-static bool to_fd(Terminal &t, void *arg, char *buf, size_t s)
+static int to_fd(Terminal &t, void *arg, char *buf, size_t s)
 {
 	//t.printf("to_fd(): %u bytes\n",s);
 	if (-1 != write((int)arg,buf,s))
-		return true;
+		return 0;
 	t.printf("write error: %s\n",strerror(errno));
-	return false;
+	return 1;
 }
 
 
-static bool to_ota(Terminal &t, void *arg, char *buf, size_t s)
+static int to_ota(Terminal &t, void *arg, char *buf, size_t s)
 {
 	//t.printf("to_ota(): %u bytes\n",s);
 	esp_err_t err = esp_ota_write((esp_ota_handle_t)arg,buf,s);
 	if (err == ESP_OK)
-		return true;
+		return 0;
 	t.printf("OTA flash failed: %s\n",esp_err_to_name(err));
-	return false;
+	return 1;
 }
 
 
-static bool socket_to_x(Terminal &t, int hsock, bool (*sink)(Terminal&,void*,char*,size_t), void *arg)
+static int socket_to_x(Terminal &t, int hsock, int (*sink)(Terminal&,void*,char*,size_t), void *arg)
 {
 	char *buf = (char*)malloc(OTABUF_SIZE), *data;
 	if (buf == 0) {
-		t.printf("out of memory\n");
-		return false;
+		t.println("out of memory");
+		return 1;
 	}
-	bool ret = false;
+	int ret = 1;
 	size_t numD = 0;
 	int r = recv(hsock,buf,OTABUF_SIZE,0);
 	if (r < 0)
@@ -199,35 +198,35 @@ static bool socket_to_x(Terminal &t, int hsock, bool (*sink)(Terminal&,void*,cha
 	}
 	data = skip_http_header(t,buf,r);
 	if (data == 0) {
-		t.printf("unable to find end of header\n");
+		t.println("no end of header");
 		goto done;
 	}
 	r -= (data-buf);
 	while (r > 0) {
 		numD += r;
-		if (!sink(t,arg,data,r))
+		if (sink(t,arg,data,r))
 			goto done;
 		r = recv(hsock,buf,OTABUF_SIZE,0);
 		data = buf;
 		t.printf("wrote %d bytes\r",numD);
 	}
 	t.printf("\n");
-	ret = true;
+	ret = 0;
 done:
 	free(buf);
 	return ret;
 }
 
 
-static bool file_to_flash(Terminal &t, int fd, esp_ota_handle_t ota)
+static int file_to_flash(Terminal &t, int fd, esp_ota_handle_t ota)
 {
 	size_t numD = 0;
 	char *buf = (char*)malloc(OTABUF_SIZE);
 	if (buf == 0) {
-		t.printf("out of memory\n");
+		t.println("out of memory");
 		return false;
 	}
-	bool r = false;
+	int r = 1;
 	for (;;) {
 		int n = read(fd,buf,OTABUF_SIZE);
 		if (n < 0) {
@@ -236,7 +235,7 @@ static bool file_to_flash(Terminal &t, int fd, esp_ota_handle_t ota)
 		}
 		if (n == 0) {
 			//t.printf( "ota received %d bytes, wrote %d bytes",numD,numU);
-			r = true;
+			r = 0;
 			break;
 		}
 		numD += n;
@@ -245,15 +244,15 @@ static bool file_to_flash(Terminal &t, int fd, esp_ota_handle_t ota)
 			t.printf("ota write failed: %s\n",esp_err_to_name(err));
 			break;
 		}
-		t.printf("wrote %d bytes\r",r);
+		t.printf("\rwrote %d bytes",r);
 	}
-	t.printf("\n");
+	t.println();
 	free(buf);
 	return r;
 }
 
 
-static bool http_to(Terminal &t, char *addr, bool (*sink)(Terminal &,void*,char*,size_t), void *arg)
+static int http_to(Terminal &t, char *addr, int (*sink)(Terminal &,void*,char*,size_t), void *arg)
 {
 	uint16_t port;
 	const char *server;
@@ -265,7 +264,7 @@ static bool http_to(Terminal &t, char *addr, bool (*sink)(Terminal &,void*,char*
 		server = addr + 8;
 	} else {
 		t.printf("http_to('%s'): invalid address\n",addr);
-		return false;
+		return 1;
 	}
 	//  user/pass extraction
 	const char *username = 0;
@@ -281,8 +280,8 @@ static bool http_to(Terminal &t, char *addr, bool (*sink)(Terminal &,void*,char*
 
 	char *filepath = strchr(server,'/');
 	if (filepath == 0) {
-		t.printf("no file in http address\n");
-		return false;
+		t.println("no file in http address");
+		return 1;
 	}
 	*filepath = 0;
 	++filepath;
@@ -290,21 +289,21 @@ static bool http_to(Terminal &t, char *addr, bool (*sink)(Terminal &,void*,char*
 	if (portstr) {
 		long l = strtol(++portstr,0,0);
 		if ((l < 0) || (l > UINT16_MAX)) {
-			t.printf("port value out of range\n");
+			t.println("invalid port");
 			return false;
 		}
 		port = l;
 	}
 	int hsock = send_http_get(t,server,port,filepath,username);
 	if (hsock == -1)
-		return false;
-	bool r = socket_to_x(t,hsock,sink,arg);
+		return 1;
+	int r = socket_to_x(t,hsock,sink,arg);
 	close(hsock);
 	return r;
 }
 
 
-bool http_download(Terminal &t, char *addr, const char *fn)
+int http_download(Terminal &t, char *addr, const char *fn)
 {
 	if (fn == 0) {
 		 char *sl = strrchr(addr,'/');
@@ -330,43 +329,60 @@ bool http_download(Terminal &t, char *addr, const char *fn)
 		return false;
 	}
 	t.printf("downloading to %s\n",fn);
-	bool r = http_to(t,addr,to_fd,(void*)fd);
+	int r = http_to(t,addr,to_fd,(void*)fd);
 	close(fd);
 	return r;
 }
 
 
-#ifdef CONFIG_ROMFS
-static bool to_romfs(Terminal &t, void *arg, char *buf, size_t s)
+static int to_part(Terminal &t, void *arg, char *buf, size_t s)
 {
-	uint32_t *addr = (uint32_t *)arg;
-	//t.printf("to_romfs %u@%x\n",s,*addr);
-	esp_err_t e = spi_flash_write(*addr,buf,s);
+	esp_partition_t *p = (esp_partition_t *)arg;
+	//t.printf("to_part %u@%x\n",s,*addr);
+	if (s > p->size) {
+		t.println("end of partition");
+		return 1;
+	}
+	esp_err_t e = spi_flash_write(p->address,buf,s);
 	if (e) {
 		t.printf("flash error %s\n",esp_err_to_name(e));
-		return false;
+		return 1;
 	}
-	*addr += s;
-	return true;
-
+	p->address += s;
+	p->size -= s;
+	return 0;
 }
 
 
-int update_romfs(Terminal &t, char *source)
+int update_part(Terminal &t, char *source, const char *dest)
 {
-	uint32_t addr = RomfsBaseAddr;
-	t.printf("erasing flash\n");
-	esp_err_t e = spi_flash_erase_range(RomfsBaseAddr,RomfsSpace);
-	if (e)
-		t.printf("warning: erasing flash failed\n");
-	t.printf("programming flash\n");
-	return http_to(t,source,to_romfs,(void*)&addr) ? 0 : 1;
+	esp_partition_t *p = (esp_partition_t *) esp_partition_find_first(ESP_PARTITION_TYPE_DATA,ESP_PARTITION_SUBTYPE_ANY,dest);
+	if (p == 0) {
+		t.printf("unknown partition '%s'",dest);
+		return 1;
+	}
+	const esp_partition_t *b = esp_ota_get_running_partition();
+	if ((b->address <= p->address) && (b->address+b->size >= p->address)) {
+		t.println("cannot update to running partition");
+		return 1;
+	}
+	uint32_t addr = p->address;
+	uint32_t s = p->size;
+	t.printf("erasing %d@%x\n",p->size,p->address);
+	if (esp_err_t e = spi_flash_erase_range(p->address,p->size)) {
+		t.printf("error erasing: %s\n",esp_err_to_name(e));
+		return 1;
+	}
+	int r = http_to(t,source,to_part,(void*)p);
+	p->address = addr;
+	p->size = s;
+	return r;
 }
-#endif
 
 
 int perform_ota(Terminal &t, char *source, bool changeboot)
 {
+	statusled_set(ledmode_pulse_often);
 	const esp_partition_t *bootp = esp_ota_get_boot_partition();
 	const esp_partition_t *runp = esp_ota_get_running_partition();
 	t.printf("running on '%s' at 0x%08x\n"
@@ -376,45 +392,84 @@ int perform_ota(Terminal &t, char *source, bool changeboot)
 		t.printf("boot partition: '%s' at 0x%08x\n",bootp->label,bootp->address);
 	const esp_partition_t *updatep = esp_ota_get_next_update_partition(NULL);
 	if (updatep == 0) {
-		t.printf("no OTA partition\n");
+		t.println("no OTA partition");
+		statusled_set(ledmode_pulse_seldom);
 		return 1;
 	}
-	t.printf("erasing '%s' at 0x%x\n",updatep->label,updatep->address);
+	t.printf("erasing '%s' at 0x%08x\n",updatep->label,updatep->address);
 	esp_ota_handle_t ota = 0;
 	esp_err_t err = esp_ota_begin(updatep, OTA_SIZE_UNKNOWN, &ota);
 	if (err != ESP_OK) {
 		t.printf("esp_ota_begin failed: %s\n",esp_err_to_name(err));
+		statusled_set(ledmode_pulse_seldom);
 		return 1;
 	}
 
-	bool result;
+	int result;
 	if ((0 == memcmp(source,"http://",7)) || (0 == memcmp(source,"https://",8))) {
 		result = http_to(t,source,to_ota,(void*)ota);
 	} else {
+		t.printf("open file %s\n",source);
 		int fd = open(source,O_RDONLY);
 		if (fd == -1) {
-			t.printf("open(%s): %s\n",source,strerror(errno));
+			t.printf("open %s: %s\n",source,strerror(errno));
 			return 1;
 		}
-		t.printf("doing flash update\n");
 		result = file_to_flash(t,fd,ota);
 		close(fd);
 	}
-
-	if (esp_ota_end(ota) != ESP_OK) {
-		t.printf("esp_ota_end failed\n");
+	if (esp_err_t e = esp_ota_end(ota)) {
+		t.printf("esp_ota_end: %s\n",esp_err_to_name(e));
+		statusled_set(ledmode_pulse_seldom);
 		return 1;
 	}
-	if (!result)
+	if (result) {
+		statusled_set(ledmode_pulse_seldom);
 		return 1;
+	}
 	if (changeboot && (bootp != updatep)) {
 		int err = esp_ota_set_boot_partition(updatep);
 		if (err != ESP_OK) {
 			t.printf("set boot failed: %s\n",esp_err_to_name(err));
+			statusled_set(ledmode_pulse_seldom);
 			return 1;
 		}
 	}
+	statusled_set(ledmode_off);
 	return 0;
 }
 
+
+int boot(Terminal &term, int argc, const char *args[])
+{
+	if (argc > 2)
+		return arg_invnum(term);
+	if (argc == 1) {
+		const esp_partition_t *b = esp_ota_get_boot_partition();
+		const esp_partition_t *r = esp_ota_get_running_partition();
+		const esp_partition_t *u = esp_ota_get_next_update_partition(NULL);
+		term.printf("boot  : %s\n"
+				"run   : %s\n"
+				"update: %s\n"
+				, b ? b->label : "<error>"
+				, r ? r->label : "<error>"
+				, u ? u->label : "<error>"
+			   );
+		return b && r ? 0 : 1;
+	}
+	if (0 == term.getPrivLevel())
+		return arg_priv(term);
+	esp_partition_iterator_t i = esp_partition_find(ESP_PARTITION_TYPE_APP,ESP_PARTITION_SUBTYPE_ANY,0);
+	while (i) {
+		const esp_partition_t *p = esp_partition_get(i);
+		if (0 == strcmp(p->label,args[1])) {
+			esp_ota_set_boot_partition(p);
+			esp_partition_iterator_release(i);
+			return 0;
+		}
+		i = esp_partition_next(i);
+	}
+	printf("cannot boot %s",args[1]);
+	return 1;
+}
 #endif

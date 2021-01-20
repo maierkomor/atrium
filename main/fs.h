@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2019, Thomas Maier-Komor
+ *  Copyright (C) 2018-2020, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -20,8 +20,6 @@
 #define FS_H
 
 #include <stddef.h>
-
-//extern void *MMAPPEDROM;	-- flash mmap support needed
 
 size_t fs_avail();
 size_t fs_size();

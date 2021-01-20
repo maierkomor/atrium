@@ -1,0 +1,4 @@
+synopsis: su [<0|1>]
+level 1 for admin rights
+level 0 for regular rights
+(this interface is expected to be changed)

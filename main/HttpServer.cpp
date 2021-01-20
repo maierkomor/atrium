@@ -30,6 +30,8 @@
 #include <stdio.h>
 #include <sys/socket.h>
 
+#define HTTP_REQ_SIZE 2048
+
 #if defined CONFIG_FATFS || defined CONFIG_SPIFFS
 #define HAVE_FS
 #endif
@@ -39,7 +41,6 @@ using namespace std;
 
 
 static char TAG[] = "www";
-
 
 
 HttpServer::HttpServer(const char *wwwroot, const char *rootmap)
@@ -130,7 +131,7 @@ bool HttpServer::runFile(HttpRequest *req)
 		return false;
 	}
 	if (m_wwwroot == 0) {
-		log_error(TAG,"looking for file but no wwwroot given");
+		log_warn(TAG,"looking for file but no wwwroot given");
 		return false;
 	}
 	size_t rl = strlen(m_wwwroot);
@@ -140,60 +141,62 @@ bool HttpServer::runFile(HttpRequest *req)
 	char fn[ul+rl+1];
 	memcpy(fn,m_wwwroot,rl);
 	memcpy(fn+rl,uri,ul+1);
-	log_info(TAG,"open(%s)",fn);
+	log_dbug(TAG,"open(%s)",fn);
 	HttpResponse ans;
 	int fd = open(fn,O_RDONLY);
 	if (fd == -1) {
-		log_info(TAG,"open of %s failed",fn);
+		log_dbug(TAG,"open of %s failed",fn);
 		ans.setResult(HTTP_NOT_FOUND);
 		ans.senddata(req->getConnection());
 	} else {
-		log_info(TAG,"sending file");
+		log_dbug(TAG,"sending file %s",fn);
 		ans.setResult(HTTP_OK);
 		ans.senddata(req->getConnection(),fd);
 		close(fd);
 	}
 	return true;
-#else
+#else // HAVE_FS
 	const char *uri = req->getURI();
 	if (*uri == '/')
 		++uri;
 	int r = romfs_open(uri);
 	if (r < 0) {
-		log_info(TAG,"%s is not in romfs",uri);
+		log_dbug(TAG,"%s is not in romfs",uri);
 		return false;
 	}
-	size_t s = romfs_size(r);
-	log_info(TAG,"found %s in romfs, size %u",uri,s);
+	ssize_t s = romfs_size_fd(r);
+	log_dbug(TAG,"found %s in romfs, size %u",uri,s);
 	HttpResponse ans;
 	int con = req->getConnection();
-	if (s <= 512) {
-		ans.setResult(HTTP_OK);
-		string &content = ans.contentString();
-		content.resize(s);
-		romfs_read_at(r,(char*)content.data(),s,0);
-		ans.senddata(con);
-	} else {
-		const unsigned bs = 512;
-		char tmp[bs];
-		ans.setResult(HTTP_OK);
-		ans.setContentLength(s);
-		ans.senddata(con);
-		int off = 0;
-		do {
-			unsigned n = s > sizeof(tmp) ? sizeof(tmp) : s;
-			romfs_read_at(r,tmp,n,off);
-			off += n;
-			if (-1 == send(con,tmp,n,0)) {
-				log_error(TAG,"error sending: %s",strerror(errno));
-				return false;
-			}
-			//ans.addContent(tmp,n);
-			s -= n;
-		} while (s > 0);
+	if (strstr(uri,".gz"))
+		ans.addHeader("Content-Encoding:gzip");
+	ans.setResult(HTTP_OK);
+	if (0 == strstr(uri,".html"))
+		ans.setContentType(CT_TEXT_PLAIN);
+	ans.setContentLength(s);
+	ans.senddata(con);
+	int off = 0;
+#ifdef CONFIG_ENABLE_FLASH_MMAP
+	void *addr = romfs_mmap(r);
+	if (-1 == send(con,addr,s,0)) {
+		log_warn(TAG,"error sending: %s",strerror(errno));
+		return false;
 	}
+#else
+	char tmp[512];
+	do {
+		unsigned n = s > sizeof(tmp) ? sizeof(tmp) : s;
+		romfs_read_at(r,tmp,n,off);
+		off += n;
+		if (-1 == send(con,tmp,n,0)) {
+			log_warn(TAG,"error sending: %s",strerror(errno));
+			return false;
+		}
+		s -= n;
+	} while (s > 0);
+#endif // CONFIG_ENABLE_FLASH_MMAP
 	return true;
-#endif
+#endif // HAVE_FS
 }
 
 
@@ -201,7 +204,7 @@ bool HttpServer::runFunction(HttpRequest *req)
 {
 	auto i = m_functions.find(req->getURI());
 	if (i == m_functions.end()) {
-		//log_info(TAG,"function not found");
+		log_dbug(TAG,"function %s not found",req->getURI());
 		return false;
 	}
 	www_fun_t f = i->second;
@@ -214,7 +217,7 @@ bool HttpServer::runMemory(HttpRequest *req)
 {
 	auto m = m_memfiles.find(req->getURI());
 	if (m == m_memfiles.end()) {
-		//log_info(TAG,"memfile not found");
+		log_info(TAG,"memfile %s not found",req->getURI());
 		return false;
 	}
 	HttpResponse ans;
@@ -230,7 +233,7 @@ void HttpServer::performGET(HttpRequest *req)
 	const char *uri = req->getURI();
 	//log_info(TAG,"get %s",uri);
 	if ((uri[0] == '/') && (uri[1] == 0)) {
-		log_info(TAG,"root query mapped to %s",m_rootmap);
+		log_dbug(TAG,"root query mapped to %s",m_rootmap);
 		req->setURI(m_rootmap);
 	}
 	if (runMemory(req)) {
@@ -238,7 +241,7 @@ void HttpServer::performGET(HttpRequest *req)
 	} else if (runFile(req)) {
 	} else if (runDirectory(req)) {
 	} else {
-		log_info(TAG,"not found");
+		log_dbug(TAG,"%s: not found",uri);
 		HttpResponse ans;
 		ans.setResult(HTTP_NOT_FOUND);
 		ans.senddata(req->getConnection());
@@ -248,7 +251,7 @@ void HttpServer::performGET(HttpRequest *req)
 
 void HttpServer::performPOST(HttpRequest *req)
 {
-	log_info(TAG,"post request %s",req->getURI());
+	log_dbug(TAG,"post request %s",req->getURI());
 	if (!runFunction(req)) {
 		HttpResponse ans;
 		ans.setResult(HTTP_NOT_FOUND);
@@ -302,9 +305,12 @@ void HttpServer::performPUT(HttpRequest *req)
 
 void HttpServer::handleConnection(int con)
 {
+	char *buf = (char *) malloc(HTTP_REQ_SIZE);
+	if (buf == 0)
+		return;
 	unsigned count = 0;
-	log_info(TAG,"new incoming connection");
-	HttpRequest *req = HttpRequest::parseRequest(con);
+	log_dbug(TAG,"new incoming connection");
+	HttpRequest *req = HttpRequest::parseRequest(con,buf,HTTP_REQ_SIZE);
 	while (req && (req->getError() == 0)) {
 		httpreq_t t = req->getType();
 		if (t == hq_put) {
@@ -314,7 +320,7 @@ void HttpServer::handleConnection(int con)
 		} else if (t == hq_get) {
 			performGET(req);
 		} else if (t == hq_delete) {
-			string fn = m_wwwroot;
+			estring fn = m_wwwroot;
 			fn += req->getURI();
 			HttpResponse ans;
 			if (unlink(fn.c_str()) == 0)
@@ -334,12 +340,11 @@ void HttpServer::handleConnection(int con)
 		delete req;
 		if (!a || e)
 			break;
-		if (++count > 40)	// limit number of requirests per connection
+		if (++count > 20)	// limit connection to 10 requests
 			break;
-		req = HttpRequest::parseRequest(con);
+		req = HttpRequest::parseRequest(con,buf,HTTP_REQ_SIZE);
 	}
-	log_info(TAG,"closing connection");
-	close(con);
+	free(buf);
 }
 
 

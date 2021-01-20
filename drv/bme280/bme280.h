@@ -25,9 +25,8 @@
 extern "C" {
 #endif
 
-int bme280_init(unsigned, unsigned);
+int bme280_init(unsigned, unsigned, unsigned, unsigned);
 uint8_t bme280_status();
-//int bme280_read(int32_t *t, uint32_t *p, uint32_t *h);
 int bme280_read(double *t, double *h, double *p);
 
 #ifdef __cplusplus

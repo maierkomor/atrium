@@ -26,33 +26,52 @@
 #include <utility>
 
 extern EventGroupHandle_t SysEvents;
-extern std::pair<const char *, int (*)(const char *)> SetFns[];
+
+class Terminal;
+
+int update_setting(Terminal &t, const char *name, const char *value);
+void list_settings(Terminal &t);
 
 extern "C" {
 #endif
 
+void cfg_activate_actions();
+void cfg_activate_triggers();
+void cfg_init_functions();
+int cfg_get_uvalue(const char *name, unsigned *u, unsigned def = 0);
+int cfg_get_dvalue(const char *name, signed *u, signed def = 0);
+int cfg_get_fvalue(const char *name, double *u, double def = 0);
+void cfg_set_uvalue(const char *name, unsigned u);
+void cfg_set_dvalue(const char *name, signed u);
+void cfg_set_fvalue(const char *name, double u);
 extern const char Version[];
-int setPassword(const char *p);
 bool verifyPassword(const char *p);
 bool isValidBaudrate(long l);
-void activateSettings();
+void cfg_activate();
+void cfg_set_station(const uint8_t *ssid, const uint8_t *pass);
+const char *cfg_get_domainname();
 void initDns();
-uint8_t *readNVconfig(size_t *len);
-bool readSettings();
-void setupDefaults();
-void storeSettings();
+int readNVconfig(const char *, uint8_t **, size_t *len);
+//int readSettings();
+int setPassword(const char *p);
+int cfg_read_nodecfg();
+int cfg_read_hwcfg();
+void startWPS();
+void cfg_init_defaults();
+int cfg_store_hwcfg();
+int cfg_store_nodecfg();
 void sntp_start();
-void factoryReset();
-int setHostname(const char *hn);
-void clearSettings();
-void eraseSettings();
+void cfg_factory_reset(void * = 0);
+int cfg_set_hostname(const char *hn);
+void cfg_clear_nodecfg();
+int cfg_erase_nvs();
 void nvs_setup();
-void settings_setup();
-int change_setting(const char *name, const char *value);
 int set_cpu_freq(unsigned mhz);
 int set_timezone(const char *v);
 void store_nvs_u8(const char *, uint8_t);
 uint8_t read_nvs_u8(const char *, uint8_t);
+int writeNVM(const char *name, const uint8_t *buf, size_t s);
+
 
 #ifdef __cplusplus
 }

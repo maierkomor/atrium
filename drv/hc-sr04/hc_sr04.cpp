@@ -25,6 +25,7 @@
 #include <freertos/queue.h>
 #include <freertos/semphr.h>
 #include <freertos/task.h>
+#include <rom/gpio.h>
 
 
 static const char TAG[] = "hc_sr04";
@@ -35,6 +36,8 @@ int HC_SR04::init(unsigned trigger,unsigned echo)
 {
 	if (trigger == echo)
 		return -1;
+	gpio_pad_select_gpio(trigger);
+	gpio_pad_select_gpio(echo);
 	if (esp_err_t e = gpio_set_direction((gpio_num_t)trigger,GPIO_MODE_OUTPUT)) {
 		log_error(TAG,"unable to set GPIO %u as output: %s",trigger,esp_err_to_name(e));
 		return -2;

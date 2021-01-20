@@ -19,6 +19,10 @@
 #ifndef PROFILING_H
 #define PROFILING_H
 
+#include <sdkconfig.h>
+
+#ifdef CONFIG_FUNCTION_TIMING
+
 #include "log.h"
 #include <esp_timer.h>
 
@@ -34,9 +38,9 @@ class TimeDelta
 	{
 		int64_t dt = esp_timer_get_time() - m_start;
 		if (m_msg)
-			con_printf("%s: %ld\n",m_msg,dt);
+			con_printf("%s: %ld",m_msg,dt);
 		else
-			con_printf("%ld\n",m_msg,dt);
+			con_printf("%ld",dt);
 	}
 
 	private:
@@ -46,5 +50,15 @@ class TimeDelta
 	int64_t m_start;
 	const char *m_msg;
 };
+
+#else	// disabled
+
+struct TimeDelta
+{
+	explicit TimeDelta(const char *n = 0)
+	{ }
+};
+
+#endif
 
 #endif

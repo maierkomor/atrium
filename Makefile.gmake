@@ -25,7 +25,12 @@
 # XTOOLS_ESP32
 # XTOOLS_ESP8266
 # WFC
--include settings.mk
+ifeq ("$(wildcard settings.mk)","settings.mk")
+include settings.mk
+else
+$(error run setupenv.sh or create settings.mk with IDF_ESP8266,IDF_ESP32,XTOOLS_ESP8266,XTOOLS_ESP32,WFC)
+exit
+endif
 
 #####
 
@@ -33,50 +38,72 @@ CXXFLAGS=-g
 
 PWD=$(shell pwd)
 
-p_ok=$(if $(wildcard $(PWD)/projects/$(PROJECT)),, $(error project file not found))
+ifneq ($(MAKECMDGOALS),atriumcfg)
+ifneq ($(MAKECMDGOALS),mkromfs)
+ifneq ("$(wildcard projects/$(PROJECT))","projects/")
 SDKCONFIG=$(PWD)/projects/$(PROJECT)
-
 -include $(SDKCONFIG)	# needed for romfs .bin generation
+else
+$(warning unable to find project file "projects/$(PROJECT)")
+endif
+endif
+endif
 
-CHIP=$(shell grep ESP8266 projects/$(PROJECT) 2>&1 > /dev/null && echo ESP8266 || echo ESP32)
-IDF_PATH:=$(IDF_$(CHIP))
-ESPTOOL:=$(IDF_PATH)/components/esptool_py/esptool/esptool.py
-PARTTOOL:=$(IDF_PATH)/components/partition_table/parttool.py
-FLASH_PORT:=$(CONFIG_ESPTOOLPY_PORT)
-ROMFS_FILES=$(shell echo $(CONFIG_ROMFS_FILES) | sed 's/"//g')
-ROMFS_ADDR=$(CONFIG_ROMFS_ADDR)
-IDF_VER:=$(shell cd $(IDF_PATH); git describe --tags | sed 's/\.//;s/v//;s/-.*//;s/\..*//')
-CPPFLAGS=-DIDF_VERSION=$(IDF_VER)
-PATH+=:$(XTOOLS_ESP32)/bin:$(XTOOLS_ESP8266)/bin
-BUILD_DIR_BASE=$(PWD)/build.$(PROJECT)
-PROJECT_ROOT=$(PWD)
-WFCINC=$(WFCDIR)/include
+# some defaults for romfs-flash in case no PROJECT is given
+CONFIG_ESPTOOLPY_PORT?=/dev/ttyUSB0
+
+PROJECT_NAME	= atrium
+CHIP		=$(shell grep ESP8266 projects/$(PROJECT) 2>&1 > /dev/null && echo ESP8266 || echo ESP32)
+IDF_PATH	:=$(IDF_$(CHIP))
+ESPTOOL		:=$(IDF_PATH)/components/esptool_py/esptool/esptool.py
+PARTTOOL	:=$(IDF_PATH)/components/partition_table/parttool.py
+FLASH_PORT	:=$(CONFIG_ESPTOOLPY_PORT)
+ROMFS		=
+ROMFS_LST	=romfs/$(ROMFS).lst
+ROMFS_FILE	=$(ROMFS_LST:%.lst=%.romfs)
+ROMFS_FILES	=$(shell cat $(ROMFS_LST) 2>/dev/null)
+ROMFS_ADDR	=$(CONFIG_ROMFS_ADDR)
+IDF_VER		:=$(shell cd $(IDF_PATH); git describe --tags 2>/dev/null | sed 's/\.//;s/v//;s/-.*//;s/\..*//')
+CPPFLAGS	=-DIDF_VERSION=$(IDF_VER) -I$(BUILD_DIR_BASE)/config
+PATH		+=:$(XTOOLS_ESP32)/bin:$(XTOOLS_ESP8266)/bin
+BUILD_DIR_BASE	=$(PWD)/build.$(PROJECT)
+PROJECT_ROOT	=$(PWD)
+WFCINC		=$(WFCDIR)/include
+PROJECT_VER	=$(shell bin/mkversion.sh)
+MEMFILES	=$(shell cd data; ls -1 man/*.man)
+ROMFS_PARTITION	=storage
+
 ifneq ($(ROMFS_FILES),)
 ESPTOOL_ALL_FLASH_ARGS=$(ROMFS_ADDR) build.$(PROJECT)/romfs.bin
 endif
 
-export BUILD_DIR_BASE CHIP CPPFLAGS IDF_PATH IDF_VER PATH PTABLE PROJECT_ROOT PROJECT SDKCONFIG WFC WFCDIR ESPTOOL_ALL_FLASH_ARGS
+.PHONY: prepare settings
+
+export BUILD_DIR_BASE CHIP CPPFLAGS PROJECT_NAME IDF_PATH IDF_VER PATH PTABLE PROJECT_ROOT PROJECT SDKCONFIG WFC WFCDIR ESPTOOL_ALL_FLASH_ARGS CXXFLAGS PROJECT_VER MEMFILES CONFIG_INTEGRATED_HELP
+
+romfs/%.romfs: prepare
+	bin/mkromfs -c data -o $@ $(ROMFS_FILES) version.txt
 
 default: all
 
 settings:
-	echo SDKCONFIG=$(SDKCONFIG)
-	echo BUILD=build.$(PROJECT)
-	echo CHIP=$(CHIP)
-	echo CONFIG_ROMFS_FILES=$(CONFIG_ROMFS_FILES)
-	echo ROMFS_FILES=$(ROMFS_FILES:%=data/%)
-	echo ROMFS_ADDR=$(ROMFS_ADDR)
-	echo PATH=$(PATH)
-	echo IDF_PATH=$(IDF_PATH)
-	echo IDF_VER=$(IDF_VER)
-	echo CPPFLAGS=$(CPPFLAGS)
+	@echo SDKCONFIG=$(SDKCONFIG)
+	@echo BUILD=build.$(PROJECT)
+	@echo CHIP=$(CHIP)
+	@echo CONFIG_ROMFS_FILES=$(CONFIG_ROMFS_FILES)
+	@echo ROMFS_FILES=$(ROMFS_FILES)
+	@echo ROMFS_ADDR=$(ROMFS_ADDR)
+	@echo PATH=$(PATH)
+	@echo IDF_PATH=$(IDF_PATH)
+	@echo IDF_VER=$(IDF_VER)
+	@echo CPPFLAGS=$(CPPFLAGS)
 
 $(IDF_PATH):
-	echo please run setupenv.sh before running make
+	@echo please run setupenv.sh before running make
 	exit 1
 
 prepare: $(IDF_PATH)
-	bash bin/prebuild.sh
+	BUILD_DIR=$(BUILD_DIR_BASE) bash bin/prebuild.sh
 
 all: prepare
 	+$(MAKE) -f $(CHIP).mk all
@@ -87,16 +114,19 @@ app2: prepare
 app-flash: prepare
 	+$(MAKE) -f $(CHIP).mk app-flash
 
-flash: prepare romfs
+flash: prepare
 	+$(MAKE) -f $(CHIP).mk flash
 
-ota: prepare romfs
-	-rm $(BUILD_DIR_BASE)/firmware.elf $(BUILD_DIR_BASE)/esp8266/esp8266_out.ld
+fflash:
+	+$(MAKE) -f $(CHIP).mk flash
+
+ota: prepare
+	-rm $(BUILD_DIR_BASE)/$(PROJECT_NAME).elf $(BUILD_DIR_BASE)/esp8266/esp8266_out.ld
 	+$(MAKE) -f $(CHIP).mk all
-	cp $(BUILD_DIR_BASE)/firmware.bin $(BUILD_DIR_BASE)/firmware.app1
-	-rm $(BUILD_DIR_BASE)/firmware.elf $(BUILD_DIR_BASE)/esp8266/esp8266_out.ld
+	cp $(BUILD_DIR_BASE)/$(PROJECT_NAME).bin $(BUILD_DIR_BASE)/$(PROJECT_NAME).app1
+	-rm $(BUILD_DIR_BASE)/$(PROJECT_NAME).elf $(BUILD_DIR_BASE)/esp8266/esp8266_out.ld
 	+$(MAKE) -f $(CHIP).mk app2
-	cp $(BUILD_DIR_BASE)/firmware.bin $(BUILD_DIR_BASE)/firmware.app2
+	cp $(BUILD_DIR_BASE)/$(PROJECT_NAME).bin $(BUILD_DIR_BASE)/$(PROJECT_NAME).app2
 
 menuconfig:
 	+$(MAKE) -f $(CHIP).mk menuconfig
@@ -110,7 +140,7 @@ size-symbols: prepare
 size: prepare
 	+$(MAKE) -f $(CHIP).mk size
 
-monitor: prepare
+monitor: #prepare
 	+$(MAKE) -f $(CHIP).mk monitor
 
 help: 
@@ -132,11 +162,10 @@ wfc/bin/wfc: prepare
 bin/mkromfs: bin tools/mkromfs.cpp
 	g++ -g tools/mkromfs.cpp -o $@
 
+mkromfs: bin/mkromfs
+
 tools/binformats.cpp: binformats.wfc
 	$(WFC) -tpc binformats.wfc -o tools
-
-bin/decodecfg: tools/decodecfg.cpp tools/binformats.cpp main/strstream.cpp $(WFCDIR)/lib/wfc_support.cpp 
-	$(CXX) $(CSSFLAGS) -I$(WFCINC) -Imain $^ -o $@
 
 bin/atrium-logd: bin tools/binformats.cpp tools/atrium-logd.cpp
 	$(CXX) $(CXXFLAGS) -I$(WFCINC) tools/atrium-logd.cpp tools/binformats.cpp $(WFCDIR)/lib/wfc_support.cpp -o $@
@@ -147,14 +176,28 @@ bin/atrium-gencsv: bin tools/binformats.cpp tools/atrium-gencsv.cpp
 build.$(PROJECT):
 	-mkdir $@
 
-build.$(PROJECT)/romfs.bin: prepare bin/mkromfs $(ROMFS_FILES:%=data/%) build.$(PROJECT)
-	if [ "" != "$(ROMFS_FILES)" ]; then bin/mkromfs -o $@ data/version.txt $(ROMFS_FILES:%=data/%); else rm -f $@; fi
+build.$(PROJECT)/romfs.bin: prepare bin/mkromfs $(ROMFS_FILE:%=romfs/%) build.$(PROJECT)
+	if [ "" != "$(ROMFS_FILE)" ]; then bin/mkromfs -o $@ data/version.txt $(ROMFS_FILE:%=romfs/%); else rm -f $@; fi
 
-romfs: build.$(PROJECT)/romfs.bin
+romfs: $(ROMFS_FILE)
 
-romfs-flash: build.$(PROJECT)/romfs.bin
-	if [ -f $<  -a "" != "$(ROMFS_ADDR)" -a "" != "$(ROMFS_FILES)" ]; then $(ESPTOOL) --port $(FLASH_PORT) write_flash $(ROMFS_ADDR) build.$(PROJECT)/romfs.bin; fi
+romfs-flash: $(ROMFS_FILE)
+	if [ -f $<  -a "" != "$(ROMFS_PARTITION)" ]; then $(PARTTOOL) --port $(FLASH_PORT) write_partition --partition-name=$(ROMFS_PARTITION) --input=$^; fi
 
 build.$(PROJECT)/spiffs.bin: $(ROMFS_FILES:%=data/%)
 	if [ "" != "$(ROMFS_FILES)" ]; then mkspiffs -o $@ $(ROMFS_FILES:%=data/%); else rm -f $@; fi
 
+atriumcfg: bin/atriumcfg
+
+atriumcfg.exe: bin/atriumcfg.exe
+
+bin/atriumcfg: tools/atriumcfg.cpp components/streams/strstream.cpp components/streams/estring.cpp binformats.wfc tools/version.h
+	$(WFC) -t pc -o tools binformats.wfc
+	g++ -g -Imain -Icomponents/streams tools/binformats.cpp tools/atriumcfg.cpp main/support.cpp components/streams/strstream.cpp components/streams/stream.cpp components/streams/estring.cpp -leditline -o $@ -lmd
+
+bin/atriumcfg.exe: tools/atriumcfg.cpp components/streams/strstream.cpp components/streams/estring.cpp binformats.wfc tools/version.h
+	$(WFC) -t pc -o tools binformats.wfc
+	x86_64-w64-mingw32-g++ -g -static -Imain -Icomponents/streams tools/binformats.cpp tools/atriumcfg.cpp main/support.cpp components/streams/strstream.cpp components/streams/stream.cpp components/streams/estring.cpp -o $@
+
+tools/version.h:
+	bash bin/mkversion.sh $@

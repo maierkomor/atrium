@@ -18,8 +18,20 @@
 
 #include <sdkconfig.h>
 
+#include "binformats.h"
+#include "fs.h"
+#include "globals.h"
 #include "log.h"
 #include "terminal.h"
+#include "settings.h"
+#include "shell.h"
+
+#include <stdlib.h>
+
+#define MOUNT_POINT "/flash"
+#define DATA_PARTITION "storage"
+
+static char TAG[] = "FS";
 
 #if CONFIG_SPIFFS
 #if defined ESP8266 && IDF_VERSION < 32
@@ -29,16 +41,13 @@
 #include <esp_spi_flash.h>
 #include <esp_spiffs.h>
 
-static char TAG[] = "FS";
 
-extern "C"
-void init_fs()
+static void init_spiffs()
 {
-	log_info(TAG,"init spiffs");
 	esp_vfs_spiffs_conf_t conf;
 	bzero(&conf,sizeof(conf));
-	conf.base_path = CONFIG_MOUNT_POINT;
-	conf.partition_label = "storage";
+	conf.base_path = "/flash";
+	conf.partition_label = DATA_PARTITION;
 	conf.max_files = 4;
 	conf.format_if_mount_failed = false;
 
@@ -46,38 +55,32 @@ void init_fs()
 		log_error(TAG, "SPIFFS mounting failed: %s",esp_err_to_name(e));
 	} else {
 		size_t total = 0, used = 0;
-		if (esp_err_t e = esp_spiffs_info("storage", &total, &used))
-			log_error(TAG, "error getting SPIFFS info: %s",esp_err_to_name(e));
+		if (esp_err_t e = esp_spiffs_info(DATA_PARTITION, &total, &used)) log_error(TAG, "error getting SPIFFS info: %s",esp_err_to_name(e));
 		else
 			log_info(TAG, "SPIFFS at %s: %ukB of %ukB used",conf.base_path,used>>10,total>>10);
 	}
 }
 
 
-int shell_format(Terminal &term, int argc, const char *args[])
+static int shell_format_spiffs(Terminal &term, const char *arg)
 {
-	if (argc > 2) {
-		term.printf("%s: 1 arguments expected, got %u\n",args[0],argc-1);
-		return 1;
-	}
-	if (argc == 1) {
-		term.printf("%s: syntax: format <partition-label>\n",args[0]);
-	} else if (esp_err_t r = esp_spiffs_format(args[1])) {
+	if (esp_err_t r = esp_spiffs_format(arg)) {
 		term.printf("format failed: %s\n",esp_err_to_name(r));
 		return 1;
 	}
 	return 0;
 }
-#elif defined CONFIG_FATFS
+#endif
+
+
+
+#if defined CONFIG_FATFS
 #include <esp_vfs_fat.h>
 #include <strings.h>
 
-static char TAG[] = "FS";
-char PartitionName[] = "storage";
-wl_handle_t SpiFatFs;
+wl_handle_t SpiFatFs = 0;
 
-extern "C"
-void init_fs()
+static void init_fatfs()
 {
 	esp_vfs_fat_mount_config_t fatconf;
 	bzero(&fatconf,sizeof(fatconf));
@@ -85,60 +88,108 @@ void init_fs()
 	fatconf.max_files = 4;
 	fatconf.allocation_unit_size = 4096;	// esp-idf >= v3.1
 	SpiFatFs = WL_INVALID_HANDLE;
-	if (esp_err_t r = esp_vfs_fat_spiflash_mount(CONFIG_MOUNT_POINT, PartitionName, &fatconf, &SpiFatFs)) {
+	if (esp_err_t r = esp_vfs_fat_spiflash_mount(MOUNT_POINT, DATA_PARTITION, &fatconf, &SpiFatFs)) {
 		log_error(TAG,"unable to mount flash with fatfs: %s",esp_err_to_name(r));
-		SpiFatFs = 0;
 	} else 
-		log_info(TAG,"mounted fatfs partition '%s'",PartitionName);
+		log_info(TAG,"mounted fatfs partition " DATA_PARTITION);
 }
 
 
-int shell_format(Terminal &term, int argc, const char *args[])
+static int shell_format_fatfs(Terminal &term, const char *arg)
 {
-	if (argc > 2) {
-		term.printf("%s: 1 arguments expected, got %u\n",args[0],argc-1);
-		return 1;
-	}
-	if (argc == 1) {
-		term.printf("%s: syntax: format <partition-label>\n",args[0]);
-		return 0;
-	}
-	extern wl_handle_t SpiFatFs;
-	extern char PartitionName[];
+	esp_vfs_fat_spiflash_unmount(MOUNT_POINT, SpiFatFs);
 	esp_vfs_fat_mount_config_t fatconf;
 	bzero(&fatconf,sizeof(fatconf));
-	fatconf.format_if_mount_failed = false;
+	fatconf.format_if_mount_failed = true;
 	fatconf.max_files = 4;
 	fatconf.allocation_unit_size = 4096;	// esp-idf >= v3.1
 	SpiFatFs = WL_INVALID_HANDLE;
-	if (esp_err_t r = esp_vfs_fat_spiflash_mount(CONFIG_MOUNT_POINT, PartitionName, &fatconf, &SpiFatFs)) {
+	if (esp_err_t r = esp_vfs_fat_spiflash_mount(MOUNT_POINT, arg, &fatconf, &SpiFatFs)) {
 		term.printf("unable to mount flash with fatfs: %s\n",esp_err_to_name(r));
 		SpiFatFs = 0;
 	} else 
-		term.printf("mounted fatfs partition '%s'\n",PartitionName);
+		term.printf("mounted fatfs partition '%s'\n",arg);
 	return 0;
 }
-#elif defined CONFIG_ROMFS
+#endif
+
+
+
+#ifdef CONFIG_ROMFS
 #include "romfs.h"
 
-static char TAG[] = "FS";
+static void init_hwconf()
+{
+	log_info(TAG,"looking for hw.cfg in romfs");
+	int fd = romfs_open("hw.cfg");
+	ssize_t s = romfs_size_fd(fd);
+	if (s <= 0) {
+		log_warn(TAG,"unable to find hw.cfg");
+		return;
+	}
+	char*buf = (char*)malloc(s);
+	if (buf == 0) {
+		log_error(TAG,"not enough RAM to copy hw.cfg");
+		return;
+	}
+	romfs_read_at(fd,buf,s,0);
+	if(0 == writeNVM("hw.cfg",(uint8_t*)buf,s))
+		log_info(TAG,"wrote hw.cfg to NVM");
+	free(buf);
+}
 
-extern "C"
-void init_fs()
+
+static void init_romfs()
 {
 	log_info(TAG,"init romfs");
 	romfs_setup();
+	if (HWConf.magic() != 0xAE54EDCB)
+		init_hwconf();
 }
+#endif
 
-
+#if defined CONFIG_FATFS || defined CONFIG_SPIFFS
+int shell_format(Terminal &term, int argc, const char *args[])
+{
+#if defined CONFIG_FATFS && defined CONFIG_SPIFFS
+	if (argc != 3)
+		return arg_missing(term);
+	if ((argc == 3) && (!strcmp("spiffs",args[2]))) {
+#if defined CONFIG_SPIFFS
+		return shell_format_spiffs(term,args[1]);
+#endif
+	} else if ((argc == 3) && (!strcmp("fatfs",args[2]))) {
+#if defined CONFIG_FATFS
+		return shell_format_fatfs(term,args[1]);
+#endif
+	}
 #else
+	if (argc != 2)
+		return arg_missing(term);
+#if defined CONFIG_SPIFFS
+	return shell_format_spiffs(term,args[1]);
+#endif
+#if defined CONFIG_FATFS
+	return shell_format_fatfs(term,args[1]);
+#endif
+#endif
+	return 1;
+}
+#endif
 
 extern "C"
 void init_fs()
 {
-
+#ifdef CONFIG_ROMFS
+	init_romfs();
+#endif
+#ifdef CONFIG_SPIFFS
+	init_spiffs();
+#endif
+#ifdef CONFIG_FATFS
+	init_fatfs();
+#endif
 }
 
-#endif
 
 

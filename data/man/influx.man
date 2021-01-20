@@ -1,0 +1,9 @@
+synopsis: influx [<cmd> | <arg> <value>]
+Without argument influx prints the current configuration.
+Command 'init' initializes influx with current configuration.
+Command 'send' sends an arbitrary argument to the influx server.
+Valid <arg> are:
+host  : to set the influx database server host
+port  : to set the port on which influx is listening
+db    : to set the database name
+config: to set complete config in the form <host>:<port>/<db>

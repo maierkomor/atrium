@@ -25,7 +25,6 @@
 extern "C" {
 #endif
 
-void bme_setup(void);
 uint8_t bme_humidity();
 int16_t bme_temperature();
 

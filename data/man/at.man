@@ -1,0 +1,18 @@
+synopsis:
+	at <option> [<arg>]
+	at {weekday} {hour}:{minute} {action}
+valid options are:
+-l: to list timers
+-1: to enable all alarms
+-0: to disable all alarms
+-e [all|<id>]: to enable alarm <id>
+-d [all|<id>]: to disable alarm <id>
+-D <id>: to delete alarm <id>
+-s: to save alarm settings
+-j: print json
+at {weekday} {hour}:{minute} {action}
+   where weekday is one of: Mo, Tu, We, Th, Fr, Sa, Su,
+   wd for workday (Mo-Fr),
+   we for weekend (Sa,Su),
+   hd for holiday (defined via holiday command),
+   ed for every day.

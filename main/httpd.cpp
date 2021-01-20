@@ -20,15 +20,17 @@
 
 #ifdef CONFIG_HTTP
 
+#include "actions.h"
+#include "binformats.h"
+#include "globals.h"
 #include "HttpServer.h"
 #include "HttpReq.h"
 #include "HttpResp.h"
-#include "actions.h"
-#include "globals.h"
-#include "httpd.h"
 #include "inetd.h"
+#include "ujson.h"
 #include "log.h"
 #include "mem_term.h"
+#include "netsvc.h"
 #include "romfs.h"
 #include "profiling.h"
 #include "settings.h"
@@ -39,7 +41,8 @@
 
 #include "memfiles.h"	// generated automatically
 
-#include <string>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
 #include <esp_ota_ops.h>
 #include <sys/socket.h>
@@ -56,10 +59,15 @@
 #define HTTP_PORT 80
 #endif
 
+#if defined CONFIG_FATFS || defined CONFIG_SPIFFS
+#define HAVE_FS
+#endif
+
 using namespace std;
 
 
 static HttpServer *WWW = 0;
+static SemaphoreHandle_t Sem = 0;
 
 static char TAG[] = "httpd";
 
@@ -117,6 +125,28 @@ static void config_bin(HttpRequest *req)
 #endif
 
 
+static void write_action(void *p, const Action *a)
+{
+	static bool first;
+	if (a == 0) {
+		first = true;
+		return;
+	}
+	stream &json = *(stream *)p;
+	if (!first)
+		json << ",\n";
+	first = false;
+	json << "{\"name\":\"";
+	json << a->name;
+	if (a->text) {
+		json << "\",\"text\":\"";
+		json << a->text;
+	}
+	++a;
+	json << "\"}";
+}
+
+
 static void write_alarms(stream &json)
 {
 #ifdef CONFIG_AT_ACTIONS
@@ -129,19 +159,9 @@ static void write_alarms(stream &json)
 	json << "],\n";
 #endif
 	json <<	"\"valid_actions\":[\n";
-	for (size_t i = 0; i < Actions.size(); ++i) {
-		json << "{\"name\":\"";
-		json << Actions[i].name;
-		if (Actions[i].text) {
-			json << "\",\"text\":\"";
-			json << Actions[i].text;
-		}
-		if (i < Actions.size()-1)
-			json << "\"},\n";
-		else
-			json << "\"}\n";
-	}
-	json << "],\n";
+	write_action(0,0);
+	action_iterate(write_action,&json);
+	json << "\n],\n";
 	json <<	"\"holidays\":[\n";
 	for (size_t i = 0; i < Config.holidays_size(); ++i) {
 		Config.holidays(i).toJSON(json);
@@ -153,7 +173,7 @@ static void write_alarms(stream &json)
 
 static void alarms_json(HttpRequest *req)
 {
-	log_info(TAG,"/alarms.json");
+	log_dbug(TAG,"/alarms.json");
 	send_json(req,write_alarms);
 }
 
@@ -182,7 +202,7 @@ static int extractLine(const char *cont, const char *start, char *param, size_t 
 
 static void exeShell(HttpRequest *req)
 {
-	//TimeDelta dt(__FUNCTION__);
+	TimeDelta dt(__FUNCTION__);
 	HttpResponse ans;
 	char com[72];
 	char pass[24];
@@ -211,7 +231,7 @@ static void exeShell(HttpRequest *req)
 	}
 	if (com[0] == 0)
 		error = true;
-	log_info(TAG,"exeShell(com='%s', password='%s', cont='%s')",com,pass,cont);
+	log_dbug(TAG,"exeShell(com='%s', password=???, cont='%s')",com,cont);
 	if (error) {
 		log_warn(TAG,"error in request");
 		ans.setResult(HTTP_BAD_REQ);
@@ -223,17 +243,19 @@ static void exeShell(HttpRequest *req)
 		term.setPrivLevel(1);
 	ans.setContentType(CT_TEXT_HTML);
 	if (int r = shellexe(term,com))
-		log_info(TAG,"exeShell('%s') = %d",com,r);
+		log_dbug(TAG,"exeShell('%s') = %d",com,r);
 	ans.setResult(HTTP_OK);
-	ans.addContent(term.getBuffer());
+	if (int s = term.getSize())
+		ans.addContent(term.getBuffer(),s);
 	ans.senddata(req->getConnection());
 }
 
 
-#define FLASHBUFSIZE 4096
+#define FLASHBUFSIZE 1024
 
 static void updateFirmware(HttpRequest *r)
 {
+	log_dbug(TAG,"updateFirmware()");
 	int c = r->getConnection();
 	HttpResponse ans;
 	const char *pass = r->getHeader("password").c_str();
@@ -242,96 +264,134 @@ static void updateFirmware(HttpRequest *r)
 		ans.setContentType(CT_TEXT_PLAIN);
 		ans.addContent("Password is set. Please fill password field.");
 		ans.senddata(c);
+		log_dbug(TAG,"missing password");
 		return;
 	}
 	int s = r->getContentLength();
 	const char *part = r->getHeader("partition").c_str();
-	log_info(TAG,"update part %s, len %u",part,s);
-	bool app = (0 == strcmp(part,"app"));
+	log_dbug(TAG,"update part %s, len %u",part,s);
+	/*
 	if ((s <= 0) || (!app && strcmp(part,"storage"))) {
 		ans.setResult(HTTP_BAD_REQ);
 		ans.senddata(c);
 		return;
 	}
+	*/
 	ans.setResult(HTTP_OK);
 	ans.senddata(c);
 	size_t s0 = r->getAvailableLength();
 	esp_ota_handle_t ota = 0;
 	const esp_partition_t *updatep = 0;
 	uint32_t addr;
-	vTaskPrioritySet(0,2);
-	if (!app) {
-#ifdef CONFIG_ROMFS
-		// ROMFS/DATA partition
-		if (s > RomfsSpace) {
-			RTData.set_update_state("image too big");
-			log_warn(TAG,"image too big");
-			return;
-		}
-		addr = RomfsBaseAddr;
-		if (esp_err_t e = spi_flash_erase_range(addr,RomfsSpace)) {
-			log_warn(TAG,"erase failed %s",esp_err_to_name(e));
-			RTData.set_update_state("erasing failed");
-			return;
-		}
-		if (s0 > 0) {
-			if (esp_err_t e = spi_flash_write(addr,r->getContent(),s0)) {
-				log_warn(TAG,"write0 failed %s",esp_err_to_name(e));
-				RTData.set_update_state("write0 failed");
-				return;
-			}
-			addr += s0;
-			s -= s0;
-		}
-#else
-		RTData.set_update_state("no ROMFS configured");
-		log_warn(TAG,"no ROMFS configured");
-		return;
-#endif
-	} else {
+	bool app = false;
+	char st[64];
+	if (!strcmp(part,"app")) {
+		app = true;
 		updatep = esp_ota_get_next_update_partition(NULL);
 		if ((updatep == 0) || (s <= 0)) {
-			log_warn(TAG,"prepare failed");
-			RTData.set_update_state("prepare failed");
+			const char *err = "no update partition";
+			log_warn(TAG,err);
+			UpdateState->set(err);
+			ans.addContent(err);
 			return;
 		}
-		RTData.set_update_state("erasing flash");
-		vTaskDelay(10);
+		log_dbug(TAG,"erasing");
+		UpdateState->set("erasing flash");
 		if (esp_err_t err = esp_ota_begin(updatep, s, &ota)) {
-			RTData.set_update_state("begin failed");
-			log_warn(TAG,"update begin error %s",esp_err_to_name(err));
+			sprintf(st,"update begin error %s",esp_err_to_name(err));
+			UpdateState->set(st);
+			ans.addContent(st);
 			return;
 		}
-		RTData.set_update_state("flashing...");
+		UpdateState->set("flashing...");
+		log_dbug(TAG,"flashing");
 		addr = updatep->address;
 		if (s0 > 0) {
 			if (esp_err_t err = esp_ota_write(ota,r->getContent(),s0)) {
-				RTData.set_update_state("write0 failed");
-				log_warn(TAG,"update write0 error %s",esp_err_to_name(err));
+				sprintf(st,"update write0 error %s",esp_err_to_name(err));
+				UpdateState->set(st);
+				ans.addContent(st);
 				return;
 			}
 			s -= s0;
 			addr += s0;
+		}
+	} else if (!strcmp(part,"hw.cfg") || !strcmp(part,"node.cfg")) {
+		void *tmp = malloc(s);
+		if (tmp == 0) {
+			const char *err = "out of memory";
+			UpdateState->set(err);
+			log_warn(TAG,err);
+			ans.addContent(err);
+			return;
+		}
+		memcpy(tmp,r->getContent(),s0);
+		if (s0 != s) {
+			int n = read(c,(uint8_t*)tmp+s0,s - s0);
+			if (n < 0)
+				log_error(TAG,"error receiving data: %s",strerror(errno));
+			s0 += n;
+		}
+		bool r = false;
+		if (s == s0) {
+			log_dbug(TAG,"updating NVS/%s",part);
+			if (0 == writeNVM(part,(uint8_t*)tmp,s))
+				r = true;
+		}
+		UpdateState->set(r ? "success" : "failed");
+		free(tmp);
+		return;
+	} else {
+		auto p = esp_partition_find_first(ESP_PARTITION_TYPE_DATA,ESP_PARTITION_SUBTYPE_ANY,part);
+		if (p == 0) {
+			sprintf(st,"unable to find romfs partition '%s'",part);
+			UpdateState->set(st);
+			ans.addContent(st);
+			return;
+		}
+		// ROMFS/DATA partition
+		if (s > p->size) {
+			const char *err = "image too big";
+			UpdateState->set(err);
+			log_warn(TAG,err);
+			ans.addContent(err);
+			return;
+		}
+		addr = p->address;
+		if (esp_err_t e = spi_flash_erase_range(addr,p->size)) {
+			sprintf(st,"erase failed %s",esp_err_to_name(e));
+			UpdateState->set(st);
+			ans.addContent(st);
+			return;
+		}
+		if (s0 > 0) {
+			if (esp_err_t e = spi_flash_write(p->address,r->getContent(),s0)) {
+				sprintf(st,"write0 failed %s",esp_err_to_name(e));
+				UpdateState->set(st);
+				ans.addContent(st);
+				return;
+			}
+			addr += s0;
+			s -= s0;
 		}
 	}
 	char *buf = (char*)malloc(FLASHBUFSIZE);
 	if (buf == 0) {
-		RTData.set_update_state("out of memory");
+		UpdateState->set("out of memory");
 		return;
 	}
 	while (s > 0) {
-		char st[64];
 		sprintf(st,"updating at 0x%x, %d to go",addr,s);
-		RTData.set_update_state(st);
-		vTaskDelay(10);
-		log_info(TAG,st);
+		UpdateState->set(st);
+		log_dbug(TAG,st);
 		int n = read(c,buf,s > FLASHBUFSIZE ? FLASHBUFSIZE : s);
 		if (0 > n) {
-			snprintf(st,sizeof(st),"receive failed: %s",strerror(c));
-			RTData.set_update_state(st);
+			snprintf(st,sizeof(st),"receive failed: %s",strneterr(c));
+			UpdateState->set(st);
 			free(buf);
 			if (ota)
 				esp_ota_end(ota);
+			ans.addContent(st);
 			return;
 		}
 		esp_err_t e;
@@ -340,12 +400,13 @@ static void updateFirmware(HttpRequest *r)
 		else
 			e = spi_flash_write(addr,buf,n);
 		if (e) {
-			snprintf(st,sizeof(st),"write failed %d: %s",e,strerror(c));
-			RTData.set_update_state(st);
+			snprintf(st,sizeof(st),"write failed: %s",esp_err_to_name(e));
+			UpdateState->set(st);
 			log_warn(TAG,st);
 			free(buf);
 			if (ota)
 				esp_ota_end(ota);
+			ans.addContent(st);
 			return;
 		}
 		s -= n;
@@ -354,27 +415,29 @@ static void updateFirmware(HttpRequest *r)
 	free(buf);
 	if (app) {
 		if (esp_ota_end(ota)) {
-			RTData.set_update_state("failed");
+			UpdateState->set("image error");
+			ans.addContent("image error, update failed");
 			return;
 		}
 		if (esp_err_t err = esp_ota_set_boot_partition(updatep)) {
-			RTData.set_update_state("chaning boot partition failed");
+			UpdateState->set("changing boot partition failed");
 			log_error(TAG, "set boot failed: %s",esp_err_to_name(err));
 			return;
 		}
-		RTData.set_update_state("done, rebooting");
+		UpdateState->set("done, rebooting");
+		ans.addContent("success, rebooting");
 		vTaskDelay(1000);
 		esp_restart();
 	}
-	RTData.set_update_state("update completed");
-	log_info(TAG,"flash update done");
+	UpdateState->set("update completed");
+	log_dbug(TAG,"update done");
 }
 
 
 static void postConfig(HttpRequest *r)
 {
 	int a = r->numArgs();
-	log_info(TAG,"post_config: %d args",a);
+	log_dbug(TAG,"post_config: %d args",a);
 	const char *newpass0 = 0, *newpass1 = 0;
 	HttpResponse ans;
 	if (Config.has_pass_hash() && !verifyPassword(r->arg("passwd").c_str())) {
@@ -394,49 +457,62 @@ static void postConfig(HttpRequest *r)
 			newpass1 = r->arg(i).c_str();
 		} else if (0 == strcmp(argname,"passwd")) {
 		} else {
-			int x = change_setting(argname,r->arg(i).c_str());
-			log_info(TAG,"%s = %s: %s\n",argname,r->arg(i).c_str(),x ? "Error" : "OK");
+			NullTerminal t;
+			int x = update_setting(t,argname,r->arg(i).c_str());
+			log_dbug(TAG,"%s = %s: %s\n",argname,r->arg(i).c_str(),x ? "Error" : "OK");
 			ans.writeContent("%s = %s: %s\n",argname,r->arg(i).c_str(),x ? "Error" : "OK");
 		}
 	}
 	ans.senddata(r->getConnection());
 	if (newpass0 && newpass1 && (0 == strcmp(newpass0,newpass1)))
 		setPassword(newpass0);
-	activateSettings();
-	storeSettings();
+	cfg_activate();
+	cfg_store_nodecfg();
 }
 
 
 static void httpd_session(void *arg)
 {
+	TimeDelta dt(__FUNCTION__);
 	int con = (int)arg;
 	struct timeval tv;
 	tv.tv_sec = 3;
 	tv.tv_usec = 0;
 	if (0 > setsockopt(con,SOL_SOCKET,SO_RCVTIMEO,&tv,sizeof(tv)))
 		log_warn(TAG,"error setting receive timeout: %s",strneterr(con));
-	WWW->handleConnection(con);
+	if (pdTRUE == xSemaphoreTake(Sem,100/portTICK_PERIOD_MS)) {
+		if (WWW)
+			WWW->handleConnection(con);
+		xSemaphoreGive(Sem);
+		log_dbug(TAG,"closing connection");
+	} else {
+		log_warn(TAG,"too many connections");
+	}
+	close(con);
 	vTaskDelete(0);
 }
 
 
-extern "C"
-void httpd_setup()
+int httpd_setup()
 {
-	WWW = new HttpServer(CONFIG_HTTP_ROOT,"/index.html");
-#ifdef ESP32
+	const char *root = "/";
+#ifdef HAVE_FS
+	if (Config.httpd().has_root())
+		root = Config.httpd().root().c_str();
 	struct stat st;
-	if (stat(CONFIG_HTTP_ROOT,&st) == -1) {
-		log_info(TAG,"setting up www root");
-		if (-1 == mkdir(CONFIG_HTTP_ROOT,0777))
-			log_warn(TAG,"unable to create directory " CONFIG_HTTP_ROOT ": %s",strerror(errno));
+	if (stat(WWW_ROOT,&st) == -1) {
+		log_dbug(TAG,"setting up www root");
+		if (-1 == mkdir(WWW_ROOT,0777))
+			log_warn(TAG,"unable to create directory " WWW_ROOT ": %s",strerror(errno));
 	}
-	WWW->addDirectory(CONFIG_HTTP_ROOT);
-#ifndef CONFIG_ROMFS
-	const char *upload = CONFIG_HTTP_UPLOAD;
+	WWW = new HttpServer(root,"/index.html");
+	WWW->addDirectory(root);
+	const char *upload = "/";
+	if (Config.httpd().has_uploaddir())
+		upload = Config.httpd().uploaddir().c_str();
 	if (upload && upload[0]) {
 		if (stat(upload,&st) == -1) {
-			log_info(TAG,"creating upload directory");
+			log_dbug(TAG,"creating upload directory");
 			if (-1 == mkdir(upload,0777)) {
 				log_warn(TAG,"unable to create directory %s: %s",upload,strerror(errno));
 			} else {
@@ -446,17 +522,9 @@ void httpd_setup()
 			WWW->setUploadDir(upload);
 		}
 	}
-#endif
-#elif defined ESP8266
-	/*
-	WWW->addMemory("/index.html",s20_index_html);
-	WWW->addMemory("/alarms.html",alarms_html);
-	WWW->addMemory("/config.html",s20_config_html);
-	WWW->addMemory("/shell.html",shell_html);
-	WWW->addMemory("/setpass.html",setpass_html);
-	*/
 #else
-#error missing implementation
+	WWW = new HttpServer(root,"/index.html");
+	WWW->addDirectory(root);
 #endif
 
 	WWW->addFile("/alarms.html");
@@ -479,7 +547,8 @@ void httpd_setup()
 #ifdef CONFIG_CAMERA
 	WWW->addFunction("/webcam.jpeg",webcam_sendframe);
 #endif
-	listen_tcp(HTTP_PORT,httpd_session,"httpd","_http",7,2048);
+	Sem = xSemaphoreCreateCounting(2,2);
+	return listen_tcp(HTTP_PORT,httpd_session,"httpd","_http",7,2048);
 }
 
 #endif	// CONFIG_HTTP

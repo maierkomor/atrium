@@ -16,49 +16,98 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-option pc {
-	toSink="";
+option common {
+	id0=true;
+	header="support.h";
+	header="stream.h";
+	header="estring.h";
+	streamtype=stream;
+	stringtype=estring;
+	bytestype=estring;
 }
 
-option esp {
+option pc : common {
+	toSink="";
+	toASCII=toASCII;
+	optimize=speed;
+}
+
+option esp : common {
 	withEqual=true;
 	toString="";
 	toSink="";
 	toWire="";
-	toASCII="";
+	toASCII=toASCII;
 	intsize=32;
 	varintbits=32;
-	streamtype=stream;
-	header="stream.h";
-	header="support.h";
+	//header="astring.h";
+	//stringtype=AString;
+	//ascii_indent=null_indent;
 }
 
 option esp32 : esp {
 	optimize=speed;
 	endian=little;		// not for esp8266, does not allow unaligned access
 	withUnequal=true;
+	/AdcConfig/mode:		used = false;
+	/AdcConfig/clk_div:		used = false;
 }
 
 option esp8266 : esp {
 	ssize_t=_ssize_t;
-	optimize=speed;
+	optimize=size;
 	withUnequal=false;
+	/OwDeviceConfig:		used = false;
+	/TouchpadConfig:		used = false;
+	/TouchChannelConfig:		used = false;
+	/AdcChannel:			used = false;
+	/NodeConfig/owdevices:		used = false;
+	/HardwareConfig/uart:		used = false;
+	/HardwareConfig/touchpad:	used = false;
+	/HardwareConfig/tp_channel:	used = false;
+	/HardwareConfig/onewire:	used = false;	// does not work on ESP8266
+	/Bme280Config/freq:		used = false;
+	/UartConfig/tx_gpio:		used = false;
+	/UartConfig/rx_gpio:		used = false;
+	/UartConfig/cts_gpio:		used = false;
+	/UartConfig/rts_gpio:		used = false;
+	/AdcConfig/adc1_bits:		used = false;
+	/AdcConfig/adc2_bits:		used = false;
+	/AdcConfig/hall_name:		used = false;
+	/AdcConfig/channels:		used = false;
+	/Ws2812bConfig/ch:		used = false;
 }
 
-option dht_term : esp8266 {
-	/NodeConfig/holidays:		used=false;
-	/NodeConfig/at_actions:		used=false;
+option esp8285 : esp8266 {
+	//header="astring.h";
+	//stringtype=AString;
+	/NodeConfig/httpd:		used = false;
+	/NodeConfig/app_params:		used = false;
+	/NodeConfig/signals:		used = false;
+	/NodeConfig/functions:		used = false;
+	/HardwareConfig/max7219:	used = false;
+	/HardwareConfig/tlc5947:	used = false;
+	/HardwareConfig/ws2812b:	used = false;
+	/HardwareConfig/hcsr04:		used = false;
+}
+
+option s20 : esp8285 {
+	/HardwareConfig/dht:		used = false;
+	/HardwareConfig/terminal:	used = false;
+}
+
+option dht_term : esp8285 {
+	/NodeConfig/holidays:		used = false;
+	/NodeConfig/at_actions:		used = false;
 }
 
 option d1_lite : esp8266 {
 	withUnequal=false;
-	/NodeConfig/dhts:		used=false;
-	/RunTimeData/dhts:		used=false;
 }
 
 option termserv : d1_lite {
-	/NodeConfig/holidays:		used=false;
-	/NodeConfig/at_actions:		used=false;
+	/NodeConfig/holidays:		used = false;
+	/NodeConfig/at_actions:		used = false;
 }
 
 
@@ -78,33 +127,12 @@ enum rstrsn_t {
 }
 
 
-message RunTimeData
-{
-	string node = 1; 
-	string version = 2;
-	uint32 uptime = 3;
-	rstrsn_t reset_reason = 4;
-	string ltime = 5;
-	string location = 6;
-	string laston = 7;
-	string lastoff = 8;
-	bool relay = 9;
-	bool timers_enabled = 10;
-	unsigned adc = 11;
-	string update_part = 12;
-	string update_state = 13;
-	float temperature = 14;
-	float humidity = 15;
-	float pressure = 16;
-}
-
-
 message WifiConfig
 {
 	string ssid = 1			[ unset = "" ];
 	string pass = 2			[ unset = "" ];
 	bytes mac = 3;
-	required bool activate = 4;
+	required bool activate = 4	[ unset = false ];
 	fixed32 addr4 = 5		[ to_ascii=ip4_to_ascii, to_json=ip4_to_ascii, parse_ascii=parse_ipv4 ];
 	fixed8 netmask4 = 6;
 	fixed32 gateway4 = 7		[ to_ascii=ip4_to_ascii, to_json=ip4_to_ascii, parse_ascii=parse_ipv4 ];
@@ -117,13 +145,14 @@ message MQTT
 	bool enable = 2			[ unset = false ];
 	string username = 3		[ unset = "" ];
 	string password = 4		[ unset = "" ];
+	repeated string subscribtions = 5;	// qos0 subscribptions
 }
 
 
 message Date
 {
-	fixed8 day = 1;
-	fixed8 month = 2;
+	fixed8 day = 1		[ unset = 0 ];
+	fixed8 month = 2	[ unset = 0 ];
 	fixed16 year = 3	[ unset = 0 ];
 	fixed8 endday = 4	[ unset = 0 ];
 	fixed8 endmonth = 5	[ unset = 0 ];
@@ -150,7 +179,7 @@ enum WeekDay
 message AtAction
 {
 	optional WeekDay day = 1;
-	unsigned min_of_day = 2;
+	unsigned min_of_day = 2		[ to_json = min_of_day_to_ascii ];
 	string action = 3;
 	required bool enable = 4        [ default = true ];
 }
@@ -160,23 +189,128 @@ message Influx
 {
 	string hostname = 1	[ unset = "" ];
 	fixed16 port = 2	[ unset = 0 ];
-	string database = 3	[ unset = "" ];
-	unsigned interval = 4	[ default = 60000 ];
+	string measurement = 3	[ unset = "" ];
+	unsigned interval = 4	[ default = 60000, usage = deprecated ];
+}
+
+
+message UartSettings
+{
+	uint8 port = 1;
+	unsigned baudrate = 2;
+	// bit0,1: uart_word_length_t		[ 5..8 ]
+	// bit2,3: uart_stop_bits_t		[ 1=1, 2=1.5, 3=2 ]
+	// bit4,5: uart_hw_flowcontrol_t	[ 0=none, 1=rts, 2=cts, 3=cts+rts ]
+	// bit6,7: uart_parity_t		[ 0=none, 2=even, 3=odd ]
+	// bit8,9: reserved for future uart_parity_t extension
+	// bit10: ref_tick
+	// bit11-15: reserved
+	fixed16 config = 3		[ unset = 0 ];
+	fixed8 rx_thresh = 4		[ unset = 0 ];
+	unsigned tx_bufsize = 6;
+	unsigned rx_bufsize = 7;
+}
+
+
+message FtpdConfig
+{
+	fixed16 port = 1	[ unset = 0 ];
+	bool start = 2;
+	string root = 3		[ unset = "" ];
+}
+
+
+message HttpdConfig
+{
+	fixed16 port = 1	[ default = 80 ];
+	bool start = 2		[ default = true ];
+	string root = 3		[ unset = "" ];
+	string uploaddir = 4	[ unset = "" ];
+}
+
+
+message TerminalConfig
+{
+	sint8 uart_rx = 1	[ unset = -1 ];
+	sint8 uart_tx = 2	[ unset = -1 ];
+	string name = 3;
+}
+
+
+message Trigger
+{
+	string event = 1;
+	string action = 2;
+}
+
+
+message AppParam
+{
+	string key = 1;
+	unsigned uValue = 2;
+	string sValue = 3;
+	signed dValue = 4;
+	double fValue = 5;
+}
+
+
+message EventTimer
+{
+	string name = 1		[ unset = "" ];
+	unsigned time = 2;	// in msec
+	// bit0: repeat, bit1: autostart
+	unsigned config = 3	[ unset = 0 ];
+}
+
+
+message FunctionConfig
+{
+	string name = 1;
+	string func = 2;
+	repeated string params = 3;
+}
+
+
+enum sigtype_t
+{
+	st_invalid = 0;
+	st_int = 1;
+	st_float = 2;
+	st_string = 3;
+}
+
+
+message SignalConfig
+{
+	string name = 1		[ unset = "" ];
+	sigtype_t type = 2	[ unset = st_invalid ];
+	string iv = 3		[ unset = "" ];
+	// TODO
+	//bool persistent = 4	[ unset = false ];	// store every update to NVS
+}
+
+
+message OwDeviceConfig
+{
+	fixed64 id = 1		[ to_ascii = id64_to_ascii ];
+	string name = 2;
 }
 
 
 message NodeConfig
 {
-	string nodename = 1	[ unset = "" ];
+	fixed32 magic = 0;	// should always be set to 0xAE54EDC0
+	string nodename = 1		[ unset = "" ];
 	bytes pass_hash = 2;
 	unsigned cpu_freq = 3;
 	WifiConfig station = 4;
 	WifiConfig softap = 5;
-	string dns_server = 6	[ unset = "" ];
-	string syslog_host = 7	[ unset = "" ];
-	string sntp_server = 8	[ unset = "" ];
-	string timezone = 9	[ unset = "" ];
+	string dns_server = 6		[ unset = "" ];
+	string syslog_host = 7		[ unset = "" ];
+	string sntp_server = 8		[ unset = "" ];
+	string timezone = 9		[ unset = "" ];
 	MQTT mqtt = 10;
+	fixed16 dmesg_size = 11	[ default = 512 ];
 	Influx influx = 12;
 	unsigned station2ap_time = 13;	// failover time from station to ap mode [s]
 	string domainname = 15	[ unset = "" ];
@@ -184,16 +318,322 @@ message NodeConfig
 	// action timers
 	repeated Date holidays = 16;
 	repeated AtAction at_actions = 17;
-	bool actions_enable = 18		[ default = true ];
+	// bit0: enable, bit1: enable factory_reset
+	unsigned actions_enable = 18	[ default = 1 ];
+	repeated Trigger triggers = 19;
+
+	repeated UartSettings uart = 20;
+	repeated TerminalConfig terminal = 21;
+
+	// set udp_ctrl_port to 0 to disable this feature
+	fixed16 udp_ctrl_port = 22	[ default = 12719 ];
+
+	repeated string debugs = 23;
+
+	// TODO
+	//FtpdConfig ftpd = 24;
+	HttpdConfig httpd = 25;
+
+	// event timer/timefuse
+	repeated EventTimer timefuses = 30;
+	repeated SignalConfig signals = 31;
+	repeated FunctionConfig functions = 32;
 
 	// relay control (e.g. s20)
-	unsigned max_on_time = 34;
+	unsigned max_on_time = 34	[ unset = 0, usage=deprecated ];	// in minutes
 
 	// application: light sensor controlled LED
 	unsigned threshold_off = 35;
 	unsigned threshold_on = 36;
 	unsigned dim_step = 37;		// ms per step
 	bool lightctrl = 38;		// true=auto, false=manual
+
+	repeated AppParam app_params = 40;
+
+	repeated OwDeviceConfig owdevices = 50;
 }
 
 
+message SystemConfig
+{
+	string manufacturer = 1	[ unset = ""];
+	string board_name = 2	[ unset = ""];
+	string board_rev = 3	[ unset = ""];
+	sint8 diag_uart = 4	[ unset = 0 ];
+	sint8 console_rx = 5	[ default = 0 ];
+	sint8 console_tx = 6	[ default = 0 ];
+	string model_name = 7	[ unset = ""];
+	string model_number = 8	[ unset = ""];
+}
+
+
+message TouchpadConfig
+{
+	bool fsm_mode = 1	[ unset = false ];
+	sint8 lvolt = 2		[ unset = -1 ];
+	sint8 hvolt = 3		[ unset = -1 ];
+	sint8 atten = 4		[ unset = -1 ];
+	unsigned interval = 7;
+}
+
+
+message TouchChannelConfig
+{
+	string name = 1;
+	sint8 channel = 2	[ unset = -1 ];
+	fixed16 threshold = 3;
+	uint8 slope = 4;
+	uint8 tieopt = 5;
+}
+
+
+enum pull_mode_t
+{
+	option allow_alias = true;
+	pull_none = 0;
+	pull_en = 1;
+	pull_dir = 2;
+	pull_down = 1;
+	pull_up = 3;
+}
+
+
+message ButtonConfig
+{
+	string name = 1			[ unset = "" ];
+	sint8 gpio = 2			[ unset = -1 ];
+	bool presslvl = 3		[ unset = 0 ];
+	pull_mode_t pull_mode = 4	[ unset = pull_none ];
+}
+
+
+enum relay_cfg_t
+{
+	rc_active_low = 0;
+	rc_active_high = 1;
+	rc_init_on = 2;
+	rc_persistent = 4;	// store state in NVS and restore state on boot
+	rc_open_drain = 8;
+	rc_mqtt = 16;
+}
+
+
+message RelayConfig
+{
+	string name = 1		[ unset = "" ];
+	sint8 gpio = 2		[ unset = -1 ];
+	relay_cfg_t config = 3	[ unset = rc_active_low ];
+	unsigned min_itv = 4	[ default = 0 ];	// minimum interval
+	sint8 interlock = 5	[ unset = -1 ];		// index of relay to interlock with
+}
+
+
+message Max7219Config
+{
+	sint8 clk = 1		[ unset = -1 ];
+	sint8 dout = 2		[ unset = -1 ];
+	sint8 cs = 3		[ unset = -1 ];
+	bool odrain = 4		[ unset = false ];
+	uint8 digits = 5	[ unset = 0 ];
+}
+
+
+message Tlc5947Config
+{
+	sint8 sin = 1		[ unset = -1 ];
+	sint8 sclk = 2		[ unset = -1 ];
+	sint8 xlat = 3		[ unset = -1 ];
+	sint8 blank = 4		[ unset = -1 ];
+	uint8 ntlc = 5		[ unset = 0 ];
+}
+
+
+message Ws2812bConfig
+{
+	sint8 gpio = 1		[ unset = -1 ];
+	sint8 ch = 2		[ unset = -1 ];
+	uint8 nleds = 3		[ unset = 0 ];
+}
+
+
+enum dht_model_t
+{
+	DHT_NONE = 0;
+	RHT03 = 3;
+	DHT11 = 11;
+	DHT21 = 21;
+	DHT22 = 22;
+	AM2301 = 2301;
+	AM2302 = 2302;
+}
+
+
+message DhtConfig
+{
+	dht_model_t model = 1	[ unset = DHT_NONE ];
+	sint8 gpio = 2		[ unset = -1 ];
+}
+
+
+message Bme280Config
+{
+	uint8 port = 1		[ default = 0 ];
+	sint8 sda = 2		[ unset = -1 ];
+	sint8 scl = 3		[ unset = -1 ];
+	unsigned freq = 4	[ default = 100000 ];
+}
+
+
+message HcSr04Config
+{
+	sint8 trigger = 1	[ unset = -1 ];
+	sint8 echo = 2		[ unset = -1 ];
+}
+
+
+message LedConfig
+{
+	sint8 gpio = 1		[ unset = -1 ];
+	// bit 0: active high
+	// bit 1: open drain
+	uint8 config = 2;
+	string name = 3		[ unset = "" ];
+	sint8 pwm_ch = 4	[ unset = -1 ];
+}
+
+
+message OneWireConfig
+{
+	sint8 gpio = 1		[ unset = -1 ];
+	bool pullup = 2		[ unset = false ];	// pull-up the gpio
+	sint8 power = 3		[ unset = -1 ];
+}
+
+
+message UartConfig
+{
+	sint8 port = 1;
+	sint8 tx_gpio = 2;
+	sint8 rx_gpio = 3;
+	sint8 cts_gpio = 4;
+	sint8 rts_gpio = 5;
+}
+
+
+message AdcChannel
+{
+	string name = 1		[ unset = "" ];
+
+	// ADC1 or ADC2 - ADC2 cannot be used with WiFi started
+	uint8 unit = 2		[ unset = 0 ];
+
+	// valid channels: 0-9
+	sint8 ch = 3		[ unset = -1 ];
+
+	// adc_atten_t: 0 = 0dB, 1=2,5dB, 2=6dB, 3=11dB
+	uint8 atten = 4		[ default = 0 ];	
+}
+
+
+message AdcConfig
+{
+	// esp8266: set name to enable
+	// esp32: not used
+	string adc_name = 1	[ unset = "" ];
+
+	// adc_width_t: 0=9bit .. 3=12bit, adc is disabled if not set
+	uint8 adc1_bits = 2	[ default = 0 ];
+	uint8 adc2_bits = 3	[ default = 0 ];
+
+	uint8 mode = 4;		// esp8266 only (adc_mode_t: TOUT_MODE=0, VDD_MODE=1)
+	uint8 clk_div = 5;	// esp8266 only
+
+	// name of hall sensor
+	string hall_name = 6	[ unset = "" ];
+
+	repeated AdcChannel channels = 7;
+}
+
+
+message GpioConfig
+{
+	string name = 1;
+	sint8 gpio = 2		[ unset = -1 ];
+	// bit 1,0: gpio_mode_t: disable, input, output, output_od
+	// bit 4..2: gpio_int_type_t
+	//	{0=none, 1=pos dge, 2=neg edge, 3=both edge
+	//	, 4=lolevel, 5=hilevel}
+	// bit 5: set initial level
+	// bit 6: init level
+	// bit 7: pull-up enable
+	// bit 8: pull-down enable
+	unsigned config = 3;
+}
+
+
+message HardwareConfig
+{
+	fixed32 magic = 0;	// should always be set to 0xAE54EDCB
+	// core hardware
+	SystemConfig system = 1;
+	repeated UartConfig uart = 3;
+	AdcConfig adc = 4;
+	TouchpadConfig touchpad = 5;
+	repeated TouchChannelConfig tp_channel = 6;
+	repeated GpioConfig gpio = 7;
+
+	// direct gpio drivers
+	repeated ButtonConfig button = 16;
+	repeated RelayConfig relay = 17;
+	repeated LedConfig led = 18;
+
+	// high level applicaton drivers
+	Max7219Config max7219 = 32;	// for 7-segment clock
+	Tlc5947Config tlc5947 = 33;	// for nightsky LEDs
+	Ws2812bConfig ws2812b = 34;	// for ws2812b LED strips
+	DhtConfig dht = 35;
+	Bme280Config bme280 = 36;
+	HcSr04Config hcsr04 = 37;
+	OneWireConfig onewire = 38;
+}
+
+
+/*
+// draft/idea - maybe better direct structs for mmap access
+enum ledaction_t
+{
+	la_nop = 0;	// no operation
+	la_set = 1;	// set specific led
+	la_mask = 2;	// set color mask
+	la_setall = 3;	// set all leds to value
+	la_delay = 4;	// delay ms
+	la_dim = 5;	// r/g/b delta as int8
+	la_jump = 6;	// index of next action to execute
+	la_random = 7;	// generate random arg
+}
+
+message LedAction
+{
+	ledaction_t action = 1;
+	// 0xff000000	: led mask
+	// 0x00ff0000	: red mask
+	// 0x0000ff00	: green mask
+	// 0x000000ff	: blue mask
+	unsigned arg = 2;
+}
+
+
+message LedStripMode
+{
+	string name = 1;
+	repeated LedAction actions = 2;
+}
+
+
+message LedStripData
+{
+	fixed32 magic = 0;
+	repeated LedStripMode modes = 1;
+
+}
+*/

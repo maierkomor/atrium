@@ -8,6 +8,42 @@ config WFC_TARGET
 	help
 		name of WFC configuration target
 
+config FUNCTION_TIMING
+	bool "instrument for performance analysis"
+	default false
+	help
+		enable for performance analysis only - negative impact for general use
+
+config APP_PARAMS
+	bool "application specific parameters"
+	default false
+	help
+		enable to add application parameters as key/value pairs in Config.app_params
+
+config SIGNAL_PROC
+	bool "singal processing infrastructure (Buggy, ALPHA!)"
+	help
+		infrastructure for dynamic signal definition and processing
+
+config UART_CONSOLE
+	bool "serial console to configure and operate target device"
+	default false
+	help
+		serial console is especially helpful for devices under development
+
+config INTEGRATED_HELP
+	bool "integrate help in app binary"
+	default true
+	help
+		Integrate help texts into application binary. If you disable this option
+		the help pages can still be provided in a ROMFS partition.
+
+config HWCONF_DYNAMIC
+	bool "online hardware configuration"
+	default	true
+	help
+		support for configuring and modifying driver online
+
 config MQTT
 	bool "MQTT"
 	default true
@@ -43,68 +79,21 @@ config HTTP
 	bool "http"
 	help
 		http server
-if HTTP
-menu "http settings"
-config HTTP_ROOT
-	string "www root"
-	default "/flash"
-	help
-		Root directory for running the http server. Set to filesystem root.
-config HTTP_UPLOAD
-	string "directory in which uploads should be placed. Leave empty to disable uploads."
-	default ""
-endmenu
-endif
 
 config FTP
 	bool "ftp"
 	help
 		ftp server
-if FTP
-menu "ftp settings"
-config FTP_ROOT
-	string	"ftp root directory"
-	default	"/flash"
-	help
-		Root directory for running the ftp server. Set to filesystem root.
-config FTP_PORT
-	int	"ftp port"
-	default	21
-	help
-		port on which the ftp server will listen
-endmenu
-endif # FTP
 
 config TELNET
 	bool "telnet"
 	help
 		telnet server
 
-config TELNET_PORT
-	depends on TELNET
-	int "telnet port"
-	default 23
-	help
-		port on which telnet should be listening
-
 config TERMSERV
 	bool "uart terminal server"
 	help
-		console server function for UART 1
-
-config TERMSERV_UART
-	depends on TERMSERV
-	int "UART of terminal server"
-	default	1
-	help
-		UART number to which terminal server should connect
-
-config TERMSERV_BAUDRATE
-	depends on TERMSERV
-	int "baudrate for terminal server"
-	default	115200
-	help
-		terminal baudrate
+		UART terminal server function
 
 config SNTP
 	bool "sntp"
@@ -118,11 +107,11 @@ config SYSLOG
 	help
 		send log messages to syslog host
 
-config DMESG_SIZE
-	int "dmesg size"
-	default 1024
+config DMESG
+	bool "dmesg buffer"
+	default true
 	help
-		RAM buffered log that can be queried via dmesg; set to 0 to disable
+		RAM buffered log that can be queried via dmesg
 
 config INFLUX
 	bool "influx"
@@ -148,6 +137,12 @@ config SMARTCONFIG
 	help
 		WiFi configuration with EPS smart config
 
+config UDPCTRL
+	bool "UDP control port"
+	default false
+	help
+		listen on UDP port for control commands
+
 config WPS
 	bool "wps"
 	default false
@@ -156,176 +151,77 @@ config WPS
 
 endmenu	# software services
 
-choice FILESYSTEM_SUPPORT
-	prompt "file system"
-	default SPIFFS
+menu "filesystem support"
+
 config SPIFFS
 	bool "SPIFFS"
+	default false
 	help
 		SPI Flash File-System
 config FATFS
 	bool "fatfs"
+	default false
 	help
 		FAT file-system
 config ROMFS
 	bool "romfs"
+	default true
 	help
 		ROM file-system
-config NOFS
-	bool "none"
-	help
-		no file-system
-endchoice
-
-config MOUNT_POINT
-	depends on SPIFFS || FATFS
-	string "mount point"
-	default "/flash"
-	help
-		mount point of file-system (/ is currently not possible)
-
-if ROMFS
-menu "romfs settings"
-config ROMFS_FILES
-	string "romfs files"
-	help
-		files to store in romfs
-config ROMFS_PARTITION
-	string "name of romfs partition"
-	default "storage"
-	help
-		Name of the partition to mount and look for a romfs.
-config ROMFS_ADDR
-	string "romfs base address"
-	default "0xf0000"
-	help
-		Base address in flash of section for romfs binary. This address should be the address of the partition with the name set in ROMFS_PARTITION.
-endmenu
-endif	# ROMFS
-	
+endmenu # filesystem
 
 menu "hardware support"
 
-config ALIVELED
-	bool "alive LED"
+config STATUSLEDS
+bool "heartbeat/status LEDs"
+	default true
 	help
-		alive LED
-if ALIVELED
-menu "alive LED configuration"
-config ALIVELED_GPIO
-	int "gpio"
-	default 0
-	range 0 16 if CONFIG_ESP8266_DEFAULT_CPU_FREQ_MHZ
-	range 0 39 # esp32 range
-	help
-		GPIO of alive LED
-config ALIVELED_ON
-	int	"0: active low, 1: active high"
-	default 0
-	help
-		LED is active high
-endmenu
-endif
-
+		heartbeat/status LED
 
 config BUTTON
-	bool	"button"
+	bool	"button support"
+	default true
 	help
-		button for device control
-if BUTTON
-menu "button configuration"
-config BUTTON_GPIO
-	int	"gpio of button"
-	default 0
-	range 0 16 if CONFIG_ESP8266_DEFAULT_CPU_FREQ_MHZ != 0
-	range 0 39 # esp32 range
-	help
-		GPIO port to which the button is attached
-config BUTTON_PRESSED
-	int	"0: active low, 1: active high"
-	default	0
-	help
-		Usually buttons are wired active low.
-endmenu
-endif # button
+		support direct to GPIOs attached buttons
 
+config RELAY
+	bool "relay"
+	default true
+	help
+		relay attached to a GPIO
 
+config ONEWIRE
+	depends on IDF_TARGET_ESP32
+	bool "onewire"
+	default true
+	help
+		1-wire driver support (right now only DS18x20)
+
+config TOUCHPAD
+	depends on IDF_TARGET_ESP32
+	bool	"touchpad"
+	default true
+	help
+		multi-channel touchpad support
 
 config CLOCK
 	bool	"7-segment LED clock"
 	default false
 	help
-		7-segment LED clock
-if CLOCK
-config CLOCK_CLK
-	int	"gpio of clk pin"
-config CLOCK_CS
-	int	"gpio of cs pin"
-config CLOCK_DOUT
-	int	"gpio of dout pin"
-config CLOCK_OD
-	int	"gpio of od pin"
-endif # CLOCK
-
+		4-6 digit 7-segment LED driven by MAX7219
 
 config DHT
-	bool "DHT measurements"
+	bool "DHT-xx sensor"
 	default false
 	help
-		temperature/humidity measurement with a DHTxx sensor
-
-if DHT
-choice DHT_KIND
-	prompt "DHT kind"
-	default DHT22
-config DHT11
-	bool "DHT11"
-	help
-		DHT11
-config DHT21
-	bool "DHT21/AM2302"
-	help
-		DHT21, AM2301
-config DHT22
-	bool "DHT22/AM2302/RHT03"
-	help
-		DHT22, AM2302, RHT03
-endchoice
-config DHT_GPIO
-	depends on DHT
-	int	"gpio of DHT"
-	default 0
-	range 0 16 if CONFIG_ESP8266_DEFAULT_CPU_FREQ_MHZ != 0
-	range 0 39 # esp32 range
-	help
-		GPIO port to which the DHT is attached
-endif # DHT
-
+		temperature/humidity measurement with a DHT-xx sensor
 
 config BME280
 	bool "BME280 sensor"
 	default false
 	help
-		temperature, pressure, humidity measurements with BME280
-
-config BME280_SDA
-	depends on BME280
-	int "SDA"
-	default 0
-	range 0 16 if CONFIG_ESP8266_DEFAULT_CPU_FREQ_MHZ != 0
-	range 0 39 # esp32 range
-	help
-		SDA GPIO for BME280
-
-config BME280_SCL
-	depends on BME280
-	int "SCL"
-	default 0
-	range 0 16 if CONFIG_ESP8266_DEFAULT_CPU_FREQ_MHZ != 0
-	range 0 39 # esp32 range
-	help
-		SCL GPIO for BME280
-
+		Temperature, pressure, humidity measurements with BME280 in I2C mode.
+		Connect CSB to 3.3V and SDO to GND.
 
 config DIST
 	bool "distance measurement"
@@ -333,104 +229,19 @@ config DIST
 	help
 		distance measurement with HC-SR04
 
-config DIST_TRIGGER
-	depends on DIST
-	int	"gpio to trigger HC-SR04"
-	default 0
-
-config DIST_ECHO
-	depends on DIST
-	int	"gpio for echo of HC-SR04"
-	default 0
-
-config LIGHTCTRL
-	bool "light control"
-	default false
-	help
-		light sensor read from A/D driving pwm dimmer (currently ESP8266 only)
-
 config DIMMER
-	bool "single-PWM dimmer support"
+	bool "multi channel PWM dimmer support"
 	default false
 	help
-		hardware-timer 1-channel high-performance dimmer
-
-config DIMMER_GPIO
-	depends on DIMMER
-	int "gpio of dimmer PWM output"
-	default 0
-	help
-		GPIO of dimmer PWM output
-
-config DIMMER_START
-	depends on DIMMER
-	bool "start dimmer on"
-	default false
-	help
-		start value of dimmer (on/off)
-
-config DIMMER_ACTIVE_HIGH
-	depends on DIMMER
-	bool "dimmer output is active high"
-	default false
-	help
-		GPIO output for dimmer is active high
+		multi-channel PWM dimmer (esp32: hardware, esp8266: software)
 
 config LEDSTRIP
+	depends on SIGNAL_PROC
+	depends on IDF_TARGET_ESP32
 	bool	"LED strip support"
 	default false
 	help
 		LED stripes based on WS8212b
-if LEDSTRIP
-menu "LED strip configuration"
-config LEDSTRIP_CHANNEL
-	int	"RMT channel for LED strip"
-	default	0
-	help
-		RMT channel for LED strip (used on ESP32 only)
-config LEDSTRIP_GPIO
-	int	"GPIO for LED strip"
-	default	0
-config LEDSTRIP_NUMLEDS
-	int	"number of LEDs on strip"
-	default	1
-endmenu
-endif # LEDSTRIP
-
-
-config RELAY
-	bool "relay"
-	default false
-	help
-		relay control
-if RELAY
-menu "relay configuration"
-config RELAY_GPIO
-	int "gpio of relay"
-	default 0
-	range 0 16 if CONFIG_ESP8266_DEFAULT_CPU_FREQ_MHZ
-	range 0 39 # esp32 range
-	help
-		GPIO port of relay (ESP8266: 0-16, ESP32: 0-39)
-config RELAY_ON
-	int	"0: active low, 1: active high"
-	default	0
-	help
-		set relay output to active high or active low
-
-config RELAY_RESTORE
-	bool	"restore last relay state on power-up"
-	default false
-	help
-		restore last relay state on power-up
-
-config RELAY_POWERUP_ON
-	int	"default relay state on power-on"
-	default	0
-	help
-		if set to 1 relay will be turned on on power-up when no last state is known
-endmenu # relay configuration
-endif
 
 config CAMERA
 	bool	"ESP32 camera support"
@@ -439,24 +250,6 @@ config CAMERA
 config NIGHTSKY
 	bool	"TLC5947 based led control"
 	default false
-
-if NIGHTSKY
-menu "nightsky configuration"
-config NIGHTSKY_NTLC
-	int	"number of TCL5947 devices"
-	default	8
-	help
-		number of attached leds
-config NIGHTSKY_IO_SIN
-	int	"gpio for SIN of tcl5947"
-config NIGHTSKY_IO_SCLK
-	int	"gpio for SCLK of tcl5947"
-config NIGHTSKY_IO_XLAT
-	int	"gpio for XLAT of tcl5947"
-config NIGHTSKY_IO_BLANK
-	int	"gpio for BLANK of tcl5947"
-endmenu # "nightsky"
-endif	# NIGHTSKY
 
 endmenu # harware support
 

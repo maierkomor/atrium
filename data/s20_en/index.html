@@ -24,7 +24,7 @@
 <p id="version"/>
 <table><tbody align="left">
 	<tr><th>Time:</th><td id="time"/></tr>
-	<tr><th>Power supply:</th><td id="relay"/><td><input id="powerbtn" type="button" value="-"/></td></tr>
+	<tr><th>Power supply:</th><td id="mainrelay"/><td><input id="powerbtn" type="button" value="-"/></td></tr>
 	<tr><th>Timed control:</th><td id="timers"/><td><input id="timerbtn" type="button" value="-"/></td></tr>
 	<tr><th>Last on:</th><td id="last_on"/></tr>
 	<tr><th>Last off:</th><td id="last_off"/></tr>
@@ -37,11 +37,9 @@
 <br>
 <a href="update.html">Firmware Update</a>
 <br>
-<a href="license">License</a>
+<a href="license.gz">License</a>
 <br>
 <a href="copyright">Copyright</a>
-<br>
-<input id="sc_start" type="button" value="Start SmartConfig" onclick="run_exe('sc start');"/>
 <br>
 
 <script>
@@ -66,25 +64,32 @@ function on_device_data(responseText)
 	v.innerHTML = obj.version;
 	if (obj.hasOwnProperty('ltime'))
 		document.getElementById("time").innerHTML = obj.ltime;
-	if (obj.relay) {
-		r.innerHTML = "on";
-		r.style.background = "green";
-		p.value="turn off";
-		p.setAttribute("onclick","run_exe('action relay_off');");
-	} else {
-		r.innerHTML = "off";
-		r.style.background = "red";
-		p.value="turn on";
-		p.setAttribute("onclick","run_exe('action relay_on');");
+	if (obj.hasOwnProperty('mainrelay')) {
+		if (obj.mainrelay.hasOwnProperty('on')) {
+			if (obj.mainrelay.on == 1) {
+				r.innerHTML = "on";
+				r.style.background = "green";
+				p.value="turn off";
+				p.setAttribute("onclick","run_exe('action mainrelay!off');");
+			} else if (obj.mainrelay.on == -1) {
+				r.innerHTML = "off";
+				r.style.background = "red";
+				p.value="turn on";
+				p.setAttribute("onclick","run_exe('action mainrelay!on');");
+			} else {
+				r.innerHTML = "???";
+				r.style.background = "grey";
+			}
+		}
+		if (obj.mainrelay.hasOwnProperty('laston'))
+			lon.innerHTML = obj.mainrelay.laston;
+		else
+			lon.innerHTML = "";
+		if (obj.mainrelay.hasOwnProperty('lastoff'))
+			loff.innerHTML = obj.mainrelay.lastoff;
+		else
+			loff.innerHTML = "";
 	}
-	if (obj.hasOwnProperty('laston'))
-		lon.innerHTML = obj.laston;
-	else
-		lon.innerHTML = "";
-	if (obj.hasOwnProperty('lastoff'))
-		loff.innerHTML = obj.lastoff;
-	else
-		loff.innerHTML = "";
 	if (obj.timers_enabled) {
 		t.innerHTML = "active";
 		t.style.background = "green";
@@ -112,7 +117,7 @@ req.onreadystatechange = function() {
 }
 var v = document.getElementById("version");
 var timer = setInterval(get_update,1000);
-var r = document.getElementById("relay");
+var r = document.getElementById("mainrelay");
 var t = document.getElementById('timers');
 var p = document.getElementById("powerbtn");
 var lon = document.getElementById("last_on");

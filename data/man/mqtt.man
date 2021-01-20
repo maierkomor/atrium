@@ -1,0 +1,11 @@
+synopsis: mqtt <cmd> [<arg>]
+valid <cmd>:
+status : print status
+uri    : set <arg> as uri - must be in mqtt://host:port format
+user   : set <arg> as mqtt user name
+pass   : set <arg> as mqtt password
+enable : to enable mqtt
+disable: to disable mqtt
+start  : to start mqtt service
+stop   : to stop mqtt service
+sub    : to list subscriptions

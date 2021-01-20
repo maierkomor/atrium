@@ -1,0 +1,3 @@
+synopsys: update [-b|-p <part>] <http-link>
+-b       : boot after update
+-p <part>: update partition <part>

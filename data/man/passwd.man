@@ -1,0 +1,5 @@
+synopsis: passwd <option> [<pass>]
+-c: clear
+-r: reset
+-s: set (<pass> is optional)
+-v: verify

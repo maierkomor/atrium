@@ -1,0 +1,6 @@
+synopsis: action {<option>|<action>}
+valid options are:
+-l  : list actions
+-f  : disable factory reset action (needs config write and reboot)
+-F  : enable factory reset action (needs config write and reboot)
+<action>: trigger action

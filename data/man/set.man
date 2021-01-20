@@ -1,0 +1,5 @@
+synopsis: set <option> [<param>] [<value>]
+valid options are:
+-l : list valid parameters
+-c : clear <param>
+-s : set <param> to <value>

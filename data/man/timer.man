@@ -1,0 +1,10 @@
+timer <option> [<args>]
+valid <option> are:
+create       : -c <name> <time> [<repeat>] [<autostart>]
+delete       : -d <name>	# deletes only its config
+set interval : -i <name> <time>
+set repeat   : -r <name> <repeat>
+set autostart: -a <name> <autostart>
+start        : -s <name>
+terminate    : -t <name>
+list         : -l 

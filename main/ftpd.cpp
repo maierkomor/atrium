@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2019, Thomas Maier-Komor
+ *  Copyright (C) 2018-2020, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -20,15 +20,18 @@
 
 #ifdef CONFIG_FTP
 
+#define FTP_PORT 21
+#define FTP_ROOT "/"
+
 #ifdef ESP8266
 #define USE_FOPEN
 #endif
 
 #include "binformats.h"
-#include "ftpd.h"
 #include "globals.h"
 #include "inetd.h"
 #include "log.h"
+#include "netsvc.h"
 #include "settings.h"
 #include "shell.h"
 #include "support.h"
@@ -94,7 +97,7 @@ static void answer(ftpctx_t *ctx, const char *fmt, ...)
 		n = vasprintf(&b,fmt,val);
 		va_end(val);
 	}
-	log_info(TAG,"answer %s",b);
+	log_dbug(TAG,"answer %s",b);
 	if (-1 == send(ctx->con,b,n,0)) {
 		if (b != buf)
 			free(b);
@@ -120,7 +123,7 @@ static char *up_slash(char *str, char *at)
 
 static void fold_path(char *path)
 {
-	log_info(TAG,"folding %s",path);
+	log_dbug(TAG,"folding %s",path);
 	while (0 == memcmp(path,"/../",4))
 		memmove(path,path+3,strlen(path+3)+1);
 	char *dd = strstr(path,"/../");
@@ -131,7 +134,7 @@ static void fold_path(char *path)
 		} else {
 			memmove(dd,dd+3,strlen(dd+3)+1);
 		}
-		log_info(TAG,"folded to %s",path);
+		log_dbug(TAG,"folded to %s",path);
 		dd = strstr(path,"/../");
 	}
 }
@@ -214,7 +217,7 @@ static void mkd(ftpctx_t *ctx, const char *arg)
 #ifdef ESP8266
 	answer(ctx,"452 operation not supported\r\n");
 #else
-	log_info(TAG,"mkdir %s",buf);
+	log_dbug(TAG,"mkdir %s",buf);
 	if (-1 == mkdir(buf,0777)) {
 		log_warn(TAG,"failed to create %s: %s",arg,strerror(errno));
 		answer(ctx,"552 failed to create %s: %s\r\n",arg,strerror(errno));
@@ -246,7 +249,7 @@ static void rmd(ftpctx_t *ctx, const char *arg)
 #ifdef ESP8266
 	answer(ctx,"452 operation not supported\r\n");
 #else
-	log_info(TAG,"rmdir %s",buf);
+	log_dbug(TAG,"rmdir %s",buf);
 	if (-1 == rmdir(buf)) {
 		log_warn(TAG,"failed to rmdir %s: %s",arg,strerror(errno));
 		answer(ctx,"552 failed to rmdir %s: %s\r\n",arg,strerror(errno));
@@ -304,9 +307,9 @@ static void retrive(ftpctx_t *ctx, const char *arg)
 			log_warn(TAG,"unable to read from %s: %s",arg,strerror(errno));
 			goto cleanup;
 		}
-		log_info(TAG,"sent %d bytes",r);
+		log_dbug(TAG,"sent %d bytes",r);
 	} while (r > 0);
-	log_info(TAG,"sent %d bytes",total);
+	log_dbug(TAG,"sent %d bytes",total);
 	answer(ctx,"200\r\n");
 cleanup:
 	close(ctx->dcon);
@@ -348,9 +351,9 @@ cleanup:
 			log_warn(TAG,"unable to read from %s: %s",arg,strerror(errno));
 			goto cleanup;
 		}
-		log_info(TAG,"sent %d bytes",r);
+		log_dbug(TAG,"sent %d bytes",r);
 	} while (r > 0);
-	log_info(TAG,"sent %d bytes",total);
+	log_dbug(TAG,"sent %d bytes",total);
 	answer(ctx,"200\r\n");
 cleanup:
 	close(ctx->dcon);
@@ -409,9 +412,9 @@ static void store(ftpctx_t *ctx, const char *arg)
 			log_warn(TAG,"unable to write to %s for storing: %s",arg,strerror(errno));
 			goto cleanup;
 		}
-		log_info(TAG,"received and wrote %d bytes",n);
+		log_dbug(TAG,"received and wrote %d bytes",n);
 	} while (n > 0);
-	log_info(TAG,"wrote %d bytes to %s",total,arg);
+	log_dbug(TAG,"wrote %d bytes to %s",total,arg);
 	answer(ctx,"200\r\n");
 cleanup:
 	close(ctx->dcon);
@@ -445,9 +448,9 @@ cleanup:
 			log_warn(TAG,"unable to write to %s for storing: %s",arg,strerror(errno));
 			goto cleanup;
 		}
-		log_info(TAG,"received and wrote %d bytes",n);
+		log_dbug(TAG,"received and wrote %d bytes",n);
 	} while (n > 0);
-	log_info(TAG,"wrote %d bytes to %s",total,arg);
+	log_dbug(TAG,"wrote %d bytes to %s",total,arg);
 	answer(ctx,"200\r\n");
 cleanup:
 	close(ctx->dcon);
@@ -460,7 +463,7 @@ cleanup:
 
 static void cwd(ftpctx_t *ctx, const char *arg)
 {
-	log_info(TAG,"CWD %s",arg);
+	log_dbug(TAG,"CWD %s",arg);
 	if (arg == 0) {
 		answer(ctx,"501 missing argument\r\n",4,0);
 		return;
@@ -477,24 +480,24 @@ static void cwd(ftpctx_t *ctx, const char *arg)
 	}
 	fold_path(ctx->wd);
 	answer(ctx,"200 %s\r\n",ctx->wd);
-	log_info(TAG,"cwd %s",ctx->wd);
+	log_dbug(TAG,"cwd %s",ctx->wd);
 }
 
 
 static void cdup(ftpctx_t *ctx, const char *arg)
 {
-	log_info(TAG,"cdup %s",ctx->wd);
+	log_dbug(TAG,"cdup %s",ctx->wd);
 	char *sl = strrchr(ctx->wd,'/');
 	if (sl == ctx->wd) {
 		answer(ctx,"200 %s\r\n",ctx->wd);
-		log_info(TAG,"cwd %s",ctx->wd);
+		log_dbug(TAG,"cwd %s",ctx->wd);
 		return;
 	}
 	assert(sl[1] == 0);
 	sl = up_slash(ctx->wd,sl-1);
 	sl[1] = 0;
 	answer(ctx,"200 %s\r\n",ctx->wd);
-	log_info(TAG,"cwd %s",ctx->wd);
+	log_dbug(TAG,"cwd %s",ctx->wd);
 }
 
 
@@ -526,7 +529,7 @@ static void dele(ftpctx_t *ctx, const char *arg)
 
 static void list(ftpctx_t *ctx, const char *arg)
 {
-	log_info(TAG,"LIST %s",arg ? arg : ctx->wd);
+	log_dbug(TAG,"LIST %s",arg ? arg : ctx->wd);
 	if (ctx->dcon == -1) {
 		answer(ctx,"550 use port before list\r\n");
 		return;
@@ -541,7 +544,7 @@ static void list(ftpctx_t *ctx, const char *arg)
 	} else
 		strcat(cmd,ctx->wd);
 	answer(ctx,"150 ready for output\r\n");
-	log_info(TAG,"list exe %s",cmd);
+	log_dbug(TAG,"list exe %s",cmd);
 	shellexe(term,cmd);
 	answer(ctx,"226 tranfer completed\r\n");
 	close(ctx->dcon);
@@ -551,7 +554,7 @@ static void list(ftpctx_t *ctx, const char *arg)
 
 static void nlst(ftpctx_t *ctx, const char *arg)
 {
-	log_info(TAG,"LIST %s",arg ? arg : ctx->wd);
+	log_dbug(TAG,"LIST %s",arg ? arg : ctx->wd);
 	if (ctx->dcon == -1) {
 		answer(ctx,"550 use port before list\r\n");
 		return;
@@ -566,7 +569,7 @@ static void nlst(ftpctx_t *ctx, const char *arg)
 	} else
 		strcat(cmd,ctx->wd);
 	answer(ctx,"150 ready for output\r\n");
-	log_info(TAG,"nlst exe %s",cmd);
+	log_dbug(TAG,"nlst exe %s",cmd);
 	shellexe(term,cmd);
 	answer(ctx,"226 tranfer completed\r\n");
 	close(ctx->dcon);
@@ -587,7 +590,7 @@ static void port(ftpctx_t *ctx, const char *arg)
 		answer(ctx,"501 invalid argument %s\r\n",arg);
 		return;
 	}
-	log_info(TAG,"port %u.%u.%u.%u:%u",a0,a1,a2,a3,p0<<8|p1);
+	log_dbug(TAG,"port %u.%u.%u.%u:%u",a0,a1,a2,a3,p0<<8|p1);
 	int sock = socket(AF_INET, SOCK_STREAM, 0);
 	if (sock < 0) {
 		// 425: cannot open connection
@@ -609,7 +612,7 @@ static void port(ftpctx_t *ctx, const char *arg)
 	if (ctx->dcon != -1)
 		close(ctx->dcon);
 	ctx->dcon = sock;
-	log_info(TAG,"PORT created socket %d",sock);
+	log_dbug(TAG,"PORT created socket %d",sock);
 	answer(ctx,"200 PORT OK\r\n");
 }
 
@@ -726,14 +729,14 @@ static ftpcom_t Commands[] = {
 
 static int execute_buffer(ftpctx_t *ctx, char *buf, int fill)
 {
-	log_info(TAG,"ftpd exe '%s'",buf);
+	log_dbug(TAG,"ftpd exe '%s'",buf);
 	char *eol = streol(buf,fill);
 	while (eol) {
 		*eol = 0;
 		++eol;
 		if ((*eol == '\r') || (*eol == '\n'))
 			++eol;
-		log_info(TAG,"ftpd('%s')",buf);
+		log_dbug(TAG,"ftpd('%s')",buf);
 		char *sp = strchr(buf,' ');
 		if (sp) 
 			*sp = 0;
@@ -772,16 +775,16 @@ void ftpd_session(void *arg)
 	ctxt.con = con;
 	ctxt.dcon = -1;
 	ctxt.wd = strdup("/");
-	ctxt.root = CONFIG_FTP_ROOT;
+	ctxt.root = FTP_ROOT;
 	ctxt.rnfr = 0;
 	char buf[256];
 	size_t fill = 0;
-	log_info(TAG,"starting session");
+	log_dbug(TAG,"starting session");
 	answer(&ctxt,"220 Connection established.\r\n");
 	for (;;) {
 		int n = recv(con,buf+fill,sizeof(buf)-fill-1,0);
 		if (n < 0) {
-			log_info(TAG,"error on recv: %s",strneterr(con));
+			log_dbug(TAG,"error on recv: %s",strneterr(con));
 			close(con);
 			vTaskDelete(0);
 			return;
@@ -792,7 +795,7 @@ void ftpd_session(void *arg)
 		buf[fill] = 0;
 		fill = execute_buffer(&ctxt,buf,fill);
 		if (fill == -1) {
-			log_info(TAG,"error executing");
+			log_dbug(TAG,"error executing");
 			close(con);
 			vTaskDelete(0);
 			return;
@@ -801,10 +804,9 @@ void ftpd_session(void *arg)
 }
 
 
-extern "C"
-void ftpd_setup()
+int ftpd_setup()
 {
-	listen_tcp(CONFIG_FTP_PORT,ftpd_session,"ftpd","_ftp",4,4096);
+	return listen_tcp(FTP_PORT,ftpd_session,"ftpd","_ftp",4,4096);
 }
 
 #endif

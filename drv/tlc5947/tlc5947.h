@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018, Thomas Maier-Komor
+ *  Copyright (C) 2018-2020, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -27,19 +27,28 @@
 class TLC5947
 {
 	public:
-	TLC5947(gpio_num_t sin, gpio_num_t sclk, gpio_num_t xlat, gpio_num_t blank, unsigned num = 1);
+	TLC5947()
+	: m_initialized(false)
+	, m_on(false)
+	{ }
 
-	void init();
+	int init(gpio_num_t sin, gpio_num_t sclk, gpio_num_t xlat, gpio_num_t blank, unsigned num = 1);
 	void set_led(unsigned x, uint16_t v);
 	uint16_t get_led(unsigned x);
 	void commit();
 	void on();
 	void off();
+	bool is_on() const
+	{ return m_on; }
+	esp_err_t get_error() const
+	{ return m_err; }
 
 	private:
 	gpio_num_t m_sin, m_sclk, m_xlat, m_blank;
+	esp_err_t m_err;
 	uint16_t m_nled;
 	uint16_t *m_data;
+	bool m_initialized, m_on;
 };
 
 #endif

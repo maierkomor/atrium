@@ -1,13 +1,11 @@
 set(COMPONENT_SRCS
-	actions.cpp
-	alive.cpp
-	astream.cpp
+	adc.cpp
+	alarms.cpp
 	binformats.cpp
 	bme.cpp
-	button.cpp
+	buttons.cpp
 	clock.cpp
 	console.cpp
-	cyclic.cpp
 	dht.cpp
 	dimmer.cpp
 	distance.cpp
@@ -21,28 +19,25 @@ set(COMPONENT_SRCS
 	inetd.cpp
 	influx.cpp
 	ledstrip.cpp
-	lightctrl.cpp
-	log.cpp
-	mem_term.cpp
 	mqtt.cpp
-	mstream.cpp
+	nightsky.cpp
 	nightsky.cpp
 	ota.cpp
-	relay.cpp
+	relays.cpp
 	romfs.cpp
 	settings.cpp
 	shell.cpp
-	startup.c
-	strstream.cpp
+	startup.cpp
+	status.cpp
 	support.cpp
-	tcp_terminal.cpp
+	syslog.cpp
 	telnet.cpp
-	terminal.cpp
-	uart_terminal.cpp
+	touchpads.cpp
+	uarts.cpp
 	udpctrl.cpp
 	webcam.cpp
 	wifi.cpp
 )
 
 register_component(
-	REQUIRES logging)
+	REQUIRES logging bme280 dht drv)

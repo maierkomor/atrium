@@ -21,9 +21,10 @@
 
 #include <stdint.h>
 #include <sys/types.h>
-#include <string>
 #include <map>
 #include <vector>
+
+#include "estring.h"
 
 typedef enum
 {
@@ -46,7 +47,7 @@ typedef enum
 class HttpRequest
 {
 	public:
-	static HttpRequest *parseRequest(int);
+	static HttpRequest *parseRequest(int,char*,size_t);
 	~HttpRequest();
 
 	size_t getContentLength() const
@@ -78,10 +79,10 @@ class HttpRequest
 	{ m_keepalive = a; }
 
 	size_t numArgs();
-	const std::string &argName(size_t) const;
-	const std::string &arg(size_t) const;
-	const std::string &arg(const char *) const;
-	const std::string &getHeader(const char *) const;
+	const estring &argName(size_t) const;
+	const estring &arg(size_t) const;
+	const estring &arg(const char *) const;
+	const estring &getHeader(const char *) const;
 	void setURI(const char *);
 
 	private:
@@ -100,8 +101,8 @@ class HttpRequest
 	ssize_t m_clen0;
 	char *m_content;
 	const char *m_error;
-	std::vector< std::pair<std::string,std::string> > m_args;
-	std::map<std::string,std::string> m_headers;
+	std::vector< std::pair<estring,estring> > m_args;
+	std::map<estring,estring> m_headers;
 	bool m_keepalive;
 };
 

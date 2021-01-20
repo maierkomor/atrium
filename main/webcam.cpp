@@ -27,6 +27,7 @@
 
 #include "HttpReq.h"
 #include "HttpResp.h"
+#include "globals.h"
 #include "log.h"
 #include "webcam.h"
 
@@ -97,8 +98,7 @@
 static char TAG[] = "webcam";
 
 
-extern "C"
-void webcam_setup()
+int webcam_setup()
 {
 	camera_config_t cfg = {
 		.pin_pwdn  = CAM_PIN_PWDN,
@@ -132,7 +132,7 @@ void webcam_setup()
 	gpio_pad_select_gpio(CAM_PIN_PWDN);
 	if (esp_err_t e = gpio_set_direction((gpio_num_t)CAM_PIN_PWDN, GPIO_MODE_OUTPUT)) {
 		log_error(TAG,"cannot set %u to output: %s",CAM_PIN_PWDN,esp_err_to_name(e));
-		return;
+		return 1;
 	}
 	gpio_set_level((gpio_num_t)CAM_PIN_PWDN,1);
 	vTaskDelay(10 / portTICK_PERIOD_MS);
@@ -142,6 +142,7 @@ void webcam_setup()
 		log_error(TAG, "init failed %s",esp_err_to_name(e));
 	else
 		log_info(TAG,"setup done");
+	return 0;
 }
 
 

@@ -1,0 +1,15 @@
+synopsis: hwconf <cmd> [<param>] [<value>]
+where <cmd> is:
+show    : show complete configuration including unset values
+json    : create json output of config
+set     : set <param> to <value>, where <param> can be field[idx].element
+clear   : clear <param>
+add     : add element to array <param>
+reset   : rest to defaults
+write   : write config to NVS
+read    : read config rom NVS
+parsexxd: parse xxd input to RAM
+writebuf: write parsed xxd buffer to NVS
+nvxxd   : create xxd output of NVS
+xxd     : create xxd output of current config
+clearbuf: clear parse buffer

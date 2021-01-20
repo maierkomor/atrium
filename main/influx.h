@@ -20,18 +20,11 @@
 #define INFLUX_H
 
 #ifdef __cplusplus
-#include <string>
-#include <vector>
 
-void influx_send(const std::vector< std::pair<std::string,std::string> > &data);
-void influx_send(const char *data, size_t l = 0);
+int influx_send(const char *data, size_t l = 0);
+void influx_sendf(const char *fmt, ...);
+int influx_header(char *, size_t);
 
-extern "C" {
-#endif
-void influx_setup(void);
-
-#ifdef __cplusplus
-}
-#endif
+#endif // __cplusplus
 
 #endif

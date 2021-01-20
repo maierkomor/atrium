@@ -25,7 +25,6 @@
 extern "C" {
 #endif
 
-void dht_setup(void);
 uint8_t dht_humidity();
 int16_t dht_temperature();
 

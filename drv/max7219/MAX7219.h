@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2019, Thomas Maier-Komor
+ *  Copyright (C) 2018-2020, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -29,18 +29,11 @@
 class MAX7219Drv
 {
 	public:
-	MAX7219Drv(gpio_num_t clk, gpio_num_t dout, gpio_num_t cs, bool odrain)
-	: m_clk(clk)
-	, m_dout(dout)
-	, m_cs(cs)
-	, m_odrain(odrain)
-	, m_attached(false)
+	MAX7219Drv()
+	: m_attached(false)
 	{ }
 
-	~MAX7219Drv();
-	
-	void attach();
-	void detach();
+	int init(gpio_num_t clk, gpio_num_t dout, gpio_num_t cs, bool odrain);
 	void powerup();
 	void shutdown();
 	void setDigits(uint8_t);
@@ -48,6 +41,8 @@ class MAX7219Drv
 	void setDecoding(uint8_t);
 	void displayTest(bool);
 	void setDigit(uint8_t d, uint8_t v);
+	uint8_t getIntensity() const
+	{ return m_intensity; }
 
 	private:
 	void setreg(uint8_t r, uint8_t v);
@@ -56,6 +51,8 @@ class MAX7219Drv
 	void chip_select(int);
 
 	gpio_num_t m_clk, m_dout, m_cs;
+	uint8_t m_digits[8];
+	uint8_t m_intensity;
 	bool m_odrain, m_attached;
 };
 

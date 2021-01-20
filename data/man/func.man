@@ -1,0 +1,6 @@
+synopsis: func <option> [<args>]
+valid options are:
+-l                       : list instantiated functions
+-a                       : list available functions
+-x <func>                : execute function
+-c <name> <type> [<p>...]: create function

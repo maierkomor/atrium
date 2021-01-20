@@ -19,6 +19,7 @@
 #include "HttpResp.h"
 
 #include "log.h"
+#include "netsvc.h"
 #include "profiling.h"
 #include "support.h"
 
@@ -124,6 +125,7 @@ void HttpResponse::setResult(const char *fmt, ...)
 }
 
 
+/*
 void HttpResponse::writeHeader(const char *fmt, ...)
 {
 	char buf[128];
@@ -140,14 +142,15 @@ void HttpResponse::writeHeader(const char *fmt, ...)
 	va_end(val);
 	m_header += CRNL;
 }
+*/
 
 
 void HttpResponse::addContent(const char *h, size_t l)
 {
+	log_dbug(TAG,"addContent: %u bytes",l);
 	if (l == 0)
 		l = strlen(h);
 	if (m_con != -1) {
-		log_info(TAG,"sending %u bytes",l);
 		if (-1 == send(m_con,h,l,0)) {
 			log_warn(TAG,"error sending: %s",strneterr(m_con));
 			close(m_con);
@@ -184,56 +187,6 @@ void HttpResponse::writeContent(const char *fmt, ...)
 }
 
 
-/*
-void HttpResponse::send(int con)
-{
-	assert(!m_result.emtpy());
-	size_t rs = m_result.size();
-	size_t hs = m_header.size();
-	size_t cs = m_content.size();
-	if (rs+hs+cs+32 < BUFSIZE) {
-		char buf[BUFSIZE], *b = buf;
-		memcpy(b,m_result.data(),rs);
-		b += rs;
-		int n = sprintf(b,"Content-Length: %lu\r\n",cs);
-		assert(n < 32);
-		b += n;
-		memcpy(b,m_header.data(),hs);
-		b += hs;
-		memcpy(b,CRNL,2);
-		b += 2;
-		memcpy(b,m_content.data(),cs);
-		b += cs;
-		if (-1 == send(con,buf,b-buf,0)) {
-			log_error(TAG,"error sending: %s",strneterr(con));
-		}
-		return;
-	}
-	m_result.resize(rs+32,0);
-	int n = sprintf(m_result.data()+rs,"Content-Length: %lu\r\n%s",m_content.size(),m_header.empty() ? CRNL : "");
-	assert(n < 32);
-	n_result.resize(rs+n,0);
-	if (-1 == send(con,m_result.data(),m_result.size(),0)) {
-		log_error(TAG,"error sending: %s",strerror(errno));
-		return;
-	}
-	if (!m_header.empty()) {
-		m_header += CRNL;
-		if (-1 == send(con,m_header.data(),m_header.size(),0)) {
-			log_error(TAG,"error sending: %s",strerror(errno));
-			return;
-		}
-	}
-	if (!m_content.empty()) {
-		if (-1 == send(con,m_content.data(),m_content.size(),0)) {
-			log_error(TAG,"error sending: %s",strerror(errno));
-			return;
-		}
-	}
-}
-*/
-
-
 bool HttpResponse::senddata(int con, int fd)
 {
 	//TimeDelta td(__FUNCTION__);
@@ -250,48 +203,6 @@ bool HttpResponse::senddata(int con, int fd)
 		}
 	}
 	assert(m_result != 0);
-#if 0
-	size_t rs = m_reslen ? m_reslen : strlen(m_result);
-	size_t hs = m_header.size();
-	// 9 for protocol
-	// 32 for content length
-	if (rs+hs+cs+32+9 < BUFSIZE) {
-		char buf[BUFSIZE], *b = buf;
-		memcpy(b,"HTTP/1.1 ",9);
-		b += 9;
-		memcpy(b,m_result,rs);
-		b += rs;
-		*b++ = '\r';
-		*b++ = '\n';
-		int n = sprintf(b,"Content-Length: %u\r\n",cs);
-		assert(n < 32);
-		b += n;
-		memcpy(b,m_header.data(),hs);
-		b += hs;
-		memcpy(b,CRNL,2);
-		b += 2;
-		if (fd == -1)
-			memcpy(b,m_content.data(),cs);
-		else if (-1 == read(fd,b,cs)) {
-			log_warn(TAG,"unable to read file: %s",strerror(errno));
-			// No reasonable way to handle this error
-			// as the transfer already started and 
-			// content length got submitted.
-			// So we blank the memory to avoid sending
-			// data not intended for receiver.
-			memset(b,0,cs);
-		}
-		b += cs;
-		*b = 0;
-		//log_info(TAG,"sending:\n%s",buf);
-		if (-1 == send(con,buf,b-buf,0)) {
-			log_error(TAG,"error sending: %s",strneterr(con));
-			m_con = -1;
-			return false;
-		}
-		return true;
-	}
-#endif
 	char msg[128];
 	int n;
 	if (cs > 0) {
@@ -303,10 +214,10 @@ bool HttpResponse::senddata(int con, int fd)
 		log_error(TAG,"temporary buffer too small");
 		return false;
 	}
-	//log_info(TAG,"sending:>>\n%s\n<<",msg);
+	log_dbug(TAG,"sending:>>\n%s\n<<",msg);
 	int r = send(con,msg,n,0);
 	if (-1 == r) {
-		log_error(TAG,"error sending: %s",strerror(errno));
+//		log_error(TAG,"error sending: %s",strerror(errno));
 		return false;
 	}
 	if (!m_header.empty()) {
@@ -325,8 +236,8 @@ bool HttpResponse::senddata(int con, int fd)
 			if (n == -1) 
 				memset(buf,0,bs);
 			if (-1 == send(con,buf,bs,0)) {
-				log_error(TAG,"error sending content: %s",strneterr(con));
 				free(buf);
+				log_error(TAG,"error sending content: %s",strneterr(con));
 				return false;
 			}
 		}
@@ -337,6 +248,6 @@ bool HttpResponse::senddata(int con, int fd)
 			return false;
 		}
 	}
-	//log_info(TAG,"sent answer");
+	log_dbug(TAG,"sent answer");
 	return true;
 }

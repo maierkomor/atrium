@@ -1,0 +1,7 @@
+synopsis: accesspoint <cmd> [<arg>]
+valid <cmd>:
+ssid : set ssid to <arg>
+pass : set pass to <arg>
+clear: clear settings
+off  : turn off station mode
+on   : turn on station mode

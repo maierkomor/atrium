@@ -19,15 +19,18 @@
 #include <sdkconfig.h>
 
 #ifdef CONFIG_DIST
-#include "distance.h"
 
+#include "binformats.h"
+#include "globals.h"
 #include "hc_sr04.h"
 #include "log.h"
+#include "shell.h"
 #include "terminal.h"
 
 #include <stdlib.h>
 
 static HC_SR04 *Driver = 0;
+static char TAG[] = "hcsr04";
 
 
 int measure(unsigned *v)
@@ -43,9 +46,7 @@ int distance(Terminal &term, int argc, const char *args[])
 	if (argc == 1) {
 		term.printf("%sinitialized\n",Driver ? "" : "not ");
 	} else if (argc == 2) {
-		if (0 == strcmp(args[1],"-h")) {
-			term.printf("synopsis:\n%s init <trigger> <echo>\n%s poll\n",args[0],args[0]);
-		} else if (0 == strcmp(args[1],"poll")) {
+		if (0 == strcmp(args[1],"poll")) {
 			unsigned v;
 			if (0 != Driver->measure(&v)) {
 				term.printf("\nmeasurement error\n");
@@ -56,7 +57,7 @@ int distance(Terminal &term, int argc, const char *args[])
 			delete Driver;
 			Driver = 0;
 		} else 
-			return 1;
+			return arg_invalid(term,args[1]);
 	} else if ((argc == 4) && (0 == strcmp(args[1],"init"))) {
 		if (Driver != 0) {
 			term.printf("already configured");
@@ -74,22 +75,31 @@ int distance(Terminal &term, int argc, const char *args[])
 			return 1;
 		}
 	} else
-		return 1;
+		return arg_invnum(term);
 	return 0;
 }
 
 
 int distance_setup()
 {
+	if (!HWConf.has_hcsr04()) {
+		log_info(TAG,"driver not configured");
+		return 0;
+	}
+	const HcSr04Config &c = HWConf.hcsr04();
+	if (!c.has_trigger() || !c.has_echo()) {
+		log_info(TAG,"incomplete config");
+		return 1;
+	}
 	Driver = new HC_SR04;
-	int r = Driver->init(CONFIG_DIST_TRIGGER,CONFIG_DIST_ECHO);
+	int r = Driver->init(c.trigger(),c.echo());
 	if (r) {
 		delete Driver;
 		Driver = 0;
-		log_error("distance","driver setup failed with error %d",r);
-	} else {
-		log_info("distance","setup ok");
+		log_error(TAG,"driver setup failed with error %d",r);
+		return 1;
 	}
+	log_info(TAG,"setup ok");
 	return 0;
 }
 

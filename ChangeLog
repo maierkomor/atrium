@@ -1,22 +1,3 @@
-R2006:
-======
-- enhancement: influx tunable intervals
-- enhancement: sntp should use domainname to determine server IP
-- enhancement: added support for vacation periods
-- enhancement: syslog should use logging infrastructure
-- enhancement: reordered startup
-- enhancmennt: upgrade to idf release/v3.3 for esp8266
-- fix: some MQTT issues
-- fix: exit in telnet session may cause crash
-- fix: leaking socket
-- fix: on holidays only holiday actions should be performed
-
-R2005:
-======
-- fix: some memory leaks
-- fix: esp8266_4m ptable addresses
-- enhancement: reduced use of termporary buffers
-
 R2004:
 ======
 - fixed WPS

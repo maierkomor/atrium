@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -19,25 +19,32 @@
 #include <sdkconfig.h>
 
 #include "actions.h"
-#include "alive.h"
+#include "binformats.h"
 #include "console.h"
+#include "dataflow.h"
 #include "dht.h"
+#include "event.h"
 #include "fs.h"
+#include "func.h"
 #include "globals.h"
 #include "log.h"
 #include "ota.h"
+#include "memfiles.h"
 #include "mqtt.h"
 #include "profiling.h"
 #include "romfs.h"
 #include "settings.h"
+#include "shell.h"
+#include "status.h"
 #include "support.h"
 #include "terminal.h"
-#include "termstream.h"
+#include "timefuse.h"
+#include "versions.h"
 #include "wifi.h"
 
-#include <string>
 #include <sstream>
 
+#include <esp_image_format.h>
 #include <esp_system.h>
 #include <esp_ota_ops.h>
 #include <esp_partition.h>
@@ -58,7 +65,7 @@
 #endif
 
 #ifndef CONFIG_ROMFS
-#ifdef ESP32
+#ifdef CONFIG_IDF_TARGET_ESP32
 #include <esp_spi_flash.h>
 #else
 #include <spi_flash.h>
@@ -73,10 +80,10 @@
 #include <freertos/FreeRTOSConfig.h>
 #include <freertos/task.h>
 
-#ifdef ESP32
+#ifdef CONFIG_IDF_TARGET_ESP32
 #include <lwip/err.h>
 #include <lwip/dns.h>
-#elif defined ESP8266
+#elif defined CONFIG_IDF_TARGET_ESP8266
 #if IDF_VERSION > 32
 #include <driver/rtc.h>	// post v3.2
 #endif
@@ -88,17 +95,16 @@ extern "C" {
 
 #include <netdb.h>
 
-#ifdef ESP8266
+#ifdef CONFIG_IDF_TARGET_ESP8266
 #include <apps/sntp/sntp.h>
 #elif IDF_VERSION >= 32
 #include <lwip/apps/sntp.h>	// >= v3.2
 #else
 #include <apps/sntp/sntp.h>	// <= v3.1
 #endif
-#include <driver/adc.h>
 #include <driver/uart.h>
 
-#ifdef ESP32
+#ifdef CONFIG_IDF_TARGET_ESP32
 #if IDF_VERSION >= 40
 extern "C" {
 #include <esp32/clk.h>
@@ -110,15 +116,15 @@ extern "C" {
 }
 #include <soc/rtc.h>
 #endif
-#elif defined ESP8266
-#include <driver/gpio.h>
+#elif defined CONFIG_IDF_TARGET_ESP8266
+//#include <driver/gpio.h>
 #endif
 
 #include <dirent.h>
 
 #include <errno.h>
 #include <fcntl.h>
-#include <string.h>
+#include <estring.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -137,11 +143,13 @@ struct ExeName
 	uint8_t plvl;	// 0 = no priviliges required, 1 = user admin required
 	int (*function)(Terminal &term, int argc, const char *arg[]);
 	const char *descr;
+	const char *help;
 };
 
-static string PWD = "/flash/";
-static const char PW[] = "password:", NotSet[] = "<not set>", Denied[] = "\nAccess denied.\n";
+static estring PWD = "/flash/";
+static const char PW[] = "password:", NotSet[] = "<not set>";
 
+int help_cmd(Terminal &term, const char *arg);
 
 extern "C"
 const char *getpwd()
@@ -150,15 +158,97 @@ const char *getpwd()
 }
 
 
-#ifdef ESP32
-static int shell_cd(Terminal &term, int argc, const char *args[])
+static void print_action(void *p, const Action *a)
 {
-	if (argc > 2) {
-		term.printf("%s: 0-1 argument expected, got %u\n",args[0],argc-1);
+	if (a == 0)
+		return;
+	Terminal *t = (Terminal*)p;
+	t->printf("\t%-24s  %s\n",a->name,a->text);
+}
+
+
+static int action(Terminal &t, int argc, const char *args[])
+{
+	if (argc == 1)
+		return help_cmd(t,args[0]);
+	if (argc != 2)
+		return arg_invnum(t);
+	if (0 == strcmp(args[1],"-l")) {
+		action_iterate(print_action,(void*)&t);
+	} else if (!strcmp(args[1],"-F")) {
+		if (0 == t.getPrivLevel())
+			return arg_priv(t);
+		Config.set_actions_enable(Config.actions_enable()|2);
+	} else if (!strcmp(args[1],"-f")) {
+		if (0 == t.getPrivLevel())
+			return arg_priv(t);
+		Config.set_actions_enable(Config.actions_enable()^~2);
+	} else if (action_activate(args[1])) {
+		t.printf("unknown action %s\n",args[1]);
 		return 1;
 	}
+	return 0;
+}
+
+
+static int event(Terminal &t, int argc, const char *args[])
+{
 	if (argc == 1) {
-		term.printf("%s\n",PWD.c_str());
+		return help_cmd(t,args[0]);
+	} else if (argc == 2) {
+		if (!strcmp(args[1],"-l")) {
+			event_t e = 1;
+			while (const char *name = event_name(e)) {
+				t.printf("%s =>\n",name);
+				for (auto a : event_callbacks(e)) 
+					t.printf("\t%s\n",a->name);
+				++e;
+			}
+		} else {
+			return arg_invalid(t,args[1]);
+		}
+		return 0;
+	} else if (argc == 4) {
+		if (0 == t.getPrivLevel())
+			return arg_priv(t);
+		Action *a = action_get(args[3]);
+		if (a == 0)
+			return arg_invalid(t,args[3]);
+		event_t e = event_id(args[2]);
+		if (e == 0) {
+			return arg_invalid(t,args[2]);
+		} else if (!strcmp(args[1],"-a")) {
+			event_callback(e,a);
+			Trigger *t = Config.add_triggers();
+			t->set_event(args[2]);
+			t->set_action(args[3]);
+			return 0;
+		} else  if (!strcmp(args[1],"-d")) {
+			event_detach(e,a);
+			auto &t = *Config.mutable_triggers();
+			for (auto i = t.begin(), e = t.end(); i != e; ++i) {
+				if ((i->event() == args[2]) && (i->action() == args[3])) {
+					t.erase(i);
+					return 0;
+				}
+			}
+		} else {
+			return arg_invalid(t,args[1]);
+		} 
+	} else {
+		return arg_invnum(t);
+	}
+	return 1;
+}
+
+
+#ifdef CONFIG_IDF_TARGET_ESP32
+static int shell_cd(Terminal &term, int argc, const char *args[])
+{
+	if (argc > 2)
+		return arg_invnum(term);
+	if (argc == 1) {
+		term.println(PWD.c_str());
 		return 0;
 	}
 	if (args[1][0] == '/')
@@ -175,19 +265,17 @@ static int shell_cd(Terminal &term, int argc, const char *args[])
 #ifdef HAVE_FS
 static int shell_rm(Terminal &term, int argc, const char *args[])
 {
-	if (argc < 2) {
-		term.printf("rm: at least 1 argument expected, got %u\n",argc-1);
-		return 1;
-	}
+	if (argc != 2)
+		return arg_invnum(term);
 	int err = 0;
 	int a = 1;
 	while (a < argc) {
-		string fn;
+		estring fn;
 		if (args[a][0] != '/')
 			fn = PWD;
 		fn += args[a];
 		if (-1 == unlink(fn.c_str())) {
-			term.printf("failed to remove '%s': %s\n",args[a],strerror(errno));
+			term.println(strerror(errno));
 			err = 1;
 		}
 		++a;
@@ -200,16 +288,14 @@ static int shell_rm(Terminal &term, int argc, const char *args[])
 #ifdef CONFIG_FATFS
 static int shell_mkdir(Terminal &term, int argc, const char *args[])
 {
-	if (argc != 2) {
-		term.printf("%s: 2 arguments expected, got %u\n",args[0],argc-1);
-		return 1;
-	}
-	string dn;
+	if (argc != 2)
+		return arg_invnum(term);
+	estring dn;
 	if (args[1][0] != '/')
 		dn = PWD;
 	dn += args[1];
 	if (-1 == mkdir(dn.c_str(),0777)) {
-		term.printf("error creating directory %s: %s\n",dn.c_str(),strerror(errno));
+		term.println(strerror(errno));
 		return 1;
 	}
 	return 0;
@@ -222,12 +308,12 @@ static int shell_rmdir(Terminal &term, int argc, const char *args[])
 		term.printf("%s: 2 arguments expected, got %u\n",args[0],argc-1);
 		return 1;
 	}
-	string dn;
+	estring dn;
 	if (args[1][0] != '/')
 		dn = PWD;
 	dn += args[1];
 	if (-1 == rmdir(dn.c_str())) {
-		term.printf("error removing directory %s: %s\n",dn.c_str(),strerror(errno));
+		term.println(strerror(errno));
 		return 1;
 	}
 	return 0;
@@ -236,11 +322,9 @@ static int shell_rmdir(Terminal &term, int argc, const char *args[])
 
 static int shell_mv(Terminal &term, int argc, const char *args[])
 {
-	if (argc != 3) {
-		term.printf("mv: 2 arguments expected, got %u\n",argc-1);
-		return 1;
-	}
-	string fn0,fn1;
+	if (argc != 3)
+		return arg_invnum(term);
+	estring fn0,fn1;
 	if (args[1][0] != '/')
 		fn0 = PWD;
 	fn1 += args[1];
@@ -271,16 +355,16 @@ static int shell_ls(Terminal &term, int argc, const char *args[])
 {
 #ifdef HAVE_FS
 	if (argc == 1) {
-		string pwd = PWD;
+		estring pwd = PWD;
 		if (pwd.back() == '/')
 			pwd.resize(pwd.size()-1);
 		DIR *d = opendir(pwd.c_str());
 		if (d == 0) {
-			term.printf("unable to opendir %s: %s\n",pwd.c_str(),strerror(errno));
+			term.println(strerror(errno));
 			return 1;
 		}
 		while (struct dirent *e = readdir(d))
-			term.printf("\t%s\n",e->d_name);
+			term.println(e->d_name);
 		closedir(d);
 		return 0;
 	}
@@ -292,7 +376,7 @@ static int shell_ls(Terminal &term, int argc, const char *args[])
 		nlst = true;
 	}
 	while (a < argc) {
-		string dir;
+		estring dir;
 		if (args[a][0] != '/')
 			dir = PWD;
 		dir += args[a];
@@ -308,10 +392,10 @@ static int shell_ls(Terminal &term, int argc, const char *args[])
 		if (dir.c_str()[dir.size()-1] != '/')
 			dir += '/';
 		while (struct dirent *e = readdir(d)) {
-			string f = dir;
+			estring f = dir;
 			f += e->d_name;
 			if (nlst) {
-				term.printf("%s\n",e->d_name);
+				term.println(e->d_name);
 				continue;
 			}
 			struct stat st;
@@ -335,8 +419,8 @@ static int shell_ls(Terminal &term, int argc, const char *args[])
 	for (int i = 0; i < n; ++i) {
 		const char *n = romfs_name(i);
 		assert(n);
-		size_t s = romfs_size(i);
-		size_t o = romfs_offset(i);
+		size_t s,o;
+		romfs_getentry(n,&s,&o);
 		term.printf("\t%-12s %6u\n",n,s,o);
 	}
 	return 0;
@@ -347,35 +431,29 @@ static int shell_ls(Terminal &term, int argc, const char *args[])
 }
 
 
-static int shell_cat(Terminal &term, int argc, const char *args[])
+static int shell_cat1(Terminal &term, const char *arg)
 {
-	if (argc != 2) {
-		term.printf("%s: 1 argument expected, got %u\n",args[0],argc-1);
-		return 1;
-	}
 #ifdef HAVE_FS
 	char *filename;
-	if (args[1][0] == '/') {
-		filename = strdup(args[1]);
+	if (arg[0] == '/') {
+		filename = (char*)arg;
 	} else {
 		size_t p = PWD.size();
-		size_t a = strlen(args[1]);
+		size_t a = strlen(arg);
 		filename = (char *) malloc(a+p+1);
 		if (filename == 0)
 			return 1;
 		memcpy(filename,PWD.data(),p);
-		memcpy(filename+p,args[1],a+1);
+		memcpy(filename+p,arg,a+1);
 	}
 	int fd = open(filename,O_RDONLY);
-	free(filename);
-	if (fd < 0) {
-		term.printf("open(%s): %s\n",args[1],strerror(errno));
+	if (filename != arg)
+		free(filename);
+	if (fd < 0)
 		return 1;
-	}
 	struct stat st;
 	if (0 != fstat(fd,&st)) {
 		close(fd);
-		term.printf("stat(%s): %s\n",args[1],strerror(errno));
 		return 1;
 	}
 	char buf[512];
@@ -384,7 +462,6 @@ static int shell_cat(Terminal &term, int argc, const char *args[])
 		int n = read(fd,buf,sizeof(buf));
 		if (n == -1) {
 			close(fd);
-			term.printf("read(%s): %s\n",args[1],strerror(errno));
 			return 1;
 		}
 		t += n;
@@ -393,13 +470,13 @@ static int shell_cat(Terminal &term, int argc, const char *args[])
 	close(fd);
 	return 0;
 #elif defined CONFIG_ROMFS
-	const char *filename = args[1];
+	const char *filename = arg;
 	if (filename[0] == '/')
 		++filename;
 	int r = romfs_open(filename);
 	if (r < 0)
 		return 1;
-	size_t s = romfs_size(r);
+	size_t s = romfs_size_fd(r);
 	size_t a = 512 < s ? 512 : s;
 	char tmp[a];
 	size_t num = 0, off = 0;
@@ -412,9 +489,18 @@ static int shell_cat(Terminal &term, int argc, const char *args[])
 	}
 	return 0;
 #else
-	term.printf("not implemented\n");
 	return 1;
 #endif
+}
+
+static int shell_cat(Terminal &term, int argc, const char *args[])
+{
+	if (argc == 1)
+		return arg_missing(term);
+	int r = 0;
+	for (int i = 1; i < argc; ++i)
+		r |= shell_cat1(term,args[i]);
+	return r;
 }
 
 
@@ -449,8 +535,7 @@ void print_hex(Terminal &term, uint8_t *b, size_t s, size_t off = 0)
 static int shell_touch(Terminal &term, int argc, const char *args[])
 {
 	if (argc != 2) {
-		term.printf("%s: 1 argument expected, got %u\n",args[0],argc-1);
-		return 1;
+		return arg_invnum(term);
 	}
 	int fd;
 	if (args[1][0] == '/') {
@@ -470,12 +555,11 @@ static int shell_touch(Terminal &term, int argc, const char *args[])
 	return 0;
 }
 
-	
+
 static int shell_xxd(Terminal &term, int argc, const char *args[])
 {
 	if (argc != 2) {
-		term.printf("%s: 1 argument expected, got %u\n",args[0],argc-1);
-		return 1;
+		return arg_invnum(term);
 	}
 	int fd = open(args[1],O_RDONLY);
 	if (fd == -1) {
@@ -505,33 +589,28 @@ static int shell_xxd(Terminal &term, int argc, const char *args[])
 static int shell_reboot(Terminal &term, int argc, const char *args[])
 {
 	if (argc != 1) {
-		term.printf("reboot: 0 arguments expected, got %u\n",argc-1);
-		return 1;
+		return arg_invnum(term);
 	}
 	esp_restart();
 	return 0;
 }
 
 
-#ifdef ESP32
 static int restore(Terminal &term, int argc, const char *args[])
 {
 	if (argc != 1) {
-		term.printf("%s: 0 arguments expected, got %u\n",args[0],argc-1);
-		return 1;
+		return arg_invnum(term);
 	}
 	esp_wifi_restore();
 	return 0;
 }
-#endif
 
 
 #if defined CONFIG_SPIFFS || defined CONFIG_FATFS
 static int shell_df(Terminal &term, int argc, const char *args[])
 {
 	if (argc != 1) {
-		term.printf("df: 0 arguments expected, got %u\n",argc-1);
-		return 1;
+		return arg_invnum(term);
 	}
 #ifdef CONFIG_SPIFFS
 	size_t total = 0, used = 0;
@@ -542,10 +621,10 @@ static int shell_df(Terminal &term, int argc, const char *args[])
 	}
 	term.printf("error getting SPIFFS information: %s\n",esp_err_to_name(ret));
 #elif defined CONFIG_FATFS
-	unsigned long nc = 0;
-	FATFS *fs;
+	DWORD nc = 0;
+	FATFS *fs = 0;
 	int err = f_getfree(PWD.c_str(),&nc,&fs);
-	if (err == 0) {
+	if ((err == 0) && (fs != 0)) {
 		term.printf("%s: %lu kiB free\n",PWD.c_str(),nc*fs->csize*fs->ssize>>10);
 		return 0;
 	}
@@ -559,13 +638,21 @@ static int shell_df(Terminal &term, int argc, const char *args[])
 static int part(Terminal &term, int argc, const char *args[])
 {
 	if (argc != 1) {
-		term.printf("%s: 0 arguments expected, got %u\n",args[0],argc-1);
-		return 1;
+		return arg_invnum(term);
 	}
 	esp_partition_iterator_t i = esp_partition_find(ESP_PARTITION_TYPE_APP,ESP_PARTITION_SUBTYPE_ANY,0);
 	while (i) {
 		const esp_partition_t *p = esp_partition_get(i);
-		term.printf("%s %02x %7d@%08x %s\n",p->type ? "data" : "app ", p->subtype, p->size, p->address, p->label);
+#ifdef CONFIG_IDF_TARGET_ESP32
+		term.printf("%s %02x %7d@%08x %-8s",p->type ? "data" : "app ", p->subtype, p->size, p->address, p->label);
+		esp_app_desc_t desc;
+		if (0 == esp_ota_get_partition_description(p,&desc))
+			term.printf(" [%s, %s, %s]\n",desc.project_name,desc.version,desc.idf_ver);
+		else
+			term.printf("\n");
+#else
+		term.printf("%s %02x %7d@%08x %-8s\n",p->type ? "data" : "app ", p->subtype, p->size, p->address, p->label);
+#endif
 		i = esp_partition_next(i);
 	}
 	i = esp_partition_find(ESP_PARTITION_TYPE_DATA,ESP_PARTITION_SUBTYPE_ANY,0);
@@ -578,29 +665,12 @@ static int part(Terminal &term, int argc, const char *args[])
 }
 
 
-static int chipid(Terminal &term, int argc, const char *args[])
-{
-	esp_chip_info_t ci;
-	esp_chip_info(&ci);
-	term.printf("chip rev: %d\n",ci.revision);
-	if (ci.features & CHIP_FEATURE_EMB_FLASH)
-		term.printf("has embedded flash\n");
-	if (ci.features & CHIP_FEATURE_WIFI_BGN)
-		term.printf("has 2.4GHz WiFi\n");
-	if (ci.features & CHIP_FEATURE_BT)
-		term.printf("has Bluetooth\n");
-	if (ci.features & CHIP_FEATURE_BLE)
-		term.printf("has Bluetooth LE\n");
-	return 0;
-}
-
-
 static int mem(Terminal &term, int argc, const char *args[])
 {
 	term.printf("32bit mem   : %u\n",heap_caps_get_free_size(MALLOC_CAP_32BIT));
 	term.printf("8bit mem    : %u\n",heap_caps_get_free_size(MALLOC_CAP_8BIT));
 	term.printf("DMA  mem    : %u\n",heap_caps_get_free_size(MALLOC_CAP_DMA));
-#ifdef ESP32
+#ifdef CONFIG_IDF_TARGET_ESP32
 	term.printf("exec mem    : %u\n",heap_caps_get_free_size(MALLOC_CAP_EXEC));
 	term.printf("SPI  mem    : %u\n",heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
 	term.printf("internal mem: %u\n",heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
@@ -613,19 +683,14 @@ int mac(Terminal &term, int argc, const char *args[])
 {
 	uint8_t mac[6];
 	if (argc == 1) {
-		term.printf(	"mac -l      : list mac addresses\n"
-				"mac -s <mac>: set station mac\n"
-				"mac -a <mac>: set softap mac\n"
-				"mac -c      : clear mac settings\n"
-			   );
-		return 0;
+		return help_cmd(term,args[0]);
 	} else if (argc == 2) {
 		if (!strcmp("-l",args[1])) {
 			if (ESP_OK == esp_wifi_get_mac(ESP_IF_WIFI_AP,mac))
 				term.printf("softap mac:   %02x:%02x:%02x:%02x:%02x:%02x\n",mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
 			if (ESP_OK == esp_wifi_get_mac(ESP_IF_WIFI_STA,mac))
 				term.printf("station mac:  %02x:%02x:%02x:%02x:%02x:%02x\n",mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
-#ifdef ESP32
+#ifdef CONFIG_IDF_TARGET_ESP32
 			if (ESP_OK == esp_wifi_get_mac(ESP_IF_ETH,mac))
 				term.printf("ethernet mac: %02x:%02x:%02x:%02x:%02x:%02x\n",mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
 #endif
@@ -645,10 +710,8 @@ int mac(Terminal &term, int argc, const char *args[])
 		}
 	} else if (argc == 3) {
 		unsigned inp[6];
-		if (6 != sscanf(args[2],"%x:%x:%x:%x:%x:%x",inp+0,inp+1,inp+2,inp+3,inp+4,inp+5)) {
-			term.printf("invalid mac\n");
-			return 1;
-		}
+		if (6 != sscanf(args[2],"%x:%x:%x:%x:%x:%x",inp+0,inp+1,inp+2,inp+3,inp+4,inp+5))
+			return arg_invalid(term,args[2]);
 		for (int i = 0; i < 6; ++i) {
 			if (inp[i] & ~0xff) {
 				term.printf("mac element %d out of range",i);
@@ -665,7 +728,7 @@ int mac(Terminal &term, int argc, const char *args[])
 			w = ESP_IF_WIFI_AP;
 			Config.mutable_softap()->set_mac(mac,6);
 		} else {
-			return 1;
+			return arg_invalid(term,args[1]);
 		}
 		if (esp_err_t e = esp_wifi_set_mac(w,mac)) {
 			term.printf("error setting mac: %s",esp_err_to_name(e));
@@ -677,191 +740,328 @@ int mac(Terminal &term, int argc, const char *args[])
 }
 
 
-static int adc(Terminal &term, int argc, const char *args[])
-{
-#ifdef ESP32
-	if (argc != 2) {
-		term.printf("%s: 1 arguments expected, got %u\n",args[0],argc-1);
-		return 1;
-	}
-	long channel = strtol(args[1],0,0);
-	if ((channel < 0) || (channel > 7) || ((channel == 0) && (errno != 0))) {
-		term.printf("%s: argument %s out of range\n",args[1]);
-		return 1;
-	}
-	adc1_config_width(ADC_WIDTH_BIT_12);
-	adc1_config_channel_atten((adc1_channel_t)channel, ADC_ATTEN_DB_0);
-	term.printf("adc1[%d] = %d\n",(adc1_channel_t)channel,adc1_get_raw((adc1_channel_t)channel));
-	return 0;
-#elif defined ESP8266
-	if (argc != 1) {
-		term.printf("%s: 0 arguments expected, got %u\n",args[0],argc-1);
-		return 1;
-	}
-#if IDF_VERSION >= 32	// and esp8266/master
-	uint16_t adc;
-	adc_read(&adc);
-	term.printf("adc = %u\n",adc);
-	return 0;
-#else	// esp8266/v3.1
-	term.printf("adc = %u\n",adc_read());
-	return 0;
-#endif
-#else
-	term.printf("not implemented\n");
-	return 1;
-#endif
-}
-
-
-#ifdef CONFIG_OTA
-static int boot(Terminal &term, int argc, const char *args[])
-{
-	if (argc > 2) {
-		term.printf("%s: 0-1 arguments expected, got %u\n",args[0],argc-1);
-		return 1;
-	}
-	if (argc == 1) {
-		const esp_partition_t *b = esp_ota_get_boot_partition();
-		const esp_partition_t *r = esp_ota_get_running_partition();
-		const esp_partition_t *u = esp_ota_get_next_update_partition(NULL);
-		term.printf("booting from: %s\n"
-			    "running from: %s\n"
-			    "updating to : %s\n"
-			    , b ? b->label : "<error>"
-			    , r ? r->label : "<error>"
-			    , u ? u->label : "<error>"
-			    );
-		return b && r ? 0 : 1;
-	}
-	esp_partition_iterator_t i = esp_partition_find(ESP_PARTITION_TYPE_APP,ESP_PARTITION_SUBTYPE_ANY,0);
-	while (i) {
-		const esp_partition_t *p = esp_partition_get(i);
-		if (0 == strcmp(p->label,args[1])) {
-			esp_ota_set_boot_partition(p);
-			esp_partition_iterator_release(i);
-			return 0;
-		}
-		i = esp_partition_next(i);
-	}
-	printf("error: unable to find and set boot partition to %s",args[1]);
-	return 1;
-}
-#endif
-
-
-#ifdef ESP32
-static int hall(Terminal &term, int argc, const char *args[])
-{
-	if (argc != 1) {
-		term.printf("%s: 0 arguments expected, got %u\n",args[0],argc-1);
-		return 1;
-	}
-	adc1_config_width(ADC_WIDTH_BIT_12);
-	term.printf("hall sensor = %d\n",hall_sensor_read());
-	return 0;
-}
-#endif
-
-
-static int print_setting(Terminal &t, const char *name)
-{
-	if (0 == strcmp(name,"ap_ssid"))
-		t.printf("%s\n",Config.softap().ssid().c_str());
-	else if (0 == strcmp(name,"ap_pass"))
-		t.printf("%s\n",Config.softap().pass().c_str());
-	else if (0 == strcmp(name,"ap_active"))
-		t.printf("%s\n",Config.softap().activate() ? "on" : "off");
-	//else if (0 == strcmp(name,"debug"))
-		//t.printf("%s\n", Config.Debug() ? "on" : "off");
-	else if (0 == strcmp(name,"max_on_time"))
-		t.printf("%u\n",Config.max_on_time());
-#ifdef CONFIG_MQTT
-	else if (0 == strcmp(name,"mqtt_uri"))
-		t.printf("%s\n",Config.mqtt().uri().c_str());
-	else if (0 == strcmp(name,"mqtt_enable"))
-		t.printf("%s\n",Config.mqtt().enable() ? "true" : "false");
-#endif
-	else if (0 == strcmp(name,"station_ssid"))
-		t.printf("%s\n",Config.station().ssid().c_str());
-	else if (0 == strcmp(name,"station_pass"))
-		t.printf("%s\n",Config.station().pass().c_str());
-	else if (0 == strcmp(name,"station_active"))
-		t.printf("%s\n",Config.station().activate() ? "on" : "off");
-	else
-		return 1;
-	return 0;
-}
-
-
 static int set(Terminal &t, int argc, const char *args[])
 {
-	if (argc > 4) {
-		t.printf("%s: not more than 3 arguments expected, got %u\n",args[0],argc-1);
-		return 1;
-	}
-	if (argc == 2) {
+	if (argc == 1) {
+		return help_cmd(t,args[0]);
+	} else if (argc == 2) {
 		if (0 == strcmp("-l",args[1])) {
-			for (size_t i = 0; SetFns[i].first; ++i)
-				t.printf("%s\n",SetFns[i].first);
+			list_settings(t);
 			return 0;
 		}
-		return print_setting(t,args[1]);
 	} else if (argc == 3) {
-		if (0 == strcmp(args[1],"-c")) {
-			if (0 == change_setting(args[2],0))
-				return 0;
-		} else if (0 == strcmp(args[1],"-h")) {
-		} else if (0 == change_setting(args[1],args[2])) {
-			return 0;
-		} else {
-			return 1;
-		}
-	}
-	t.printf("use 'set -l' to list available parameters\n"
-		"use 'set -c <param> to clear parameter\n"
-		"use 'set <param> <value>' to set parameter\n");
-	return 1;
+		if (0 == strcmp(args[1],"-c"))
+			return update_setting(t,args[2],0);
+		return update_setting(t,args[1],args[2]);
+	} else
+		return arg_invnum(t);
+	return arg_invalid(t,args[1]);
 }
 
 
 static int hostname(Terminal &term, int argc, const char *args[])
 {
 	if (argc > 2) {
-		term.printf("%s: 0-1 arguments expected, got %u\n",args[0],argc-1);
-		return 1;
+		return arg_invnum(term);
 	}
 	if (argc == 1) {
-		if (Config.has_nodename())
-			term.printf("hostname: %s\n",Config.nodename().c_str());
-		else
-			term.printf("hostname not set\n");
+		term.printf("nodename: %s\n",Config.has_nodename() ? Config.nodename().c_str() : "<unset>");
 		return 0;
 	}
 	if (0 == term.getPrivLevel()) {
 		term.printf("Insufficient privileges - execute 'su 1' to gain access.\n");
 		return 1;
 	}
+	Config.set_nodename(args[1]);
+	cfg_set_hostname(args[1]);
+	return 0;
+}
+
+
+static int hwconf(Terminal &term, int argc, const char *args[])
+{
+	static vector<uint8_t> hwcfgbuf;
+	if (argc == 1) {
+		term.printf(
+#ifdef CONFIG_HWCONF_DYNAMIC
+				"add <device>\n"
+				"set <device>[<id>].<param> <value>\n"
+				"add <arrayname>\n"
+				"clear\n"
+				"reset\n"
+				"xxd\n"
+				"print\n"
+				"json\n"
+				"write\n"
+#endif
+				"writebuf\n"
+				"parsexxd\n"
+				"clearbuf\n"
+				"nvxxd\n"
+			   );
+		return 0;
+	}
+#ifdef CONFIG_HWCONF_DYNAMIC
+	if (!strcmp("add",args[1])) {
+		if (argc < 3)
+			return arg_missing(term);
+		char arrayname[strlen(args[2])+4];
+		strcpy(arrayname,args[2]);
+		strcat(arrayname,"[+]");
+		return HWConf.setByName(arrayname,0) < 0;
+	} else if (!strcmp("set",args[1])) {
+		if (argc < 4)
+			return arg_missing(term);
+		return (0 > HWConf.setByName(args[2],args[3]));
+	} else if (!strcmp("reset",args[1])) {
+		return cfg_read_hwcfg() >= 0;
+	} else if (!strcmp("clear",args[1])) {
+		if (argc == 2) {
+			HWConf.clear();
+			HWConf.set_magic(0xAE54EDCB);
+			return 0;
+		}
+		return HWConf.setByName(args[2],0) < 0;
+	} else if (!strcmp("xxd",args[1])) {
+		size_t s = HWConf.calcSize();
+		uint8_t *buf = (uint8_t *) malloc(s);
+		HWConf.toMemory(buf,s);
+		print_hex(term,buf,s);
+		free(buf);
+		return 0;
+	} else if (!strcmp("show",args[1])) {
+		HWConf.toASCII(term);
+		return 0;
+	} else if (!strcmp("json",args[1])) {
+		HWConf.toJSON(term);
+		return 0;
+	} else if (!strcmp("write",args[1])) {
+		return cfg_store_hwcfg();
+#else
+	if (!strcmp("clear",args[1])) {
+		if (argc == 2) {
+			HWConf.clear();
+			HWConf.set_magic(0xAE54EDCB);
+			return 0;
+		}
+#endif
+	} else if (!strcmp("nvxxd",args[1])) {
+		size_t s;
+		uint8_t *buf = 0;
+		if (int e = readNVconfig("hw.cfg",&buf,&s)) {
+			term.println(esp_err_to_name(e));
+			return 1;
+		}
+		print_hex(term,buf,s);
+		free(buf);
+		return 0;
+	} else if (!strcmp("parsexxd",args[1])) {
+		uint8_t b = 0, x = 0;
+		bool nl = false;
+		char c;
+		while (term.get_ch(&c) == 1) {
+			if ((c == ' ') || (c == '\t') || (c == '\n'))
+				continue;
+			if (c == '\r') {
+				if (nl) {
+					break;
+				}
+				nl = true;
+				continue;
+			}
+			nl = false;
+			b <<= 4;
+			if ((c >= '0') && (c <= '9')) {
+				b |= (c-'0');
+			} else if ((c >= 'a') && (c <= 'f')) {
+				b |= (c-'a')+10;
+			} else if ((c >= 'A') && (c <= 'F')) {
+				b |= (c-'A')+10;
+			} else {
+				term.printf("invalid input 0x%x\n",c);
+				return 1;
+			}
+			if (++x == 2) {
+				hwcfgbuf.push_back(b);
+				x = 0;
+				b = 0;
+			}
+		}
+		term.printf("parsing %u bytes\n",hwcfgbuf.size());
+		HardwareConfig nc;
+		int e = nc.fromMemory(hwcfgbuf.data(),hwcfgbuf.size());
+		if (0 < e) {
+			HWConf = nc;
+			return 0;
+		}
+		term.printf("parser error: %d\n",e);
+	} else if (!strcmp("writebuf",args[1])) {
+		return writeNVM("hw.cfg",hwcfgbuf.data(),hwcfgbuf.size());
+	} else if (!strcmp("clearbuf",args[1])) {
+		hwcfgbuf.clear();
+		return 0;
+	} else if (!strcmp("xxdbuf",args[1])) {
+		print_hex(term,hwcfgbuf.data(),hwcfgbuf.size());
+		return 0;
+	} 
+	return 1;
+}
+
+
+int arg_invnum(Terminal &t)
+{
+	t.println("invalid number of arguments");
+	return 1;
+}
+
+
+int arg_invalid(Terminal &t, const char *a)
+{
+	t.printf("invalid argument '%s'\n",a);
+	return 1;
+}
+
+
+int arg_missing(Terminal &t)
+{
+	t.println("missing argument");
+	return 1;
+}
+
+
+int arg_priv(Terminal &t)
+{
+	t.println("Access denied.");
+	return 1;
+}
+
+
+static bool parse_bool(int argc, const char *args[], int a, bool d)
+{
+	if (a >= argc)
+		return d;
+	if (!strcmp(args[a],"true"))
+		return true;
+	if (!strcmp(args[a],"false"))
+		return false;
+	if (!strcmp(args[a],"on"))
+		return true;
+	if (!strcmp(args[a],"off"))
+		return false;
+	if (!strcmp(args[a],"yes"))
+		return true;
+	if (!strcmp(args[a],"no"))
+		return false;
+	return d;
+}
+
+
+static int timefuse(Terminal &term, int argc, const char *args[])
+{
+	if (argc == 1)
+		return arg_invnum(term);
 	if (argc == 2) {
-		setHostname(args[1]);
-		Config.set_nodename(args[1]);
-		RTData.set_node(args[1]);
-	} else {
+		if (!strcmp("-l",args[1])) {
+			timefuse_t t = timefuse_iterator();
+			// active timers cannot be queried for repeat!
+			term.printf("%-16s %9s active\n","name","interval");
+			while (t) {
+				int on = timefuse_active(t);
+				term.printf("%-16s %9u %-7s\n"
+						,timefuse_name(t)
+						,timefuse_interval_get(t)
+						,on==0?"false":on==1?"true":"unknown");
+				t = timefuse_next(t);
+			}
+			return 0;
+		}
+		return arg_invalid(term,args[1]);
+	}
+	if (0 == term.getPrivLevel())
+		return arg_priv(term);
+	if (argc == 3) {
+		if (!strcmp("-s",args[1]))
+			return timefuse_start(args[2]);
+		if (!strcmp("-t",args[1]))
+			return timefuse_stop(args[2]);
+		if (!strcmp("-d",args[1])) {
+			/*
+			 * Deletes only from config.
+			 * dynamic deletion would require deletion of
+			 * actions and events associated with the timer!
+			 */
+			auto t = Config.mutable_timefuses();
+			for (auto i = t->begin(), e = t->end(); i != e; ++i) {
+				if (i->name() == args[2]) {
+					t->erase(i);
+					return 0;
+				}
+			}
+			return 1;
+			// return timefuse_delete(args[2]);	-- incomplete
+		}
+		return arg_invalid(term,args[1]);
+	}
+	// argc >= 4
+	if (!strcmp("-r",args[1])) {
+		for (EventTimer &t : *Config.mutable_timefuses()) {
+			if (t.name() == args[2]) {
+				unsigned config = t.config();
+				bool r = parse_bool(argc,args,3,config&1);
+				config &= ~1;
+				config |= r;
+				t.set_config(config);
+				return 0;
+			}
+		}
 		return 1;
 	}
-	return 0;
+	if (!strcmp("-a",args[1])) {
+		for (EventTimer &t : *Config.mutable_timefuses()) {
+			if (t.name() == args[2]) {
+				unsigned config = t.config();
+				bool r = parse_bool(argc,args,3,(config&2) != 0);
+				config &= ~2;
+				config |= (r << 1);
+				t.set_config(config);
+				return 0;
+			}
+		}
+		term.println("unknown timer");
+		return 1;
+	}
+	char *e;
+	long l = strtol(args[3],&e,0);
+	if (*e != 0)
+		return arg_invalid(term,args[3]);
+	if (!strcmp("-i",args[1]))
+		return timefuse_interval_set(args[2],l);
+	if (strcmp("-c",args[1]))
+		return arg_invalid(term,args[1]);
+	EventTimer *t = Config.add_timefuses();
+	t->set_name(args[2]);
+	t->set_time(l);
+	unsigned config = 0;
+	if (argc >= 4)
+		config |= parse_bool(argc,args,3,false);
+	if (argc == 5)
+		config |= parse_bool(argc,args,4,false) << 1;
+	if (config)
+		t->set_config(config);
+	timefuse_t r = timefuse_create(t->name().c_str(),l,config&1);
+	if ((r != 0) && (config & 2))
+		timefuse_start(r);
+	return (r == 0);
 }
 
 
 static int wifi(Terminal &term, int argc, const char *args[])
 {
-	if (argc > 2) {
-		term.printf("%s: 0-1 arguments expected, got %u\n",args[0],argc-1);
-		return 1;
-	}
+	if (argc > 2)
+		return arg_invnum(term);
 	wifi_mode_t m = WIFI_MODE_NULL;
-	if (ESP_OK != esp_wifi_get_mode(&m)) {
-		term.printf("unable to determine current wifi mode\n");
+	if (esp_err_t e = esp_wifi_get_mode(&m)) {
+		term.printf("get wifi mode: %s\n",esp_err_to_name(e));
 		return 1;
 	}
 	if (argc == 1) {
@@ -873,6 +1073,8 @@ static int wifi(Terminal &term, int argc, const char *args[])
 	} else if (!strcmp(args[1],"station")) {
 		m = WIFI_MODE_STA;
 	} else if (!strcmp(args[1],"accesspoint")) {
+		m = WIFI_MODE_AP;
+	} else if (!strcmp(args[1],"ap")) {
 		m = WIFI_MODE_AP;
 	} else if (!strcmp(args[1],"both")) {
 		m = WIFI_MODE_APSTA;
@@ -887,11 +1089,8 @@ static int wifi(Terminal &term, int argc, const char *args[])
 			term.printf("station status %u\n",st);
 		}
 		*/
-	} else if (!strcmp(args[1],"-h")) {
-		term.printf("valid arguments: station, accesspoint, both, off, status");
-		return 0;
 	} else
-		return 1;
+		return arg_invalid(term,args[1]);
 	if (ESP_OK != esp_wifi_set_mode(m)) {
 		term.printf("error changing wifi mode");
 	}
@@ -902,10 +1101,8 @@ static int wifi(Terminal &term, int argc, const char *args[])
 #ifdef CONFIG_SMARTCONFIG
 static int sc(Terminal &term, int argc, const char *args[])
 {
-	if (argc > 2) {
-		term.printf("%s: 0 arguments expected, got %u\n",args[0],argc-1);
-		return 1;
-	}
+	if (argc > 2)
+		return arg_invnum(term);
 	if (argc == 1)
 		term.printf("smartconfig is %srunning",smartconfig_running() ? "" : "not ");
 	else if (0 == strcmp(args[1],"start"))
@@ -913,9 +1110,9 @@ static int sc(Terminal &term, int argc, const char *args[])
 	else if (0 == strcmp(args[1],"stop"))
 		smartconfig_stop();
 	else if (0 == strcmp(args[1],"version"))
-		term.printf("%s\n",esp_smartconfig_get_version());
+		term.println(esp_smartconfig_get_version());
 	else
-		return 1;
+		return arg_invalid(term,args[1]);
 	return 0;
 }
 #endif
@@ -924,10 +1121,8 @@ static int sc(Terminal &term, int argc, const char *args[])
 #ifdef CONFIG_WPS
 static int wps(Terminal &term, int argc, const char *args[])
 {
-	if (argc > 1) {
-		term.printf("%s: 0 arguments expected, got %u\n",args[0],argc-1);
-		return 1;
-	}
+	if (argc > 1)
+		return arg_invalid(term,args[1]);
 	wifi_wps_start();
 	return 0;
 }
@@ -936,10 +1131,8 @@ static int wps(Terminal &term, int argc, const char *args[])
 
 static int station(Terminal &term, int argc, const char *args[])
 {
-	if (argc > 3) {
-		term.printf("%s: 0-2 arguments expected, got %u\n",args[0],argc-1);
-		return 1;
-	}
+	if (argc > 3)
+		return arg_invnum(term);
 	WifiConfig *s = Config.mutable_station();
 	if (argc == 1) {
 		term.printf("ssid: %s\npass: %s\nactive: %s\n"
@@ -989,38 +1182,27 @@ static int station(Terminal &term, int argc, const char *args[])
 			s->clear_gateway4();
 			return 0;
 		}
-		unsigned x[5];
-		if (5 != sscanf(args[2],"%u.%u.%u.%u/%u",x,x+1,x+2,x+3,x+4)) {
-			term.printf("argument must be in the form 192.168.1.1/24\n");
-			return 1;
-		}
-		if ((x[0] > 255) || (x[1] > 255) || (x[2] > 255) || (x[3] > 255) || (x[4] > 32)) {
+		uint8_t x[5];
+		uint16_t nm;
+		if (5 != sscanf(args[2],"%hhu.%hhu.%hhu.%hhu/%hu",x,x+1,x+2,x+3,&nm)) {
 			term.printf("argument must be in the form 192.168.1.1/24\n");
 			return 1;
 		}
 		uint32_t ip = x[0] | (x[1]<<8) | (x[2]<<16) | (x[3]<<24);
 		s->set_addr4(ip);
-		s->set_netmask4(x[4]);
+		s->set_netmask4(nm);
 	} else if (!strcmp(args[1],"gw")) {
-		if (argc != 3) {
-			term.printf("invalid number of arguments\n");
-			return 1;
-		}
-		unsigned x[4];
-		if (4 != sscanf(args[2],"%u.%u.%u.%u",x,x+1,x+2,x+3)) {
-			term.printf("argument must be in the form 192.168.1.1\n");
-			return 1;
-		}
-		if ((x[0] > 255) || (x[1] > 255) || (x[2] > 255) || (x[3] > 255)) {
+		if (argc != 3)
+			return arg_invnum(term);
+		uint8_t x[4];
+		if (4 != sscanf(args[2],"%hhu.%hhu.%hhu.%hhu",x,x+1,x+2,x+3)) {
 			term.printf("argument must be in the form 192.168.1.1\n");
 			return 1;
 		}
 		uint32_t ip = x[0] | (x[1]<<8) | (x[2]<<16) | (x[3]<<24);
 		s->set_gateway4(ip);
-	} else if (!strcmp(args[1],"-h")) {
-		term.printf("valid arguments: ssid, pass, ip, gw, on, off, clear\n");
 	} else {
-		return 1;
+		return arg_invalid(term,args[1]);
 	}
 	return 0;
 }
@@ -1028,10 +1210,8 @@ static int station(Terminal &term, int argc, const char *args[])
 
 static int accesspoint(Terminal &term, int argc, const char *args[])
 {
-	if (argc > 3) {
-		term.printf("%s: 0-2 arguments expected, got %u\n",args[0],argc-1);
-		return 1;
-	}
+	if (argc > 3)
+		return arg_invnum(term);
 	WifiConfig *ap = Config.mutable_softap();
 	if (argc == 1) {
 		term.printf("ssid: %s\npass: %s\nactive: %s\n"
@@ -1054,7 +1234,7 @@ static int accesspoint(Terminal &term, int argc, const char *args[])
 			if (!wifi_start_softap(ap->ssid().c_str(),ap->has_pass() ? ap->pass().c_str() : ""))
 				return 1;
 		} else {
-			term.printf("softap needs ssid and pass to start\n");
+			term.printf("ap needs ssid and pass to start\n");
 			return 1;
 		}
 	} else if (!strcmp(args[1],"off")) {
@@ -1063,12 +1243,40 @@ static int accesspoint(Terminal &term, int argc, const char *args[])
 	} else if (!strcmp(args[1],"clear")) {
 		Config.clear_softap();
 		wifi_stop_softap();
-	} else if (!strcmp(args[1],"-h")) {
-		term.printf("valid arguments: ssid, pass, on, off, clear\n");
 	} else {
-		return 1;
+		return arg_invalid(term,args[1]);
 	}
 	return 0;
+}
+
+
+static int debug(Terminal &term, int argc, const char *args[])
+{
+	if (argc == 1)
+		return arg_invnum(term);
+	if (!strcmp("-l",args[1])) {
+		log_module_print(term);
+		return 0;
+	}
+	if (0 == term.getPrivLevel())
+		return arg_priv(term);
+	if (argc != 3) 
+		return arg_missing(term);
+	if (!strcmp("-d",args[1])) {
+		auto *d = Config.mutable_debugs();
+		for (auto i = d->begin(), e = d->end(); i != e; ++i) {
+			if (*i == args[2]) {
+				d->erase(i);
+				break;
+			}
+		}
+		return log_module_disable(args[2]);
+	}
+	if (!strcmp("-e",args[1])) {
+		Config.add_debugs(args[2]);
+		return log_module_enable(args[2]);
+	}
+	return arg_invalid(term,args[1]);
 }
 
 
@@ -1076,10 +1284,9 @@ static int accesspoint(Terminal &term, int argc, const char *args[])
 static int download(Terminal &term, int argc, const char *args[])
 {
 	if ((argc < 2) || (argc > 3)) {
-		term.printf("%s: 1-2 arguments expected, got %u\n",args[0],argc-1);
-		return 1;
+		return arg_invnum(term);
 	}
-	return http_download(term,(char*)args[1], (argc == 3) ? args[2] : 0) ? 0 : 1;
+	return http_download(term,(char*)args[1], (argc == 3) ? args[2] : 0);
 }
 #endif
 
@@ -1087,182 +1294,11 @@ static int download(Terminal &term, int argc, const char *args[])
 static int nslookup(Terminal &term, int argc, const char *args[])
 {
 	if (argc != 2) {
-		term.printf("%s: 1 argument expected, got %u\n",args[0],argc-1);
-		return 1;
+		return arg_invnum(term);
 	}
 	uint32_t a = resolve_hostname(args[1]);
 	term.printf("%d.%d.%d.%d\n", a&0xff, (a>>8)&0xff, (a>>16)&0xff, (a>>24)&0xff);
-	return 0;
-}
-
-
-#ifdef ESP32
-static const char *GpioIntrTypeStr[] = {
-	"disabled",
-	"enabled",
-	"NMI",
-	"NMI and regular",
-};
-
-
-static const char *GpioIntrTriggerStr[] = {
-	"disabled",
-	"falling edge",
-	"raising edge",
-	"any edge",
-	"low level",
-	"high level",
-};
-
-
-static uint32_t read_iomux_conf(unsigned io)
-{
-	switch (io) {
-	case 0: return *(uint32_t *)GPIO_PIN_REG_0;
-	case 1: return *(uint32_t *)GPIO_PIN_REG_1;
-	case 2: return *(uint32_t *)GPIO_PIN_REG_2;
-	case 3: return *(uint32_t *)GPIO_PIN_REG_3;
-	case 4: return *(uint32_t *)GPIO_PIN_REG_4;
-	case 5: return *(uint32_t *)GPIO_PIN_REG_5;
-	case 6: return *(uint32_t *)GPIO_PIN_REG_6;
-	case 7: return *(uint32_t *)GPIO_PIN_REG_7;
-	case 8: return *(uint32_t *)GPIO_PIN_REG_8;
-	case 9: return *(uint32_t *)GPIO_PIN_REG_9;
-	case 10: return *(uint32_t *)GPIO_PIN_REG_10;
-	case 11: return *(uint32_t *)GPIO_PIN_REG_11;
-	case 12: return *(uint32_t *)GPIO_PIN_REG_12;
-	case 13: return *(uint32_t *)GPIO_PIN_REG_13;
-	case 14: return *(uint32_t *)GPIO_PIN_REG_14;
-	case 15: return *(uint32_t *)GPIO_PIN_REG_15;
-	case 16: return *(uint32_t *)GPIO_PIN_REG_16;
-	case 17: return *(uint32_t *)GPIO_PIN_REG_17;
-	case 18: return *(uint32_t *)GPIO_PIN_REG_18;
-	case 19: return *(uint32_t *)GPIO_PIN_REG_19;
-//	case 20: return *(uint32_t *)GPIO_PIN_REG_20;
-	case 21: return *(uint32_t *)GPIO_PIN_REG_21;
-	case 22: return *(uint32_t *)GPIO_PIN_REG_22;
-	case 23: return *(uint32_t *)GPIO_PIN_REG_23;
-//	case 24: return *(uint32_t *)GPIO_PIN_REG_24;
-	case 25: return *(uint32_t *)GPIO_PIN_REG_25;
-	case 26: return *(uint32_t *)GPIO_PIN_REG_26;
-	case 27: return *(uint32_t *)GPIO_PIN_REG_27;
-//	case 28: return *(uint32_t *)GPIO_PIN_REG_28;
-//	case 29: return *(uint32_t *)GPIO_PIN_REG_29;
-//	case 30: return *(uint32_t *)GPIO_PIN_REG_30;
-//	case 31: return *(uint32_t *)GPIO_PIN_REG_31;
-	case 32: return *(uint32_t *)GPIO_PIN_REG_32;
-	case 33: return *(uint32_t *)GPIO_PIN_REG_33;
-	case 34: return *(uint32_t *)GPIO_PIN_REG_34;
-	case 35: return *(uint32_t *)GPIO_PIN_REG_35;
-	case 36: return *(uint32_t *)GPIO_PIN_REG_36;
-	case 37: return *(uint32_t *)GPIO_PIN_REG_37;
-	case 38: return *(uint32_t *)GPIO_PIN_REG_38;
-	case 39: return *(uint32_t *)GPIO_PIN_REG_39;
-	default:
-		return 0xffffffff;
-	}
-}
-#endif
-
-
-static int gpio(Terminal &term, int argc, const char *args[])
-{
-	if (argc > 3) {
-		term.printf("%s: 0-2 arguments expected, got %u\n",args[0],argc-1);
-		return 1;
-	}
-#ifdef ESP32
-	if (argc == 1) {
-		term.printf("gpio [pins|<pin>]\n");
-	} else if (0 == strcmp(args[1],"pins")) {
-		uint64_t enabled = GPIO_ENABLE_REG | ((uint64_t)GPIO_ENABLE1_REG << 32);
-		for (unsigned pin = 0; pin < 32; ++pin)
-			term.printf("pin %2u: gpio 0x%08x=%08x, %s\n"
-				,pin
-				,GPIO_REG(pin)
-				,*(uint32_t*)GPIO_REG(pin)
-				,((enabled>>pin)&1) ? "enabled" : "disabled"
-				);
-	} else if ((args[1][0] >= '0') && (args[1][0] <= '9')) {
-		long pin = strtol(args[1],0,0);
-		if (!GPIO_IS_VALID_GPIO(pin)) {
-			term.printf("gpio %ld out of range\n",pin);
-			return 1;
-		}
-		uint32_t iomux = read_iomux_conf(pin);
-		uint32_t gpiopc = *(uint32_t*)GPIO_REG(pin);	// pin configuration @0x88+4*n
-		bool level;
-		if (pin < 32) 
-			level = (((iomux>>9)&1 ? GPIO_IN_REG : GPIO_OUT_REG) >> pin ) & 1;
-		else
-			level = (((iomux>>9)&1 ? GPIO_IN1_REG : GPIO_OUT1_REG) >> (pin-32) ) & 1;
-		term.printf(
-			"pin %2u: iomux 0x%08x, gpiopc 0x%08x\n"
-			"\tfunction   %d\n"
-			"\tpad driver %d\n"
-			"\tinput      %s\n"
-			"\tpull-up    %s\n"
-			"\tpull-down  %s\n"
-			"\tlevel      %s\n"
-			"\tAPP intr   %s\n"
-			"\tPRO intr   %s\n"
-			"\twakeup     %s\n"
-			"\tinterrupts %s\n"
-			,pin,iomux,gpiopc
-			,((iomux>>12)&7)
-			,((iomux>>10)&3)
-			,((iomux>>9)&1) ? "enabled" : "disabled"
-			,((iomux>>8)&1) ? "enabled" : "disabled"
-			,((iomux>>7)&1) ? "enabled" : "disabled"
-			,level ? "high" : "low"
-			,GpioIntrTypeStr[(gpiopc>>13)&3]
-			,GpioIntrTypeStr[(gpiopc>>16)&3]
-			,((gpiopc>>10)&1) ? "enabled" : "disabled"
-			,GpioIntrTriggerStr[(gpiopc>>7)&0x7]
-			);
-	}
-#elif defined ESP8266
-	if (argc == 1) {
-		term.printf("gpio [all|<pin>]\n");
-	} else if (0 == strcmp(args[1],"all")) {
-		uint32_t dir = GPIO_REG_READ(GPIO_ENABLE_ADDRESS);
-		for (int p = 0; p <= 16; ++p ) {
-			term.printf("pin %2d: %s, %s\n",p
-				, gpio_get_level((gpio_num_t)p) == 0 ? "low" : "high"
-				, (dir & (1<<p)) ? "output" : "input"
-				);
-		}
-	} else if ((args[1][0] >= '0') && (args[1][0] <= '9')) {
-		long l = strtol(args[1],0,0);
-		if ((l > 16) || (l < 0)) {
-			term.printf("gpio value out of range");
-			return 1;
-		}
-		if (argc == 2) {
-			term.printf("%s\n",gpio_get_level((gpio_num_t)l) == 0 ? "low" : "high");
-		} else if (argc == 3) {
-			if (0 == strcmp(args[2],"out"))
-				gpio_set_direction((gpio_num_t)l,GPIO_MODE_OUTPUT);
-			else if (0 == strcmp(args[2],"in"))
-				gpio_set_direction((gpio_num_t)l,GPIO_MODE_INPUT);
-			else if (0 == strcmp(args[2],"0"))
-				gpio_set_level((gpio_num_t)l,0);
-			else if (0 == strcmp(args[2],"1"))
-				gpio_set_level((gpio_num_t)l,1);
-			else {
-				term.printf("unexpected argument\n");
-				return 1;
-			}
-		}
-	}
-#else
-#error unknwon target
-#endif
-	else {
-		term.printf("unexpected arguments\n");
-		return 1;
-	}
-	return 0;
+	return (a==0);
 }
 
 
@@ -1279,12 +1315,10 @@ static int segv(Terminal &term, int argc, const char *args[])
 #ifdef CONFIG_SNTP
 static int sntp(Terminal &term, int argc, const char *args[])
 {
-	if (argc > 3) {
-		term.printf("%s: 0-2 arguments expected, got %u\n",args[0],argc-1);
-		return 1;
-	}
+	if (argc > 3)
+		return arg_invnum(term);
 	if (argc == 1) {
-		if (char *s = sntp_getservername(0))
+		if (const char *s = sntp_getservername(0))
 			term.printf("sntp server: %s\n",s);
 		if (const char *tz = getenv("TZ"))
 			term.printf("timezone %s\n",tz);
@@ -1297,25 +1331,23 @@ static int sntp(Terminal &term, int argc, const char *args[])
 		term.printf("get_time_of_day(): %u:%02u",h,m);
 		return 0;
 	}
-	if (!strcmp(args[1],"-h"))
-		term.printf("synopsis:\n%s [start|stop|set|clear]\n",args[0],args[0]);
-	else if (!strcmp(args[1],"clear")) {
+	if (0 == term.getPrivLevel())
+		return arg_priv(term);
+	if (!strcmp(args[1],"clear")) {
 		Config.clear_sntp_server();
 	} else if (!strcmp(args[1],"start")) {
 		sntp_init();
 	} else if (!strcmp(args[1],"stop")) {
 		sntp_stop();
 	} else if (!strcmp(args[1],"set")) {
-		if (argc != 3) {
-			term.printf("invalid numer of arguments");
-			return 1;
-		}
+		if (argc != 3)
+			return arg_invnum(term);
 		sntp_stop();
 		Config.set_sntp_server(args[2]);
 		sntp_setservername(1,(char*)args[2]);
 		sntp_init();
 	} else
-		return 1;
+		return arg_invalid(term,args[1]);
 	return 0;
 }
 #endif
@@ -1324,80 +1356,30 @@ static int sntp(Terminal &term, int argc, const char *args[])
 static int timezone(Terminal &term, int argc, const char *args[])
 {
 	if ((argc != 1) && (argc != 2)) {
-		term.printf("%s: 0-1 arguments expected, got %u\n",args[0],argc-1);
-		return 1;
+		return arg_invnum(term);
 	}
 	if (argc == 1) {
 		if (const char *tz = getenv("TZ"))
 			term.printf("timezone: %s\n",tz);
 		else
-			term.printf("timezone not set\n");
+			term.println("timezone not set");
 		return 0;
 	}
-	set_timezone(args[1]);
+	update_setting(term,"timezone",args[1]);
 	return 0;
 }
-
-
-/*
-static int threshold(Terminal &term, int argc, const char *args[])
-{
-	if ((argc != 1) && (argc != 3)) {
-		term.printf("%s: 1 arguments expected, got %u\n",args[0],argc-1);
-		return 1;
-	}
-	if (argc == 1) {
-		term.printf("threshold on %u, off %u, acive %s\n",ThresholdOn,ThresholdOff,ThresholdActive?"true":"false");
-		return 0;
-	}
-	if (!strcmp(args[1],"on")) {
-		long l = strtol(args[2],0,0);
-		if ((l < 0) || (l > 1023)) {
-			term.printf("invalid argument\n");
-			return 1;
-		}
-		ThresholdOn = l;
-		Config.set_threshold_on(l);
-	} else if (!strcmp(args[1],"off")) {
-		long l = strtol(args[2],0,0);
-		if ((l < 0) || (l > 1023)) {
-			term.printf("invalid argument\n");
-			return 1;
-		}
-		ThresholdOff = l;
-		Config.set_threshold_off(l);
-	} else if (!strcmp(args[1],"active")) {
-		if (!strcmp(args[2],"true"))
-			ThresholdActive = true;
-		else if (!strcmp(args[2],"1"))
-			ThresholdActive = true;
-		else if (!strcmp(args[2],"false"))
-			ThresholdActive = false;
-		else if (!strcmp(args[2],"0"))
-			ThresholdActive = false;
-		else {
-			term.printf("invalid argument\n");
-			return 1;
-		}
-		Config.set_threshold_active(ThresholdActive);
-	} else {
-		return 1;
-	}
-	return 0;
-}
-*/
 
 
 static int xxdSettings(Terminal &t)
 {
 	size_t s = Config.calcSize();
-	char *buf = (char*)malloc(s);
+	uint8_t *buf = (uint8_t *)malloc(s);
 	if (buf == 0) {
-		t.print("out of memory");
+		t.println("out of memory");
 		return 1;
 	}
-	Config.toMemory((uint8_t*)buf,s);
-	print_hex(t,(uint8_t*)buf,s);
+	Config.toMemory(buf,s);
+	print_hex(t,buf,s);
 	free(buf);
 	return 0;
 }
@@ -1405,38 +1387,58 @@ static int xxdSettings(Terminal &t)
 
 static int config(Terminal &term, int argc, const char *args[])
 {
-	if (argc != 2) {
-		term.printf("%s: 1 arguments expected, got %u\n",args[0],argc-1);
-		return 1;
+	if (argc == 1) {
+		return help_cmd(term,args[0]);
 	}
-	if (!strcmp(args[1],"print")) {
-		term.printf("current config:\n");
-		TermStream ts(term);
-		Config.toJSON(ts);
-		term.printf("\n");
+	if (0 == strcmp(args[1],"json")) {
+		Config.toJSON(term);
+	} else if (0 == strcmp(args[1],"print")) {
+#ifdef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
+		term.println("compiled out");
+#else
+		Config.toASCII(term);
+#endif
+	} else if (!strcmp("add",args[1])) {
+		if (argc < 3)
+			return arg_missing(term);
+		char arrayname[strlen(args[2])+4];
+		strcpy(arrayname,args[2]);
+		strcat(arrayname,"[+]");
+		return Config.setByName(arrayname,0) < 0;
+	} else if (!strcmp("set",args[1])) {
+		if (argc < 4)
+			return arg_missing(term);
+		if (0 > Config.setByName(args[2],args[3]))
+			return 1;
+		return 0;
 	} else if (!strcmp(args[1],"write")) {
-		storeSettings();
+		return cfg_store_nodecfg();
 	} else if (!strcmp(args[1],"read")) {
-		readSettings();
+		return cfg_read_nodecfg();
+	} else if (!strcmp(args[1],"size")) {
+		term << Config.calcSize() << '\n';
+		return 0;
 	} else if (!strcmp(args[1],"defaults")) {
-		setupDefaults();
+		cfg_init_defaults();
 	} else if (!strcmp(args[1],"activate")) {
-		activateSettings();
+		cfg_activate();
 	} else if (!strcmp(args[1],"clear")) {
-		clearSettings();
+		if (argc != 2)
+			return Config.setByName(args[2],0) < 0;
+		cfg_clear_nodecfg();
 	} else if (!strcmp(args[1],"erase")) {
-		eraseSettings();
+		if (argc != 2)
+			return arg_invnum(term);
+		return cfg_erase_nvs();
 	} else if (!strcmp(args[1],"xxd")) {
 		return xxdSettings(term);
 	} else if (!strcmp(args[1],"nvxxd")) {
 		size_t s;
-		uint8_t *buf = readNVconfig(&s);
-		if (buf == 0)
-			return 1;
+		uint8_t *buf = 0;
+		if (int e = readNVconfig("node.cfg",&buf,&s))
+			return e;
 		print_hex(term,buf,s);
 		free(buf);
-	} else if (!strcmp(args[1],"-h")) {
-		term.printf("valid arguments: print, read, write, defaults, activate, clear, erase, nvxxd, xxd\n");
 	} else {
 		return 1;
 	}
@@ -1450,25 +1452,36 @@ const char taskstates[] = "XRBSDI";
 int ps(Terminal &term, int argc, const char *args[])
 {
 	if (argc != 1) {
-		term.printf("%s: 0 arguments expected, got %u\n",args[0],argc-1);
-		return 1;
+		return arg_invnum(term);
 	}
 	unsigned nt = uxTaskGetNumberOfTasks();
 	TaskStatus_t *st = (TaskStatus_t*) malloc(nt*sizeof(TaskStatus_t));
 	if (st == 0) {
-		term.printf("%s: unable to allocate enough memory\n",args[0]);
+		term.println("out of memory");
 		return 1;
 	}
 	nt = uxTaskGetSystemState(st,nt,0);
-	term.printf(" ID ST PRIO       TIME STACK NAME\n");
+#ifdef CONFIG_FREERTOS_VTASKLIST_INCLUDE_COREID
+	term.println(" ID ST PRIO       TIME STACK CPU NAME");
+#else
+	term.println(" ID ST PRIO       TIME STACK NAME");
+#endif
 	for (unsigned i = 0; i < nt; ++i) {
+#ifdef CONFIG_FREERTOS_VTASKLIST_INCLUDE_COREID
+		term.printf("%3u  %c %4u %10u %5u %3d %s\n"
+#else
 		term.printf("%3u  %c %4u %10u %5u %s\n"
+#endif
 			,st[i].xTaskNumber
 			,taskstates[st[i].eCurrentState]
 			,st[i].uxCurrentPriority
 			,st[i].ulRunTimeCounter
 			,st[i].usStackHighWaterMark
-			,st[i].pcTaskName);
+#ifdef CONFIG_FREERTOS_VTASKLIST_INCLUDE_COREID
+			,st[i].xCoreID == INT32_MAX ? -1 : st[i].xCoreID
+#endif
+			,st[i].pcTaskName
+			);
 	}
 	free(st);
 	return 0;
@@ -1479,35 +1492,24 @@ int ps(Terminal &term, int argc, const char *args[])
 static int print_data(Terminal &term, int argc, const char *args[])
 {
 	if (argc != 1) {
-		term.printf("%s: 0 arguments expected, got %u\n",args[0],argc-1);
-		return 1;
+		return arg_invnum(term);
 	}
-	TermStream jsonstr(term);
-	runtimedata_to_json(jsonstr);
+	runtimedata_to_json(term);
 	term.write("\n",1);
 	return 0;
 }
 
 
 #ifdef CONFIG_OTA
-#ifdef close
-#undef close
-#endif
+//#ifdef close
+//#undef close
+//#endif
 static int update(Terminal &term, int argc, const char *args[])
 {
-	if (argc > 3) {
-		term.printf("%s: 1-2 arguments expected, got %u\n",args[0],argc-1);
-		return 1;
-	}
-	if ((argc == 1) || ((argc == 2) && (0 == strcmp(args[1],"-h")))) {
-		term.printf("synopsys: %s [-b|-r] <source>\n"
-			"-b : boot after update\n"
-#ifdef CONFIG_ROMFS
-			"-r : update romfs partition\n"
-#endif
-			,args[0]);
-		return 0;
-	}
+	if (argc == 1)
+		return help_cmd(term,args[0]);
+	if (heap_caps_get_free_size(MALLOC_CAP_32BIT) < (12<<10))
+		term.printf("WARNING: memory low! Retry after disabling services.\n");
 	UBaseType_t p = uxTaskPriorityGet(0);
 	vTaskPrioritySet(0, p > 4 ? p-3 : 1);
 	int r = 1;
@@ -1517,14 +1519,16 @@ static int update(Terminal &term, int argc, const char *args[])
 		term.disconnect();
 		vTaskDelay(400);
 		esp_restart();
+	} else if ((argc == 4) && (0 == strcmp(args[1],"-p"))) {
+		r = update_part(term,(char*)args[3],args[2]);
 #ifdef CONFIG_ROMFS
-	} else if ((argc == 3) && (0 == strcmp(args[1],"-r"))) {
-		r = update_romfs(term,(char*)args[2]);
+		if (r == 0)
+			romfs_setup();
 #endif
 	} else if (argc == 2) {
 		r = perform_ota(term,(char*)args[1],false);
 	} else {
-		term.printf("synopsys: %s [-b|-r] <source>\n",args[0]);
+		return arg_invalid(term,args[1]);
 	}
 	vTaskPrioritySet(0, p);
 	return r;
@@ -1535,8 +1539,7 @@ static int update(Terminal &term, int argc, const char *args[])
 static int getuptime(Terminal &term, int argc, const char *args[])
 {
 	if (argc != 1) {
-		term.printf("%s: 0 arguments expected, got %u\n",args[0],argc-1);
-		return 1;
+		return arg_invnum(term);
 	}
 #ifdef _POSIX_MONOTONIC_CLOCK
 	struct timespec ts;
@@ -1560,8 +1563,7 @@ static int getuptime(Terminal &term, int argc, const char *args[])
 static int cpu(Terminal &term, int argc, const char *args[])
 {
 	if (argc > 2) {
-		term.printf("%s: 0-1 arguments expected, got %u\n",args[0],argc-1);
-		return 1;
+		return arg_invnum(term);
 	}
 	if (argc == 1) {
 		int f = esp_clk_cpu_freq();
@@ -1574,7 +1576,7 @@ static int cpu(Terminal &term, int argc, const char *args[])
 			mhz = 160;
 			break;
 
-#ifdef ESP32
+#ifdef CONFIG_IDF_TARGET_ESP32
 		case RTC_CPU_FREQ_XTAL:
 			mhz = rtc_clk_xtal_freq_get();
 			break;
@@ -1588,13 +1590,28 @@ static int cpu(Terminal &term, int argc, const char *args[])
 		default:
 			mhz = f/1000000;
 		}
-		term.printf("%u MHz\n",mhz);
+		esp_chip_info_t ci;
+		esp_chip_info(&ci);
+		term.printf("%s (rev %d) with %d core%s @ %u MHz"
+			, ci.model ? "ESP32" : "ESP8266"
+			, ci.revision
+			, ci.cores
+			, ci.cores > 1 ? "s" : ""
+			, mhz
+			);
+		if (ci.features & CHIP_FEATURE_WIFI_BGN)
+			term.print(", 2.4GHz WiFi");
+		if (ci.features & CHIP_FEATURE_BT)
+			term.print(", Bluetooth");
+		if (ci.features & CHIP_FEATURE_BLE) 
+			term.print(", Bluetooth LE");
+		if (ci.features & CHIP_FEATURE_EMB_FLASH) 
+			term.print(", embedded flash");
+		term << '\n';
 		return 0;
 	}
-	if (0 == term.getPrivLevel()) {
-		term.printf(Denied);
-		return 1;
-	}
+	if (0 == term.getPrivLevel())
+		return arg_priv(term);
 	errno = 0;
 	long l = strtol(args[1],0,0);
 	if ((l == 0) || (errno != 0))
@@ -1611,18 +1628,16 @@ static int cpu(Terminal &term, int argc, const char *args[])
 static int password(Terminal &term, int argc, const char *args[])
 {
 	if (argc > 2) {
-		term.printf("%s: 1 arguments expected, got %u\n",args[0],argc-1);
-		return 1;
+		return arg_invnum(term);
 	}
 	if (argc == 1) {
-		term.printf("-c: clear\n-r: reset\n-s: set\n-v: verify\n");
-		return 0;
+		return help_cmd(term,args[0]);
 	}
 	if (!strcmp(args[1],"-c")) {
 		term.printf("clearing password\n");
 		Config.clear_pass_hash();
 	} else if (!strcmp(args[1],"-r")) {
-		term.printf("resetting password to empty string\n");
+		term.printf("resetting password to empty estring\n");
 		setPassword("");
 	} else if (!strcmp(args[1],"-s")) {
 		char buf[32];
@@ -1632,6 +1647,8 @@ static int password(Terminal &term, int argc, const char *args[])
 			return 1;
 		buf[n] = 0;
 		setPassword(buf);
+		term.setPrivLevel(0);
+		term.println();
 	} else if (!strcmp(args[1],"-v")) {
 		char buf[32];
 		term.write(PW,sizeof(PW));
@@ -1647,6 +1664,133 @@ static int password(Terminal &term, int argc, const char *args[])
 }
 
 
+#ifdef CONFIG_SIGNAL_PROC
+static int func(Terminal &term, int argc, const char *args[])
+{
+	if (argc == 1) {
+		return help_cmd(term,args[0]);
+	}
+	if (!strcmp(args[1],"-l")) {
+		Function *f = Function::first();
+		while (f) {
+			const char *n = f->name();
+			const char *t = f->type();
+			printf("%-16s %s\n",n?n:"<null>",t?t:"<null>");
+			f = f->next();
+		}
+		return 0;
+	}
+	if (0 == term.getPrivLevel())
+		return arg_priv(term);
+	if (!strcmp(args[1],"-a")) {
+		FunctionFactory *f = FunctionFactory::first();
+		while (f) {
+			term.println(f->name());
+			f = f->next();
+		}
+		return 0;
+	}
+	if (!strcmp(args[1],"-x")) {
+		if (argc != 3) 
+			return arg_missing(term);
+		Function *f = Function::getInstance(args[2]);
+		if (f == 0)
+			return arg_invalid(term,args[2]);
+		f->operator() (0);
+		return 0;
+	}
+	if (!strcmp(args[1],"-c")) {
+		if (argc < 4) 
+			return arg_missing(term);
+		Function *f = FunctionFactory::create(args[3],args[2]);
+		if (0 == f)
+			return 1;
+		FunctionConfig *c = Config.add_functions();
+		c->set_name(args[2]);
+		c->set_func(args[3]);
+		for (int i = 4; i < argc; ++i) {
+			c->add_params(args[i]);
+			if (DataSignal *s = DataSignal::getSignal(args[i])) {
+				if (f->setParam(i-4,s))
+					term.printf("error setting parameter %d to %s\n",i,args[i]);
+			} else {
+				term.printf("unknown signal %s\n",args[i]);
+			}
+		}
+		return 0;
+	}
+	return arg_invalid(term,args[1]);
+}
+
+
+static int signal(Terminal &term, int argc, const char *args[])
+{
+	if (argc == 1) {
+		return help_cmd(term,args[0]);
+	}
+	if (!strcmp("-l",args[1])) {
+		DataSignal *s = DataSignal::first();
+		while (s) {
+			term << s->signalName();
+			term << ": ";
+			s->toStream(term);
+			term << '\n';
+			s = s->getNext();
+		}
+		return 0;
+	}
+	if (0 == term.getPrivLevel())
+		return arg_priv(term);
+	if (!strcmp("-c",args[1])) {
+		if ((argc != 5) && (argc != 4))
+			return arg_invnum(term);
+		DataSignal *s = 0;
+		if (!strcmp(args[2],"int")) {
+			s = new IntSignal(strdup(args[3]));
+		} else if (!strcmp(args[2],"float")) {
+			s = new FloatSignal(strdup(args[3]));
+		} else {
+			return arg_invalid(term,args[2]);
+		}
+		if (argc == 4)
+			return 0;
+		return s->initFrom(args[4]);
+	}
+	if (!strcmp("-s",args[1])) {
+		if (argc != 4)
+			return arg_missing(term);
+		DataSignal *s = DataSignal::getSignal(args[2]);
+		if (0 == s)
+			return arg_invalid(term,args[2]);
+		return s->initFrom(args[3]);
+	}
+	if (!strcmp("-f",args[1])) {
+		FunctionFactory *f = FunctionFactory::first();
+		while (f) {
+			term.println(f->name());
+			f = f->next();
+		}
+		return 0;
+	}
+	if (!strcmp("-a",args[1])) {
+		if (argc != 4)
+			return arg_invnum(term);
+		DataSignal *s = DataSignal::getSignal(args[2]);
+		if (s == 0)
+			return arg_invalid(term,args[2]);
+		Function *f = Function::getInstance(args[3]);
+		if (f == 0)
+			return arg_invalid(term,args[3]);
+		s->addFunction(f);
+//		Trigger *t = Config.add_triggers();
+//		t->set
+		return 0;
+	}
+	return arg_invalid(term,args[1]);
+}
+#endif
+
+
 static int su(Terminal &term, int argc, const char *args[])
 {
 	if (argc == 1) {
@@ -1654,18 +1798,15 @@ static int su(Terminal &term, int argc, const char *args[])
 		return 0;
 	}
 	if (argc > 2) {
-		term.printf("synopsis: su [<0|1>]\nlevel 1 for admin rights\n");
-		return 1;
+		return help_cmd(term,args[0]);
 	}
 	if (!strcmp(args[1],"0")) {
 		term.setPrivLevel(0);
 		term.printf("new privileg level %u\n",term.getPrivLevel());
 		return 0;
 	}
-	if (strcmp(args[1],"1")) {
-		term.printf("invalid argument\n");
-		return 1;
-	}
+	if (strcmp(args[1],"1"))
+		return arg_invalid(term,args[1]);
 	if (!Config.pass_hash().empty()) {
 		char buf[32];
 		term.write(PW,sizeof(PW));
@@ -1731,63 +1872,41 @@ static int flashtest(Terminal &term, int argc, const char *args[])
 */
 
 
+static void print_ipinfo(Terminal &t, const char *itf, tcpip_adapter_ip_info_t *i, bool up)
+{
+	uint8_t m = 0;
+	uint32_t nm = ntohl(i->netmask.addr);
+	while (nm & (1<<(31-m)))
+		++m;
+	t.printf("%s: %d.%d.%d.%d/%d gw %d.%d.%d.%d %s\n"
+		, itf
+		, i->ip.addr & 0xff
+		, i->ip.addr>>8 & 0xff
+		, i->ip.addr>>16 & 0xff
+		, i->ip.addr>>24 & 0xff
+		, m
+		, i->gw.addr & 0xff
+		, i->gw.addr>>8 & 0xff
+		, i->gw.addr>>16 & 0xff
+		, i->gw.addr>>24 & 0xff
+		, up ? "up" : "down"
+		);
+}
+
+
 static int ifconfig(Terminal &term, int argc, const char *args[])
 {
 	if (argc != 1) {
-		term.printf("%s: 0 arguments expected, got %u\n",args[0],argc-1);
-		return 1;
+		return arg_invnum(term);
 	}
-
 	tcpip_adapter_ip_info_t ipconfig;
 	if (ESP_OK == tcpip_adapter_get_ip_info(TCPIP_ADAPTER_IF_STA, &ipconfig))
-		term.printf("if0/station: %d.%d.%d.%d mask %d.%d.%d.%d gw %d.%d.%d.%d %s\n",
-			ipconfig.ip.addr & 0xff,
-			ipconfig.ip.addr>>8 & 0xff,
-			ipconfig.ip.addr>>16 & 0xff,
-			ipconfig.ip.addr>>24 & 0xff,
-			ipconfig.netmask.addr & 0xff,
-			ipconfig.netmask.addr>>8 & 0xff,
-			ipconfig.netmask.addr>>16 & 0xff,
-			ipconfig.netmask.addr>>24 & 0xff,
-			ipconfig.gw.addr & 0xff,
-			ipconfig.gw.addr>>8 & 0xff,
-			ipconfig.gw.addr>>16 & 0xff,
-			ipconfig.gw.addr>>24 & 0xff,
-			wifi_station_isup() ? "up" : "down"
-			);
+		print_ipinfo(term, "if0/station ", &ipconfig, wifi_station_isup());
 	if (ESP_OK == tcpip_adapter_get_ip_info(TCPIP_ADAPTER_IF_AP, &ipconfig))
-		term.printf("if1/soft_ap: %d.%d.%d.%d mask %d.%d.%d.%d gw %d.%d.%d.%d %s\n",
-			ipconfig.ip.addr & 0xff,
-			ipconfig.ip.addr>>8 & 0xff,
-			ipconfig.ip.addr>>16 & 0xff,
-			ipconfig.ip.addr>>24 & 0xff,
-			ipconfig.netmask.addr & 0xff,
-			ipconfig.netmask.addr>>8 & 0xff,
-			ipconfig.netmask.addr>>16 & 0xff,
-			ipconfig.netmask.addr>>24 & 0xff,
-			ipconfig.gw.addr & 0xff,
-			ipconfig.gw.addr>>8 & 0xff,
-			ipconfig.gw.addr>>16 & 0xff,
-			ipconfig.gw.addr>>24 & 0xff,
-			wifi_softap_isup() ? "up" : "down"
-			);
-#ifdef ESP32
+		print_ipinfo(term, "if1/soft_ap ", &ipconfig, wifi_softap_isup());
+#if defined TCPIP_ADAPTER_IF_ETH
 	if (ESP_OK == tcpip_adapter_get_ip_info(TCPIP_ADAPTER_IF_ETH, &ipconfig))
-		term.printf("if2/eth    : %d.%d.%d.%d mask %d.%d.%d.%d gw %d.%d.%d.%d %s\n",
-			ipconfig.ip.addr & 0xff,
-			ipconfig.ip.addr>>8 & 0xff,
-			ipconfig.ip.addr>>16 & 0xff,
-			ipconfig.ip.addr>>24 & 0xff,
-			ipconfig.netmask.addr & 0xff,
-			ipconfig.netmask.addr>>8 & 0xff,
-			ipconfig.netmask.addr>>16 & 0xff,
-			ipconfig.netmask.addr>>24 & 0xff,
-			ipconfig.gw.addr & 0xff,
-			ipconfig.gw.addr>>8 & 0xff,
-			ipconfig.gw.addr>>16 & 0xff,
-			ipconfig.gw.addr>>24 & 0xff,
-			eth_isup() ? "up" : "down"
-			);
+		print_ipinfo(term, "if2/ethernet", &ipconfig, eth_isup());
 #endif
 	return 0;
 }
@@ -1796,192 +1915,256 @@ static int ifconfig(Terminal &term, int argc, const char *args[])
 static int version(Terminal &term, int argc, const char *args[])
 {
 	if (argc != 1) {
-		term.printf("%s: 0 arguments expected, got %u\n",args[0],argc-1);
-		return 1;
+		return arg_invnum(term);
 	}
-	term.printf("Version %s\n"
-#ifdef HG_REV
-		"hg rev " HG_REV "\n"
-#endif
-#ifdef HG_ID
-		"hg id " HG_ID "\n"
-#endif
+	term.printf("Atrium Version %s\n"
 		"build on " __DATE__ ", " __TIME__ "\n"
+		"IDF version: %s\n"
 		, Version
+		, esp_get_idf_version()
 		);
-	term.printf("IDF version: %s\n",esp_get_idf_version());
 	return 0;
 }
 
 
-static int help(Terminal &term, int argc, const char *args[]);
-extern int action(Terminal &term, int argc, const char *args[]);
-extern int alive(Terminal &term, int argc, const char *args[]);
+extern int adc(Terminal &term, int argc, const char *args[]);
 extern int at(Terminal &term, int argc, const char *args[]);
 extern int bme(Terminal &term, int argc, const char *args[]);
 extern int dht(Terminal &term, int argc, const char *args[]);
 extern int dim(Terminal &term, int argc, const char *args[]);
+extern int dim(Terminal &t, int argc, const char *argv[]);
 extern int distance(Terminal &term, int argc, const char *args[]);
 extern int dmesg(Terminal &term, int argc, const char *args[]);
+extern int gpio(Terminal &term, int argc, const char *args[]);
+extern int hall(Terminal &term, int argc, const char *args[]);
 extern int holiday(Terminal &term, int argc, const char *args[]);
 extern int inetadm(Terminal &term, int argc, const char *args[]);
 extern int influx(Terminal &term, int argc, const char *args[]);
 extern int lightctrl(Terminal &term, int argc, const char *args[]);
+extern int nightsky(Terminal &term, int argc, const char *args[]);
+extern int process(Terminal &term, int argc, const char *args[]);
+extern int relay(Terminal &term, int argc, const char *args[]);
 extern int shell_format(Terminal &term, int argc, const char *args[]);
 extern int status_led(Terminal &term, int argc, const char *args[]);
+extern int status(Terminal &term, int argc, const char *args[]);
 extern int subtasks(Terminal &term, int argc, const char *args[]);
-extern int udp_stats(Terminal &term, int argc, const char *args[]);
+extern int touchpad(Terminal &term, int argc, const char *args[]);
 extern int uart_termcon(Terminal &term, int argc, const char *args[]);
+extern int udpc_stats(Terminal &term, int argc, const char *args[]);
+extern int udp_stats(Terminal &term, int argc, const char *args[]);
+extern int onewire(Terminal &term, int argc, const char *args[]);
+
+static int help(Terminal &term, int argc, const char *args[]);
+
 
 ExeName ExeNames[] = {
-	{"?",0,help,"help"},
-#ifdef CONFIG_ALIVELED
-	{"alive",1,alive,"alive LED"},
-#endif
-	{"ap",1,accesspoint,"accesspoint settings"},
-	{"adc",0,adc,"A/D converter"},
-	{"action",0,action,"actions"},
+	{"?",0,help,"help",0},
+	{"ap",1,accesspoint,"accesspoint settings",ap_man},
+	{"adc",0,adc,"A/D converter",adc_man},
+	{"action",0,action,"actions",action_man},
 #ifdef CONFIG_AT_ACTIONS
-	{"at",0,at,"time triggered actions"},
+	{"at",0,at,"time triggered actions",at_man},
 #endif
 #ifdef CONFIG_BME280
-	{"bme",0,bme,"BME280 sensor"},
+	{"bme",0,bme,"BME280 sensor",bme_man},
 #endif
 #ifdef CONFIG_OTA
-	{"boot",1,boot,"get/set boot partition"},
+	{"boot",0,boot,"get/set boot partition",boot_man},
 #ifdef CONFIG_INFOCAST
-	{"caststats",0,udp_stats,"UDP cast statistics"},
+	{"caststats",0,udp_stats,"UDP cast statistics",0},
 #endif
 #endif
-	{"cat",0,shell_cat,"cat file"},
-#ifdef ESP32
-	{"cd",0,shell_cd,"change directory"},
+	{"cat",0,shell_cat,"cat file",0},
+#ifdef CONFIG_IDF_TARGET_ESP32
+	{"cd",0,shell_cd,"change directory",0},
 #endif
 #ifdef CONFIG_TERMSERV
-	{"con",0,uart_termcon,"switch to UART console"},
+	{"con",0,uart_termcon,"switch to UART console",0},
 #endif
-	{"chipid",0,chipid,"system chip information"},
-	{"config",1,config,"system configuration"},
-	{"cpu",0,cpu,"CPU speed"},
+	{"config",1,config,"system configuration",config_man},
+	{"cpu",1,cpu,"CPU speed",0},
+	{"debug",0,debug,"enable debug logging (* for all)",debug_man},
+#ifdef CONFIG_DIMMER
+	{"dim",0,dim,"operate dimmer",0},
+#endif
 #if defined CONFIG_SPIFFS || defined CONFIG_FATFS
-	{"df",0,shell_df,"available storage"},
+	{"df",0,shell_df,"available storage",0},
 #endif
-#if CONFIG_DMESG_SIZE > 0
-	{"dmesg",0,dmesg,"system log"},
+#if CONFIG_DMESG
+	{"dmesg",0,dmesg,"system log",0},
 #endif
 #ifdef CONFIG_DHT
-	{"dht",0,dht,"DHTxx family of sensors"},
+	{"dht",0,dht,"DHTxx family of sensors",0},
 #endif
 #ifdef CONFIG_DIMMER_GPIO
-	{"dim",0,dim,"dimmer driver"},
+	{"dim",0,dim,"dimmer driver",0},
 #endif
 #ifdef CONFIG_DIST
-	{"dist",0,distance,"hc_sr04 distance measurement"},
+	{"dist",0,distance,"hc_sr04 distance measurement",0},
 #endif
 #ifdef HAVE_FS
-	{"download",1,download,"http file download"},
+	{"download",1,download,"http file download",0},
 #endif
+	{"event",0,event,"handle trigger events as actions",event_man},
 #if defined CONFIG_SPIFFS || defined CONFIG_FATFS
-	{"format",1,shell_format,"format storage"},
+	{"format",1,shell_format,"format storage",0},
 #endif
-	//{"flashtest",flashtest},
-	{"gpio",1,gpio,"GPIO access"},
-#ifdef ESP32
-	{"hall",0,hall,"hall sensor"},
+#ifdef CONFIG_SIGNAL_PROC
+	{"func",1,func,"function related operations",func_man},
 #endif
-	{"help",0,help,"help"},
+	//{"flashtest",flashtest,0},
+	{"gpio",1,gpio,"GPIO access",0},
+#ifdef CONFIG_IDF_TARGET_ESP32
+	{"hall",0,hall,"hall sensor",0},
+#endif
+	{"help",0,help,"help",0},
 #ifdef CONFIG_HOLIDAYS
-	{"holiday",0,holiday,"holiday settings"},
+	{"holiday",0,holiday,"holiday settings",holiday_man},
 #endif
-	{"hostname",0,hostname,"get or set hostname"},
-	{"ifconfig",0,ifconfig,"network interface settings"},
+	{"hwconf",1,hwconf,"hardware configuration",hwconf_man},
+	{"ifconfig",0,ifconfig,"network interface settings",0},
 #ifdef CONFIG_INETD
-	{"inetadm",1,inetadm,"manage network services"},
+	{"inetadm",1,inetadm,"manage network services",inetadm_man},
 #endif
 #ifdef CONFIG_INFLUX
-	{"influx",1,influx,"configure influx UDP data gathering"},
+	{"influx",1,influx,"configure influx UDP data gathering",influx_man},
 #endif
 #ifdef CONFIG_LIGHTCTRL
-	{"lightctrl",0,lightctrl,"light control APP settings"},
+	{"lightctrl",0,lightctrl,"light control APP settings",0},
 #endif
-	{"ls",0,shell_ls,"list storage"},
-	{"mac",0,mac,"MAC addresses"},
-	{"mem",0,mem,"RAM statistics"},
+	{"ls",0,shell_ls,"list storage",0},
+	{"mac",0,mac,"MAC addresses",mac_man},
+	{"mem",0,mem,"RAM statistics",0},
 #ifdef CONFIG_FATFS
-	{"mkdir",1,shell_mkdir,"make directory"},
+	{"mkdir",1,shell_mkdir,"make directory",0},
 #endif
 #ifdef CONFIG_MQTT
-	{"mqtt",1,mqtt,"MQTT settings"},
+	{"mqtt",1,mqtt,"MQTT settings",mqtt_man},
 #endif
 #ifdef CONFIG_FATFS
-	{"mv",1,shell_mv,"move/rename file"},
+	{"mv",1,shell_mv,"move/rename file",0},
 #endif
-	{"nslookup",0,nslookup,"lookup hostname in DNS"},
-	{"part",0,part,"partition table"},
-	{"passwd",1,password,"set password"},
+	{"nodename",0,hostname,"get or set hostname of this device/node",0},
+#ifdef CONFIG_NIGHTSKY
+	{"ns",0,nightsky,"nightsky operation",0},
+#endif
+	{"nslookup",0,nslookup,"lookup hostname in DNS",0},
+#ifdef CONFIG_ONEWIRE
+	{"ow",0,onewire,"one-wire driver access",0},
+#endif
+	{"part",0,part,"partition table",0},
+	{"passwd",1,password,"set password",passwd_man},
 #if configUSE_TRACE_FACILITY == 1
-	{"ps",0,ps,"task statistics"},
+	{"ps",0,ps,"task statistics",0},
 #endif
-	{"reboot",1,shell_reboot,"reboot system"},
-#ifdef ESP32
-	{"restore",1,restore,"restore system defaults"},
+	//{"process",1,process,"define and modify processing objects",0},
+	{"reboot",1,shell_reboot,"reboot system",0},
+#ifdef CONFIG_RELAY
+	{"relay",0,relay,"relay status and operation",0},
 #endif
+	{"restore",1,restore,"restore system defaults",0},
 #ifdef HAVE_FS
-	{"rm",1,shell_rm,"remove file"},
+	{"rm",1,shell_rm,"remove file",0},
 #endif
 #ifdef CONFIG_FATFS
-	{"rmdir",1,shell_rmdir,"remove directory"},
+	{"rmdir",1,shell_rmdir,"remove directory",0},
 #endif
 #ifdef CONFIG_SMARTCONFIG
-	{"sc",0,sc,"SmargConfig actions"},
+	{"sc",1,sc,"SmargConfig actions",0},
 #endif
 #if 0
-	{"segv",1,segv,"trigger a segmentation violation"},
+	{"segv",1,segv,"trigger a segmentation violation",0},
 #endif
-	{"set",1,set,"variable settings"},
+	{"set",1,set,"variable settings",set_man},
+#ifdef CONFIG_SIGNAL_PROC
+	{"signal",0,signal,"view/modify/connect signals",signal_man},
+#endif
 #ifdef CONFIG_SNTP
-	{"sntp",1,sntp,"simple NTP client settings"},
+	{"sntp",0,sntp,"simple NTP client settings",sntp_man},
 #endif
-	{"station",1,station,"WiFi station settings"},
-	{"su",0,su,"set user privilege level"},
+	{"station",1,station,"WiFi station settings",station_man},
+#ifdef CONFIG_STATUSLEDS
+	{"status",1,status,"status LED",status_man},
+#endif
+	{"su",0,su,"set user privilege level",su_man},
 #ifdef CONFIG_SUBTASKS
-	{"subtasks",0,subtasks,"cyclic tasks procedures"},
+	{"subtasks",0,subtasks,"cyclic tasks procedures",0},
 #endif
-	{"timezone",1,timezone,"set time zone for NTP"},
+	{"timer",1,timefuse,"create timer",timer_man},
+	{"timezone",1,timezone,"set time zone for NTP",0},
 #ifdef HAVE_FS
-	{"touch",1,shell_touch,"create file, update time-stamp"},
+	{"touch",1,shell_touch,"create file, update time-stamp",0},
+#endif
+#ifdef CONFIG_TOUCHPAD
+	{"tp",1,touchpad,"touchpad output",0},
+#endif
+#ifdef CONFIG_UDPCTRL
+	{"udpcstat",0,udpc_stats,"display UDP statistics",0},
 #endif
 #ifdef CONFIG_OTA
-	{"update",1,update,"OTA download procedure"},
+	{"update",1,update,"OTA download procedure",update_man},
 #endif
-	{"uptime",0,getuptime,"time system is up and running"},
-	{"version",0,version,"version description"},
-	{"webdata",0,print_data,"data provided to webpages"},
-	{"wifi",1,wifi,"wifi station/AP mode"},
+	{"uptime",0,getuptime,"time system is up and running",0},
+	{"version",0,version,"version description",0},
+	{"webdata",0,print_data,"data provided to webpages",0},
+	{"wifi",1,wifi,"wifi station/AP mode",wifi_man},
 #ifdef CONFIG_WPS
-	{"wps",1,wps,"wifi configuration with WPS"},
+	{"wps",1,wps,"wifi configuration with WPS",0},
 #endif
 #ifdef HAVE_FS
-	{"xxd",1,shell_xxd,"hex output of file"},
+	{"xxd",0,shell_xxd,"hex output of file",0},
 #endif
 };
 
 
+int help_cmd(Terminal &term, const char *arg)
+{
+#ifdef CONFIG_INTEGRATED_HELP
+	for (int i = 0; i < sizeof(ExeNames)/sizeof(ExeName); ++i) {
+		if (!strcmp(ExeNames[i].name,arg)) {
+			if (ExeNames[i].help) {
+				term.print(ExeNames[i].help);
+				return 0;
+			}
+			break;
+		}
+	}
+#endif
+	char tmp[strlen(arg)+6];
+#ifdef CONFIG_ROMFS
+	strcpy(tmp,arg);
+	strcat(tmp,".man");
+	if (0 == shell_cat1(term,tmp))
+		return 0;
+#endif
+	strcpy(tmp,"/man/");
+	strcat(tmp,arg);
+	if (0 == shell_cat1(term,tmp))
+		return 0;
+	term.printf("no help page for %s\n",arg);
+	return 1;
+}
+
+
 static int help(Terminal &term, int argc, const char *args[])
 {
-	if (argc != 1) {
-		term.printf("%s: 0 arguments expected, got %u\n",args[0],argc-1);
-		return 1;
+	if (argc == 1) {
+		term.printf("help -l: list available commands\n"
+			"help <cmd>: print help for command <cmd>\n"
+			);
+	} else if (!strcmp("-l",args[1])) {
+		for (int i = 2; i < sizeof(ExeNames)/sizeof(ExeNames[0]); ++i) 
+			term.printf("%-14s %-5s  %s\n",ExeNames[i].name,ExeNames[i].plvl?"admin":"user",ExeNames[i].descr);
+	} else {
+		return help_cmd(term,args[1]);
 	}
-	for (int i = 2; i < sizeof(ExeNames)/sizeof(ExeNames[0]); ++i) 
-		term.printf("%-14s %-5s  %s\n",ExeNames[i].name,ExeNames[i].plvl?"admin":"user",ExeNames[i].descr);
 	return 0;
 }
 
 
 int shellexe(Terminal &term, const char *cmd)
 {
-	//TimeDelta td(__FUNCTION__);
+	TimeDelta td(__FUNCTION__);
 	log_info("shell","execute '%s'",cmd);	// log_*() must not be used due to associated Mutexes
 	char *args[8];
 	size_t l = strlen(cmd);
@@ -2005,20 +2188,34 @@ int shellexe(Terminal &term, const char *cmd)
 	for (int i = 0; i < sizeof(ExeNames)/sizeof(ExeNames[0]); ++i) {
 		if (0 == strcmp(args[0],ExeNames[i].name)) {
 			if (!Config.pass_hash().empty() && (ExeNames[i].plvl > term.getPrivLevel())) {
-				term.printf(Denied);
-				return 1;
+				return arg_priv(term);
 			}
+			if ((n == 2) && (0 == strcmp("-h",args[1])))
+				return help_cmd(term,args[0]);
 			//term.printf("calling shell function '%s'\n",ExeNames[i].name);
-			if (0 == ExeNames[i].function(term,n,(const char **)args)) {
-				term.printf("\nOK.\n");
-				return 0;
-			} else {
-				term.printf("\nError.\n");
-				return 1;
-			}
+			int r = ExeNames[i].function(term,n,(const char **)args);
+			return r;
 		}
 	}
 	term.printf("'%s': command not found\n",args[0]);
 	return 1;
 }
 
+
+void shell(Terminal &term)
+{
+	char com[128];
+	term.write("> ",2);
+	int r = term.readInput(com,sizeof(com)-1,true);
+	while (r > 0) {
+		term.print("\n");
+		com[r] = 0;
+		if ((r == 4) && !memcmp(com,"exit",4))
+			break;
+		if (shellexe(term,com))
+			term.printf("\nError.\n> ");
+		else
+			term.printf("\nOK.\n> ");
+		r = term.readInput(com,sizeof(com)-1,true);
+	}
+}

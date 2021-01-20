@@ -1,0 +1,9 @@
+synopsis: station <cmd> [<arg>]
+valid <cmd>:
+ssid : set ssid to <arg>
+pass : set pass to <arg>
+clear: clear settings
+off  : turn off station mode
+on   : turn on station mode
+ip   : set ip address and netmask
+gw   : set ip address of gateway

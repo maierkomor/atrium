@@ -7,5 +7,7 @@ set(COMPONENT_SRCDIRS
 	hc-sr04
 	bme280
 )
-set(COMPONENT_PRIV_INCLUDEDIRS logging)
-register_component()
+set(COMPONENT_PRIV_INCLUDEDIRS ../components/logging)
+register_component(
+	INCLUDE_DIRS "dht"
+	)

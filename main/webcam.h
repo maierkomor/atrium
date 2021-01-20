@@ -22,13 +22,6 @@
 
 #ifdef __cplusplus
 void webcam_sendframe(class HttpRequest *r);
-
-extern "C" {
-#endif
-void webcam_setup();
-
-#ifdef __cplusplus
-}
 #endif
 
 #endif

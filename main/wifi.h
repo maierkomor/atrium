@@ -19,6 +19,8 @@
 #ifndef WIFI_H
 #define WIFI_H
 
+#include "event.h"
+
 #include <freertos/FreeRTOS.h>
 #include <freertos/event_groups.h>
 
@@ -26,15 +28,17 @@
 #define STATION_UP 2
 #define SOFTAP_UP 4
 #define WPS_TERM 8
+#define WIFI_FAIL 16
 
 extern EventGroupHandle_t WifiEvents;
 typedef enum { station_stopped, station_starting, station_connected, station_disconnected } sta_mode_t;
 extern sta_mode_t StationMode;
+extern event_t StationUpEv;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-bool wifi_setup();
+int wifi_setup();
 uint32_t resolve_hostname(const char *h);
 void wifi_wait();
 void wifi_wait_station();
@@ -45,7 +49,7 @@ bool wifi_stop_softap();
 bool wifi_station_isup();
 bool wifi_softap_isup();
 bool eth_isup();
-void wifi_wps_start();
+void wifi_wps_start(void* = 0);
 int smartconfig_start();
 void smartconfig_stop();
 bool smartconfig_running();

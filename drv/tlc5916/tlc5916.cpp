@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018, Thomas Maier-Komor
+ *  Copyright (C) 2018-2020, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -19,6 +19,8 @@
 #include "tlc5916.h"
 #include "log.h"
 
+#include <rom/gpio.h>
+
 static char TAG[] = "TLC5916";
 
 #define OE_high		gpio_set_level(m_oe,1)
@@ -33,24 +35,38 @@ static char TAG[] = "TLC5916";
 
 
 
-void TLC5916::init()
+int TLC5916::init(gpio_num_t clk, gpio_num_t sdi, gpio_num_t le, gpio_num_t oe, gpio_num_t sdo)
 {
+	if (m_initialized) {
+		log_error(TAG,"already initialized");
+		return 1;
+	}
+	m_clk = clk;
+	m_sdi = sdi;
+	m_le = le;
+	m_oe = oe;
+	m_sdo = sdo;
+	gpio_pad_select_gpio(clk);
+	gpio_pad_select_gpio(sdi);
+	gpio_pad_select_gpio(le);
+	gpio_pad_select_gpio(oe);
+	gpio_pad_select_gpio(sdo);
 	if (esp_err_t e = gpio_set_direction(m_clk,GPIO_MODE_OUTPUT)) {
 		log_error(TAG,"unable to gpio for CLK to output: 0x%x",e);
-	}
-	if (esp_err_t e = gpio_set_direction(m_sdi,GPIO_MODE_OUTPUT)) {
+	} else if (esp_err_t e = gpio_set_direction(m_sdi,GPIO_MODE_OUTPUT)) {
 		log_error(TAG,"unable to gpio for SDI to output: 0x%x",e);
-	}
-	if (esp_err_t e = gpio_set_direction(m_le,GPIO_MODE_OUTPUT)) {
+	} else if (esp_err_t e = gpio_set_direction(m_le,GPIO_MODE_OUTPUT)) {
 		log_error(TAG,"unable to gpio for LE to output: 0x%x",e);
-	}
-	if (esp_err_t e = gpio_set_direction(m_oe,GPIO_MODE_OUTPUT)) {
+	} else if (esp_err_t e = gpio_set_direction(m_oe,GPIO_MODE_OUTPUT)) {
 		log_error(TAG,"unable to gpio for OE to output: 0x%x",e);
-	}
-	if (esp_err_t e = gpio_set_direction(m_sdo,GPIO_MODE_INPUT)) {
+	} else if (esp_err_t e = gpio_set_direction(m_sdo,GPIO_MODE_INPUT)) {
 		log_error(TAG,"unable to gpio for SDO to input: 0x%x",e);
+	} else {
+		m_initialized = true;
+		config();
+		return 0;
 	}
-	config();
+	return 1;
 }
 
 

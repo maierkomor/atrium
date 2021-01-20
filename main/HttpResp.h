@@ -19,7 +19,7 @@
 #ifndef HTTP_RESP_H
 #define HTTP_RESP_H
 
-#include <string>
+#include "estring.h"
 
 
 /*
@@ -83,14 +83,14 @@ class HttpResponse
 	void setResult(const char *, ...);
 
 	void addHeader(const char *);
-	void writeHeader(const char *, ...);
+	//void writeHeader(const char *, ...);
 
 	void addContent(const char *, size_t l = 0);
 	void writeContent(const char *,  ...);
 
 	bool senddata(int, int fd = -1);
 
-	std::string &contentString()
+	estring &contentString()
 	{ return m_content; }
 
 	private:
@@ -98,8 +98,8 @@ class HttpResponse
 	HttpResponse& operator = (const HttpResponse &);
 
 	char *m_result;		// always allocated
-	std::string m_header;
-	std::string m_content;
+	estring m_header;
+	estring m_content;
 	int m_fd, m_con, m_reslen;
 };
 

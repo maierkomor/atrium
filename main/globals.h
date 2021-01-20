@@ -20,24 +20,40 @@
 #define GLOBALS_H
 
 #include <esp_timer.h>
-#ifdef __cplusplus
-#include "binformats.h"
-#endif
+#include <nvs.h>
+
+extern nvs_handle NVS;
 
 
 #ifdef __cplusplus
+class NodeConfig;
+class HardwareConfig;
+class JsonObject;
+class JsonFloat;
+class JsonInt;
+class JsonString;
+
 extern NodeConfig Config;
-extern RunTimeData RTData;
-extern bool StationUp, DhtDebug;
+extern HardwareConfig HWConf;
+extern bool StationUp;
+extern JsonObject *RTData;
+extern JsonInt *Uptime;
+extern JsonFloat *Temperature, *Humidity, *Pressure;
+extern JsonString *UpdateState, *Localtime;
 
+void globals_setup();
+void rtd_lock();
+void rtd_unlock();
 void runtimedata_to_json(class stream &json);
 void get_time_of_day(uint8_t *h, uint8_t *m, uint8_t *s = 0, uint8_t *wd = 0, uint8_t *md = 0, uint8_t *mon = 0, unsigned *year = 0);
 #endif
 
 
+// time in usec
 typedef int64_t timestamp_t;
 #define timestamp() esp_timer_get_time()
 
+// time in msec
 typedef uint32_t uptime_t;
 #define uptime() ((uint32_t)(esp_timer_get_time()/1000))
 

@@ -1,2 +1,5 @@
+#set(COMPONENT_SRCS "tlc5916.cpp")
+#set(COMPONENT_REQUIRES logging)
+#COMPONENT_ADD_INCLUDEDIRS=.
 set(COMPONENT_ADD_INCLUDEDIRS .)
 register_component()

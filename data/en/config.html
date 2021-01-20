@@ -54,15 +54,17 @@ function set_config(config_json)
 {
 	var config = JSON.parse(config_json);
 	document.getElementById("nodename").value = config.nodename;
-	if (config.softap.hasOwnProperty('ssid'))
-		document.getElementById("ap_ssid").value = config.softap.ssid;
-	if (config.softap.hasOwnProperty('pass'))
-		document.getElementById("ap_pass").value = config.softap.pass;
-	document.getElementById("ap_activate_cb").checked = config.softap.activate;
-	if (config.softap.activate)
-		document.getElementById("ap_activate").value = "1";
-	else
-		document.getElementById("ap_activate").value = "0";
+	if (config.hasOwnProperty('softap')) {
+		if (config.softap.hasOwnProperty('ssid'))
+			document.getElementById("ap_ssid").value = config.softap.ssid;
+		if (config.softap.hasOwnProperty('pass'))
+			document.getElementById("ap_pass").value = config.softap.pass;
+		document.getElementById("ap_activate_cb").checked = config.softap.activate;
+		if (config.softap.activate)
+			document.getElementById("ap_activate").value = "1";
+		else
+			document.getElementById("ap_activate").value = "0";
+	}
 	if (config.station.hasOwnProperty('ssid'))
 		document.getElementById("station_ssid").value = config.station.ssid;
 	// must not be shown, is omitted in config.json

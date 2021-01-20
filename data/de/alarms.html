@@ -36,22 +36,22 @@
 <tbody>
 <tr>
 <td><select id="wday">
-	<option value="mon">Montag</option>
-	<option value="tue">Dienstag</option>
-	<option value="wed">Mittwoch</option>
-	<option value="thu">Donnerstag</option>
-	<option value="fri">Freitag</option>
-	<option value="sat">Samstag</option>
-	<option value="sun">Sonntag</option>
-	<option value="wd">Mo-Fr</option>
+	<option value="Mo">Montag</option>
+	<option value="Di">Dienstag</option>
+	<option value="Mi">Mittwoch</option>
+	<option value="Do">Donnerstag</option>
+	<option value="Fr">Freitag</option>
+	<option value="Sa">Samstag</option>
+	<option value="So">Sonntag</option>
+	<option value="wt">Mo-Fr</option>
 	<option value="we">Sa,So</option>
-	<option value="ed">immer</option>
-	<option value="hd">Feiertag</option>
+	<option value="jt">immer</option>
+	<option value="ft">Feiertag</option>
 </select></td>
 <td><input type="time" id="time"/></td>
 <td><select id="action">
-	<option value="relay_on">einschalten</option>
-	<option value="relay_off">ausschalten</option>
+	<option value="mainrelay!on">einschalten</option>
+	<option value="mainrelay!off">ausschalten</option>
 </select></td>
 <td><input type="button" onclick="add_alarm()" value="hinzufügen"/></td>
 </tr>
@@ -60,25 +60,25 @@
 
 <h2>Feiertage:</h2>
 <table><thead align="left">
-	<tr><th>Tag</th><th>Monat</th><th>Jahr</th><th><th/></tr>
+	<tr><th>Datum</th><th>jedes Jahr</th><th></th><th><th/></tr>
 </thead>
 <tbody id="holidays">
 <tr>
 <td><input type="date" id="day"></td>
 <td><input type="checkbox" id="everyyear"></td>
-<td><input type="button" onclick="add_holiday()" value="add"/></td>
+<td><input type="button" onclick="add_holiday()" value="hinzufügen"/></td>
 </tr>
 </tbody>
 </table>
-<h2>Vacations:</h2>
+<h2>Urlaub:</h2>
 <table><thead align="left">
-	<tr><th>Start</th><th>Ende</th>
+	<tr><th>Anfang</th><th>Ende</th>
 </thead>
 <tbody id="vacations">
 <tr>
 <td><input type="date" id="start"></td>
 <td><input type="date" id="end"></td>
-<td><input type="button" onclick="add_vacation()" value="add"/></td>
+<td><input type="button" onclick="add_vacation()" value="hinzufügen"/></td>
 </tr>
 </tbody>
 </table>
@@ -115,12 +115,14 @@ function on_alarm_data(responseText)
 		var c = newrow.insertCell(0);
 		c.innerHTML = adata.alarms[i].day;
 		c = newrow.insertCell(1);
-		var min = adata.alarms[i].min_of_day%60;
-		if (min < 10)
-			min = '0' + min;
-		c.innerHTML = Math.floor(adata.alarms[i].min_of_day/60) + ":" + min;
+		c.innerHTML = adata.alarms[i].min_of_day;
 		c = newrow.insertCell(2);
-		c.innerHTML = adata.alarms[i].action;
+		ac = adata.alarms[i].action;
+		if (ac == "mainrelay!on")
+			ac = "einschalten";
+		else if (ac == "mainrelay!off")
+			ac = "ausschalten";
+		c.innerHTML = ac;
 		c = newrow.insertCell(3);
 		c.innerHTML = adata.alarms[i].enable ? "aktiv" : "pausiert";
 		c = newrow.insertCell(4);
@@ -148,14 +150,14 @@ function on_alarm_data(responseText)
 			nr = hols.insertRow(0);
 		}
 		var c = nr.insertCell(0);
-		c.innerHTML = a.month + "/" + a.day + "/";
+		c.innerHTML = a.day + "." + a.month + ".";
 		if (a.hasOwnProperty("year"))
 			c.innerHTML += a.year;
 		else
 			c.innerHTML += "*";
 		if (a.hasOwnProperty("endday")) {
 			c = nr.insertCell(1);
-			c.innerHTML = a.endmonth + "/" + a.endday + "/";
+			c.innerHTML = a.endday + "." + a.endmonth + ".";
 			if (a.hasOwnProperty("endyear"))
 				c.innerHTML += a.endyear + a.year;
 			else
@@ -165,7 +167,7 @@ function on_alarm_data(responseText)
 			c = nr.insertCell(1);
 			c = nr.insertCell(2);
 		}
-		c.innerHTML = "<input type=\"button\" onclick=\"delete_holiday('"+i+"')\" value=\"delete\"/>";
+		c.innerHTML = "<input type=\"button\" onclick=\"delete_holiday('"+i+"')\" value=\"löschen\"/>";
 	}
 }
 

@@ -56,8 +56,6 @@ followed by 4 bytes of 0x00
 followed by 4 bytes of 0x00
 */
 
-bool M32 = false;
-
 struct Entry16
 {
 	public:
@@ -110,7 +108,10 @@ class Entry
 };
 
 
-const char *Outfile = "strings.bin", *Srcdir = 0;
+bool M32 = false;
+const char *Srcdir = 0;
+long RomfsAddr = 0;
+string Outfile, Port;
 
 vector<string> FileNames;
 vector<string> FileData;
@@ -310,6 +311,22 @@ void print_file(const char *arg)
 }
 
 
+void set_port(const char *p)
+{
+	Port = p;
+}
+
+
+void set_flash_addr(const char *p)
+{
+	long l = strtol(p,0,0);
+	if (l == 0)
+		printf("invalid argument '%s' for option -a\n",p);
+	else
+		RomfsAddr = l;
+}
+
+
 void usage()
 {
 	printf("synopsis: mkrom [options] <files>\n"
@@ -320,8 +337,11 @@ void usage()
 			"-o <filename>: write output to file <filename>\n"
 			"-16          : use 16 bit size/offset entries (default)\n"
 			"-32          : use 32 bit size/offset entries\n"
+			"-a <addr>    : flash image to address <addr>\n"
+			"-P <port>    : use port <port> to flash romfs\n"
 			"-l <binfile> : list contents of binary ROM image file\n"
 			"-d <img/file>: dump file <file> of ROM image <img>\n"
+			"-p <img/file>: print file <file> of ROM image <img>\n"
 	      );
 	exit(EXIT_FAILURE);
 }
@@ -377,6 +397,14 @@ int main(int argc, char *argv[])
 			list_image(argv[++i]);
 		} else if (0 == strncmp("-l",argv[i],2)) {
 			list_image(argv[i]+2);
+		} else if (0 == strcmp("-a",argv[i])) {
+			set_flash_addr(argv[++i]);
+		} else if (0 == strncmp("-a",argv[i],2)) {
+			set_flash_addr(argv[i]+2);
+		} else if (0 == strcmp("-P",argv[i])) {
+			set_port(argv[++i]);
+		} else if (0 == strncmp("-P",argv[i],2)) {
+			set_port(argv[i]+2);
 		} else if (0 == strcmp("-p",argv[i])) {
 			print_file(argv[++i]);
 		} else if (0 == strncmp("-p",argv[i],2)) {
@@ -405,7 +433,10 @@ int main(int argc, char *argv[])
 			++ename;
 		else
 			ename = fname;
-		check_exit(!entries.insert(ename).second,"invalid duplicate entry name '%s'\n",ename);
+		if (!entries.insert(ename).second) {
+			printf("warning: ignoring duplicate entry name '%s' (file %s)\n",ename,fname);
+			continue;
+		}
 		check_exit(strlen(ename)>=12,"filename '%s' is too long\n",ename);
 		int fd = open(fname,O_RDONLY);
 		check_exit(fd<0,"error opening %s: %s\n",fname,strerror(errno));
@@ -434,7 +465,7 @@ int main(int argc, char *argv[])
 	char *rom = (char *)malloc(header+total);
 	memcpy(rom,M32 ? "ROMFS32" : "ROMFS16",8);
 	char *at = rom + 8;
-	for (int i = 0; i < n; ++i) {
+	for (int i = 0; i < entries.size(); ++i) {
 		Entries[i].increase_offset(header);
 		size_t s = M32 ? sizeof(Entry32) : sizeof(Entry16);
 		memcpy(at,Entries[i].data(),s);
@@ -451,11 +482,33 @@ int main(int argc, char *argv[])
 		memcpy(at,FileData[i].data(),FileData[i].size());
 		at += s;
 	}
-	int out = open(Outfile,O_RDWR|O_CREAT|O_TRUNC,0666);
+	int out;
+	bool temp = Outfile.empty();
+	if (temp) {
+		Outfile = "mkromfs-temp-output.XXXXXX";
+		out = mkstemp((char*)Outfile.c_str());
+	} else {
+		out = open(Outfile.c_str(),O_RDWR|O_CREAT|O_TRUNC,0666);
+	}
 	check_exit(out < 0,"unable to open output file %s: %s\n",Outfile,strerror(errno));
+	printf("writing %ld bytes to %s\n",header+total,Outfile.c_str());
 	int w = write(out,rom,header+total);
 	check_exit(w < 0,"error writing: %s\n",strerror(errno));
 	check_exit(w != (header+total),"writing truncated: expected %u got %u\n",header+total,w);
+
+	if (RomfsAddr) {
+		char *cmd;
+		asprintf(&cmd,"%s/components/esptool_py/esptool/esptool.py --port %s write_flash 0x%lx %s"
+			, getenv("IDF_PATH")
+			, Port.empty() ? "/dev/ttyUSB0" : Port.c_str()
+			, RomfsAddr
+			, Outfile.c_str()
+			);
+		system(cmd);
+		free(cmd);
+	}
+	if (temp)
+		unlink(Outfile.c_str());
 	close(out);
 	return 0;
 }

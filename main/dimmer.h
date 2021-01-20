@@ -19,15 +19,12 @@
 #ifndef DIMMER_H
 #define DIMMER_H
 
-#define DIM_MAX 255
-
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 int dimmer_set_value(unsigned v);
 unsigned dimmer_get_value();
-int dimmer_setup();
 
 #ifdef __cplusplus
 }

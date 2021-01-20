@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -16,35 +16,89 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "globals.h"
-#include "binformats.h"
-#include "log.h"
 
+#include "binformats.h"
+#include "globals.h"
+#include "ujson.h"
+#include "log.h"
+#include "profiling.h"
+
+#include <esp_system.h>
 #include <esp_timer.h>
+#include <nvs.h>
 #include <string.h>
 #include <sys/time.h>
 #include <time.h>
 
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
+
 using namespace std;
 
-uint64_t Uptime = 0;	// in seconds
 NodeConfig Config;
-RunTimeData RTData;
-bool DhtDebug = false;
-bool DHTEnabled = false;
-unsigned DHTInterval = 5000;
+HardwareConfig HWConf;
+nvs_handle NVS = 0;
 static char TAG[] = "time";
+
+JsonObject *RTData = 0;
+JsonInt *Uptime = 0;
+JsonFloat *Temperature = 0, *Humidity = 0, *Pressure = 0;
+#ifdef CONFIG_OTA
+JsonString *UpdateState = 0;
+#endif
+
+static SemaphoreHandle_t Mtx = 0;
+
+
+/*
+static JsonObject *rtd_get_obj(const char *name)
+{
+	JsonElement *e = RTData->get(name);
+	assert(e);
+	return e->to_object();
+}
+
+
+static JsonElement *rtd_get(const char *cat, const char *item)
+{
+	JsonObject *o;
+	if (cat)
+		o = rtd_get_obj(cat);
+	else
+		o = RTData;
+	return o->getn(item);
+}
+*/
+
+void globals_setup()
+{
+	HWConf.clear();	// initialize defaults
+	Config.clear();
+	RTData = new JsonObject(0);
+	Mtx = xSemaphoreCreateMutex();
+}
+
+void rtd_lock()
+{
+	xSemaphoreTake(Mtx,portMAX_DELAY);
+}
+
+
+void rtd_unlock()
+{
+	xSemaphoreGive(Mtx);
+}
 
 
 void runtimedata_to_json(stream &json)
 {
-	static bool b = false;
-	if (RTData.relay() != b) {
-		b = RTData.relay();
-		log_info("webdata","relay state change");
-	}
-	RTData.set_uptime(timestamp()/1000);
-	RTData.toJSON(json);
+	TimeDelta dt(__FUNCTION__);
+	rtd_lock();
+	if (Uptime == 0)
+		Uptime = RTData->add("uptime",0);
+	Uptime->set(timestamp()/1000000ULL);
+	RTData->toStream(json);
+	rtd_unlock();
 }
 
 
@@ -112,7 +166,7 @@ static int daylight_saving_cet(struct tm *tm)
 }
 
 
-#if defined ESP32 || defined ESP8266
+#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP8266
 void get_time_of_day(uint8_t *h, uint8_t *m, uint8_t *s, uint8_t *wd, uint8_t *mday, uint8_t *month, unsigned *year)
 {
 	time_t now;

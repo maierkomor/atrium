@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2019, Thomas Maier-Komor
+ *  Copyright (C) 2018-2020, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -20,25 +20,26 @@
 
 #include "log.h"
 
+#include <string.h>
+
 #define MAXFREQDEL 1
 
 static char TAG[] = "MAX7219";
-static volatile int V;
 
 
-MAX7219Drv::~MAX7219Drv()
-{
-	if (m_attached)
-		detach();
-}
-
-
-void MAX7219Drv::attach()
+int MAX7219Drv::init(gpio_num_t clk, gpio_num_t dout, gpio_num_t cs, bool odrain)
 {
 	if (m_attached) {
 		log_error(TAG,"cannot attach: device already attached");
-		return;
+		return 1;
 	}
+	memset(m_digits,0xff,8);
+	m_clk = clk;
+	m_dout = dout;
+	m_cs = cs;
+	m_odrain = odrain;
+	m_attached = true;
+	m_intensity = 0;
 	if (ESP_OK != gpio_set_direction(m_clk, m_odrain ? GPIO_MODE_OUTPUT_OD : GPIO_MODE_OUTPUT)) {
 		log_error(TAG,"cannot set direction of clock gpio %d",m_clk);
 	} else if (ESP_OK != gpio_set_direction(m_dout, m_odrain ? GPIO_MODE_OUTPUT_OD : GPIO_MODE_OUTPUT)) {
@@ -47,29 +48,11 @@ void MAX7219Drv::attach()
 		log_error(TAG,"cannot set direction of cs gpio %d",m_cs);
 	} else {
 		log_info(TAG,"attached driver");
-		return;
+		chip_select(1);
+		clock(0);
+		return 0;
 	}
-	chip_select(1);
-	clock(0);
-}
-
-
-void MAX7219Drv::detach()
-{
-	if (!m_attached) {
-		log_error(TAG,"cannot detach: device not attached");
-		return;
-	}
-	if (ESP_OK != gpio_set_direction(m_clk, GPIO_MODE_DISABLE)) {
-		log_error(TAG,"cannot disable clock gpio %d",m_clk);
-	}
-	if (ESP_OK != gpio_set_direction(m_dout, GPIO_MODE_DISABLE)) {
-		log_error(TAG,"cannot disable dout gpio %d",m_dout);
-	}
-	if (ESP_OK != gpio_set_direction(m_cs, GPIO_MODE_DISABLE)) {
-		log_error(TAG,"cannot disable cs gpio %d",m_cs);
-	}
-	log_info(TAG,"detached driver");
+	return 1;
 }
 
 
@@ -120,7 +103,11 @@ void MAX7219Drv::setreg(uint8_t r, uint8_t v)
 
 void MAX7219Drv::setDigit(uint8_t d, uint8_t v)
 {
+	assert(d < sizeof(m_digits)/sizeof(m_digits[0]));
+	if (v == m_digits[d])
+		return;
 //	log_dbug(TAG,"setDigit(%d,0x%x)",d,v);
+	m_digits[d] = v;
 	setreg(d+1,v);
 }
 
@@ -152,6 +139,7 @@ void MAX7219Drv::setDigits(uint8_t n)	// set number of scanned digits
 void MAX7219Drv::setIntensity(uint8_t i)
 {
 	setreg(0xa,i);
+	m_intensity = i;
 }
 
 

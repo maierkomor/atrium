@@ -36,13 +36,13 @@
 <tbody>
 <tr>
 <td><select id="wday">
-	<option value="mo">Monday</option>
-	<option value="tu">Tuesday</option>
-	<option value="we">Wednesday</option>
-	<option value="th">Thursday</option>
-	<option value="fr">Friday</option>
-	<option value="sa">Saturday</option>
-	<option value="su">Sunday</option>
+	<option value="Mo">Monday</option>
+	<option value="Tu">Tuesday</option>
+	<option value="We">Wednesday</option>
+	<option value="Th">Thursday</option>
+	<option value="Fr">Friday</option>
+	<option value="Sa">Saturday</option>
+	<option value="Su">Sunday</option>
 	<option value="wd">Mo-Fr</option>
 	<option value="we">Sa,Su</option>
 	<option value="ed">every day</option>
@@ -50,8 +50,8 @@
 </select></td>
 <td><input type="time" id="time"/></td>
 <td><select id="action">
-	<option value="relay_on">turn on</option>
-	<option value="relay_off">turn off</option>
+	<option value="mainrelay!on">turn on</option>
+	<option value="mainrelay!off">turn off</option>
 </select></td>
 <td><input type="button" onclick="add_alarm()" value="add"/></td>
 </tr>
@@ -115,12 +115,14 @@ function on_alarm_data(responseText)
 		var c = newrow.insertCell(0);
 		c.innerHTML = adata.alarms[i].day;
 		c = newrow.insertCell(1);
-		var min = adata.alarms[i].min_of_day%60;
-		if (min < 10)
-			min = '0' + min;
-		c.innerHTML = Math.floor(adata.alarms[i].min_of_day/60) + ":" + min;
+		c.innerHTML = adata.alarms[i].min_of_day;
 		c = newrow.insertCell(2);
-		c.innerHTML = adata.alarms[i].action;
+		ac = adata.alarms[i].action;
+		if (ac == "mainrelay!on")
+			ac = "turn on";
+		else if (ac == "mainrelay!off")
+			ac = "turn off";
+		c.innerHTML = ac;
 		c = newrow.insertCell(3);
 		c.innerHTML = adata.alarms[i].enable ? "active" : "inactive";
 		c = newrow.insertCell(4);

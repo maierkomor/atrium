@@ -1,0 +1,8 @@
+synopsis: wifi <mode>
+valid modes are:
+accesspoint : accesspoint only
+ap          : accesspoint only
+station     : station only
+both        : accesspoint and station
+off         : disable wifi
+status      : report wifi status

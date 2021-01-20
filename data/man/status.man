@@ -1,0 +1,5 @@
+synopsis: status [<mode>|<itv>|-l]
+- no argument to display current status mode
+- <mode> to set new mode
+- <itv> to set led interval to <itv> ms
+- option -l to list available modes

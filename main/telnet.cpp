@@ -20,10 +20,13 @@
 
 #ifdef CONFIG_TELNET
 
-#include "telnet.h"
+#define TELNET_PORT 23
+
+#include "binformats.h"
 #include "globals.h"
 #include "inetd.h"
 #include "log.h"
+#include "netsvc.h"
 #include "settings.h"
 #include "shell.h"
 #include "support.h"
@@ -37,8 +40,6 @@
 #include <lwip/tcp.h>
 #include <sys/socket.h>
 #include <unistd.h>
-
-#include <string>
 
 #ifdef write
 #undef write
@@ -119,8 +120,6 @@ static const char ConSetup[] = {
 	RFC854_IAC,RFC854_DO,3,		// suppress go ahead
 };
 static const char NOP[] = {RFC854_IAC,RFC854_NOP};
-static const char Prompt[] = { '>',' ' };
-
 
 class Telnet : public Terminal
 {
@@ -267,7 +266,7 @@ int Telnet::get_ch(char *oc)
 			m_state = XMDATA;
 			break;
 		case XMWONT:
-			log_dbug(TAG,"received WONT %d",c);
+			//log_dbug(TAG,"received WONT %d",c);
 			m_state = XMDATA;
 			break;
 		case XMSN:
@@ -295,30 +294,25 @@ static void telnet_session(void *arg)
 	int con = (int)arg;
 	log_info(TAG,"starting session");
 	Telnet session(con);
-	int r = 0;
-	do {
-		char buf[128];
-		session.write(Prompt,sizeof(Prompt));
-		r = session.readInput(buf,sizeof(buf)-1,true);
-		if (r > 0) {
-			buf[r] = 0;
-			if ((r == 4) && !memcmp(buf,"exit",4))
-				break;
-			shellexe(session,buf);
-		}
-	} while (r >= 0);
+	if (!Config.has_pass_hash())
+		session.setPrivLevel(1);
+	shell(session);
 	close(con);
 	log_info(TAG,"session terminated");
 	vTaskDelete(0);
 }
 
 
-#ifdef __cplusplus
-extern "C"
+#ifdef CONFIG_IDF_TARGET_ESP32
+#define stack_size 4096
+#else
+#define stack_size 2560
 #endif
-void telnet_setup()
+
+int telnet_setup()
 {
-	listen_tcp(CONFIG_TELNET_PORT,telnet_session,"telnetd","_telnet",8,4096);
+	return listen_tcp(TELNET_PORT,telnet_session,"telnetd","_telnet",8,stack_size);
 }
+
 
 #endif	// CONFIG_TELNET

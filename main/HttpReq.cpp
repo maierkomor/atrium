@@ -19,6 +19,7 @@
 #include "HttpReq.h"
 
 #include "log.h"
+#include "netsvc.h"
 #include "support.h"
 #include "profiling.h"
 
@@ -31,7 +32,7 @@
 using namespace std;
 
 static char TAG[] = "httpq";
-static const string Empty = "";
+static const estring Empty = "";
 
 
 HttpRequest::HttpRequest(int con)
@@ -70,7 +71,7 @@ static bool isTCHAR(char c)
 }
 
 
-static char *parsePercent(char *at, string &value)
+static char *parsePercent(char *at, estring &value)
 {
 	assert(at[0] == '%');
 	if (at[1] != 'x')
@@ -79,13 +80,13 @@ static char *parsePercent(char *at, string &value)
 	if ((at[2] >= '0') && (at[2] <= '9'))
 		x = (at[2]-'0') << 4;
 	else if ((at[2] >= 'A') && (at[2] <= 'F'))
-		x = (at[2]-'A') << 4;
+		x = (at[2]-'A'+10) << 4;
 	else
 		return 0;
 	if ((at[3] >= '0') && (at[3] <= '9'))
 		x |= (at[3]-'0');
 	else if ((at[3] >= 'A') && (at[3] <= 'F'))
-		x |= (at[3]-'A');
+		x |= (at[3]-'A'+10);
 	else
 		return 0;
 	value += x;
@@ -95,6 +96,7 @@ static char *parsePercent(char *at, string &value)
 
 void HttpRequest::parseField(char *at, char *end)
 {
+	TimeDelta td(__FUNCTION__);
 	char fn[128], *f = fn;
 	char c = *at;
 	// parse field name
@@ -136,7 +138,7 @@ void HttpRequest::parseField(char *at, char *end)
 	    )
 		return;
 	// parse field value
-	string value;
+	estring value;
 	if (*at == '"') {
 		if (end[-1] != '"') {
 			m_error = "missing terminating quote in header value";
@@ -150,7 +152,7 @@ void HttpRequest::parseField(char *at, char *end)
 		m_error = "trailing backslash in header value";
 		return;
 	}
-	//log_info(TAG,"at = %s",at);
+	log_dbug(TAG,"at = %s",at);
 	c = *at;
 	while (at && (c != '"') && (c != 0)) {
 		if (c == '\\') {
@@ -168,13 +170,16 @@ void HttpRequest::parseField(char *at, char *end)
 		else
 			m_error = "header value parser error";
 	}
-	//log_info(TAG,"adding pair '%s' -> '%s'",fn,value.c_str());
-	m_headers.insert(make_pair(fn,value));
+	log_dbug(TAG,"adding pair '%s' -> '%s'",fn,value.c_str());
+	m_headers.emplace(pair<estring,estring>(fn,value.c_str()));
+	//auto x = m_headers.emplace(pair<estring,estring>(fn,value.c_str()));
+	//log_dbug(TAG,"added pair '%s' -> '%s'",x.first->first.c_str(),x.first->second.c_str());
 }
 
 
 char *HttpRequest::parseHeader(char *at, size_t s)
 {
+	TimeDelta td(__FUNCTION__);
 	char *cr = (char*)memchr(at,'\r',s);
 	if (cr[1] != '\n') {
 		m_error = "stray carriage-return";
@@ -184,7 +189,7 @@ char *HttpRequest::parseHeader(char *at, size_t s)
 		errno = 0;
 		long l = strtol(at+15,0,0);
 		if (errno != 0) {
-			m_error = "invalid value for content-length";
+			m_error = "invalid content-length";
 			return 0;
 		}
 		m_contlen = l;
@@ -211,7 +216,7 @@ char *HttpRequest::parseHeader(char *at, size_t s)
 }
 
 
-const string &HttpRequest::getHeader(const char *n) const
+const estring &HttpRequest::getHeader(const char *n) const
 {
 	auto i = m_headers.find(n);
 	if (i == m_headers.end())
@@ -228,7 +233,7 @@ size_t HttpRequest::numArgs()
 }
 
 
-const string &HttpRequest::arg(size_t i) const
+const estring &HttpRequest::arg(size_t i) const
 {
 	if (i >= m_args.size())
 		return Empty;
@@ -236,7 +241,7 @@ const string &HttpRequest::arg(size_t i) const
 }
 
 
-const string &HttpRequest::arg(const char *a) const
+const estring &HttpRequest::arg(const char *a) const
 {
 	for (size_t i = 0, e = m_args.size(); i < e; ++i) {
 		if (0 == strcmp(a,m_args[i].first.c_str()))
@@ -246,7 +251,7 @@ const string &HttpRequest::arg(const char *a) const
 }
 
 
-const string &HttpRequest::argName(size_t i) const
+const estring &HttpRequest::argName(size_t i) const
 {
 	if (i >= m_args.size())
 		return Empty;
@@ -261,11 +266,11 @@ void HttpRequest::parseArgs(const char *str)
 		const char *e = strchr(str,'=');
 		const char *a = e ? strchr(e+1,'&') : 0;
 		if (e && a) {
-			m_args.push_back(make_pair(string(str,e),string(e+1,a)));
+			m_args.push_back(make_pair(estring(str,e),estring(e+1,a)));
 			log_dbug(TAG,"add arg %s",m_args.back().second.c_str());
 			str = a + 1;
 		} else if (e) {
-			m_args.push_back(make_pair(string(str,e),string(e+1)));
+			m_args.push_back(make_pair(estring(str,e),estring(e+1)));
 			log_dbug(TAG,"add larg %s",m_args.back().second.c_str());
 			str = 0;
 		} else
@@ -291,14 +296,14 @@ void HttpRequest::fillContent()
 	m_content = (char *)realloc(m_content,m_contlen+1);
 	m_content[m_contlen] = 0;
 	if (m_content == 0) {
-		log_error(TAG,"out of memory while download content");
+		log_error(TAG,"out of memory");
 		m_clen0 = 0;
 		return;
 	}
 	do {
 		int n = recv(m_con,m_content+m_clen0,m_contlen-m_clen0,0);
 		if (n == -1) {
-			log_error(TAG,"error while downloading content: %s",strneterr(m_con));
+			log_error(TAG,"error downloading content: %s",strneterr(m_con));
 			return;
 		}
 		m_clen0 += n;
@@ -327,37 +332,32 @@ void HttpRequest::discardContent()
 }
 
 
-HttpRequest *HttpRequest::parseRequest(int con)
+HttpRequest *HttpRequest::parseRequest(int con, char *buf, size_t bs)
 {
-	size_t bs = 2048;
-	char *buf = (char*) malloc(bs);
 	int n = recv(con,buf,bs-1,0);
-//	TimeDelta td(__FUNCTION__);
+	TimeDelta td(__FUNCTION__);
 	if (n < 0) {
-		log_error(TAG,"failed to receive data: %s",strneterr(con));
-		free(buf);
+		log_warn(TAG,"failed to receive data: %s",strneterr(con));
 		return 0;
 	}
 	if (n == 0) {
-		log_info(TAG,"empty request");	// this is normal for certain types of requests
+		log_dbug(TAG,"empty request");	// this is normal for certain types of requests
 		n = recv(con,buf,bs-1,0);
 		if (n <= 0) {
 			log_error(TAG,"receive after empty: %d, %s",n,strneterr(con));
-			free(buf);
 			return 0;
 		}
 	}
-	buf[bs-1] = 0;
 	buf[n] = 0;
+//	log_info(TAG,"request has %u bytes",n);
 //	log_dbug(TAG,"http-req:");
 //	con_write(buf,n);
-	HttpRequest *r = new HttpRequest(con);
 	char *cr = strchr(buf,'\r');
 	if (cr == 0) {
-		log_warn(TAG,"header line too long (%u)\n%-256s",n,buf);
-		r->m_error = "header parser error";
-		return r;
+		log_warn(TAG,"unterminated header line (%u)\n%-256s",n,buf);
+		return 0;
 	}
+	HttpRequest *r = new HttpRequest(con);
 	*cr = 0;
 	//log_info(TAG,"header: '%s'",buf);
 	char *uri = 0;
@@ -383,7 +383,6 @@ HttpRequest *HttpRequest::parseRequest(int con)
 	if ((at == buf+bs) || (*at != ' ')) {
 		log_error(TAG,"invalid start line while parsing request:\n");
 		delete r;
-		free(buf);
 		return 0;
 	}
 	r->m_URI = strndup(uri,at-uri);
@@ -398,21 +397,17 @@ HttpRequest *HttpRequest::parseRequest(int con)
 	} else {
 		log_error(TAG,"unknown http version %8s",at);
 		delete r;
-		free(buf);
 		return 0;
 	}
 	at += 10;
 	while ((at != 0) && (*at != 0) && (*at != '\r')) {
 		at = r->parseHeader(at,n-(at-buf));
 	}
-	if (*at == 0) {
-		free(buf);
+	if (*at == 0)
 		return r;
-	}
 	if ((at[0] != '\r') || (at[1] != '\n')) {
 		log_error(TAG,"invalid message termination");
 		r->m_error = "invalid message termination";
-		free(buf);
 		return r;
 	}
 	at += 2;
@@ -421,7 +416,6 @@ HttpRequest *HttpRequest::parseRequest(int con)
 	memcpy(r->m_content,at,r->m_clen0);
 	r->m_content[r->m_clen0] = 0;
 	//log_info(TAG,"clen0 = %d",r->m_clen0);
-	free(buf);
 	return r;
 }
 

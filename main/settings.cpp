@@ -16,13 +16,24 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "settings.h"
 #include <sdkconfig.h>
+
+#include "actions.h"
+#include "binformats.h"
+#include "dataflow.h"
+#include "event.h"
+#ifdef CONFIG_SIGNAL_PROC
+#include "func.h"
+#endif
 #include "globals.h"
+#include "ujson.h"
 #include "log.h"
 #include "mqtt.h"
 #include "profiling.h"
-#include "version.h"
+#include "settings.h"
+#include "terminal.h"
+#include "timefuse.h"
+#include "versions.h"
 
 #include <esp_ota_ops.h>
 #include <esp_system.h>
@@ -33,11 +44,12 @@
 #include <lwip/dns.h>
 #include <lwip/inet.h>
 
-#ifdef ESP32
+#ifdef CONFIG_IDF_TARGET_ESP32
 #include <soc/rtc.h>
 #include <rom/md5_hash.h>
-#elif defined ESP8266
+#elif defined CONFIG_IDF_TARGET_ESP8266
 #include <esp_system.h>
+#include <esp_wps.h>
 extern "C" {
 #include <crypto/common.h>
 #include <crypto/md5_i.h>
@@ -46,7 +58,7 @@ void esp_yield(void);
 }
 #endif
 
-#ifdef ESP8266
+#ifdef CONFIG_IDF_TARGET_ESP8266
 #include <apps/sntp/sntp.h>
 #if IDF_VERSION > 32
 #include <driver/rtc.h>	// post v3.2
@@ -58,7 +70,7 @@ void esp_yield(void);
 #endif
 
 #ifdef CONFIG_MDNS
-#include <mdns.h>	// requires IPv6 to be enabled on ESP8266
+#include <mdns.h>	// requires IPv6 to be enabled on CONFIG_IDF_TARGET_ESP8266
 #endif
 #include <nvs.h>
 #include <nvs_flash.h>
@@ -68,7 +80,6 @@ void esp_yield(void);
 #include "settings.h"
 #include "dht.h"
 #include "globals.h"
-#include "clock.h"
 #include "wifi.h"
 
 
@@ -76,96 +87,37 @@ using namespace std;
 
 extern "C" const char Version[] = VERSION;
 static char TAG[] = "cfg", cfg_err[] = "cfg_err";
-static nvs_handle NVS = 0;
 
+#ifdef CONFIG_APP_PARAMS
+static int cfg_set_param(const char *name, const char *value);
+#endif
 
-static int set_ap_ssid(const char *v)
-{
-	if (v == 0)
-		Config.mutable_softap()->clear_ssid();
-	else
-		Config.mutable_softap()->set_ssid(v);
-	return 0;
-}
-
-
-static int set_ap_pass(const char *v)
-{
-	if (v == 0)
-		Config.mutable_softap()->clear_pass();
-	else if (strlen(v) < 8)
-		return 1;
-	else
-		Config.mutable_softap()->set_pass(v);
-	return 0;
-}
-
-
-static int set_ap_activate(const char *v)
+static int set_cpu_freq(Terminal &t, const char *v)
 {
 	if (v == 0) {
-		Config.mutable_softap()->set_activate(false);
+		t.printf("%lu\n",Config.cpu_freq());
 		return 0;
 	}
-	if (0 == strcmp(v,"1"))
-		Config.mutable_softap()->set_activate(true);
-	else if (0 == strcmp(v,"0"))
-		Config.mutable_softap()->set_activate(false);
-	else
-		return 1;
-	return 0;
-}
-
-
-static int set_cpu_freq(const char *v)
-{
-	if (v == 0) {
+	if (!strcmp(v,"-c")) {
 		Config.clear_cpu_freq();
 		return 0;
 	}
 	long l = strtol(v,0,0);
-	if ((l != 40) && (l != 80))
+#ifdef CONFIG_IDF_TARGET_ESP8266
+	if ((l != 80) && (l != 160))
 		return 1;
+#elif defined CONFIG_IDF_TARGET_ESP32
+	if ((l != 80) && (l != 160) && (l != 240))
+		return 1;
+#else
+#error unknwon target
+#endif
 	Config.set_cpu_freq(l);
 	return 0;
 }
 
 
-static int set_max_on_time(const char *v)
-{
-	if (v == 0)
-		Config.clear_max_on_time();
-	long l = strtol(v,0,0);
-	if ((l < 0) || (l > 60*24))
-		return 1;
-	if (l == 0)
-		Config.clear_max_on_time();
-	else
-		Config.set_max_on_time(l);
-	return 0;
-}
-
-
-static int set_nodename(const char *v)
-{
-	if (v == 0)
-		Config.clear_nodename();
-	else
-		Config.set_nodename(v);
-	return 0;
-}
-
-
-static int set_domainname(const char *v)
-{
-	if (v == 0)
-		Config.clear_domainname();
-	else
-		Config.set_domainname(v);
-	return 0;
-}
-
-
+/*
 static int set_dns_server(const char *v)
 {
 	if (v == 0) {
@@ -188,75 +140,17 @@ static int set_dns_server(const char *v)
 #endif
 	return 0;
 }
-
-
-static int set_sntp_server(const char *v)
-{
-	if (v == 0)
-		Config.clear_sntp_server();
-	else
-		Config.set_sntp_server(v);
-	return 0;
-}
-
-
-static int set_station_ssid(const char *v)
-{
-	if (v == 0) {
-		Config.mutable_station()->clear_ssid();
-		Config.mutable_station()->clear_pass();
-	} else if (Config.station().ssid() != v) {
-		Config.mutable_station()->set_ssid(v);
-		Config.mutable_station()->clear_pass();
-	}
-	return 0;
-}
-
-
-static int set_station_pass(const char *v)
-{
-	if (v == 0) {
-		Config.mutable_station()->clear_pass();
-		return 0;
-	}
-	else if (strlen(v) < 8)
-		return 1;
-	else
-		Config.mutable_station()->set_pass(v);
-	return 0;
-}
-
-
-static int set_station_activate(const char *v)
-{
-	if (0 == v) {
-		Config.mutable_station()->set_activate(false);
-		return 0;
-	}
-	if (0 == strcmp(v,"1"))
-		Config.mutable_station()->set_activate(true);
-	else if (0 == strcmp(v,"0"))
-		Config.mutable_station()->set_activate(false);
-	else
-		return 1;
-	return 0;
-}
-
-
-static int set_syslog(const char *v)
-{
-	if (v == 0)
-		Config.clear_syslog_host();
-	else
-		Config.set_syslog_host(v);
-	return 0;
-}
+*/
 
 
 #ifdef CONFIG_LIGHTCTRL
-static int set_threshold_off(const char *v)
+static int set_threshold_off(Terminal &t, const char *v)
 {
 	if (v == 0) {
+		t.printf("%lu\n",Config.threshold_off());
+		return 0;
+	}
+	if (!strcmp(v,"-c")) {
 		Config.clear_threshold_off();
 		return 0;
 	}
@@ -268,9 +162,13 @@ static int set_threshold_off(const char *v)
 }
 
 
-static int set_threshold_on(const char *v)
+static int set_threshold_on(Terminal &t, const char *v)
 {
 	if (v == 0) {
+		t.printf("%lu\n",Config.threshold_on());
+		return 0;
+	}
+	if (!strcmp(v,"-c")) {
 		Config.clear_threshold_on();
 		return 0;
 	}
@@ -282,10 +180,14 @@ static int set_threshold_on(const char *v)
 }
 
 
-static int set_dim_step(const char *v)
+static int set_dim_step(Terminal &t, const char *v)
 {
 	if (v == 0) {
-		Config.clear_threshold_on();
+		t.printf("%lu\n",Config.dim_step());
+		return 0;
+	}
+	if (!strcmp(v,"-c")) {
+		Config.clear_dim_step();
 		return 0;
 	}
 	long l = strtol(v,0,0);
@@ -297,9 +199,13 @@ static int set_dim_step(const char *v)
 #endif
 
 
-static int set_station2ap_time(const char *v)
+static int set_station2ap_time(Terminal &t, const char *v)
 {
 	if (v == 0) {
+		t.printf("%lu\n",Config.station2ap_time());
+		return 0;
+	}
+	if (!strcmp(v,"-c")) {
 		Config.clear_station2ap_time();
 		return 0;
 	}
@@ -311,114 +217,200 @@ static int set_station2ap_time(const char *v)
 }
 
 
-int set_timezone(const char *v)
+template <typename S>
+int set_string_option(Terminal &t, S *s, const char *v)
 {
 	if (v == 0)
-		Config.clear_timezone();
+		t.println(s->c_str());
+	else if (!strcmp(v,"-c"))
+		s->clear();
 	else
-		Config.set_timezone(v);
+		*s = v;
 	return 0;
 }
 
 
-#ifdef CONFIG_MQTT
-static int set_mqtt_uri(const char *v)
+int set_bool_option(Terminal &t, bool *b, const char *v, bool d)
 {
 	if (v == 0)
-		Config.mutable_mqtt()->clear_uri();
-	else
-		Config.mutable_mqtt()->set_uri(v);
-	return 0;
-}
-
-
-static int set_mqtt_enable(const char *v)
-{
-	if (v == 0)
-		Config.mutable_mqtt()->set_enable(false);
+		t.printf(b ? "true\n" : "false\n");
+	else if (!strcmp(v,"-c"))
+		*b = d;
 	else if (!strcmp(v,"false"))
-		Config.mutable_mqtt()->set_enable(false);
+		*b = false;
 	else if (!strcmp(v,"0"))
-		Config.mutable_mqtt()->set_enable(false);
+		*b = false;
 	else if (!strcmp(v,"true"))
-		Config.mutable_mqtt()->set_enable(true);
+		*b = true;
 	else if (!strcmp(v,"1"))
-		Config.mutable_mqtt()->set_enable(true);
+		*b = true;
+	else
+		return 1;
 	return 0;
 }
-#endif // CONFIG_MQTT
 
 
-pair<const char *, int (*)(const char *)> SetFns[] = {
-	{"ap_ssid", set_ap_ssid},
-	{"ap_pass", set_ap_pass},
-	{"ap_activate", set_ap_activate},
+static int set_ap_ssid(Terminal &t, const char *value)
+{
+	return set_string_option(t,Config.mutable_softap()->mutable_ssid(),value);
+}
+
+
+static int set_ap_pass(Terminal &t, const char *value)
+{
+	return set_string_option(t,Config.mutable_softap()->mutable_pass(),value);
+}
+
+
+static int set_station_ssid(Terminal &t, const char *value)
+{
+	return set_string_option(t,Config.mutable_station()->mutable_ssid(),value);
+}
+
+
+static int set_station_pass(Terminal &t, const char *value)
+{
+	return set_string_option(t,Config.mutable_station()->mutable_pass(),value);
+}
+
+
+static int set_syslog_host(Terminal &t, const char *value)
+{
+	return set_string_option(t,Config.mutable_syslog_host(),value);
+}
+
+
+static int set_dns_server(Terminal &t, const char *value)
+{
+	return set_string_option(t,Config.mutable_dns_server(),value);
+}
+
+
+static int set_mqtt_uri(Terminal &t, const char *value)
+{
+	return set_string_option(t,Config.mutable_mqtt()->mutable_uri(),value);
+}
+
+
+static int set_nodename(Terminal &t, const char *value)
+{
+	return set_string_option(t,Config.mutable_nodename(),value);
+}
+
+
+static int set_syslog(Terminal &t, const char *value)
+{
+	return set_string_option(t,Config.mutable_syslog_host(),value);
+}
+
+
+int set_timezone(Terminal &t, const char *value)
+{
+	int r = set_string_option(t,Config.mutable_timezone(),value);
+	setenv("TZ",Config.timezone().c_str(),1);
+	return r;
+}
+
+
+static int set_sntp_server(Terminal &t, const char *value)
+{
+	return set_string_option(t,Config.mutable_sntp_server(),value);
+}
+
+
+static int set_domainname(Terminal &t, const char *value)
+{
+	return set_string_option(t,Config.mutable_domainname(),value);
+}
+
+
+static int set_ap_activate(Terminal &t, const char *value)
+{
+	return set_bool_option(t,Config.mutable_softap()->mutable_activate(),value,false);
+}
+
+
+static int set_station_activate(Terminal &t, const char *value)
+{
+	return set_bool_option(t,Config.mutable_station()->mutable_activate(),value,false);
+}
+
+
+static int set_mqtt_enable(Terminal &t, const char *value)
+{
+	return set_bool_option(t,Config.mutable_mqtt()->mutable_enable(),value,false);
+}
+
+
+static int set_password(Terminal &t, const char *p)
+{
+	return setPassword(p);
+}
+
+
+pair<const char *, int (*)(Terminal &t, const char *)> SetFns[] = {
 	{"cpu_freq", set_cpu_freq},
-	//{"debug", set_debug},
-	{"max_on_time", set_max_on_time},
-#ifdef CONFIG_MQTT
-	{"mqtt_uri", set_mqtt_uri},
-	{"mqtt_enable", set_mqtt_enable},
-#endif
-	{"nodename", set_nodename},
+	{"password", set_password},
+	{"timezone", set_timezone},
 	{"domainname", set_domainname},
-	{"password", setPassword},
+	{"ap_activate", set_ap_activate},
+	{"ap_pass", set_ap_pass},
+	{"ap_ssid", set_ap_ssid},
 	{"dns_server", set_dns_server},
+	{"syslog_host", set_syslog_host},
+	{"mqtt_enable", set_mqtt_enable},
+	{"mqtt_uri", set_mqtt_uri},
+	{"nodename", set_nodename},
 	{"sntp_server", set_sntp_server},
-	{"station_ssid", set_station_ssid},
-	{"station_pass", set_station_pass},
+	{"station2ap_time", set_station2ap_time},
 	{"station_activate", set_station_activate},
+	{"station_pass", set_station_pass},
+	{"station_ssid", set_station_ssid},
 	{"syslog", set_syslog},
 #ifdef CONFIG_LIGHTCTRL
+	{"dim_step", set_dim_step},
 	{"threshold_off", set_threshold_off},
 	{"threshold_on", set_threshold_on},
-	{"dim_step", set_dim_step},
 #endif
-	{"timezone", set_timezone},
-	{"station2ap_time", set_station2ap_time},
 	{0,0},
 };
 
 
-int change_setting(const char *name, const char *value)
+int update_setting(Terminal &t, const char *name, const char *value)
 {
 	for (size_t i = 0; SetFns[i].first; ++i) {
 		if (0 == strcmp(name,SetFns[i].first))
-			return SetFns[i].second(value);
+			return SetFns[i].second(t,value);
 	}
-	return -1;
+	if (0 < Config.setByName(name,value))
+		return 0;
+#ifdef CONFIG_APP_PARAMS 
+	return cfg_set_param(name,value);
+#else
+	return 1;
+#endif
 }
 
 
-uint8_t read_nvs_u8(const char *id, uint8_t d)
+void list_settings(Terminal &t)
 {
-	uint8_t v;
-	if (esp_err_t e = nvs_get_u8(NVS,id,&v)) {
-		log_error(TAG,"error setting %s to %u: %s",id,(unsigned)v,esp_err_to_name(e));
-		return d;
-	}
-	return v;
+	for (size_t i = 0; SetFns[i].first; ++i)
+		t.printf("%s\n",SetFns[i].first);
 }
 
 
-void store_nvs_u8(const char *id, uint8_t v)
+int cfg_set_hostname(const char *hn)
 {
-	if (esp_err_t e = nvs_set_u8(NVS,id,v))
-		log_error(TAG,"error setting %s to %u: %s",id,(unsigned)v,esp_err_to_name(e));
-	else if (esp_err_t e = nvs_commit(NVS))
-		log_error(TAG,"error committing %s to %u: %s",id,(unsigned)v,esp_err_to_name(e));
-}
-
-
-int setHostname(const char *hn)
-{
+	static JsonString *nodename = 0;
+	log_info(TAG,"setting hostname to %s",hn);
+	if (nodename == 0)
+		nodename = RTData->add("node",hn);
+	else
+		nodename->set(hn);
 #ifdef CONFIG_MDNS
 	static bool MDNS_up = false;
-	log_info(TAG,"setting hostname to %s",hn);
 	if (MDNS_up)
 		mdns_free();
-	else
-		MDNS_up = true;
 	if (esp_err_t e = mdns_init()) {
 		log_error(TAG,"mdns init failed: %s",esp_err_to_name(e));
 		return 1;
@@ -431,11 +423,28 @@ int setHostname(const char *hn)
 		log_error(TAG,"unable to set mdns instance name: %s",esp_err_to_name(e));
 		return 1;
 	}
+	MDNS_up = true;
 #endif
-	RTData.set_node(hn);
 	return 0;
 }
 
+
+void cfg_set_station(const uint8_t *ssid, const uint8_t *pass)
+{
+	WifiConfig *conf = Config.mutable_station();
+	conf->set_ssid((char*)ssid);
+	conf->set_pass((char*)pass);
+	conf->set_activate(true);
+}
+
+
+const char *cfg_get_domainname()
+{
+	const char *dn = Config.domainname().c_str();
+	if (dn[0] == 0)
+		return 0;
+	return dn;
+}
 
 char *format_hash(char *buf, const uint8_t *hash)
 {
@@ -511,62 +520,69 @@ bool isValidBaudrate(long l)
 
 static void set_cfg_err(uint8_t v)
 {
-	if (NVS == 0) {
+	if (NVS == 0)
 		log_error(TAG,"cannot set nvs/%s: nvs not mounted",cfg_err);
-		return;
-	}
-	if (esp_err_t e = nvs_set_u8(NVS,cfg_err,v))
+	else if (esp_err_t e = nvs_set_u8(NVS,cfg_err,v))
 		log_error(TAG,"error clearing cfg_ok: %s",esp_err_to_name(e));
 	else
 		nvs_commit(NVS);
 }
 
 
-void setupDefaults()
+static void initNodename()
 {
-	log_info(TAG,"setting up default config");
 	uint8_t mac[6];
 	esp_err_t e = esp_wifi_get_mac(ESP_IF_WIFI_STA,mac);
 	if (ESP_OK != e)
 		e = esp_wifi_get_mac(ESP_IF_WIFI_AP,mac);
-#ifdef ESP32
+#ifdef ESP_IF_ETH
 	if (ESP_OK != e) 
 		e = esp_wifi_get_mac(ESP_IF_ETH,mac);
 #endif
 	if (ESP_OK != e) {
-		log_error(TAG,"unable to determine mac for setting up hostname");
-		memset(mac,0,sizeof(mac));
+		log_warn(TAG,"unable to determine mac for setting up hostname, using random data");
+		uint32_t r = esp_random();
+		mac[0] = r & 0xff;
+		mac[1] = (r >> 8) & 0xff;
+		mac[2] = (r >> 16) & 0xff;
 	}
-	char hostname[64];
+	char hostname[16];
 	snprintf(hostname,sizeof(hostname),"node%02x%02x%02x",mac[2],mac[1],mac[0]);
-	Config.clear();
-	setPassword("");
 	Config.set_nodename(hostname);
-	Config.mutable_softap()->set_activate(true);
-	Config.mutable_softap()->set_ssid(hostname);
+}
+
+
+void cfg_init_defaults()
+{
+	log_info(TAG,"setting up default config");
+	Config.clear();
+	Config.set_magic(0xae54edc0);
 	Config.set_actions_enable(true);
 	Config.set_sntp_server("0.pool.ntp.org");
-#ifdef CONFIG_MQTT
-	Config.mutable_mqtt()->clear_uri();
-	Config.mutable_mqtt()->set_enable(false);
-#endif
+	Config.mutable_softap()->set_activate(true);
+	initNodename();
+	Config.mutable_softap()->set_ssid(Config.nodename().c_str());
 }
 
 
-void clearSettings()
+void cfg_clear_nodecfg()
 {
 	Config.clear();
+	Config.set_magic(0xAE54EDC0);
 }
 
 
-void eraseSettings()
+int cfg_erase_nvs()
 {
-	if (esp_err_t e = nvs_erase_all(NVS))
+	if (esp_err_t e = nvs_erase_all(NVS)) {
 		log_error(TAG,"error erasing nvs/%s: %s",TAG,esp_err_to_name(e));
+		return 1;
+	}
+	return 0;
 }
 
 
-void factoryReset()
+void cfg_factory_reset(void *)
 {
 	if (esp_err_t e = nvs_erase_all(NVS))
 		log_error(TAG,"error erasing nvs/%s: %s",TAG,esp_err_to_name(e));
@@ -575,95 +591,141 @@ void factoryReset()
 }
 
 
-void storeSettings()
+int writeNVM(const char *name, const uint8_t *buf, size_t s)
+{
+	if (esp_err_t e = nvs_set_blob(NVS,name,buf,s))
+		log_error(TAG,"cannot write %s (%u bytes): %s",name,s,esp_err_to_name(e));
+	else if (esp_err_t e = nvs_commit(NVS))
+		log_error(TAG,"cannot commit %s: %s",name,esp_err_to_name(e));
+	else
+		return 0;
+	return 1;
+}
+
+
+int cfg_store_hwcfg()
+{
+	size_t s = HWConf.calcSize();
+	uint8_t buf[s];
+	HWConf.toMemory(buf,s);
+	return writeNVM("hw.cfg",buf,s);
+}
+
+
+int cfg_store_nodecfg()
 {
 	size_t s = Config.calcSize();
 	uint8_t buf[s];
 	Config.toMemory(buf,s);
-
-	log_info(TAG,"storing settings");
-	if (ESP_OK != nvs_set_blob(NVS,"node.cfg",buf,s)) {
-		log_error(TAG,"cannot write node.cfg");
-	} else if (ESP_OK != nvs_commit(NVS)) {
-		log_error(TAG,"cannot commit node.cfg");
-	}
+	return writeNVM("node.cfg",buf,s);
 }
 
 
-uint8_t *readNVconfig(size_t *len)
+int readNVconfig(const char *name, uint8_t **buf, size_t *len)
 {
 	size_t s = 0;
-	if (ESP_OK != nvs_get_blob(NVS,"node.cfg",0,&s)) {
-		log_error(TAG,"cannot determine size of node.cfg");
-		return 0;
+	if (esp_err_t e = nvs_get_blob(NVS,name,0,&s)) {
+		return e;
 	}
-	uint8_t *buf = (uint8_t*)malloc(s);
-	if (buf == 0) {
-		log_error(TAG,"out of memory");
-		return 0;
-	}
-	esp_err_t e = nvs_get_blob(NVS,"node.cfg",buf,&s);
-	if (ESP_OK != e) {
+	uint8_t *b = (uint8_t*)malloc(s);
+	if (b == 0)
+		return ENOMEM;
+	if (esp_err_t e = nvs_get_blob(NVS,name,b,&s)) {
 		free(buf);
-		log_error(TAG,"cannot get blob node.cfg: %s",esp_err_to_name(e));
-		return 0;
+		return e;
 	}
+	*buf = b;
 	*len = s;
-	log_info(TAG,"loaded config from NVS");
-	return buf;
+	return 0;
 }
 
 
-bool readSettings()
+int cfg_read_nodecfg()
 {
-	size_t s;
-	uint8_t *buf = readNVconfig(&s);
-	if (buf == 0)
-		return false;
+	const char *name = "node.cfg";
+	size_t s = 0;
+	uint8_t *buf = 0;
+	if (int e = readNVconfig(name,&buf,&s)) {
+		log_error(TAG,"error reading %s: %s",name,esp_err_to_name(e));
+		return e;
+	}
 	Config.clear();
 	int r = Config.fromMemory(buf,s);
-	if (r < 0)
-		log_error(TAG,"parsing hw.cfg returend %d",r);
 	free(buf);
-	return true;
+	if (r < 0) {
+		log_error(TAG,"error parsing %s: %d",name,r);
+		return r;
+	}
+	for (int i = 0; i < Config.debugs_size(); ++i)
+		log_module_enable(Config.debugs(i).c_str());
+	log_info(TAG,"%s: parsed %u bytes",name,s);
+	return 0;
+}
+
+
+int cfg_read_hwcfg()
+{
+	size_t s = 0;
+	uint8_t *buf = 0;
+	if (int e = readNVconfig("hw.cfg",&buf,&s)) {
+		log_error(TAG,"error reading hw.cfg: %s",esp_err_to_name(e));
+		return e;
+	}
+	HWConf.clear();
+	int r = HWConf.fromMemory(buf,s);
+	free(buf);
+	if (r <= 0) {
+		log_error(TAG,"error parsing hw.cfg: %d",r);
+		return r;
+	}
+	log_info(TAG,"hw.cfg: parsed %u bytes",s);
+	return 0;
 }
 
 
 int set_cpu_freq(unsigned mhz)
 {
-	rtc_cpu_freq_t f;
+#ifdef CONFIG_IDF_TARGET_ESP32
+	if ((mhz == 80) || (mhz == 160) || (mhz == 240)) {
+		ets_update_cpu_frequency(mhz);
+		return 0;
+	}
+	return 1;
+#elif defined CONFIG_IDF_TARGET_ESP8266
 	if (mhz == 80)
-		f = RTC_CPU_FREQ_80M;
+		esp_set_cpu_freq(ESP_CPU_FREQ_80M);
 	else if (mhz == 160)
-		f = RTC_CPU_FREQ_160M;
-#ifdef ESP32
-	else if (mhz == 240)
-		f = RTC_CPU_FREQ_240M;
-	else if (rtc_clk_xtal_freq_get() == mhz)
-		f = RTC_CPU_FREQ_XTAL;
-#endif
+		esp_set_cpu_freq(ESP_CPU_FREQ_160M);
 	else
 		return 1;
-	rtc_clk_cpu_freq_set(f);
 	return 0;
+#else
+	return 1;
+#endif
 }
 
 
 void initDns()
 {
 	ip_addr_t a;
-#if defined CONFIG_LWIP_IPV6 || defined ESP32
-	a.u_addr.ip4.addr = inet_addr(Config.dns_server().c_str());
+	const char *dns = Config.dns_server().c_str();
+#if defined CONFIG_LWIP_IPV6 || defined CONFIG_IDF_TARGET_ESP32
+	a.u_addr.ip4.addr = inet_addr(dns);
 	a.type = IPADDR_TYPE_V4;
 	if (a.u_addr.ip4.addr != INADDR_NONE)
 #else
-		a.addr = inet_addr(Config.dns_server().c_str());
-	log_info(TAG,"setting dns server %x",a.addr);
+		a.addr = inet_addr(dns);
+	log_info(TAG,"setting dns server %d.%d.%d.%d"
+			, (a.addr) & 0xff
+			, (a.addr >> 8) & 0xff
+			, (a.addr >> 16) & 0xff
+			, (a.addr >> 24) & 0xff
+			);
 	if (a.addr != INADDR_NONE)
 #endif
 		dns_setserver(0,&a);
 	else
-		log_error(TAG,"invalid dns server '%s'",Config.dns_server().c_str());
+		log_error(TAG,"invalid dns server '%s'",dns);
 
 }
 
@@ -671,45 +733,61 @@ void initDns()
 void sntp_start()
 {
 #ifdef CONFIG_SNTP
+	if (!Config.has_sntp_server())
+		return;
 	if (Config.has_timezone())
 		setenv("TZ",Config.timezone().c_str(),1);
-	if (Config.has_sntp_server()) {
-		sntp_stop();
-		const char *server = Config.sntp_server().c_str();
-		bool set = false;
-		if (strchr(server,'.')) {
-			const char *s = Config.sntp_server().c_str();
-			sntp_setservername(0,(char*)s);
-			log_dbug(TAG,"sntp server %s",s);
+	sntp_stop();
+	const char *server = Config.sntp_server().c_str();
+	bool set = false;
+	if (strchr(server,'.')) {
+		const char *s = Config.sntp_server().c_str();
+		sntp_setservername(0,(char*)s);
+		log_info(TAG,"sntp server %s",s);
+		set = true;
+	} else if (Config.has_domainname()) {
+		static char *fqhn = 0;
+		if (fqhn)
+			free(fqhn);
+		asprintf(&fqhn,"%s.%s",server,Config.domainname().c_str());
+		if (fqhn) {
 			set = true;
-		} else if (Config.has_domainname()) {
-			char s[128];
-			int n = snprintf(s,sizeof(s),"%s.%s",server,Config.domainname().c_str());
-			if (n < sizeof(s)) {
-				set = true;
-				sntp_setservername(0,s);
-				log_dbug(TAG,"sntp server %s",s);
-			}
+			sntp_setservername(0,fqhn);
+			log_info(TAG,"sntp server %s",fqhn);
 		}
-		if (set)
-			sntp_init();
 	}
+	if (set)
+		sntp_init();
 #endif
 }
 
 
-void activateSettings()
+void cfg_activate()
 {
 	log_info(TAG,"activating config");
 
-	if (Config.has_nodename())
-		setHostname(Config.nodename().c_str());
+#ifdef CONFIG_DMESG
+	if (Config.has_dmesg_size())
+		dmesg_resize(Config.dmesg_size());
+#endif
+	if (!Config.has_nodename()) 
+		initNodename();
+	cfg_set_hostname(Config.nodename().c_str());
 
-	if (Config.has_softap() && Config.softap().has_ssid() && Config.softap().activate())
+	bool softap = false;
+	if (Config.has_softap() && Config.softap().has_ssid() && Config.softap().activate()) {
 		wifi_start_softap(Config.softap().ssid().c_str(),Config.softap().has_pass() ? Config.softap().pass().c_str() : "");
+		softap = true;
+	}
 
-	if (Config.has_station() && Config.station().has_ssid() && Config.station().has_pass() && Config.station().activate())
-		wifi_start_station(Config.station().ssid().c_str(),Config.station().pass().c_str());
+	if (Config.has_station()) {
+		const WifiConfig &s = Config.station();
+		if (s.has_ssid() && s.has_pass() && s.activate())
+			wifi_start_station(s.ssid().c_str(),s.pass().c_str());
+	} else if (!softap) {
+		wifi_start_softap(Config.nodename().c_str(),"");
+	}
+
 	sntp_start();
 	if (Config.has_cpu_freq())
 		set_cpu_freq(Config.cpu_freq());
@@ -723,11 +801,218 @@ void activateSettings()
 }
 
 
+#ifdef CONFIG_SIGNAL_PROC
+void cfg_init_functions()
+{
+	for (const auto &f : Config.functions()) {
+		if (!f.has_name() || !f.has_func())
+			continue;
+		const char *fn = f.name().c_str();
+		const char *ft = f.func().c_str();
+		Function *fun = FunctionFactory::create(ft,fn);
+		if (fun == 0) {
+			log_warn(TAG,"unknown function %s",ft);
+			continue;
+		}
+		log_dbug(TAG,"function %s, type %s",fn,ft);
+		unsigned x = 0;
+		for (const auto &p : f.params()) {
+			log_dbug(TAG,"param %s",p.c_str());
+			fun->addParam(p.c_str());
+			/*
+			if (DataSignal *s = DataSignal::getSignal(p.c_str())) {
+				fun->setParam(x,s);
+			} else {
+				fun->addParam(p.c_str());
+			}
+			*/
+			++x;
+		}
+	}
+}
+#endif
+
+
+void cfg_activate_actions()
+{
+#ifdef CONFIG_SIGNAL_PROC
+	for (const auto &s : Config.signals()) {
+		if (!s.has_name() || !s.has_type())
+			continue;
+		DataSignal *d = 0;
+		switch (s.type()) {
+		case st_int:
+			d = new IntSignal(s.name().c_str());
+			break;
+		case st_float:
+			d = new FloatSignal(s.name().c_str());
+			break;
+		default:
+			continue;
+		}
+		if (s.has_iv())
+			d->initFrom(s.iv().c_str());
+		
+	}
+	fn_init_factories();
+#endif
+	for (const auto &t : Config.timefuses()) {
+		if (!t.has_name() || !t.has_time())
+			continue;
+		unsigned c = t.config();
+		timefuse_create(t.name().c_str(),t.time(),c&1);
+		if (c&2) 
+			timefuse_start(t.name().c_str());
+	}
+}
+
+
+void cfg_activate_triggers()
+{
+	for (const auto &t : Config.triggers()) {
+		Action *a = action_get(t.action().c_str());
+		if (a == 0) {
+			log_warn(TAG,"unknown action '%s'",t.action().c_str());
+			continue;
+		}
+		event_t e = event_id(t.event().c_str());
+		if (e == 0) {
+			log_warn(TAG,"unknown event %s",t.event().c_str());
+			continue;
+		}
+		log_dbug(TAG,"event %s triggers action %s",t.event().c_str(),t.action().c_str());
+		event_callback(e,a);
+	}
+}
+
+
+AppParam *cfg_get_param(const char *name)
+{
+#ifdef CONFIG_APP_PARAMS 
+	for (auto &p : *Config.mutable_app_params()) {
+		if (p.key() == name)
+			return &p;
+	}
+#endif
+	return 0;
+}
+
+
+#ifdef CONFIG_APP_PARAMS 
+AppParam *cfg_add_param(const char *name)
+{
+	AppParam *x = cfg_get_param(name);
+	if (x == 0) {
+		x = Config.add_app_params();
+		x->set_key(name);
+	}
+	return x;
+}
+#endif
+
+
+#ifdef CONFIG_APP_PARAMS 
+static int cfg_set_param(const char *name, const char *value)
+{
+	AppParam *p = cfg_get_param(name);
+	if (p == 0)
+		return 1;
+	if (p->has_uValue()) {
+		char *e;
+		long l = strtol(value,&e,0);
+		if ((e == value) || (l < 0))
+			return 1;
+		p->set_uValue(l);
+		return 0;
+	}
+	if (p->has_dValue()) {
+		char *e;
+		long l = strtol(value,&e,0);
+		if (e == value)
+			return 1;
+		p->set_dValue(l);
+		return 0;
+	}
+	if (p->has_sValue()) {
+		p->set_sValue(value);
+		return 0;
+	}
+	if (p->has_fValue()) {
+		char *e = 0;
+		float f = strtof(value,&e);
+		if (e == value)
+			return 1;
+		p->set_fValue(f);
+		return 0;
+	}
+	return 1;
+}
+#endif
+
+
+int cfg_get_uvalue(const char *name, unsigned *u, unsigned def)
+{
+#ifdef CONFIG_APP_PARAMS 
+	if (AppParam *p = cfg_get_param(name))  {
+		*u = p->uValue();
+		return 0;
+	}
+	*u = def;
+#endif
+	return 1;
+}
+
+
+int cfg_get_dvalue(const char *name, signed *u, signed def)
+{
+#ifdef CONFIG_APP_PARAMS 
+	if (AppParam *p = cfg_get_param(name))  {
+		*u = p->dValue();
+		return 0;
+	}
+	*u = def;
+#endif
+	return 1;
+}
+
+
+int cfg_get_fvalue(const char *name, double *u, double def)
+{
+#ifdef CONFIG_APP_PARAMS 
+	if (AppParam *p = cfg_get_param(name))  {
+		*u = p->fValue();
+		return 0;
+	}
+	*u = def;
+#endif
+	return 1;
+}
+
+
+#ifdef CONFIG_APP_PARAMS 
+void cfg_set_uvalue(const char *name, unsigned u)
+{
+	cfg_add_param(name)->set_uValue(u);
+}
+
+
+void cfg_set_dvalue(const char *name, signed d)
+{
+	cfg_add_param(name)->set_dValue(d);
+}
+
+
+void cfg_set_fvalue(const char *name, double f)
+{
+	cfg_add_param(name)->set_fValue(f);
+}
+#endif
+
+
 void nvs_setup()
 {
-	log_info(TAG,"NVS init");
 	if (esp_err_t err = nvs_flash_init()) {
-		log_warn(TAG,"NVS init failed - erasing NVS");
+		log_error(TAG,"NVS init failed - erasing NVS");
 		err = nvs_flash_erase();
 		if (err)
 			log_error(TAG,"nvs erase %s",esp_err_to_name(err));
@@ -735,6 +1020,30 @@ void nvs_setup()
 		if (err)
 			log_error(TAG,"nvs init %s",esp_err_to_name(err));
 	}
+	if (esp_err_t err = nvs_open(TAG,NVS_READWRITE,&NVS))
+		log_error(TAG,"NVS open failed: %s",esp_err_to_name(err));
+	else 
+		cfg_read_hwcfg();
+}
+
+
+uint8_t read_nvs_u8(const char *id, uint8_t d)
+{
+        uint8_t v;
+        if (esp_err_t e = nvs_get_u8(NVS,id,&v)) {
+                log_error(TAG,"error getting nvs/%s: %s",id,esp_err_to_name(e));
+                return d;
+        }
+        return v;
+}
+
+
+void store_nvs_u8(const char *id, uint8_t v)
+{
+        if (esp_err_t e = nvs_set_u8(NVS,id,v))
+                log_error(TAG,"error setting %s to %u: %s",id,(unsigned)v,esp_err_to_name(e));
+        else if (esp_err_t e = nvs_commit(NVS))
+                log_error(TAG,"error committing %s to %u: %s",id,(unsigned)v,esp_err_to_name(e));
 }
 
 
@@ -748,6 +1057,7 @@ void settings_setup()
 			if (u8)
 				log_warn(TAG,"%s: %u: ignoring configuration",cfg_err,u8);
 			else
+				// settings available
 				log_info(TAG,"%s: %u",cfg_err,u8);
 			setup = u8;
 		}
@@ -755,8 +1065,8 @@ void settings_setup()
 	}
 
 	if (setup == 0) {
-		if (!readSettings()) {
-			setupDefaults();
+		if (cfg_read_nodecfg()) {
+			cfg_init_defaults();
 			set_cfg_err(2);
 		}
 		if (!Config.has_station()) {
@@ -765,25 +1075,22 @@ void settings_setup()
 #elif defined CONFIG_SMARTCONFIG
 			smartconfig_start();
 #endif
-			storeSettings();
 		}
-		activateSettings();
 	} else if (setup == 1) {
-		setupDefaults();
+		cfg_init_defaults();
 		set_cfg_err(2);
-		activateSettings();
 	}
+#ifdef CONFIG_WPS
+	action_add("wps!start",wifi_wps_start,0,"start WPS configuration");
+#endif
+	if (Config.actions_enable() & 0x2)
+		action_add("cfg!factory_reset",cfg_factory_reset,0,"perform a factory reset");
 #if defined HGID && defined HGREV
-	RTData.set_version(VERSION ", HgId " HGID ", Revision " HGREV);
+	RTData->add("version",VERSION ", HgId " HGID ", Revision " HGREV);
 #else
-	RTData.set_version(VERSION);
+	RTData->add("version",VERSION);
 #endif
-	RTData.set_reset_reason((rstrsn_t)esp_reset_reason());
-#ifdef CONFIG_OTA
-	const esp_partition_t *u = esp_ota_get_next_update_partition(NULL);
-	RTData.set_update_part(u->label);
-	RTData.set_update_state("idle");
-#endif
+	RTData->add("reset_reason",strReset((rstrsn_t)esp_reset_reason()));
 	set_cfg_err(0);
 }
 
