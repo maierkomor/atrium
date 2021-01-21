@@ -1,3 +1,22 @@
+R2101:
+======
+This is a major release with new concepts and many updates. This summary
+concerns only the most important topics:
+- new one firmware for many use-cases concept
+- hardware/driver configuration is now done at boot-time
+- optional on-line CLI for driver configuration
+- new timer concept
+- new event/action concept
+- added touchpad support for ESP32
+- added onewire support for ESP32
+- new atriumctrl.py tool for broadcasting e.g. holidays to devices
+- added support for sending data to an Influx DB
+- complete MQTT rework
+- configurable debugging
+- more flexible help system (help pages can now be in ROMFS)
+- CLI for GPIO access
+
+
 R2004:
 ======
 - fixed WPS
