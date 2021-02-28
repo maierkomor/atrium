@@ -1,0 +1,5 @@
+synopsis: dim [<led> [<duty>|max]]
+Without arguments all LED dutys are printed.
+Without <duty> the current PWM duty cycle is printed.
+The argument <duty> may be given as integer or percent value followed by
+the % character.

@@ -64,6 +64,9 @@ class WS2812BDrv
 	gpio_num_t m_gpio;
 #ifdef CONFIG_IDF_TARGET_ESP32
 	rmt_channel_t m_ch;	// ignored on CONFIG_IDF_TARGET_ESP8266
+#elif defined CONFIG_IDF_TARGET_ESP8266
+	uint8_t m_t0l,m_t0h,m_t1l,m_t1h;
+	uint16_t m_tr;
 #endif
 };
 

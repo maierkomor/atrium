@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2017-2020, Thomas Maier-Komor
+ *  Copyright (C) 2017-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -92,6 +92,7 @@ static char TAG[] = "cfg", cfg_err[] = "cfg_err";
 static int cfg_set_param(const char *name, const char *value);
 #endif
 
+/*
 static int set_cpu_freq(Terminal &t, const char *v)
 {
 	if (v == 0) {
@@ -115,6 +116,7 @@ static int set_cpu_freq(Terminal &t, const char *v)
 	Config.set_cpu_freq(l);
 	return 0;
 }
+*/
 
 
 /*
@@ -199,6 +201,7 @@ static int set_dim_step(Terminal &t, const char *v)
 #endif
 
 
+#if 0
 static int set_station2ap_time(Terminal &t, const char *v)
 {
 	if (v == 0) {
@@ -340,6 +343,7 @@ static int set_mqtt_enable(Terminal &t, const char *value)
 {
 	return set_bool_option(t,Config.mutable_mqtt()->mutable_enable(),value,false);
 }
+#endif
 
 
 static int set_password(Terminal &t, const char *p)
@@ -349,8 +353,9 @@ static int set_password(Terminal &t, const char *p)
 
 
 pair<const char *, int (*)(Terminal &t, const char *)> SetFns[] = {
-	{"cpu_freq", set_cpu_freq},
 	{"password", set_password},
+#if 0
+	{"cpu_freq", set_cpu_freq},
 	{"timezone", set_timezone},
 	{"domainname", set_domainname},
 	{"ap_activate", set_ap_activate},
@@ -371,6 +376,7 @@ pair<const char *, int (*)(Terminal &t, const char *)> SetFns[] = {
 	{"dim_step", set_dim_step},
 	{"threshold_off", set_threshold_off},
 	{"threshold_on", set_threshold_on},
+#endif
 #endif
 	{0,0},
 };
@@ -532,13 +538,9 @@ static void set_cfg_err(uint8_t v)
 static void initNodename()
 {
 	uint8_t mac[6];
-	esp_err_t e = esp_wifi_get_mac(ESP_IF_WIFI_STA,mac);
+	esp_err_t e = esp_wifi_get_mac(WIFI_IF_STA,mac);
 	if (ESP_OK != e)
-		e = esp_wifi_get_mac(ESP_IF_WIFI_AP,mac);
-#ifdef ESP_IF_ETH
-	if (ESP_OK != e) 
-		e = esp_wifi_get_mac(ESP_IF_ETH,mac);
-#endif
+		e = esp_wifi_get_mac(WIFI_IF_AP,mac);
 	if (ESP_OK != e) {
 		log_warn(TAG,"unable to determine mac for setting up hostname, using random data");
 		uint32_t r = esp_random();
@@ -605,6 +607,7 @@ int writeNVM(const char *name, const uint8_t *buf, size_t s)
 
 int cfg_store_hwcfg()
 {
+	HWConf.set_magic(0xAE54EDCB);
 	size_t s = HWConf.calcSize();
 	uint8_t buf[s];
 	HWConf.toMemory(buf,s);
@@ -660,6 +663,39 @@ int cfg_read_nodecfg()
 		log_module_enable(Config.debugs(i).c_str());
 	log_info(TAG,"%s: parsed %u bytes",name,s);
 	return 0;
+}
+
+
+static int cfg_copy(const char *to, const char *from)
+{
+	size_t s = 0;
+	uint8_t *buf = 0;
+	if (int e = readNVconfig(from,&buf,&s)) {
+		log_error(TAG,"error reading %s: %s",from,esp_err_to_name(e));
+		return e;
+	}
+	esp_err_t e = nvs_set_blob(NVS,to,buf,s);
+	free(buf);
+	if (e)
+		log_error(TAG,"cannot write %s (%u bytes): %s",to,s,esp_err_to_name(e));
+	else if (esp_err_t e = nvs_commit(NVS))
+		log_error(TAG,"cannot commit %s: %s",to,esp_err_to_name(e));
+	else
+		return 0;
+	return 1;
+
+}
+
+
+int cfg_backup_create()
+{
+	return cfg_copy("node.cfg.bak","node.cfg");
+}
+
+
+int cfg_backup_restore()
+{
+	return cfg_copy("node.cfg","node.cfg.bak");
 }
 
 

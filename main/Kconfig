@@ -191,7 +191,7 @@ config RELAY
 		relay attached to a GPIO
 
 config ONEWIRE
-	depends on IDF_TARGET_ESP32
+	depends on !ESPTOOLPY_FLASHSIZE_1MB
 	bool "onewire"
 	default true
 	help
@@ -237,7 +237,7 @@ config DIMMER
 
 config LEDSTRIP
 	depends on SIGNAL_PROC
-	depends on IDF_TARGET_ESP32
+	#depends on IDF_TARGET_ESP32
 	bool	"LED strip support"
 	default false
 	help

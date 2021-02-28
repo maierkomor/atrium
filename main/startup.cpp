@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -209,11 +209,11 @@ void app_main()
 #ifdef CONFIG_SUBTASKS
 	cyclic_setup();
 #endif
+	init_fs();
+
 #ifdef CONFIG_UART_CONSOLE
 	console_setup();
 #endif
-
-	init_fs();
 
 #ifdef CONFIG_AT_ACTIONS
 	alarms_setup();
@@ -223,6 +223,9 @@ void app_main()
 #endif
 #ifdef CONFIG_BUTTON
 	button_setup();
+#endif
+#ifdef CONFIG_DIMMER
+	dimmer_setup();
 #endif
 #ifdef CONFIG_BME280
 	bme_setup();
@@ -253,9 +256,6 @@ void app_main()
 #endif
 #ifdef CONFIG_LEDSTRIP
 	ledstrip_setup();
-#endif
-#ifdef CONFIG_DIMMER
-	dimmer_setup();
 #endif
 #ifdef CONFIG_LIGHTCTRL
 	lightctrl_setup();

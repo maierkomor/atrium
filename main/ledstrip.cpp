@@ -58,7 +58,7 @@ static const char TAG[] = "ledstrip";
 static WS2812BDrv *LED_Strip = 0;
 
 
-#if 0 // demo mode
+#if 1 // demo mode
 static uint32_t ColorMap[] = {
 	BLACK, WHITE, RED, GREEN, BLUE, MAGENTA, YELLOW, CYAN, PURPLE
 };
@@ -67,28 +67,28 @@ static void ledstrip_task(void *arg)
 {
 	uint8_t numleds = (uint8_t) (unsigned) arg;
 	uint8_t off = 0;
-	LED_Strip.reset();
+	LED_Strip->reset();
 	log_info(TAG,"0");
 	vTaskDelay(1000/portTICK_PERIOD_MS);
-	LED_Strip.set_leds(WHITE);
+	LED_Strip->set_leds(WHITE);
 	log_info(TAG,"1");
-	LED_Strip.update();
+	LED_Strip->update();
 	vTaskDelay(1000/portTICK_PERIOD_MS);
-	LED_Strip.set_leds(BLACK);
+	LED_Strip->set_leds(BLACK);
 	log_info(TAG,"2");
-	LED_Strip.update();
+	LED_Strip->update();
 	vTaskDelay(1000/portTICK_PERIOD_MS);
 	for (unsigned x = 0; x < 256; ++x) {
 		log_info(TAG,"3");
-		LED_Strip.set_leds(x << 16 | x << 8 | x);
-		LED_Strip.update();
+		LED_Strip->set_leds(x << 16 | x << 8 | x);
+		LED_Strip->update();
 		vTaskDelay(50/portTICK_PERIOD_MS);
 	}
 	for (;;) {
 		for (int i = 0; i < numleds; ++i)
-			LED_Strip.set_led(i,ColorMap[(i+off)%(sizeof(ColorMap)/sizeof(ColorMap[0]))]);
+			LED_Strip->set_led(i,ColorMap[(i+off)%(sizeof(ColorMap)/sizeof(ColorMap[0]))]);
 		log_info(TAG,"4");
-		LED_Strip.update();
+		LED_Strip->update();
 		if (++off == sizeof(ColorMap)/sizeof(ColorMap[0]))
 			off = 0;
 		vTaskDelay(1000/portTICK_PERIOD_MS);
@@ -249,13 +249,13 @@ int ledstrip_setup()
 		return 1;
 #endif
 	LED_Strip->set_leds(0xffffff);
-	/*
+#if 1
 	BaseType_t r = xTaskCreatePinnedToCore(&ledstrip_task, TAG, 4096, (void*)(unsigned)c.nleds(), 14, NULL, APP_CPU_NUM);
 	if (r != pdPASS) {
 		log_error(TAG,"task creation failed: %s",esp_err_to_name(r));
 		return 1;
 	}
-	*/
+#else
 	/*
 	char name[24];
 	new FnLedstripSet("ws2812b_strip",0);
@@ -265,6 +265,7 @@ int ledstrip_setup()
 	}
 	*/
 	new FuncFact<FnLedstripSet>;
+#endif
 	return 0;
 }
 

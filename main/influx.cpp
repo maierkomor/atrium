@@ -245,17 +245,17 @@ static void send_element(JsonElement *e, stream &str, char extra)
 }
 
 
-static bool send_elements(JsonObject *o, stream &str, bool comma)
+static char send_elements(JsonObject *o, stream &str, char comma)
 {
 	JsonElement *e = o->first();
 	const char *n = o->name();
 	while (e) {
 		if (e->toInt()) {
 			if (comma)
-				str << ',';
+				str << comma;
 			str << n;
 			send_element(e,str,'_');
-			comma = true;
+			comma = ',';
 		}
 		e = e->next();
 	}

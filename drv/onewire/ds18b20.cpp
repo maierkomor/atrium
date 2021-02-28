@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020, Thomas Maier-Komor
+ *  Copyright (C) 2020-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -30,6 +30,9 @@
 
 #include <string.h>
 
+#define DS18B20_CONVERT	0x44
+#define DS18B20_READ	0xbe
+
 
 static char TAG[] = "DS18B20";
 static uint8_t NumDev = 0;
@@ -38,7 +41,7 @@ static uint8_t NumDev = 0;
 static void ds18b20_convert(void *arg)
 {
 	DS18B20 *o = (DS18B20 *)arg;
-	OneWire::getInstance()->sendCommand(o->getId(),0x44);
+	OneWire::getInstance()->sendCommand(o->getId(),DS18B20_CONVERT);
 }
 
 
@@ -77,7 +80,7 @@ int DS18B20::create(uint64_t id, const char *n)
 void DS18B20::read()
 {
 	OneWire *ow = OneWire::getInstance();
-	ow->sendCommand(getId(),0xbe);	// read scratchpad
+	ow->sendCommand(getId(),DS18B20_READ);	// read scratchpad
 	uint8_t sp[9];
 	for (int i = 0; i < sizeof(sp); ++i)
 		sp[i] = ow->readByte();

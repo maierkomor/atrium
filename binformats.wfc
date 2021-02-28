@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -57,15 +57,12 @@ option esp8266 : esp {
 	ssize_t=_ssize_t;
 	optimize=size;
 	withUnequal=false;
-	/OwDeviceConfig:		used = false;
 	/TouchpadConfig:		used = false;
 	/TouchChannelConfig:		used = false;
 	/AdcChannel:			used = false;
-	/NodeConfig/owdevices:		used = false;
 	/HardwareConfig/uart:		used = false;
 	/HardwareConfig/touchpad:	used = false;
 	/HardwareConfig/tp_channel:	used = false;
-	/HardwareConfig/onewire:	used = false;	// does not work on ESP8266
 	/Bme280Config/freq:		used = false;
 	/UartConfig/tx_gpio:		used = false;
 	/UartConfig/rx_gpio:		used = false;
@@ -81,14 +78,17 @@ option esp8266 : esp {
 option esp8285 : esp8266 {
 	//header="astring.h";
 	//stringtype=AString;
+	/OwDeviceConfig:		used = false;
 	/NodeConfig/httpd:		used = false;
 	/NodeConfig/app_params:		used = false;
 	/NodeConfig/signals:		used = false;
 	/NodeConfig/functions:		used = false;
+	/NodeConfig/owdevices:		used = false;
 	/HardwareConfig/max7219:	used = false;
 	/HardwareConfig/tlc5947:	used = false;
 	/HardwareConfig/ws2812b:	used = false;
 	/HardwareConfig/hcsr04:		used = false;
+	/HardwareConfig/onewire:	used = false;
 }
 
 option s20 : esp8285 {
@@ -345,8 +345,9 @@ message NodeConfig
 	// application: light sensor controlled LED
 	unsigned threshold_off = 35;
 	unsigned threshold_on = 36;
-	unsigned dim_step = 37;		// ms per step
+	unsigned dim_step = 37;		// ms per 1% step
 	bool lightctrl = 38;		// true=auto, false=manual
+	unsigned pwm_freq = 39;		// base PWM frequenzy in Hz - shared for all channels
 
 	repeated AppParam app_params = 40;
 

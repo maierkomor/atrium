@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -65,7 +65,7 @@ static void init_spiffs()
 static int shell_format_spiffs(Terminal &term, const char *arg)
 {
 	if (esp_err_t r = esp_spiffs_format(arg)) {
-		term.printf("format failed: %s\n",esp_err_to_name(r));
+		term.println(esp_err_to_name(r));
 		return 1;
 	}
 	return 0;
@@ -143,10 +143,11 @@ static void init_romfs()
 {
 	log_info(TAG,"init romfs");
 	romfs_setup();
-	if (HWConf.magic() != 0xAE54EDCB)
+	if (HWConf.calcSize() == 0)
 		init_hwconf();
 }
 #endif
+
 
 #if defined CONFIG_FATFS || defined CONFIG_SPIFFS
 int shell_format(Terminal &term, int argc, const char *args[])
@@ -176,6 +177,7 @@ int shell_format(Terminal &term, int argc, const char *args[])
 	return 1;
 }
 #endif
+
 
 extern "C"
 void init_fs()

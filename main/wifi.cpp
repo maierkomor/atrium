@@ -207,7 +207,7 @@ static esp_err_t wifi_event_handler(void *ctx, system_event_t *event)
 			log_error(TAG,"connect returned %s",esp_err_to_name(e));
 		} else {
 			wifi_config_t wifi_config;
-			esp_wifi_get_config(ESP_IF_WIFI_STA, &wifi_config);
+			esp_wifi_get_config(WIFI_IF_STA, &wifi_config);
 			WifiConfig *conf = Config.mutable_station();
 			conf->set_ssid((char*)wifi_config.sta.ssid);
 			conf->set_pass((char*)wifi_config.sta.password);
@@ -267,7 +267,7 @@ static void sc_callback(smartconfig_status_t status, void *pdata)
 			conf->set_activate(true);
 			if (esp_err_t e = esp_wifi_disconnect())
 				log_warn(TAG,"sc wifi disconnect failed: %s",esp_err_to_name(e));
-			if (esp_err_t e = esp_wifi_set_config(ESP_IF_WIFI_STA, cfg))
+			if (esp_err_t e = esp_wifi_set_config(WIFI_IF_STA, cfg))
 				log_warn(TAG,"sc wifi set config failed: %s",esp_err_to_name(e));
 			if (esp_err_t e = esp_wifi_connect())
 				log_warn(TAG,"sc connect failed: %s",esp_err_to_name(e));
@@ -400,7 +400,7 @@ bool wifi_start_station(const char *ssid, const char *pass)
 	}
 	const WifiConfig &station = Config.station();
 	if (station.has_mac() && (station.mac().size() == 6)) {
-		if (esp_err_t e = esp_wifi_set_mac(ESP_IF_WIFI_STA,(const uint8_t *)station.mac().data()))
+		if (esp_err_t e = esp_wifi_set_mac(WIFI_IF_STA,(const uint8_t *)station.mac().data()))
 			log_warn(TAG,"error setting station mac: %s",esp_err_to_name(e));
 	}
 	wifi_config_t wifi_config;
@@ -414,7 +414,7 @@ bool wifi_start_station(const char *ssid, const char *pass)
 	wifi_config.sta.pmf_cfg.capable = true;
 	wifi_config.sta.pmf_cfg.required = false;
 #endif
-	if (ESP_OK != esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config)) {
+	if (ESP_OK != esp_wifi_set_config(WIFI_IF_STA, &wifi_config)) {
 		log_warn(TAG,"unable to configure station");
 		return false;
 	}
@@ -481,7 +481,7 @@ bool wifi_start_softap(const char *ssid, const char *pass)
 		log_error(TAG,"error getting wifi mode: %s",esp_err_to_name(e));
 	const WifiConfig &softap = Config.softap();
 	if (softap.has_mac() && (softap.mac().size() == 6)) {
-		if (esp_err_t e = esp_wifi_set_mac(ESP_IF_WIFI_AP,(const uint8_t *)softap.mac().data()))
+		if (esp_err_t e = esp_wifi_set_mac(WIFI_IF_AP,(const uint8_t *)softap.mac().data()))
 			log_warn(TAG,"error setting softap mac: %s",esp_err_to_name(e));
 	}
 	wifi_config_t wifi_config;
@@ -494,7 +494,7 @@ bool wifi_start_softap(const char *ssid, const char *pass)
 	wifi_config.ap.ssid_hidden = 0;
 	wifi_config.ap.max_connection = 4;
 	wifi_config.ap.beacon_interval = 300;
-	if (esp_err_t e = esp_wifi_set_config(ESP_IF_WIFI_AP, &wifi_config))
+	if (esp_err_t e = esp_wifi_set_config(WIFI_IF_AP, &wifi_config))
 		log_error(TAG,"setting wifi config %s",esp_err_to_name(e));
 	if (m == WIFI_MODE_NULL) {
 		if (esp_err_t e = esp_wifi_set_mode(WIFI_MODE_AP))
@@ -669,12 +669,12 @@ int wifi_setup()
 		return 1;
 	}
 	uint8_t mac[6];
-	if (ESP_OK == esp_wifi_get_mac(ESP_IF_WIFI_AP,mac)) {
+	if (ESP_OK == esp_wifi_get_mac(WIFI_IF_AP,mac)) {
 		log_info(TAG,"soft-ap MAC: %02x:%02x:%02x:%02x:%02x:%02x",mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
 	} else {
 		log_info(TAG,"no soft-ap MAC");
 	}
-	if (ESP_OK == esp_wifi_get_mac(ESP_IF_WIFI_STA,mac)) {
+	if (ESP_OK == esp_wifi_get_mac(WIFI_IF_STA,mac)) {
 		log_info(TAG,"station MAC: %02x:%02x:%02x:%02x:%02x:%02x",mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
 	} else {
 		log_info(TAG,"no station MAC");

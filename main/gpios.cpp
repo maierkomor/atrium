@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020, Thomas Maier-Komor
+ *  Copyright (C) 2020-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -158,17 +158,23 @@ Gpio::Gpio(const GpioConfig &c)
 }
 
 
-static void action_gpio_set(void *arg)
+static void gpio_action_set0(void *arg)
 {
-	unsigned v = (unsigned)arg;
-	unsigned lvl = v & 1;
-	gpio_num_t gpio = (gpio_num_t)(v>>1);
-	gpio_set_level(gpio,lvl);
-	log_dbug(TAG,"gpio%d <= %d",gpio,lvl);
+	gpio_num_t gpio = (gpio_num_t)(unsigned)arg;
+	gpio_set_level(gpio,0);
+	log_dbug(TAG,"gpio%d <= 0",gpio);
 }
 
 
-static void action_gpio_toggle(void *arg)
+static void gpio_action_set1(void *arg)
+{
+	gpio_num_t gpio = (gpio_num_t)(unsigned)arg;
+	gpio_set_level(gpio,1);
+	log_dbug(TAG,"gpio%d <= 1",gpio);
+}
+
+
+static void gpio_action_toggle(void *arg)
 {
 	unsigned v = (unsigned)arg;
 	gpio_num_t gpio = (gpio_num_t)v;
@@ -221,9 +227,9 @@ void Gpio::init(unsigned config)
 	}
 	if (config & 1) {
 		log_dbug(TAG,"gpio output actions");
-		action_add(concat(m_name,"!set_1"),action_gpio_set,(void*)(((unsigned)m_gpio<<1)|1),"turn on gpio");
-		action_add(concat(m_name,"!set_0"),action_gpio_set,(void*)(((unsigned)m_gpio<<1)|0),"turn off gpio");
-		action_add(concat(m_name,"!toggle"),action_gpio_toggle,(void*)m_gpio,"toggle gpio");
+		action_add(concat(m_name,"!set_1"),gpio_action_set1,(void*)(unsigned)m_gpio,"set gpio high");
+		action_add(concat(m_name,"!set_0"),gpio_action_set0,(void*)(unsigned)m_gpio,"set gpio low");
+		action_add(concat(m_name,"!toggle"),gpio_action_toggle,(void*)(unsigned)m_gpio,"toggle gpio");
 	} else if (GPIO_INTR_DISABLE != intr) {
 		log_dbug(TAG,"gpio input actions");
 		m_intrev = event_register(concat(m_name,"`intr"));

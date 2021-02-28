@@ -10,3 +10,5 @@ xxd     : xxd in memory config
 nvsxxd  : xxd in config in NVS
 show    : ASCII output of config
 size    : print size of config
+backup  : create a backup of the config in NVS
+restore : restore config in NVS from backup

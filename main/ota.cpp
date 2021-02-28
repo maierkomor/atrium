@@ -362,7 +362,24 @@ int update_part(Terminal &t, char *source, const char *dest)
 		return 1;
 	}
 	const esp_partition_t *b = esp_ota_get_running_partition();
-	if ((b->address <= p->address) && (b->address+b->size >= p->address)) {
+	/*
+	 * 	only 2 valid situations:
+		[Bs Be] [Ps Pe]: checked with (Be <= Ps) // implies (Bs < Ps)
+		[Ps Pe] [Bs Be]: checked with (Pe <= Bs) // implies (Pe <= Bs)
+		invalid overlaps are implicitly checked
+		[Bs [Ps Be] Pe]: invalid, violates both rules
+		[Bs [Ps Pe] Be]: invalid, violates both rules
+		[Ps [Bs Pe] Be]: invalid, violates both rules
+		[Ps [Bs Pe] Be]: invalid, violates both rules
+		[Ps [Bs Be] Pe]: invalid, violates both rules
+		[Bs [Ps Pe] Be]: invalid, violates both rules
+		[Ps [Bs Be] Pe]: invalid, violates both rules
+	*/
+	unsigned Bs = b->address;
+	unsigned Be = b->address+b->size;
+	unsigned Ps = p->address;
+	unsigned Pe = p->address+p->size;
+	if (! ((Be <= Ps) || (Pe <= Bs))) {
 		t.println("cannot update to running partition");
 		return 1;
 	}

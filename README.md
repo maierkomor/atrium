@@ -48,6 +48,7 @@ Hardware drivers:
 - TLC5947 and TLC5916 constant current LED driver support
 - color LED strip support for WS2812b based strips
 - webcams supported in https://github.com/espressif/esp32-camera
+- 1-wire support (currently only DS18B20)
 
 
 Getting started:
@@ -303,6 +304,33 @@ To flash an S20 device, do the following steps:
 - Now the bootloader, partition-table, initial OTA data, app1, and romfs will be flashed.
 
 Now the device is ready to go. So reassemble it before connecting it to a power socket. Future updates can be done with the OTA procedure.
+
+Onewire/1-wire support:
+=======================
+Generic 1-wire support is provided by Atrium. Currently, this stack only
+has a driver for DS18B20 devices. To configure your onewire bus, just
+set the GPIO of the bus with e.g. `hwconf set onewire.gpio 5` to GPIO 5
+or whatever fits your needs. Do not forget to execute `hwconf write` to
+make that change persistent. After rebooting, you can execute a `ow
+scan` and gather its results with `ow list`.
+
+The recognized devices are included in the node configuration. I.e. you
+can set a name for every device by executing e.g. `config set
+owdevices[0].name my_temperature_sensor1`. 1-wire can be pretty flaky,
+if the connections are not good. You can enable debugging of the 1-wire
+driver by executing `debug -e owb`. This will give you some debug
+messages. The driver is able to support multiple devices per bus. A scan
+for devices needs only performed once.
+
+After scanning or booting with pre-configured devices, every device
+registers actions according to its name. The first DS18B20 device will
+register `ds18b20\_0!convert` to trigger a conversion command for
+measuring the temperature, and `ds18b20\_0!read` for reading the result.
+
+The result will be stored in a runtinme variable according to the name
+of the device. These variables can be queried with the `webdata`
+command, and can be submitted to an Influx DB with the `influx!rtdata`
+action.
 
 
 Security Concepts:

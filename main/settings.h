@@ -37,6 +37,8 @@ extern "C" {
 
 void cfg_activate_actions();
 void cfg_activate_triggers();
+int cfg_backup_create();
+int cfg_backup_restore();
 void cfg_init_functions();
 int cfg_get_uvalue(const char *name, unsigned *u, unsigned def = 0);
 int cfg_get_dvalue(const char *name, signed *u, signed def = 0);

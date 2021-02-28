@@ -59,6 +59,9 @@ static void relay_callback(Relay *r)
 	s->set(on ? "on" : "off");
 	l->set(Localtime->get());
 	rtd_unlock();
+#ifdef CONFIG_MQTT
+	mqtt_pub(r->name(),on?"on":"off",on?2:3,1);
+#endif
 }
 
 

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020, Thomas Maier-Komor
+ *  Copyright (C) 2020-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -31,12 +31,17 @@
 #include <rom/gpio.h>
 #include <xtensa/hal.h>
 #include <freertos/task.h>
+#include <freertos/portmacro.h>
 
 #ifdef CONFIG_IDF_TARGET_ESP32
 #include <rom/crc.h>
+#define ENTER_CRITICAL() portDISABLE_INTERRUPTS()
+#define EXIT_CRITICAL() portENABLE_INTERRUPTS()
 #elif defined CONFIG_IDF_TARGET_ESP8266
 #include <esp8266/gpio_struct.h>
 #include <esp_crc.h>
+#define ENTER_CRITICAL() portENTER_CRITICAL()
+#define EXIT_CRITICAL() portEXIT_CRITICAL()
 #endif
 
 #include "onewire.h"
@@ -110,15 +115,17 @@ OneWire::OneWire(unsigned bus, bool pullup)
 
 int OneWire::addDevice(uint64_t id)
 {
+	log_dbug(TAG,"add device " IDFMT,IDARG(id));
 	uint8_t crc = crc8(0,(uint8_t*)&id,7);
 	if (crc != (id >> 56)) {
-		log_warn(TAG,"crc error on device id");
+		log_warn(TAG,"CRC error");
 		return 1;
 	}
 	if (OwDevice::getDevice(id)) {
 		log_dbug(TAG,"device " IDFMT " is already registered",IDARG(id));
 		return 1;
 	}
+	log_dbug(TAG,"add device " IDFMT,IDARG(id));
 	return OwDevice::create(id);
 }
 
@@ -134,8 +141,9 @@ int OneWire::scanBus()
 			log_error(TAG,"searchRom(" IDFMT ",%d):%d",IDARG(id),collisions.size(),e);
 			return 1;	// error occured
 		}
+		log_dbug(TAG,"searchRom(): " IDFMT,IDARG(id));
 		for (auto c : collisions)
-			log_info(TAG,"collision %016llx",c);
+			log_dbug(TAG,"collision %08lx%08lx",(uint32_t)(c>>32),(uint32_t)c);
 		if (id)
 			addDevice(id);
 		if (collisions.empty()) {
@@ -143,6 +151,7 @@ int OneWire::scanBus()
 		} else {
 			id = collisions.back();
 			collisions.pop_back();
+			vTaskDelay(10);
 		}
 	} while (id);
 	return 0;
@@ -161,15 +170,15 @@ int OneWire::searchRom(uint64_t &id, vector<uint64_t> &coll)
 		log_error(TAG,"search ROM command failed: %02x",c);
 		return 1;
 	}
+	int r = 0;
+	ENTER_CRITICAL();
 	for (unsigned b = 0; b < 64; ++b) {
 		uint8_t t0 = xmitBit(1);
 		uint8_t t1 = xmitBit(1);
 //		log_dbug(TAG,"t0=%u,t1=%u",t0,t1);
 		if (t0 & t1) {
-			taskENABLE_INTERRUPTS();
-			log_info(TAG,"err x0=%016llx",x0);
-			log_info(TAG,"err x1=%016llx",x1);
-			return -1;	// data error
+			r = -1;	// data error
+			break;
 		}
 		x0 |= (uint64_t)t0 << b;
 		x1 |= (uint64_t)t1 << b;
@@ -187,11 +196,12 @@ int OneWire::searchRom(uint64_t &id, vector<uint64_t> &coll)
 		} else
 			xmitBit(t0);
 	}
+	EXIT_CRITICAL();
 	//log_info(TAG,"x0=%016lx, x1=%016lx",x0,x1);
 	log_dbug(TAG,"x0=" IDFMT,IDARG(x0));
 	log_dbug(TAG,"x1=" IDFMT,IDARG(x1));
 	log_dbug(TAG,"id=" IDFMT,IDARG(id));
-	return 0;
+	return r;
 }
 
 
@@ -225,23 +235,21 @@ int OneWire::readRom()
 
 int OneWire::resetBus(void)
 {
-	gpio_set_direction(m_bus,GPIO_MODE_INPUT);
-	gpio_pullup_en(m_bus);
-	ets_delay_us(500);
+	ENTER_CRITICAL();
 	gpio_set_direction(m_bus,GPIO_MODE_OUTPUT);
 	gpio_set_level(m_bus,0);
-	ets_delay_us(500);
+	ets_delay_us(600);
 	gpio_set_direction(m_bus,GPIO_MODE_INPUT);
 	gpio_pullup_en(m_bus);
-	ets_delay_us(40);
+	ets_delay_us(60);
 	int r = 1;
-	for (int i = 0; i < 32; ++i) {
-		if (0 == gpio_get_level(m_bus)) {
+	for (int i = 0; i < 18; ++i) {
+		if (0 == gpio_get_level(m_bus))
 			r = 0;
-		}
 		ets_delay_us(10);
 	}
-	ets_delay_us(20);
+	ets_delay_us(230);
+	EXIT_CRITICAL();
 	if (r)
 		log_error(TAG,"reset: no response");
 	return r;
@@ -255,18 +263,17 @@ unsigned OneWire::xmitBit(uint8_t b)
 	// idle bus is input pull-up
 	unsigned r;
 	ets_delay_us(2);
+	gpio_set_direction(m_bus,GPIO_MODE_OUTPUT);
 	if (b) {
-		gpio_set_direction(m_bus,GPIO_MODE_OUTPUT);
-		ets_delay_us(2);
+		ets_delay_us(3);
 		gpio_set_direction(m_bus,GPIO_MODE_INPUT);
 		ets_delay_us(10);
 		r = gpio_get_level(m_bus);
-		ets_delay_us(48);
+		ets_delay_us(65);
 	} else {
-		gpio_set_direction(m_bus,GPIO_MODE_OUTPUT);
 		ets_delay_us(70);
 		gpio_set_direction(m_bus,GPIO_MODE_INPUT);
-		ets_delay_us(3);
+		ets_delay_us(10);
 		r = 0;
 	}
 	//log_dbug(TAG,"xmit(%d): %d",b,r);
@@ -276,13 +283,13 @@ unsigned OneWire::xmitBit(uint8_t b)
 
 uint8_t OneWire::writeByte(uint8_t b)
 {
-	taskDISABLE_INTERRUPTS();
+	ENTER_CRITICAL();
 	uint8_t r = 0;
 	for (int i = 0; i < 8; ++i) {
 		if (xmitBit(b & (1<<i)))
 			r |= (1 << i);
 	}
-	taskENABLE_INTERRUPTS();
+	EXIT_CRITICAL();
 	log_dbug(TAG,"writeByte(0x%02x) = 0x%02x",b,r);
 	return r;
 }

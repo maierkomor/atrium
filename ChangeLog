@@ -1,3 +1,15 @@
+R2102:
+======
+- fix Influx submission of structured run-time data
+- make dimmer period configurable
+- better handling of magic value of hw.cfg
+- added backup mechanism for configuration
+- 1-wire docu update and fixes
+- make ws2812b on ESP8266 work
+- relay should publish its status to mqtt
+- fix storage update rejected when running on app2
+
+
 R2101:
 ======
 This is a major release with new concepts and many updates. This summary

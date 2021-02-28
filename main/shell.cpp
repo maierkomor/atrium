@@ -686,14 +686,10 @@ int mac(Terminal &term, int argc, const char *args[])
 		return help_cmd(term,args[0]);
 	} else if (argc == 2) {
 		if (!strcmp("-l",args[1])) {
-			if (ESP_OK == esp_wifi_get_mac(ESP_IF_WIFI_AP,mac))
+			if (ESP_OK == esp_wifi_get_mac(WIFI_IF_AP,mac))
 				term.printf("softap mac:   %02x:%02x:%02x:%02x:%02x:%02x\n",mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
-			if (ESP_OK == esp_wifi_get_mac(ESP_IF_WIFI_STA,mac))
+			if (ESP_OK == esp_wifi_get_mac(WIFI_IF_STA,mac))
 				term.printf("station mac:  %02x:%02x:%02x:%02x:%02x:%02x\n",mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
-#ifdef CONFIG_IDF_TARGET_ESP32
-			if (ESP_OK == esp_wifi_get_mac(ESP_IF_ETH,mac))
-				term.printf("ethernet mac: %02x:%02x:%02x:%02x:%02x:%02x\n",mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
-#endif
 			return 0;
 		}
 	}
@@ -721,11 +717,11 @@ int mac(Terminal &term, int argc, const char *args[])
 		}
 		wifi_interface_t w;
 		if (!strcmp("-s",args[1])) {
-			w = ESP_IF_WIFI_AP;
+			w = WIFI_IF_AP;
 			Config.mutable_station()->set_mac(mac,6);
 		}
 		else if (!strcmp("-a",args[1])) {
-			w = ESP_IF_WIFI_AP;
+			w = WIFI_IF_AP;
 			Config.mutable_softap()->set_mac(mac,6);
 		} else {
 			return arg_invalid(term,args[1]);
@@ -1422,6 +1418,10 @@ static int config(Terminal &term, int argc, const char *args[])
 		cfg_init_defaults();
 	} else if (!strcmp(args[1],"activate")) {
 		cfg_activate();
+	} else if (!strcmp(args[1],"backup")) {
+		return cfg_backup_create();
+	} else if (!strcmp(args[1],"restore")) {
+		return cfg_backup_restore();
 	} else if (!strcmp(args[1],"clear")) {
 		if (argc != 2)
 			return Config.setByName(args[2],0) < 0;

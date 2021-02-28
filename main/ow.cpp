@@ -82,7 +82,10 @@ int ow_setup()
 int onewire(Terminal &term, int argc, const char *args[])
 {
 	OneWire *ow = OneWire::getInstance();
-	assert(ow);
+	if (ow == 0) {
+		term.printf("not configured\n");
+		return 1;
+	}
 	if (argc != 2)
 		return 1;
 	if (!strcmp(args[1],"scan"))
