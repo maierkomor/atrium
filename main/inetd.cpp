@@ -18,6 +18,7 @@
 
 #include <sdkconfig.h>
 
+#include "cyclic.h"
 #include "globals.h"
 #include "inetd.h"
 #include "log.h"
@@ -49,32 +50,62 @@
 
 #define TCP_TIMEOUT 60
 
-#ifdef CONFIG_INETD	// has #else, so this ifdef must be here!!!
 
-#include <vector>
-
-using namespace std;
-
-
-typedef struct inet_arg
+struct InetArg
 {
-	const char *name, *service;
+	InetArg *next;
+	const char *name;
+#ifdef CONFIG_MDNS
+	const char *service;
+#endif
 	void (*session)(void*);
-	uint16_t port, prio;
+	uint16_t port, stack;
+	uint8_t prio;
+	inet_mode_t mode;
 	int sock;
-	unsigned stack;
-} inet_arg_t;
+};
 
 
-static vector<inet_arg_t> Ports;
+static const char TAG[] = "inetd";
+
+static InetArg *Ports = 0;
 static bool Started = false;
-static char TAG[] = "inetd";
 static fd_set PortFDs;
-static int MaxFD;
+static int MaxFD = -1;
 
 
-static int create_socket(int port)
+static int create_udp_socket(int port)
 {
+	log_dbug(TAG,"create udp %u",port);
+	int s = socket(AF_INET,SOCK_DGRAM,port);
+	int on = 1;
+	if (-1 == setsockopt(s, SOL_SOCKET, SO_BROADCAST, &on, sizeof(on)))
+		log_warn(TAG,"unable to enable broadcast reception: %s",strneterr(s));
+	struct sockaddr_in addr;
+	bzero(&addr,sizeof(addr));
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons(port);
+	addr.sin_addr.s_addr = htonl(INADDR_ANY);
+	if (-1 == bind(s,(struct sockaddr *)&addr,sizeof(addr)))
+		log_warn(TAG,"unable to bind socket: %s",strneterr(s));
+	return s;
+}
+
+
+static int create_bcast_socket(int port)
+{
+	int s = create_udp_socket(port);
+	log_dbug(TAG,"set bcast %u, socket %d",port,s);
+	int on = 1;
+	if (-1 == setsockopt(s, SOL_SOCKET, SO_BROADCAST, &on, sizeof(on)))
+		log_warn(TAG,"unable to enable broadcast reception: %s",strneterr(s));
+	return s;
+}
+
+
+static int create_tcp_socket(int port)
+{
+	log_dbug(TAG,"create tcp %u",port);
 	int sock = socket(AF_INET,SOCK_STREAM,0);
 	if (sock < 0) {
 		log_error(TAG,"create socket: %s",strneterr(sock));
@@ -104,70 +135,97 @@ static int create_socket(int port)
 }
 
 
-static int initialize(fd_set *portfds)
+static void init_port(InetArg *p)
 {
-	FD_ZERO(portfds);
-	wifi_wait();
-	int maxfd = 0;
-	for (size_t i = 0; i < Ports.size(); ++i) {
-		if (Ports[i].sock != -1) {
-			close(Ports[i].sock);
-			Ports[i].sock = -1;
-		}
-		int s = create_socket(Ports[i].port);
-		if (s == -1)
-			continue;
-		Ports[i].sock = s;
-		FD_SET(s,portfds);
-		if (s > maxfd)
-			maxfd = s;
+	if (p->sock != -1) {
+		close(p->sock);
+		p->sock = -1;
+	}
+	int s;
+	switch (p->mode) {
+	case m_sock:
+		s = p->sock;
+		break;
+	case m_tcp:
+		s = create_tcp_socket(p->port);
+		break;
+	case m_udp:
+		s = create_udp_socket(p->port);
+		break;
+	case m_bcast:
+		s = create_bcast_socket(p->port);
+		break;
+	default:
+		s = -1;
+	}
+	if (s != -1) {
+		p->sock = s;
+		FD_SET(s,&PortFDs);
+		if (s > MaxFD)
+			MaxFD = s;
 #ifdef CONFIG_MDNS
-		mdns_service_add(Ports[i].name, Ports[i].service, "_tcp", Ports[i].port, 0, 0);
+		if (p->port)
+			mdns_service_add(p->name, p->service, p->mode == m_tcp ? "_tcp" : "_udp", p->port, 0, 0);
 #endif
 	}
-	return maxfd;
 }
-
 
 void inet_server(void *ignored)
 {
-	MaxFD = initialize(&PortFDs) + 1;
 	//log_dbug(TAG,"maximum fd number: %d",MaxFD);
+	int64_t next = 0;
 	for (;;) {
-		//log_dbug(TAG,"wifi_wait()");
-		wifi_wait();
+		//wifi_wait();
 		Started = true;
 
 		fd_set rfds = PortFDs;
-		//log_dbug(TAG,"select()");
-		// timeout is used to pick up changes via inetadm interface
+		int64_t now = esp_timer_get_time();
 		struct timeval tv;
-		tv.tv_sec = 1;
-		tv.tv_usec = 0;
+		tv.tv_sec = 0;
+		int64_t dt = next - now;
+		if (dt < 0)
+			dt = 0;
+		tv.tv_usec = dt;
+		//log_dbug(TAG,"select() %lu",tv.tv_usec);
 		int n = lwip_select(MaxFD,&rfds,0,0,&tv);
+		if (n == 0) {
+			// timeout is used to trigger cyclic subtasks
+			unsigned d = cyclic_execute();
+			next = now + d * 1000;
+			continue;
+		}
 		if (n == -1) {
+			log_dbug(TAG,"errno %d",errno);
 			if (errno != 0) {
 				log_warn(TAG,"select failed: %s",strerror(errno));
 				vTaskDelay(200/portTICK_PERIOD_MS);
 			}
 			continue;
 		}
-		if (n == 0)
+		log_dbug(TAG,"%d new connection",n);
+		InetArg *p = Ports;
+		while (p) {
+			if (FD_ISSET(p->sock,&rfds) != 0)
+				break;
+			p = p->next;
+		}
+		if (p == 0) {
+			log_warn(TAG,"fd not found");
+			vTaskDelay(200/portTICK_PERIOD_MS);
 			continue;
-		log_info(TAG,"%d new connection",n);
-		for (int i = 0; i < Ports.size(); ++i) {
-			int sock = Ports[i].sock;
-			if (FD_ISSET(sock,&rfds) == 0)
-				continue;
+		}
+		int sock = p->sock;
+		log_dbug(TAG,"service %s",p->name);
+		if (p->mode == m_tcp) {
 			struct sockaddr_in client_addr;
 			unsigned socklen = sizeof(client_addr);
-			int con = accept(sock, (struct sockaddr *)&client_addr, &socklen);
-			if (con < 0) {
+			sock = accept(sock, (struct sockaddr *)&client_addr, &socklen);
+			if (sock < 0) {
 				// TODO: what is a better way to deal with error: no more processes
-				log_error(TAG,"accept: %s",strneterr(sock));
-				break;
+				log_error(TAG,"error accepting");
+				continue;
 			}
-			log_info(TAG,"connection established from %d.%d.%d.%d:%d"
+			log_dbug(TAG,"connection established from %d.%d.%d.%d:%d"
 					,client_addr.sin_addr.s_addr & 0xff
 					,client_addr.sin_addr.s_addr>>8 & 0xff
 					,client_addr.sin_addr.s_addr>>16 & 0xff
@@ -176,50 +234,68 @@ void inet_server(void *ignored)
 			struct timeval tv;
 			tv.tv_sec = TCP_TIMEOUT;
 			tv.tv_usec = 0;
-			if (0 > setsockopt(con,SOL_SOCKET,SO_RCVTIMEO,&tv,sizeof(tv)))
+			if (0 > setsockopt(sock,SOL_SOCKET,SO_RCVTIMEO,&tv,sizeof(tv)))
 				log_warn(TAG,"set receive timeout: %s",strneterr(sock));
-			char name[configMAX_TASK_NAME_LEN+8];
-			snprintf(name,sizeof(name),"%s%02d",Ports[i].name,con);
-			name[configMAX_TASK_NAME_LEN] = 0;
-			BaseType_t r = xTaskCreatePinnedToCore(Ports[i].session,name,Ports[i].stack,(void*)con,Ports[i].prio,NULL,APP_CPU_NUM);
-			if (r != pdPASS) {
-				close(con);
-				log_warn(TAG,"create task: %s",esp_err_to_name(r));
-				vTaskDelay(100/portTICK_PERIOD_MS);
-			}
+		} else {
+
 		}
+		char name[configMAX_TASK_NAME_LEN+8];
+		snprintf(name,sizeof(name),"%s%02d",p->name,sock);
+		name[configMAX_TASK_NAME_LEN] = 0;
+		BaseType_t r = xTaskCreatePinnedToCore(p->session,name,p->stack,(void*) sock,p->prio,NULL,APP_CPU_NUM);
+		if (r != pdPASS) {
+			close(sock);
+			log_warn(TAG,"create task: %s",esp_err_to_name(r));
+			vTaskDelay(1000/portTICK_PERIOD_MS);
+		}
+		vTaskDelay(100/portTICK_PERIOD_MS);
 	}
 }
 
 
-int listen_tcp(unsigned port, void (*session)(void*), const char *name, const char *service, unsigned prio, unsigned stack)
+int listen_port(int port, inet_mode_t mode, void (*session)(void *), const char *name, const char *service, unsigned prio, unsigned stack)
 {
 	// inetd version
 	if (Started) {
 		log_error(TAG,"inetd already started");
 		return 1;
 	}
-	inet_arg_t a;
-	a.port = port;
-	a.prio = prio;
-	a.session = session;
-	a.name = name;
-	a.service = service;
-	a.sock = -1;
-	a.stack = stack;
-	Ports.push_back(a);
-	log_info(TAG,"added %s on port %u",name,port);
+	InetArg *a = new InetArg;
+	a->prio = prio;
+	a->session = session;
+	a->name = name;
+#ifdef CONFIG_MDNS
+	a->service = service;
+#endif
+	a->stack = stack;
+	if (mode == m_sock) {
+		a->sock = port;
+		a->port = 0;
+	} else {
+		a->port = port;
+		a->sock = -1;
+	}
+	a->mode = mode;
+	a->next = Ports;
+	Ports = a;
+	log_dbug(TAG,"listen %s on %u",name,port);
 	return 0;
 }
 
 
 int inetd_setup(void)
 {
-	BaseType_t r = xTaskCreatePinnedToCore(&inet_server, "inetd", 2560, 0, 12, NULL, PRO_CPU_NUM);
-	if (r != pdPASS) {
-		log_error(TAG,"create inetd: %s",esp_err_to_name(r));
-		return 1;
+	log_info(TAG,"init");
+	FD_ZERO(&PortFDs);
+	InetArg *p = Ports;
+	while (p) {
+		init_port(p);
+		p = p->next;
 	}
+	++MaxFD;
+	BaseType_t r = xTaskCreatePinnedToCore(&inet_server, "inetd", 2560, 0, 12, NULL, PRO_CPU_NUM);
+	if (r != pdPASS)
+		log_error(TAG,"create inetd: %s",esp_err_to_name(r));
 	return 0;
 }
 
@@ -228,157 +304,50 @@ int inetadm(Terminal &term, int argc, const char *args[])
 {
 	if (argc == 2) {
 		if (!strcmp(args[1],"-l")) {
-			for (size_t i = 0, n = Ports.size(); i < n; ++i)
-				term.printf("%s on %u: %s\n",Ports[i].name,Ports[i].port,Ports[i].sock == -1 ? "offline" : "active");
+			InetArg *p = Ports;
+			term.printf("%-10s %5s status\n","service","port");
+			while (p) {
+				term.printf("%-10s %5u %s\n",p->name,p->port,p->sock == -1 ? "off" : "on");
+				p = p->next;
+			}
 			return 0;
 		}
 		return arg_invalid(term,args[1]);;
 	}
 	if (argc != 3)
 		return arg_invnum(term);
-	long p = strtol(args[2],0,0);
-	inet_arg_t *serv = 0;
-	for (size_t i = 0, n = Ports.size(); i < n; ++i) {
-		if ((Ports[i].port == p) || (!strcmp(Ports[i].name,args[2]))) {
-			serv = &Ports[i];
+	long l = strtol(args[2],0,0);
+	InetArg *p = Ports;
+	while (p) {
+		if ((p->port == l) || (!strcmp(p->name,args[2])))
 			break;
-		}
+		p = p->next;
 	}
-	if (serv == 0)
+	if (p == 0)
 		return arg_invalid(term,args[1]);;
 	if (!strcmp(args[1],"-e")) {
-		if (serv->sock != -1) {
+		if (p->sock != -1) {
 			term.printf("already enabled\n");
 			return 1;
 		}
-		serv->sock = create_socket(serv->port);
-		if (serv->sock == -1) {
-			term.printf("error creating socket\n");
-			return 1;
-		}
-		FD_SET(serv->sock,&PortFDs);
-		if (serv->sock > MaxFD)
-			MaxFD = serv->sock;
-#ifdef CONFIG_MDNS
-		mdns_service_add(serv->name, serv->service, "_tcp", serv->port, 0, 0);
-#endif
+		init_port(p);
 		return 0;
 	}
 	if (!strcmp(args[1],"-d")) {
 		term.printf("disable service\n");
-		if (serv->sock == -1) {
+		if (p->sock == -1) {
 			term.printf("already disabled\n");
 			return 1;
 		}
-		FD_CLR(serv->sock,&PortFDs);
-		close(serv->sock);
-		serv->sock = -1;
+		FD_CLR(p->sock,&PortFDs);
+		close(p->sock);
+		p->sock = -1;
 		term.printf("service closed\n");
 #ifdef CONFIG_MDNS
-		mdns_service_remove(serv->service, "_tcp");
+		mdns_service_remove(p->service, p->mode == m_tcp ? "_tcp" : "_udp");
 #endif
 		return 0;
 	}
 	return arg_invalid(term,args[1]);;
 }
 
-#else // !CONFIG_INETD
-
-typedef struct tcp_listener_args
-{
-	void (*session)(void*);
-	const char *basename;
-	uint16_t port;
-	uint16_t stack;
-	uint16_t prio;
-} tcp_listener_args_t;
-
-
-void tcp_listener(void *arg)
-{
-	tcp_listener_args_t *args = (tcp_listener_args_t*)arg;
-	const char *basename = args->basename;
-	uint16_t port = args->port;
-	uint16_t stack = args->stack;
-	uint16_t prio = args->prio;
-	void (*session)(void*) = args->session;
-	free(arg);
-	unsigned id = 0;
-	int sock = -1;
-	for (;;) {
-		wifi_wait();
-		if (sock < 0) {
-			log_info(basename, "listening on port %d", port);
-			sock = socket(AF_INET, SOCK_STREAM, 0);
-			if (sock < 0) {
-				log_error(basename,"create socket: %s",strneterr(sock));
-				continue;
-			}
-			struct sockaddr_in server_addr;
-			server_addr.sin_family = AF_INET;
-			server_addr.sin_port = htons(port);
-			server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-			if (bind(sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-				log_error(basename,"bind server socket: %s",strneterr(sock));
-				close(sock);
-				sock = -1;
-				continue;
-			}
-			if (listen(sock,1) < 0) {
-				log_error(basename,"listen on server socket: %s",strneterr(sock));
-				close(sock);
-				sock = -1;
-				continue;
-			}
-		}
-		struct sockaddr_in client_addr;
-		unsigned socklen = sizeof(client_addr);
-		int con = accept(sock, (struct sockaddr *)&client_addr, &socklen);
-		if (con < 0) {
-			// TODO: what is a better way to deal with error: no more processes
-			log_error(basename,"error accepting connection: %s",strneterr(sock));
-			close(sock);
-			sock = -1;
-			continue;
-		}
-		struct timeval tv;
-		tv.tv_sec = TCP_TIMEOUT;
-		tv.tv_usec = 0;
-		if (0 > setsockopt(con,SOL_SOCKET,SO_RCVTIMEO,&tv,sizeof(tv)))
-			log_warn(basename,"error setting receive timeout: %s",strneterr(sock));
-		char name[configMAX_TASK_NAME_LEN+2];
-		int n = snprintf(name,sizeof(name),"%s%d",basename,id++);
-		assert(n < sizeof(name));
-		log_info(basename, "creating sesssion %s, stack %u",name,stack);
-		BaseType_t r = xTaskCreatePinnedToCore(session, name, stack, (void*)con, prio, NULL, APP_CPU_NUM);
-		if (r != pdPASS) {
-			log_error(name,"task creation failed: %s",esp_err_to_name(r));
-			close(con);
-			vTaskDelay(100/portTICK_PERIOD_MS);
-		}
-	}
-}
-
-
-int listen_tcp(unsigned port, void (*session)(void*), const char *basename, const char *service, unsigned prio, unsigned stack)
-{
-	// listener version
-	tcp_listener_args_t *args = (tcp_listener_args_t*)malloc(sizeof(tcp_listener_args_t));
-	args->port = port;
-	args->session = session;
-	args->basename = basename;
-	args->stack = stack;
-	args->prio = prio;
-#ifdef CONFIG_MDNS
-	mdns_service_add(basename, service, "_tcp", port, 0, 0);
-#endif
-	BaseType_t r = xTaskCreatePinnedToCore(&tcp_listener, basename, 2048, (void*)args, 5, 0, PRO_CPU_NUM);
-	if (r != pdPASS) {
-		log_error(basename,"create task: %s",esp_err_to_name(r));
-		free(args);
-		return 1;
-	}
-	return 0;
-}
-
-#endif // CONFIG_INETD

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2017-2020, Thomas Maier-Komor
+ *  Copyright (C) 2017-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -63,6 +63,7 @@ struct SubTask
 	, calls(0)
 	{ }
 
+	SubTask *next;
 	const char *name;
 	unsigned (*code)(void*);
 	void *arg;
@@ -80,7 +81,7 @@ struct SubTaskCmp
 };
 
 
-static vector<SubTask> SubTasks;
+static SubTask *SubTasks;
 static SemaphoreHandle_t Lock;
 
 
@@ -88,14 +89,18 @@ int cyclic_add_task(const char *name, unsigned (*loop)(void*), void *arg, unsign
 {
 	log_info(TAG,"add subtask %s",name);
 	xSemaphoreTake(Lock,portMAX_DELAY);
-	for (const auto &s : SubTasks) {
-		if (0 == strcmp(s.name,name)) {
+	SubTask *s = SubTasks;
+	while (s) {
+		if (0 == strcmp(s->name,name)) {
 			xSemaphoreGive(Lock);
 			log_error(TAG,"subtask %s already exists",name);
 			return 1;
 		}
+		s = s->next;
 	}
-	SubTasks.push_back(SubTask(name,loop,arg,esp_timer_get_time()+initdelay*1000));
+	SubTask *n = new SubTask(name,loop,arg,esp_timer_get_time()+initdelay*1000);
+	n->next = SubTasks;
+	SubTasks = n;
 	xSemaphoreGive(Lock);
 	return 0;
 }
@@ -104,45 +109,60 @@ int cyclic_add_task(const char *name, unsigned (*loop)(void*), void *arg, unsign
 int cyclic_rm_task(const char *name)
 {
 	xSemaphoreTake(Lock,portMAX_DELAY);
-	for (auto i = SubTasks.begin(), e = SubTasks.end(); i != e; ++i) {
-		if (!strcmp(name,i->name)) {
-			SubTasks.erase(i);
+	SubTask *s = SubTasks, *p = 0;
+	while (s) {
+		if (!strcmp(name,s->name)) {
+			if (p)
+				p->next = s->next;
+			else
+				SubTasks = s->next;
+			delete s;
 			xSemaphoreGive(Lock);
 			log_info(TAG,"removed subtask %s",name);
 			return 0;
 		}
+		p = s;
+		s = s->next;
 	}
 	xSemaphoreGive(Lock);
 	return 1;
 }
 
 
+unsigned cyclic_execute()
+{
+	xSemaphoreTake(Lock,portMAX_DELAY);
+	int64_t start = esp_timer_get_time();
+	unsigned delay = 100;
+	SubTask *t = SubTasks;
+	while (t) {
+		int32_t off = (int64_t)(t->nextrun - start);
+		if (off <= 0) {
+			unsigned d = t->code(t->arg);
+			int64_t end = esp_timer_get_time();
+			t->nextrun = end + (uint64_t)d * 1000LL;
+			++t->calls;
+			int64_t dt = end - start;
+			t->cputime += dt;
+			if (dt > t->peaktime)
+				t->peaktime = dt;
+			start = end;
+			if (d < delay)
+				delay = d;
+		} else if (off/1000 < delay) {
+			delay = off/1000;
+		}
+		t = t->next;
+	}
+	xSemaphoreGive(Lock);
+	return delay;
+}
+
+
 static void cyclic_tasks(void *)
 {
 	for (;;) {
-		xSemaphoreTake(Lock,portMAX_DELAY);
-		int64_t start = esp_timer_get_time();
-		int32_t delay = 100;
-		for (SubTask &t : SubTasks) {
-			int32_t off = (int64_t)(t.nextrun - start);
-			if (off < 0) {
-				unsigned d = t.code(t.arg);
-				int64_t end = esp_timer_get_time();
-				t.nextrun = end + (uint64_t)d * 1000LL;
-				++t.calls;
-				int64_t dt = end - start;
-				t.cputime += dt;
-				if (dt > t.peaktime)
-					t.peaktime = dt;
-				start = end;
-				if (d < delay)
-					delay = d;
-			} else if (off/1000 < delay) {
-				delay = off/1000;
-			}
-
-		}
-		xSemaphoreGive(Lock);
+		unsigned delay = cyclic_execute();
 		vTaskDelay(delay ? delay/portTICK_PERIOD_MS : 1);
 	}
 }
@@ -151,17 +171,17 @@ static void cyclic_tasks(void *)
 void cyclic_setup()
 {
 	Lock = xSemaphoreCreateMutex();
-	BaseType_t r = xTaskCreatePinnedToCore(&cyclic_tasks, TAG, 4096, (void*)0, 8, NULL, APP_CPU_NUM);
-	if (r != pdPASS)
-		log_error(TAG,"error creating subtask task: %s",esp_err_to_name(r));
 }
 
 
 int subtasks(Terminal &term, int argc, const char *args[])
 {
 	term.printf("%-16s  %8s  %8s  %10s\n","name","calls","peak","total");
-	for (SubTask s : SubTasks) 
-		term.printf("%-16s  %8u  %8u  %10lu\n",s.name,s.calls,s.peaktime,s.cputime);
+	SubTask *s = SubTasks;
+	while (s) {
+		term.printf("%-16s  %8u  %8u  %10lu\n",s->name,s->calls,s->peaktime,s->cputime);
+		s = s->next;
+	}
 	return 0;
 }
 

@@ -57,8 +57,8 @@ DS18B20::DS18B20(uint64_t id, const char *name)
 : OwDevice(id,name)
 {
 	++NumDev;
-	action_add(concat(name,"!convert"),ds18b20_convert,this,"");
-	action_add(concat(name,"!read"),ds18b20_read,this,"");
+	action_add(concat(name,"!sample"),ds18b20_convert,this,"trigger DS18B20 convertion/sampling");
+	action_add(concat(name,"!read"),ds18b20_read,this,"read data from DS18B20");
 }
 
 

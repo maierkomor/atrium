@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #
-#  Copyright (C) 2018-2020, Thomas Maier-Komor
+#  Copyright (C) 2018-2021, Thomas Maier-Komor
 #  Atrium Distribution for ESP
 #
 #  This program is free software: you can redistribute it and/or modify
@@ -200,7 +200,6 @@ if [ "$IDF_ESP32" == "" ]; then
 	git submodule update --init
 	IDF_ESP32=`pwd`
 	popd > /dev/null
-	cp lwip32.mk $installdir/idf-esp32/components/lwip/component.mk
 	/usr/bin/python -m pip install --user -r $installdir/idf-esp32/requirements.txt
 fi
 echo "IDF_ESP32=$IDF_ESP32" >> $settings
@@ -230,7 +229,6 @@ if [ "$IDF_ESP8266" == "" ]; then
 	git submodule update --init
 	IDF_ESP8266=`pwd`
 	popd > /dev/null
-	cp lwip8266.mk $installdir/idf-esp8266/components/lwip/component.mk
 	/usr/bin/python -m pip install --user -r $installdir/idf-esp8266/requirements.txt
 fi
 echo "IDF_ESP8266=$IDF_ESP8266" >> $settings
@@ -277,24 +275,24 @@ echo "WFC=$WFC" >> $settings
 echo "# PATH"
 echo PATH=$PATH >> $settings
 
-# Webcam sources
-if [ ! -e "esp32/camera/.git/config" ]; then
-	mkdir -p esp32
-	pushd esp32
-	echo $interactive
-	if [ "1" == "$interactive" ]; then
-		echo OK to start download of esp32-camera? Press CTRL-C to cancel.
-		read
-	else
-		echo starting download of esp32 camera package
-	fi
-	git clone https://github.com/espressif/esp32-camera camera
-else
-	echo updating camera package
-	pushd esp32/camera
-	git pull || exit 1
-fi
-popd > /dev/null
+## Webcam sources
+#if [ ! -e "esp32/camera/.git/config" ]; then
+#	mkdir -p esp32
+#	pushd esp32
+#	echo $interactive
+#	if [ "1" == "$interactive" ]; then
+#		echo OK to start download of esp32-camera? Press CTRL-C to cancel.
+#		read
+#	else
+#		echo starting download of esp32 camera package
+#	fi
+#	git clone https://github.com/espressif/esp32-camera camera
+#else
+#	echo updating camera package
+#	pushd esp32/camera
+#	git pull || exit 1
+#fi
+#popd > /dev/null
 
 
 # python modules

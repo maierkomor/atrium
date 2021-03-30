@@ -51,22 +51,27 @@
 #include <esp_system.h>
 #include <esp_wps.h>
 extern "C" {
-#include <crypto/common.h>
-#include <crypto/md5_i.h>
+#include <rom/md5_hash.h>
 void esp_schedule(void);
 void esp_yield(void);
 }
 #endif
 
 #ifdef CONFIG_IDF_TARGET_ESP8266
+#if IDF_VERSION >= 34
+#include <lwip/apps/sntp.h>
+#else
 #include <apps/sntp/sntp.h>
+#endif
 #if IDF_VERSION > 32
 #include <driver/rtc.h>	// post v3.2
 #endif
-#elif IDF_VERSION >= 32
+#else	// ESP32
+#if IDF_VERSION >= 32
 #include <lwip/apps/sntp.h>	// >= v3.2
 #else
 #include <apps/sntp/sntp.h>	// <= v3.1
+#endif
 #endif
 
 #ifdef CONFIG_MDNS
@@ -86,7 +91,7 @@ void esp_yield(void);
 using namespace std;
 
 extern "C" const char Version[] = VERSION;
-static char TAG[] = "cfg", cfg_err[] = "cfg_err";
+static const char TAG[] = "cfg", cfg_err[] = "cfg_err";
 
 #ifdef CONFIG_APP_PARAMS
 static int cfg_set_param(const char *name, const char *value);
@@ -802,10 +807,6 @@ void cfg_activate()
 {
 	log_info(TAG,"activating config");
 
-#ifdef CONFIG_DMESG
-	if (Config.has_dmesg_size())
-		dmesg_resize(Config.dmesg_size());
-#endif
 	if (!Config.has_nodename()) 
 		initNodename();
 	cfg_set_hostname(Config.nodename().c_str());
@@ -896,9 +897,9 @@ void cfg_activate_actions()
 		if (!t.has_name() || !t.has_time())
 			continue;
 		unsigned c = t.config();
-		timefuse_create(t.name().c_str(),t.time(),c&1);
+		timefuse_t tf = timefuse_create(t.name().c_str(),t.time(),c&1);
 		if (c&2) 
-			timefuse_start(t.name().c_str());
+			timefuse_start(tf);
 	}
 }
 
@@ -1126,7 +1127,6 @@ void settings_setup()
 #else
 	RTData->add("version",VERSION);
 #endif
-	RTData->add("reset_reason",strReset((rstrsn_t)esp_reset_reason()));
 	set_cfg_err(0);
 }
 

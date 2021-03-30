@@ -1,0 +1,6 @@
+synopsis: format <partition> [<fs>]
+Format the specified partition with filesystem <fs>. <fs> must only
+be passed if multiple filesystems are supported by the firmware. 
+Before formatting the partition, it must be erased with the "part"
+command or with an external tool. After formatting the partition,
+the system must be rebooted to mount the partition.

@@ -53,7 +53,7 @@ typedef enum {
 } log_level_t;
 
 void log_setup();
-void dmesg_setup();
+int dmesg_setup();
 void dmesg_to_uart(int8_t);
 int dmesg_resize(unsigned);
 void log_set_uart(int8_t);

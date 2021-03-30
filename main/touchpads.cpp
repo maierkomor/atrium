@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020, Thomas Maier-Komor
+ *  Copyright (C) 2020-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -69,9 +69,10 @@ class TouchPad
 };
 
 
+static const char TAG[] = "tp";
+
 static TouchPad **Channels = 0;
 static uint8_t NumCh;
-static char TAG[] = "tp";
 
 
 TouchPad::TouchPad(const char *name, int8_t ch, uint16_t thresh)

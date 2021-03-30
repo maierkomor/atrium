@@ -64,7 +64,7 @@ typedef uint32_t duty_t;
 #endif
 
 
-static char TAG[] = "dim";
+static const char TAG[] = "dim";
 
 struct Dimmer
 {

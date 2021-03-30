@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020, Thomas Maier-Komor
+ *  Copyright (C) 2020-2021, Thomas Maier-Komor
  *
  *  This source file belongs to Wire-Format-Compiler.
  *
@@ -35,6 +35,16 @@ estring::estring()
 {
 	con_print("estring()");
 	str[0] = 0;
+}
+
+
+estring::estring(size_t l, char c)
+: str((char*)malloc(l))
+, len(l)
+, alloc(1)
+{
+	con_print("estring(%u,'\\0%02o')",l,c);
+	memset(str,c,l);
 }
 
 

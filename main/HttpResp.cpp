@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -35,8 +35,8 @@
 
 using namespace std;
 
-static char TAG[] = "httpa";
-static char CRNL[] = "\r\n";
+static const char TAG[] = "httpa";
+static const char CRNL[] = "\r\n";
 
 const char HTTP_OK[] =           "200 OK";
 const char HTTP_CREATED[] =      "201 Created";
@@ -66,8 +66,8 @@ const char CT_TEXT_CSV[]		= "text/csv";
 const char CT_IMAGE_JPEG[]		= "image/jpeg";
 
 
-HttpResponse::HttpResponse()
-: m_result(0)
+HttpResponse::HttpResponse(const char *r)
+: m_result(r)
 , m_header()
 , m_content()
 , m_fd(-1)
@@ -75,13 +75,6 @@ HttpResponse::HttpResponse()
 , m_reslen(0)
 {
 
-}
-
-
-HttpResponse::~HttpResponse()
-{
-	if (m_reslen)
-		free(m_result);
 }
 
 
@@ -110,6 +103,7 @@ void HttpResponse::setContentLength(unsigned s)
 }
 
 
+/*
 void HttpResponse::setResult(const char *fmt, ...)
 {
 	if (m_reslen)
@@ -125,7 +119,6 @@ void HttpResponse::setResult(const char *fmt, ...)
 }
 
 
-/*
 void HttpResponse::writeHeader(const char *fmt, ...)
 {
 	char buf[128];
@@ -197,7 +190,7 @@ bool HttpResponse::senddata(int con, int fd)
 		struct stat st;
 		if (-1 == fstat(fd,&st)) {
 			log_error(TAG,"unable to stat file: %s",strerror(errno));
-			setResult("500 unable to access file: %s",strerror(errno));
+			setResult("500 unable to access file");
 		} else {
 			cs = st.st_size;
 		}

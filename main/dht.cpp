@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -35,37 +35,36 @@
 
 #include <driver/gpio.h>
 
-static DHT Dht;
-static char TAG[] = "DHT";
-static bool Enabled = false;
+static const char TAG[] = "DHT";
+static DHT *Dht = 0;
 
 
 int dht_init()
 {
 	if (!HWConf.has_dht())
 		return 1;
-	if (Enabled)
+	if (Dht)
 		return 1;
 	const DhtConfig &c = HWConf.dht();
-	if (Dht.init(c.gpio(), c.model()))
+	Dht = new DHT;
+	if (Dht->init(c.gpio(), c.model()))
 		return 1;
-	Enabled = true;
 	return 0;
 }
 
 
 static void gatherData(void *)
 {
-	if (!Enabled)
+	if (Dht == 0)
 		return;
-	Dht.read();
-	if (const char *err = Dht.getError()) {
+	Dht->read();
+	if (const char *err = Dht->getError()) {
 		log_info(TAG,"driver error: %s",err);
 		Temperature->set(NAN);
 		Humidity->set(NAN);
 	} else {
-		double t = Dht.getTemperature();
-		double h = Dht.getHumidity();
+		double t = Dht->getTemperature();
+		double h = Dht->getHumidity();
 		rtd_lock();
 		Temperature->set(t);
 		Humidity->set(h);
@@ -81,27 +80,21 @@ static void gatherData(void *)
 
 int dht(Terminal &term, int argc, const char *args[])
 {
-	if (argc > 3)
+	if (argc > 2)
 		return arg_invnum(term);
 	if (argc == 2) {
-		if (!strcmp(args[1],"enable"))
-			Enabled = true;
-		else if (!strcmp(args[1],"disable"))
-			Enabled = false;
-		else if (!strcmp(args[1],"sample"))
+		if (!strcmp(args[1],"sample"))
 			gatherData(0);
 		else
 			return arg_invalid(term,args[1]);
-	} else if (!Enabled) {
-		term.printf("not intialized\n");
-	} else if (const char *e = Dht.getError()) {
+	} else if (const char *e = Dht->getError()) {
 		term.printf("dht error: %s\n",e);
 	} else {
 		char buf[12];
-		float_to_str(buf,Dht.getTemperature());
+		float_to_str(buf,Dht->getTemperature());
 		term.printf("temperature: %s \u00bC\n",buf);
-		float_to_str(buf,Dht.getHumidity());
-		term.printf("humidity  : %s %%\n",buf);
+		float_to_str(buf,Dht->getHumidity());
+		term.printf("humidity   : %s %%\n",buf);
 	}
 	return 0;
 }

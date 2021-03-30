@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2019-2020, Thomas Maier-Komor
+ *  Copyright (C) 2019-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -95,7 +95,7 @@
 */
 
 
-static char TAG[] = "webcam";
+static const char TAG[] = "cam";
 
 
 int webcam_setup()

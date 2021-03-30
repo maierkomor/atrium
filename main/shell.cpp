@@ -96,7 +96,11 @@ extern "C" {
 #include <netdb.h>
 
 #ifdef CONFIG_IDF_TARGET_ESP8266
+#if IDF_VERSION >= 34
+#include <lwip/apps/sntp.h>
+#else
 #include <apps/sntp/sntp.h>
+#endif
 #elif IDF_VERSION >= 32
 #include <lwip/apps/sntp.h>	// >= v3.2
 #else
@@ -158,12 +162,23 @@ const char *getpwd()
 }
 
 
-static void print_action(void *p, const Action *a)
+static void action_print(void *p, const Action *a)
 {
 	if (a == 0)
 		return;
 	Terminal *t = (Terminal*)p;
-	t->printf("\t%-24s  %s\n",a->name,a->text);
+	if (a->name[0] != '*')
+		t->printf("\t%-24s  %s\n",a->name,a->text);
+}
+
+
+static void action_perf(void *p, const Action *a)
+{
+	if (a == 0)
+		return;
+	Terminal *t = (Terminal*)p;
+	if (a->num)
+		t->printf("\t%-20s %5u %6u (%6u/%6u/%6u)\n",a->name,a->num,a->sum,a->min,a->sum/a->num,a->max);
 }
 
 
@@ -174,7 +189,10 @@ static int action(Terminal &t, int argc, const char *args[])
 	if (argc != 2)
 		return arg_invnum(t);
 	if (0 == strcmp(args[1],"-l")) {
-		action_iterate(print_action,(void*)&t);
+		action_iterate(action_print,(void*)&t);
+	} else if (0 == strcmp(args[1],"-p")) {
+		t.printf("\t%-20s %5s %6s (%6s/%6s/%6s)\n","name","count","total","min.","avg.","max.");
+		action_iterate(action_perf,(void*)&t);
 	} else if (!strcmp(args[1],"-F")) {
 		if (0 == t.getPrivLevel())
 			return arg_priv(t);
@@ -197,12 +215,13 @@ static int event(Terminal &t, int argc, const char *args[])
 		return help_cmd(t,args[0]);
 	} else if (argc == 2) {
 		if (!strcmp(args[1],"-l")) {
-			event_t e = 1;
-			while (const char *name = event_name(e)) {
+			event_t e = 0;
+			while (const char *name = event_name(++e)) {
+				if (name[0] == '*')
+					continue;
 				t.printf("%s =>\n",name);
 				for (auto a : event_callbacks(e)) 
 					t.printf("\t%s\n",a->name);
-				++e;
 			}
 		} else {
 			return arg_invalid(t,args[1]);
@@ -421,7 +440,7 @@ static int shell_ls(Terminal &term, int argc, const char *args[])
 		assert(n);
 		size_t s,o;
 		romfs_getentry(n,&s,&o);
-		term.printf("\t%-12s %6u\n",n,s,o);
+		term.printf("\t%5u %-12s\n",s,n);
 	}
 	return 0;
 #else
@@ -637,9 +656,23 @@ static int shell_df(Terminal &term, int argc, const char *args[])
 
 static int part(Terminal &term, int argc, const char *args[])
 {
-	if (argc != 1) {
-		return arg_invnum(term);
+	if (argc == 3) {
+		if (strcmp(args[1],"erase"))
+			return arg_invalid(term,args[1]);
+		esp_partition_iterator_t i = esp_partition_find(ESP_PARTITION_TYPE_DATA,ESP_PARTITION_SUBTYPE_ANY,args[2]);
+		if (i == 0)
+			return arg_invalid(term,args[2]);
+		const esp_partition_t *p = esp_partition_get(i);
+		if (p == 0)
+			return arg_invalid(term,args[2]);
+		if (esp_err_t e = spi_flash_erase_range(p->address,p->size)) {
+			term.println(esp_err_to_name(e));
+			return 1;
+		}
+		return 0;
 	}
+	if (argc != 1)
+		return arg_invnum(term);
 	esp_partition_iterator_t i = esp_partition_find(ESP_PARTITION_TYPE_APP,ESP_PARTITION_SUBTYPE_ANY,0);
 	while (i) {
 		const esp_partition_t *p = esp_partition_get(i);
@@ -1010,7 +1043,7 @@ static int timefuse(Terminal &term, int argc, const char *args[])
 				return 0;
 			}
 		}
-		return 1;
+		return arg_invalid(term,args[2]);
 	}
 	if (!strcmp("-a",args[1])) {
 		for (EventTimer &t : *Config.mutable_timefuses()) {
@@ -1023,8 +1056,7 @@ static int timefuse(Terminal &term, int argc, const char *args[])
 				return 0;
 			}
 		}
-		term.println("unknown timer");
-		return 1;
+		return arg_invalid(term,args[2]);
 	}
 	char *e;
 	long l = strtol(args[3],&e,0);
@@ -1990,7 +2022,7 @@ ExeName ExeNames[] = {
 #if defined CONFIG_SPIFFS || defined CONFIG_FATFS
 	{"df",0,shell_df,"available storage",0},
 #endif
-#if CONFIG_DMESG
+#if CONFIG_SYSLOG
 	{"dmesg",0,dmesg,"system log",0},
 #endif
 #ifdef CONFIG_DHT
@@ -2023,9 +2055,7 @@ ExeName ExeNames[] = {
 #endif
 	{"hwconf",1,hwconf,"hardware configuration",hwconf_man},
 	{"ifconfig",0,ifconfig,"network interface settings",0},
-#ifdef CONFIG_INETD
 	{"inetadm",1,inetadm,"manage network services",inetadm_man},
-#endif
 #ifdef CONFIG_INFLUX
 	{"influx",1,influx,"configure influx UDP data gathering",influx_man},
 #endif

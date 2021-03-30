@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -40,7 +40,7 @@
 using namespace std;
 
 
-static char TAG[] = "www";
+static const char TAG[] = "www";
 
 
 HttpServer::HttpServer(const char *wwwroot, const char *rootmap)
@@ -104,12 +104,11 @@ bool HttpServer::runDirectory(HttpRequest *req)
 	if (fd == -1) {
 		log_info(TAG,"open of %s failed",fn);
 		ans.setResult(HTTP_NOT_FOUND);
-		ans.senddata(req->getConnection());
 	} else {
 		log_info(TAG,"sending file");
 		ans.setResult(HTTP_OK);
-		ans.senddata(req->getConnection(),fd);
 	}
+	ans.senddata(req->getConnection(),fd);
 	return true;
 #else
 	return false;

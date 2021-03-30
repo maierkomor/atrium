@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2017-2020, Thomas Maier-Komor
+ *  Copyright (C) 2017-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -20,26 +20,30 @@
 #define ACTIONS_H
 
 #include <stddef.h>
+#include <stdint.h>
 
-struct Action
+#ifdef __cplusplus
+
+class Action
 {
+	public:
 	const char *name;
-	void (*func)(void *);
-	void *arg;
-	const char *text;	// descriptive help text
+	const char *text = 0;	// descriptive help text
+	uint32_t min = UINT32_MAX, max = 0, sum = 0, num = 0;
 
 	Action(const char *n, void (*f)(void*),void *a, const char *t);
 	Action(const char *n)
 	: name(n)
 	, func(0)
-	, arg(0)
-	, text(0)
 	{ }
+
+	void activate();
+
+	private:
+	void (*func)(void *);
+	void *arg = 0;
 };
 
-
-
-#ifdef __cplusplus
 extern "C" {
 #endif
 

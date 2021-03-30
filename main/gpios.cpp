@@ -38,7 +38,7 @@
 #endif
 
 
-static char TAG[] = "gpio";
+static const char TAG[] = "gpio";
 
 #ifdef CONFIG_IDF_TARGET_ESP32
 static const char *GpioIntrTypeStr[] = {
@@ -203,7 +203,8 @@ void Gpio::init(unsigned config)
 	m_next = First;
 	First = this;
 	gpio_int_type_t intr = (gpio_int_type_t)((config >> 2) & 0x3);
-	if (esp_err_t e = gpio_set_direction(m_gpio,(gpio_mode_t)(config & 0x3)))
+	gpio_mode_t mode = (gpio_mode_t)(config & 0x3);
+	if (esp_err_t e = gpio_set_direction(m_gpio,mode))
 		log_error(TAG,"cannot set direction on gpio %d: %s",m_gpio,esp_err_to_name(e));
 	else
 		log_dbug(TAG,"gpio%d set direction ok",m_gpio);
@@ -225,7 +226,7 @@ void Gpio::init(unsigned config)
 			gpio_pulldown_dis(m_gpio);
 		}
 	}
-	if (config & 1) {
+	if ((mode == GPIO_MODE_OUTPUT) || (mode == GPIO_MODE_OUTPUT_OD)) {
 		log_dbug(TAG,"gpio output actions");
 		action_add(concat(m_name,"!set_1"),gpio_action_set1,(void*)(unsigned)m_gpio,"set gpio high");
 		action_add(concat(m_name,"!set_0"),gpio_action_set0,(void*)(unsigned)m_gpio,"set gpio low");

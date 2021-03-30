@@ -133,9 +133,6 @@ To prepare the build environment, run "./setupenv.sh", which will:
 - patch the IDF trees to include the LWIP-MQTT library
 - satisfy Python requirements of IDF using pip
 
-To manually patch the IDF trees copy the files lwip32.mk and
-  lwip8266.mk to $IDF/components/lwip/component.mk
-
 To build a project, run:
 ```
 > make PROJECT=<project-name>

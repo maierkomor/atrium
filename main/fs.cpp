@@ -31,7 +31,7 @@
 #define MOUNT_POINT "/flash"
 #define DATA_PARTITION "storage"
 
-static char TAG[] = "FS";
+static const char TAG[] = "FS";
 
 #if CONFIG_SPIFFS
 #if defined ESP8266 && IDF_VERSION < 32
@@ -78,7 +78,7 @@ static int shell_format_spiffs(Terminal &term, const char *arg)
 #include <esp_vfs_fat.h>
 #include <strings.h>
 
-wl_handle_t SpiFatFs = 0;
+static wl_handle_t SpiFatFs = 0;
 
 static void init_fatfs()
 {
@@ -90,6 +90,7 @@ static void init_fatfs()
 	SpiFatFs = WL_INVALID_HANDLE;
 	if (esp_err_t r = esp_vfs_fat_spiflash_mount(MOUNT_POINT, DATA_PARTITION, &fatconf, &SpiFatFs)) {
 		log_error(TAG,"unable to mount flash with fatfs: %s",esp_err_to_name(r));
+		SpiFatFs = 0;
 	} else 
 		log_info(TAG,"mounted fatfs partition " DATA_PARTITION);
 }
@@ -97,7 +98,8 @@ static void init_fatfs()
 
 static int shell_format_fatfs(Terminal &term, const char *arg)
 {
-	esp_vfs_fat_spiflash_unmount(MOUNT_POINT, SpiFatFs);
+	if (SpiFatFs)
+		esp_vfs_fat_spiflash_unmount(MOUNT_POINT, SpiFatFs);
 	esp_vfs_fat_mount_config_t fatconf;
 	bzero(&fatconf,sizeof(fatconf));
 	fatconf.format_if_mount_failed = true;

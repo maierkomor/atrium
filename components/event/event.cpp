@@ -202,7 +202,7 @@ static void events_task(void *)
 			log_dbug(TAG,"execute callbacks of %s",EventHandlers[e].name);
 			for (auto a : EventHandlers[e].callbacks) {
 				log_dbug(TAG,"\tfunction %s",a->name);
-				a->func(a->arg);
+				a->activate();
 			}
 		} else {
 			log_error(TAG,"invalid/unknown event_t %u",e);

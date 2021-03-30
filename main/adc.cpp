@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020, Thomas Maier-Komor
+ *  Copyright (C) 2020-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -29,7 +29,7 @@
 
 #include <driver/adc.h>
 
-static char TAG[] = "adc";
+static const char TAG[] = "adc";
 
 #if defined CONFIG_IDF_TARGET_ESP32
 struct AdcSignal : public IntSignal

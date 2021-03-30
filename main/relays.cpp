@@ -32,11 +32,10 @@
 #include "terminal.h"
 
 #include <string.h>
-#include <vector>
 
 using namespace std;
 
-static char TAG[] = "relays";
+static const char TAG[] = "relays";
 
 
 static void relay_callback(Relay *r)
@@ -60,7 +59,7 @@ static void relay_callback(Relay *r)
 	l->set(Localtime->get());
 	rtd_unlock();
 #ifdef CONFIG_MQTT
-	mqtt_pub(r->name(),on?"on":"off",on?2:3,1);
+	mqtt_pub(r->name(),on?"on":"off",on?2:3,1,1);
 #endif
 }
 
@@ -129,7 +128,6 @@ int relay_setup()
 			char topic[c.name().size()+5] = "set_";
 			strcpy(topic+4,n);
 			mqtt_sub(topic,mqtt_callback);
-			free(topic);
 		}
 #endif
 		Relay *r = new Relay(n,(gpio_num_t)gpio,cfg,itv);

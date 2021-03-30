@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -33,7 +33,7 @@
 
 #include <driver/gpio.h>
 
-static char TAG[] = "BME";
+static const char TAG[] = "BME";
 static bool Enabled = false;
 
 

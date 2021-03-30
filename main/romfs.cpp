@@ -32,8 +32,6 @@
 #endif
 
 
-#include <vector>
-
 #ifdef CONFIG_ROMFS
 
 // CONFIG_ENABLE_FLASH_MMAP is not yet provided by the IDF
@@ -71,7 +69,7 @@ typedef struct RomEntry32
 
 using namespace std;
 
-static char TAG[] = "romfs";
+static const char TAG[] = "romfs";
 static RomEntry *Entries = 0;
 static unsigned NumEntries = 0;
 uint32_t RomfsBaseAddr = 0, RomfsSpace = 0;

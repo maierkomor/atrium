@@ -69,12 +69,6 @@ config HOLIDAYS
 	help
 		holiday database for time triggered actions
 
-config INETD
-	bool "inetd"
-	default false
-	help
-		shared TCP connection listener inetd
-
 config HTTP
 	bool "http"
 	help
@@ -106,12 +100,6 @@ config SYSLOG
 	default false
 	help
 		send log messages to syslog host
-
-config DMESG
-	bool "dmesg buffer"
-	default true
-	help
-		RAM buffered log that can be queried via dmesg
 
 config INFLUX
 	bool "influx"
@@ -244,6 +232,7 @@ config LEDSTRIP
 		LED stripes based on WS8212b
 
 config CAMERA
+	depends on IDF_TARGET_ESP32
 	bool	"ESP32 camera support"
 	default false
 

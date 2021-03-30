@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2017-2020, Thomas Maier-Komor
+ *  Copyright (C) 2017-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -25,6 +25,7 @@
 #include <string.h>
 #include <sys/time.h>
 
+#include <esp_timer.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <driver/gpio.h>
@@ -59,11 +60,26 @@ static char TAG[] = "action";
 
 Action::Action(const char *n, void (*f)(void*),void *a, const char *t)
 : name(n)
+, text(t)
 , func(f)
 , arg(a)
-, text(t)
 {
 
+}
+
+
+void Action::activate()
+{
+	uint64_t st = esp_timer_get_time();
+	func(arg);
+	uint64_t end = esp_timer_get_time();
+	++num;
+	unsigned dt = end - st;
+	sum += dt;
+	if (dt < min)
+		min = dt;
+	if (dt > max)
+		max = dt;
 }
 
 
@@ -97,13 +113,14 @@ Action *action_add(const char *name, void (*func)(void *), void *arg, const char
 int action_activate(const char *name)
 {
 	Action x(name);
-	auto i = Actions.find(x);
+	set<Action,less<Action>>::iterator i = Actions.find(x);
 	if (i == Actions.end()) {
 		log_warn(TAG,"unable to execute unknown action '%s'",name);
 		return 1;
 	}
 	log_dbug(TAG,"triggered action %s",name);
-	i->func(i->arg);
+	Action &a = const_cast<Action&>(*i);
+	a.activate();
 	return 0;
 }
 

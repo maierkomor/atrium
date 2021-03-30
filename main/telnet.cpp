@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2017-2020, Thomas Maier-Komor
+ *  Copyright (C) 2017-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -311,7 +311,7 @@ static void telnet_session(void *arg)
 
 int telnet_setup()
 {
-	return listen_tcp(TELNET_PORT,telnet_session,"telnetd","_telnet",8,stack_size);
+	return listen_port(TELNET_PORT,m_tcp,telnet_session,"telnetd","_telnet",8,stack_size);
 }
 
 

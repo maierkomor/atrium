@@ -1,0 +1,4 @@
+synopsis: dmesg [<size>]
+With optional argument <size>, the dmesg buffer size can be set. Without
+arguments the last log messages are displayed. The buffer is also used
+by syslog.

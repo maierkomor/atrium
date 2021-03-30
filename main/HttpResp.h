@@ -75,15 +75,14 @@ extern const char HTTP_NETAUTH_REQ[];
 class HttpResponse
 {
 	public:
-	HttpResponse();
-	~HttpResponse();
+	explicit HttpResponse(const char *r = 0);
 
 	void setContentType(const char *);
 	void setContentLength(unsigned);
-	void setResult(const char *, ...);
+	void setResult(const char *r)
+	{ m_result = (char*)r; }
 
 	void addHeader(const char *);
-	//void writeHeader(const char *, ...);
 
 	void addContent(const char *, size_t l = 0);
 	void writeContent(const char *,  ...);
@@ -97,7 +96,7 @@ class HttpResponse
 	HttpResponse(const HttpResponse &);
 	HttpResponse& operator = (const HttpResponse &);
 
-	char *m_result;		// always allocated
+	const char *m_result;
 	estring m_header;
 	estring m_content;
 	int m_fd, m_con, m_reslen;

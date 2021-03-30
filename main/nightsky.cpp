@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -37,7 +37,7 @@
 #define MAX_BRIGHT (1 << 11)
 
 
-static char TAG[] = "nightsky";
+static const char TAG[] = "nightsky";
 
 static TLC5947 Drv;
 static uint16_t NumLed, *Values;

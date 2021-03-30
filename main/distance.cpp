@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -29,8 +29,8 @@
 
 #include <stdlib.h>
 
+static const char TAG[] = "hcsr04";
 static HC_SR04 *Driver = 0;
-static char TAG[] = "hcsr04";
 
 
 int measure(unsigned *v)

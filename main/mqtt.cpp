@@ -18,9 +18,21 @@
 
 #include <sdkconfig.h>
 
+
+// LIMITATIONS / DESIGN OPTIMIZATIONS:
+// - Only packets with "remaining length" < 128 are handled.
+//   Other packets are rejected.
+// - Only QoS=0: QoS!=0 requires packed IDs and resending
+//   reduces RAM/ROM impact
+// - no TLS
+//   enables direct use of LWIP => reduced RAM/ROM
+
+//#define FEATURE_QOS
+
 #ifdef CONFIG_MQTT
 #include "actions.h"
 #include "binformats.h"
+#include "cyclic.h"
 #ifdef CONFIG_SIGNAL_PROC
 #include "dataflow.h"
 #endif
@@ -39,24 +51,697 @@
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
-#include <lwip/apps/mqtt.h>
+//#include <lwip/apps/mqtt.h>
+#include <lwip/tcp.h>
 
 #include <string.h>
 #include <time.h>
 
 #include <map>
 
+#define CONNECT 	0x10
+#define CONACK		0x20
+#define PUBLISH		0x30
+#define PUBACK		0x40	// only for QoS > 0
+#define SUBSCRIBE	0X82
+#define SUBACK		0x90
+#define DISCONNECT	0xe0
+
 using namespace std;
 
+int mqtt_setup(void);
 
-static mqtt_client_t *Client = 0;
+
+#ifdef FEATURE_QOS
+struct PubReq
+{
+	PubReq(char *d, uint16_t l)
+	: prev(0)
+	, next(0)
+	, data(d)
+	, len(l)
+	, sent(false)
+	, alloc(false)
+	{
+	}
+
+	PubReq(const char *t, const char *v, unsigned l, uint8_t q, bool r)
+	: prev(0)
+	, next(0)
+	{
+		memcpy(value,v,l);
+	}
+
+	uint16_t topicLen() const
+	{
+		return data[4] | (data[3] << 8);
+	}
+
+	unsigned remainLen() const
+	{
+		uint8_t d = 
+		unsigned len = data[1];
+	}
+
+	estring readTopic() const
+	{
+		return estring(data+5,topicLen());
+	}
+
+	bool isTopic(const char *t, size_t tl = 0)
+	{
+		if (tl == 0)
+			tl = strlen(t);
+		if (topicLen() != tl)
+			return false;
+		return memcmp(t,data+5,tl);
+	}
+
+	uint8_t paysize() const
+	{
+		size_t msglen = ((uint8_t *)data+1);
+		msglen -=  topicLen();
+	}
+
+	uint8_t qos()
+	{ return (data[0] >> 1) & 0x3; }
+
+	PubReq *prev,*next;
+	char *data;	// only reference for parsing receptions without copy
+	uint16_t len;
+	bool sent;
+	bool alloc;
+
+	private:
+	PubReq(const PubReq &);
+	PubReq &operator = (const PubReq &);
+};
+#endif
+
+
+typedef enum { offline = 0, connecting, running, stopping } state_t;
+
+
+struct MqttClient
+{
+	MqttClient()
+	: pcb(0)
+	, mtx(xSemaphoreCreateMutex())
+	, sem(xSemaphoreCreateBinary())
+	, state(offline)
+	{ }
+
+#ifdef FEATURE_QOS
+	void add(PubReq *p)
+	{
+		if (pube) {
+			pube->next = p;
+			p->prev = pube;
+		} else {
+			pub0 = p;
+		}
+		pube = p;
+	}
+
+	void remove(PubReq *p)
+	{
+		if (p->prev)
+			p->prev->next = p->next;
+		else
+			pub0 = p->next;
+		if (p->next)
+			p->next->prev = p->prev;
+		else
+			pube = p->prev;
+		delete p;
+	}
+#endif
+
+	struct tcp_pcb *pcb;
+	unsigned ltime = 0;
+	SemaphoreHandle_t mtx, sem;
+#ifdef FEATURE_QOS
+	uint16_t pkgid = 0;
+	PubReq *pub0 = 0, *pube = 0;
+#endif
+	multimap<estring,void(*)(const char *,const void*,size_t)> subscriptions;
+	map<estring,estring> values;
+	map<uint16_t,const char *> subs;
+	uint16_t packetid = 0;
+	state_t state;
+};
+
+
 static const char TAG[] = "mqtt";
-static multimap<estring,void(*)(const char *,const void*,size_t)> Subscriptions;
-static map<estring,estring> Values;
-static estring CurrentTopic;
-static unsigned LTime = 0;
-static estring DMesg;
-static SemaphoreHandle_t Sem = 0, Mtx = 0, DMtx = 0;
+static MqttClient *Client = 0;
+
+
+static void cpypbuf(void *to, struct pbuf *pbuf, unsigned off, unsigned n)
+{
+	while (off > pbuf->len) {
+		off -= pbuf->len;
+		pbuf = pbuf->next;
+		assert(pbuf);
+	}
+	unsigned l;
+	do {
+		assert(pbuf);
+		l = n > (pbuf->len-off) ? (pbuf->len-off) : n;
+		memcpy(to,(uint8_t*)pbuf->payload+off,l);
+		n -= l;
+		pbuf = pbuf->next;
+		off = 0;
+	} while (l);
+}
+
+
+uint8_t *pbuf_at(struct pbuf *pbuf, unsigned off)
+{
+//	log_dbug(TAG,"pbuf_at %u/%u",off,pbuf->tot_len);
+	while (off > pbuf->len) {
+		off -= pbuf->len;
+		pbuf = pbuf->next;
+		assert(pbuf);
+	}
+	return ((uint8_t*)pbuf->payload+off);
+}
+
+
+struct pbuf *pbuf_of(struct pbuf *pbuf, unsigned off)
+{
+//	log_dbug(TAG,"pbuf_of %u/%u",off,pbuf->tot_len);
+	while (pbuf && (off >= (pbuf->len))) {
+		off -= pbuf->len;
+		pbuf = pbuf->next;
+	}
+	return pbuf;	// returns 0 at end of buffer
+}
+
+
+static void mqtt_term()
+{
+	log_dbug(TAG,"term");
+	if (Client->pcb) {
+		tcp_recv(Client->pcb,0);
+		tcp_poll(Client->pcb,0,0);
+		tcp_sent(Client->pcb,0);
+		tcp_err(Client->pcb,0);
+		tcp_abort(Client->pcb);
+		Client->pcb = 0;
+	}
+	Client->state = offline;
+}
+
+
+static void mqtt_restart()
+{
+	mqtt_term();
+	mqtt_start();
+}
+
+
+static int parse_publish(uint8_t *buf, unsigned rlen, uint8_t qos)
+{
+	unsigned tl = buf[0] << 8 | buf[1];
+	if ((tl + 2) > rlen) {
+		log_warn(TAG,"pub invalid length %u",tl);
+		return -1;
+	}
+	estring topic((char*)buf+2,tl);
+	auto x = Client->subscriptions.find(topic);
+	if (x != Client->subscriptions.end()) {
+		uint8_t *pl = buf+2+tl;
+		size_t ps = rlen - 2 -tl;
+		if (qos) {
+			// packet id for qos != 0
+			pl += 2;
+			ps -= 2;
+		}
+		log_dbug(TAG,"pub topic %s %u",topic.c_str(),ps);
+		x->second(topic.c_str(),pl,ps);
+	} else {
+		log_warn(TAG,"not subscribed to %s",topic.c_str());
+	}
+	return 0;
+}
+
+
+static void send_sub(const char *t, bool commit)
+{
+	size_t tl = strlen(t);
+	char request[tl+7];
+	char *b = request;
+	*b++ = SUBSCRIBE;
+	*b++ = sizeof(request) - 2;
+	uint16_t pkgid = ++Client->packetid;
+	*b++ = pkgid >> 8;
+	*b++ = pkgid & 0xff;
+	*b++ = 0;
+	*b++ = tl;
+	memcpy(b,t,tl);
+	b += tl;
+	*b++ = 0;	// qos = 0
+	assert(request+sizeof(request)==b);
+	log_dbug(TAG,"subscribe '%s', pkgid=%u",t,pkgid);
+	Client->subs.insert(make_pair(pkgid,t));
+	err_t e = tcp_write(Client->pcb,request,sizeof(request),TCP_WRITE_FLAG_COPY);
+	if (e) {
+		log_warn(TAG,"subscribe write %d",e);
+	} else if (commit) {
+		e = tcp_output(Client->pcb);
+		if (e)
+			log_warn(TAG,"subscribe output %d",e);
+	}
+}
+
+
+static void parse_suback(uint8_t *buf, size_t rlen)
+{
+	if (rlen == 3) {
+		uint16_t pid = buf[0] << 8 | buf[1];
+		log_dbug(TAG,"SUBACK %x",(unsigned)pid);
+		if (buf[2] & 0x80) {
+			const char *t = "<unknown>";
+			auto x = Client->subs.find(pid);
+			if (x != Client->subs.end())
+				t = x->second;
+			log_warn(TAG,"subscription for pid %x, topic %s failed",(unsigned)pid,t);
+		}
+		if (0 == Client->subs.erase(pid))
+			log_warn(TAG,"got suback for unknown pid %x",(unsigned)pid);
+	} else {
+		log_warn(TAG,"suback with invalid rlen %u",rlen);
+	}
+
+}
+
+
+static err_t handle_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *pbuf, err_t e)
+{
+	if (e) {
+		log_warn(TAG,"recv error %d",e);
+		return 0;
+	}
+	assert(pcb);
+	if (0 == pbuf) {
+		// connection has been closed
+		log_warn(TAG,"connection closed");
+		mqtt_restart();
+		return 0;
+	}
+//	log_dbug(TAG,"recv %u/%u: %d",pbuf->len,pbuf->tot_len,e);
+	if (pbuf->len == 0)
+		return 0;
+	unsigned off = 0, tlen = pbuf->tot_len;
+	int r = 0;
+	do {
+		uint8_t type = *pbuf_at(pbuf,off);
+		unsigned rlen = *pbuf_at(pbuf,++off);
+		if (rlen & 0x80) {
+			rlen &= 0x7f;
+			uint8_t tmp = *pbuf_at(pbuf,++off);
+			if (tmp & 0x80) {
+				log_dbug(TAG,"remain length too big");
+				pbuf_free(pbuf);
+				mqtt_restart();
+				return -1;
+			}
+			rlen |= tmp << 7;
+		}
+//		log_dbug(TAG,"rlen = %u",rlen);
+		bool alloc = false;
+		uint8_t *buf = pbuf_at(pbuf,++off);
+		if (pbuf_of(pbuf,off) != pbuf_of(pbuf,off+rlen-1)) {
+			// packet data spans accross multiple pbuf
+			alloc = true;
+			buf = (uint8_t *)malloc(rlen);
+			cpypbuf(buf,pbuf,off,rlen);
+		}
+		off += rlen;
+		switch (type & 0xf0) {
+		case CONACK:
+			log_dbug(TAG,"CONACK");
+			Client->state = running;
+			mqtt_pub("version",VERSION,0,1,1);
+			mqtt_pub("reset_reason",ResetReasons[(int)esp_reset_reason()],0,1,1);
+			if (!Client->subscriptions.empty()) {
+				for (const auto &s : Client->subscriptions)
+					send_sub(s.first.c_str(),false);
+				tcp_output(pcb);
+			}
+			break;
+		case PUBLISH:
+			log_dbug(TAG,"PUBLISH");
+			r = parse_publish(buf,rlen,(type >> 1) & 0x3);
+			break;
+		case PUBACK:
+			log_dbug(TAG,"PUBACK");
+			break;
+		case SUBACK:
+			parse_suback(buf,rlen);
+			break;
+		default:
+			log_dbug(TAG,"unexpected response %u",buf[0]);
+		}
+		if (alloc)
+			free(buf);
+		if (r < 0) {
+			pbuf_free(pbuf);
+			mqtt_restart();
+			return -1;
+		}
+//		log_dbug(TAG,"advance %u != %u",off,tlen);
+	} while (off != tlen);
+	tcp_recved(pcb,tlen);
+	pbuf_free(pbuf);
+	return r;
+}
+
+
+static err_t handle_poll(void *arg, struct tcp_pcb *pcb)
+{
+	//log_dbug(TAG,"poll %p",pcb);
+	return 0;
+}
+
+
+static err_t handle_sent(void *arg, struct tcp_pcb *pcb, u16_t l)
+{
+//	log_dbug(TAG,"sent %p %u",pcb,l);
+	return 0;
+}
+
+
+static void handle_err(void *arg, err_t e)
+{
+	log_warn(TAG,"handle error %d",e);
+	mqtt_restart();
+}
+
+
+static err_t handle_connect(void *arg, struct tcp_pcb *pcb, err_t x)
+{
+	if (x) {
+		log_warn(TAG,"connect error %d",x);
+		Client->state = offline;
+		tcp_close(pcb);
+		return 0;
+	}
+	log_dbug(TAG,"connect %u",tcp_sndbuf(pcb));
+	tcp_recv(pcb,handle_recv);
+	tcp_sent(pcb,handle_sent);
+	tcp_poll(pcb,handle_poll,2);
+	uint8_t flags = 2;	// start with a clean session
+	const auto &mqtt = Config.mqtt();
+	size_t us = mqtt.username().size();
+	if (us)
+		flags |= 0x40;
+	size_t ps = mqtt.password().size();
+	if (ps)
+		flags |= 0x80;
+	size_t ns = Config.nodename().size();
+	char tmp[(us ? us+2 : 0) + (ps ? ps+2 : 0) + ns + 14];
+	char *b = tmp;
+	*b++ = CONNECT;		// MQTT connect
+	*b++ = sizeof(tmp) - 2;	// length of request
+	*b++ = 0x0;		// protocol name length high-byte
+	*b++ = 0x4;		// protocol name length low-byte
+	*b++ = 'M';
+	*b++ = 'Q';
+	*b++ = 'T';
+	*b++ = 'T';
+	*b++ = 4;	// protocol version
+	*b++ = flags;
+	*b++ = 0;	// timeout MSB
+	*b++ = 60;	// timeout LSB
+	*b++ = (ns>>8)&0xff;	// client-name length MSB
+	*b++ = ns & 0xff;	// client-name length LSB
+	memcpy(b,Config.nodename().data(),ns);
+	b += ns;
+	if (us) {	// has username
+		*b++ = 0;
+		*b++ = us;
+		memcpy(b,mqtt.username().data(),us);
+		b += us;
+	}
+	if (ps) {	// has password
+		*b++ = 0;	// password length MSB
+		*b++ = ps;	// password length LSB
+		memcpy(b,mqtt.password().data(),ps);
+		//b += ps;
+	}
+	log_dbug(TAG,"connect write %d",sizeof(tmp));
+	err_t e = tcp_write(pcb,tmp,sizeof(tmp),TCP_WRITE_FLAG_COPY);
+	if (e) {
+		log_warn(TAG,"connect: write error %d",e);
+		return e;
+	}
+	e = tcp_output(pcb);
+	if (e)
+		log_warn(TAG,"connect: output error %d",e);
+	return e;
+}
+
+
+int mqtt_pub(const char *t, const char *v, int len, int retain, int qos)
+{
+	if (Client == 0)
+		return 1;
+	if (Client->state != running)
+		return 1;
+	if ((len == 0) && (v != 0))
+		len = strlen(v);
+	bool more = (qos & 0x4) != 0;
+	qos &= 0x3;
+	const char *hn = Config.nodename().c_str();
+	size_t hl = Config.nodename().size();
+	size_t tl = strlen(t);
+	char request[len+hl+tl+5];
+	char *b = request;
+	qos = 0;	// TODO
+	*b++ = PUBLISH | (qos << 1) | retain;
+	*b++ = sizeof(request)-2;
+	*b++ = 0;
+	*b++ = hl+tl+1;
+	memcpy(b,hn,hl);
+	b += hl;
+	*b++ = '/';
+	memcpy(b,t,tl);
+	b += tl;
+	if (qos) {
+		// TODO qos: add packet id
+	}
+	memcpy(b,v,len);
+	log_dbug(TAG,"publish %s",t);
+	xSemaphoreTake(Client->mtx,portMAX_DELAY);
+	uint8_t flags = TCP_WRITE_FLAG_COPY;
+	if (more)
+		flags |= TCP_WRITE_FLAG_MORE;
+	err_t e = tcp_write(Client->pcb,request,sizeof(request),flags);
+	if (e) {
+		log_warn(TAG,"pub write %d",e);
+	} else if (!more)  {
+		e = tcp_output(Client->pcb);
+		if (e)
+			log_warn(TAG,"pub output %d",e);
+	}
+	xSemaphoreGive(Client->mtx);
+	return 0;
+}
+
+
+static void pub_element(JsonElement *e, const char *parent = "")
+{
+	size_t pl = strlen(parent);
+	const char *en = e->name();
+	size_t nl = strlen(en);
+	char name[pl+nl+2];
+	if (pl) {
+		memcpy(name,parent,pl);
+		name[pl] = '/';
+		memcpy(name+pl+1,en,nl+1);
+	} else {
+		memcpy(name,en,nl+1);
+	}
+	char buf[128];
+	mstream str(buf,sizeof(buf));
+	e->writeValue(str);
+	if (const char *dim = e->getDimension()) {
+		str << ' ';
+		str << dim;
+	}
+	mqtt_pub(name,str.c_str(),str.size(),0,4);
+}
+
+
+static void mqtt_pub_uptime(void * = 0)
+{
+	if ((Client == 0) || (Client->state != running))
+		return;
+#ifdef _POSIX_MONOTONIC_CLOCK
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC,&ts);
+	uint32_t uptime = ts.tv_sec;
+#else
+	uint64_t uptime = clock() / CLOCKS_PER_SEC;
+#endif
+	unsigned d = uptime/(60*60*24);
+	uptime -= d*(60*60*24);
+	unsigned h = uptime/(60*60);
+	uptime -= h*60*60;
+	unsigned m = uptime/60;
+	unsigned t = m + h * 60 + d * 60 * 24;
+	int n = 0;
+	char value[32];
+	if (t != Client->ltime) {
+		Client->ltime = t;
+		if (d > 0)
+			n = snprintf(value,sizeof(value),"%u days, ",d);
+		n += snprintf(value+n,sizeof(value)-n,"%d:%02u",h,m);
+	}
+	if ((n > 0) && (n <= sizeof(value))) {
+		if (err_t e = mqtt_pub("uptime",value,n,0,4))
+			log_warn(TAG,"publish 'uptime' failed: %d",e);
+		else
+			log_dbug(TAG,"published uptime %s",value);
+	}
+}
+
+
+void mqtt_pub_rtdata(void *)
+{
+	if ((Client == 0) || (Client->state != running)) {
+		if (Config.mqtt().enable() && ((Client == 0) || (Client->state == offline)))
+			mqtt_start();
+		return;
+	}
+	mqtt_pub_uptime();
+	rtd_lock();
+	rtd_update();
+	JsonElement *e = RTData->first();
+	while (e) {
+		const char *n = e->name();
+		if (!strcmp(n,"node") || !strcmp(n,"version") || !strcmp(n,"reset_reason")) {
+			// skip
+		} else if (JsonObject *o = e->toObject()) {
+			const char *n = e->name();
+			JsonElement *c = o->first();
+			while (c) {
+				pub_element(c,n);
+				c = c->next();
+			}
+		} else {
+			pub_element(e);
+		}
+		e = e->next();
+	}
+	rtd_unlock();
+	tcp_output(Client->pcb);
+}
+
+
+int mqtt_sub(const char *t, void (*callback)(const char *,const void *,size_t))
+{
+	if (Client == 0) {
+		log_warn(TAG,"subscribe: not initialized");
+		return 1;
+	}
+	const char *hn = Config.nodename().c_str();
+	size_t hl = strlen(hn);
+	size_t tl = strlen(t);
+	char topic[hl+tl+2];
+	memcpy(topic,hn,hl);
+	topic[hl] = '/';
+	memcpy(topic+hl+1,t,tl+1);
+	log_dbug(TAG,"subscribe %s",topic);
+	xSemaphoreTake(Client->mtx,portMAX_DELAY);
+	Client->subscriptions.insert(make_pair((estring)topic,callback));
+	if (Client->state == running)
+		send_sub(topic,true);
+	xSemaphoreGive(Client->mtx);
+	return 0;
+}
+
+
+void mqtt_stop(void *arg)
+{
+	if ((Client == 0) || (Client->state == offline))
+		return;
+	log_dbug(TAG,"stop");
+	xSemaphoreTake(Client->mtx,portMAX_DELAY);
+	char request[] { DISCONNECT, 0 };
+	err_t e = tcp_write(Client->pcb,request,sizeof(request),TCP_WRITE_FLAG_COPY);
+	if (e)
+		log_warn(TAG,"write DISCONNECT %d",e);
+	else
+		tcp_output(Client->pcb);
+	e = tcp_close(Client->pcb);
+	if (e)
+		log_warn(TAG,"stop: close error %d",e);
+	mqtt_term();
+	xSemaphoreGive(Client->mtx);
+}
+
+
+void mqtt_start(void *arg)
+{
+	log_dbug(TAG,"start");
+	const auto &mqtt = Config.mqtt();
+	if (!mqtt.has_uri() || !mqtt.enable() || !Config.has_nodename()) {
+		log_warn(TAG,"incomplete config");
+		return;
+	}
+	if (Client == 0)
+		mqtt_setup();
+	else if (Client->state != offline) {
+		log_warn(TAG,"not offline");
+		return;
+	}
+	const char *uri = mqtt.uri().c_str();
+	if (memcmp(uri,"mqtt://",7)) {
+		log_warn(TAG,"invalid uri");
+		return;
+	}
+	char host[strlen(uri)-6];
+	strcpy(host,uri+7);
+	uint16_t port = 1883;
+	char *p = strrchr(host,':');
+	if (p) {
+		*p++ = 0;
+		char *e;
+		long l = strtol(p,&e,0);
+		if (p != e) {
+			if ((l < 0) || (l > UINT16_MAX)) {
+				log_warn(TAG,"port out of range");
+				return;
+			}
+			port = l;
+		} else {
+			log_warn(TAG,"invalid port");
+		}
+	}
+#ifdef CONFIG_IDF_TARGET_ESP32
+	ip_addr_t ip;
+	ip.type = IPADDR_TYPE_V4;
+	ip.u_addr.ip4.addr = resolve_hostname(host);
+	if ((ip.u_addr.ip4.addr == IPADDR_NONE) || (ip.u_addr.ip4.addr == 0)) {
+#else
+	ip4_addr_t ip;
+	ip.addr = resolve_hostname(host);
+	if ((ip.addr == IPADDR_NONE) || (ip.addr == 0)) {
+#endif
+		log_warn(TAG,"cannot resolve host: %s",host);
+		return;
+	}
+	Client->subs.clear();
+	if (Client->pcb)
+		tcp_abort(Client->pcb);
+	Client->pcb = tcp_new();
+	err_t e = tcp_connect(Client->pcb,&ip,port,handle_connect);
+	if (e)
+		log_warn(TAG,"tcp_connect: %d",e);
+	tcp_err(Client->pcb,handle_err);
+}
 
 
 #ifdef CONFIG_SIGNAL_PROC
@@ -98,367 +783,36 @@ void FnMqttSend::operator () (DataSignal *s)
 	mstream str(buf,sizeof(buf));
 	s->toStream(str);
 	log_dbug(TAG,"FnMqttSend: %s %s",s->signalName(),str.c_str());
-	mqtt_pub(s->signalName(),str.c_str(),str.size(),m_retain);
+	mqtt_pub(s->signalName(),str.c_str(),str.size(),m_retain,0);
 }
 #endif
-
-
-static void update_signal(const char *t, const void *d, size_t s)
-{
-	auto i = Values.find(t);
-	if (i == Values.end()) {
-		log_warn(TAG,"no value for topic %s",t);
-		return;
-	}
-	i->second.assign((const char *)d,s);
-	log_dbug(TAG,"topic %s update to '%.s'",t,s,d);
-}
-
-
-static void connect_cb(mqtt_client_t *client, void *arg, mqtt_connection_status_t status)
-{
-	log_dbug(TAG,"connection status %d",status);
-}
-
-
-static void request_cb(void *arg, err_t e)
-{
-	xSemaphoreGive(Sem);
-	//auto x = xSemaphoreGive(Sem);
-	//assert(x == pdTRUE); Not! May fail on timeout!
-}
-
-
-static void subscribe_cb(void *arg, err_t e)
-{
-	const char *topic = (const char *)arg;
-	log_dbug(TAG,"subscribe on %s returned %d",topic,e);
-	xSemaphoreGive(Sem);
-}
-
-
-static void incoming_data_cb(void *arg, const uint8_t *data, uint16_t len, uint8_t flags)
-{
-	log_dbug(TAG,"incoming data for %s",CurrentTopic.c_str());
-	auto i = Subscriptions.find(CurrentTopic);
-	if (i != Subscriptions.end())
-		i->second(CurrentTopic.c_str(),data,len);
-	else
-		log_warn(TAG,"unknown topic %s",CurrentTopic.c_str());
-}
-
-
-static void incoming_publish_cb(void *arg, const char *topic, unsigned len)
-{
-	CurrentTopic = topic;
-	log_dbug(TAG,"incoming topic %s",topic);
-}
-
-
-static void mqtt_pub_uptime(void * = 0)
-{
-	if ((Client == 0) || !mqtt_client_is_connected(Client))
-		return;
-#ifdef _POSIX_MONOTONIC_CLOCK
-	struct timespec ts;
-	clock_gettime(CLOCK_MONOTONIC,&ts);
-	uint32_t uptime = ts.tv_sec;
-#else
-	uint64_t uptime = clock() / CLOCKS_PER_SEC;
-#endif
-	unsigned d = uptime/(60*60*24);
-	uptime -= d*(60*60*24);
-	unsigned h = uptime/(60*60);
-	uptime -= h*60*60;
-	unsigned m = uptime/60;
-	unsigned t = m + h * 60 + d * 60 * 24;
-	int n = 0;
-	char value[32];
-	if (t != LTime) {
-		LTime = t;
-		if (d > 0)
-			n = snprintf(value,sizeof(value),"%u days, ",d);
-		n += snprintf(value+n,sizeof(value)-n,"%d:%02u",h,m);
-	}
-	if ((n > 0) && (n <= sizeof(value))) {
-		if (err_t e = mqtt_pub("uptime",value,n,0))
-			log_error(TAG,"publish failed: %d",e);
-		else
-			log_dbug(TAG,"published uptime %s",value);
-	}
-}
-
-
-static void mqtt_pub_dmesg(void *)
-{
-	xSemaphoreTake(DMtx,portMAX_DELAY);
-	if (!DMesg.empty()) {
-		mqtt_pub("dmesg",DMesg.c_str(),DMesg.size(),0);
-		DMesg.clear();
-	}
-	xSemaphoreGive(DMtx);
-}
-
-
-int mqtt_pub(const char *t, const char *v, int len, int retain)
-{
-	if (Client == 0)
-		return 1;
-	const char *hn = Config.nodename().c_str();
-	size_t hl = Config.nodename().size();
-	size_t tl = strlen(t);
-	char topic[hl+tl+2];
-	memcpy(topic,hn,hl);
-	topic[hl] = '/';
-	memcpy(topic+hl+1,t,tl+1);
-	if (pdFALSE == xSemaphoreTake(Mtx,20/portTICK_PERIOD_MS)) {
-	//if (pdFALSE == xSemaphoreTake(Mtx,portMAX_DELAY)) {
-		log_dbug(TAG,"publish '%s': mutex failure",topic);
-		return 1;
-	}
-	err_t e = mqtt_publish(Client,topic,v,len,0,retain,request_cb,0);
-	if (e) {
-		log_dbug(TAG,"publish '%s' returned %d",topic,e);
-	} else {
-//		Waiting for the final result may hang long!
-//		We want processing to continue.
-//		Therefore we don't gather the final result.
-//		Reporting the final result would require the callback
-//		to refer to data on heap and do a cleanup...
-//		But we should wait a little bit to take pressure
-//		from the TCP stack.
-		//auto x = xSemaphoreTake(Sem,20/portTICK_PERIOD_MS);
-		auto x = xSemaphoreTake(Sem,portMAX_DELAY);
-		log_dbug(TAG,"publish '%s' %s",topic,x ? "OK" : "timed out");
-	}
-	xSemaphoreGive(Mtx);
-	return e;
-}
-
-
-int mqtt_sub(const char *t, void (*callback)(const char *,const void *,size_t))
-{
-	if (Mtx == 0)	// subscription should be possible before mqtt is initialized!
-		Mtx = xSemaphoreCreateMutex();
-	const char *hn = Config.nodename().c_str();
-	size_t hl = strlen(hn);
-	if (hl == 0) {
-		log_error(TAG,"hostname not set");
-		return -1;
-	}
-	size_t tl = strlen(t);
-	char topic[hl+tl+2];
-	memcpy(topic,hn,hl);
-	topic[hl] = '/';
-	memcpy(topic+hl+1,t,tl+1);
-	log_dbug(TAG,"subscribe '%s'",topic);
-	xSemaphoreTake(Mtx,portMAX_DELAY);
-	Subscriptions.insert(make_pair((estring)topic,callback));
-	err_t e = 1;
-	if (Client != 0) {
-		e = mqtt_sub_unsub(Client,topic,0,subscribe_cb,(void*)topic,1);
-		if (e)
-			log_warn(TAG,"subscribe '%s' returned %d",topic,e);
-		else
-			xSemaphoreTake(Sem,portMAX_DELAY);
-	}
-	xSemaphoreGive(Mtx);
-	return e;
-
-}
-
-
-void mqtt_start(void)
-{
-	log_info(TAG,"start");
-	if (Client != 0)
-		log_warn(TAG,"already initialized");
-	if (!Config.has_mqtt()) {
-		log_warn(TAG,"not configured");
-		return;
-	}
-	if (!Config.mqtt().enable()) {
-		log_warn(TAG,"disabled");
-		return;
-	}
-	if (!Config.mqtt().has_uri()) {
-		log_warn(TAG,"no URI");
-		return;
-	}
-	if (!wifi_station_isup()) {
-		log_warn(TAG,"wifi station down");
-		return;
-	}
-	if (!Config.has_nodename()) {
-		log_error(TAG,"no nodename");
-		Config.mutable_mqtt()->set_enable(false);
-		return;
-	}
-	Lock lock(Mtx);
-	mqtt_connect_client_info_t ci;
-	memset(&ci,0,sizeof(ci));
-	ci.client_id = Config.nodename().c_str();
-	const MQTT &m = Config.mqtt();
-	if (m.has_username())
-		ci.client_user = m.username().c_str();
-	if (m.has_password())
-		ci.client_pass = m.password().c_str();
-	const char *u = m.uri().c_str();
-	if (strncmp(u,"mqtt://",7)) {
-		log_error(TAG,"invalid URI format");
-		return;
-	}
-	const char *h = u + 7;
-	const char *c = strchr(h,':');
-	long port = 1883;
-	size_t hl;
-	if (c != 0) {
-		long l = strtol(c+1,0,0);
-		if ((l <= 0) || (l > UINT16_MAX)) {
-			log_error(TAG,"invalid port");
-			return;
-		}
-		port = l;
-		hl = c-h;
-	} else
-		hl = strlen(h);
-	char hn[hl+1];
-	memcpy(hn,h,hl);
-	hn[hl] = 0;
-	uint32_t ip4 = resolve_hostname(hn);
-	if (ip4 == 0) {
-		log_error(TAG,"unable to resolve host %s",hn);
-		return;
-	}
-	ip_addr_t ip;
-#if defined CONFIG_LWIP_IPV6 || defined CONFIG_IDF_TARGET_ESP32
-	ip.type = IPADDR_TYPE_V4;
-	ip.u_addr.ip4.addr = ip4;
-#else
-	ip.addr = ip4;
-#endif
-	ci.client_id = Config.nodename().c_str();
-	ci.keep_alive = 30;
-	if (Client == 0)
-		Client = mqtt_client_new();
-	if (err_t e = mqtt_client_connect(Client,&ip,port,connect_cb,0,&ci)) {
-		log_error(TAG,"error connecting %d",e);
-		return;
-	}
-	mqtt_set_inpub_callback(Client,incoming_publish_cb,incoming_data_cb,0);
-	LTime = 0;
-	mqtt_pub("version",VERSION,strlen(VERSION),0);
-	for (const auto &s : Subscriptions) {
-		const char *topic = s.first.c_str();
-		if (err_t e = mqtt_sub_unsub(Client,topic,0,subscribe_cb,(void*)topic,1))
-			log_error(TAG,"subscribe %s: %d",topic,e);
-	}
-}
-
-
-void mqtt_stop(void)
-{
-	Lock lock(Mtx);
-	if (Client) {
-		mqtt_disconnect(Client);
-		free(Client);
-		Client = 0;
-	}
-}
-
-
-static void mqtt_startstop(void *a)
-{
-	if ((int)a) 
-		mqtt_start();
-	else
-		mqtt_stop();
-}
-
-
-void mqtt_set_dmesg(const char *m, size_t s)
-{
-	if (s > 120)
-		s = 120;
-	if (DMtx == 0)
-		DMtx = xSemaphoreCreateMutex();
-	xSemaphoreTake(DMtx,portMAX_DELAY);
-	DMesg.assign(m,s);
-	xSemaphoreGive(DMtx);
-}
-
-
-static void pub_element(JsonElement *e, const char *parent = "")
-{
-	char name[strlen(parent)+strlen(e->name())+2];
-	if (parent[0]) {
-		strcpy(name,parent);
-		strcat(name,"/");
-	} else {
-		name[0] = 0;
-	}
-	strcat(name,e->name());
-	char buf[128];
-	mstream str(buf,sizeof(buf));
-	e->writeValue(str);
-	if (const char *dim = e->getDimension()) {
-		str << ' ';
-		str << dim;
-	}
-	log_dbug(TAG,"pub_element '%s'",str.c_str());
-	mqtt_pub(name,str.c_str(),str.size(),0);
-}
-
-
-void mqtt_pub_rtdata(void *)
-{
-	if ((Client == 0) || !mqtt_client_is_connected(Client)) {
-		if (Config.mqtt().enable())
-			mqtt_start();
-		return;
-	}
-	mqtt_pub_uptime();
-	rtd_lock();
-	JsonElement *e = RTData->first();
-	while (e) {
-		if (JsonObject *o = e->toObject()) {
-			const char *n = e->name();
-			JsonElement *c = o->first();
-			while (c) {
-				pub_element(c,n);
-				c = c->next();
-			}
-		} else {
-			pub_element(e);
-		}
-		e = e->next();
-	}
-	rtd_unlock();
-}
 
 
 int mqtt_setup(void)
 {
-	Client = 0;
-	if (Mtx == 0)
-		Mtx = xSemaphoreCreateMutex();
-	if (DMtx == 0)
-		DMtx = xSemaphoreCreateMutex();
-	Sem = xSemaphoreCreateBinary();
-	action_add("mqtt!pub_rtdata",mqtt_pub_rtdata,0,"publish run-time data via MQTT");
-	action_add("mqtt!pub_dmesg",mqtt_pub_dmesg,0,"publish dmesg via MQTT");
+	if (!Config.has_mqtt())
+		return 0;
+	log_info(TAG,"setup");
+	action_add("mqtt!start",mqtt_start,0,"mqtt start");
+	action_add("mqtt!stop",mqtt_stop,0,"mqtt stop");
+	action_add("mqtt!pub_rtdata",mqtt_pub_rtdata,0,"mqtt publish data");
 #ifdef CONFIG_SIGNAL_PROC
 	new FuncFact<FnMqttSend>;
 #endif
-	action_add("mqtt!stop",mqtt_startstop,0,"mqtt stop");
-	Action *a = action_add("mqtt!start",mqtt_startstop,(void*)1,"mqtt start");
-	event_callback(StationUpEv,a);
-
-	if (Config.has_mqtt() && Config.mqtt().enable())
-		mqtt_start();
-	for (const auto &s : Config.mqtt().subscribtions())
-		mqtt_sub(s.c_str(),update_signal);
+	Client = new MqttClient;
 	return 0;
+}
+
+
+static void update_signal(const char *t, const void *d, size_t s)
+{
+	auto i = Client->values.find(t);
+	if (i == Client->values.end()) {
+		log_warn(TAG,"no value for topic %s",t);
+		return;
+	}
+	i->second.assign((const char *)d,s);
+	log_dbug(TAG,"topic %s update to '%.*s'",t,s,d);
 }
 
 
@@ -477,7 +831,7 @@ int mqtt(Terminal &term, int argc, const char *args[])
 				,m->username().c_str()
 				,m->password().c_str()
 				,m->enable() ? "en" : "dis"
-				,Client && mqtt_client_is_connected(Client) ? "" : "not ");
+				,Client && Client->state == running ? "" : "not ");
 		} else {
 			term.printf("not configured\n");
 		}
@@ -513,15 +867,17 @@ int mqtt(Terminal &term, int argc, const char *args[])
 	} else if (!strcmp(args[1],"stop")) {
 		mqtt_stop();
 	} else if (!strcmp(args[1],"sub")) {
+		if (Client == 0) {
+			term.println("not initialized");
+			return 1;
+		}
 		if (argc == 2) {
-			for (const auto &s : Subscriptions)
+			for (const auto &s : Client->subscriptions)
 				term.println(s.first.c_str());
 		} else {
-			for (const auto &s : m->subscribtions()) {
-				if (s == args[2]) {
-					term.println("already subscribed");
-					return 1;
-				}
+			if (Client->subscriptions.find(args[2]) != Client->subscriptions.end()) {
+				term.println("already subscribed");
+				return 1;
 			}
 			m->add_subscribtions(args[2]);
 			mqtt_sub(args[2],update_signal);

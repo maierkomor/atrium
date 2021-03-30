@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020, Thomas Maier-Komor
+ *  Copyright (C) 2020-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -966,6 +966,45 @@ int signal_add(const char *a)
 }
 
 
+void print_hex(uint8_t *b, size_t s, size_t off = 0)
+{
+	uint8_t *a = b, *e = b + s;
+	while (a+16 <= e) {
+		printf("%02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx  %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx %02hhx\n"
+			, a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]
+			, a[8], a[9], a[10], a[11], a[12], a[13], a[14], a[15]);
+		a += 16;
+	}
+	if (a == e)
+		return;
+	int i = 0;
+	while (a < e) {
+		printf("%02hhx%s",*a,i == 7 ? "  " : " ");
+		++i;
+		++a;
+	}
+	printf("\n");
+}
+
+
+int print_hex(const char *ignored)
+{
+	size_t s;
+	if (Software)
+		s = NodeCfg.calcSize();
+	else
+		s = HwCfg.calcSize();
+	uint8_t *b = (uint8_t*)malloc(s);
+	if (Software)
+		NodeCfg.toMemory(b,s);
+	else
+		HwCfg.toMemory(b,s);
+	print_hex(b,s);
+	free(b);
+	return 0;
+}
+
+
 int print_size(const char *ignored)
 {
 	printf("node.cfg has %zu bytes\n",NodeCfg.calcSize());
@@ -973,68 +1012,53 @@ int print_size(const char *ignored)
 	return 0;
 }
 
+int print_help(const char *arg);
+
+struct FuncDesc
+{
+	const char *name;
+	int (*func)(const char *);
+	const char *help;
+};
+
+
+FuncDesc Functions[] = {
+	{ "help",	print_help,	"display this help" },
+	{ "?",		print_help,	"display this help" },
+	{ "add",	add_field,	"add element to array" },
+	{ "clear",	clear_config,	"clear (sub)config" },
+	{ "exit",	term,		"terminate" },
+	{ "file",	set_filename,	"set name of current file" },
+	{ "flashnvs",	flashnvs,	"flash binary file <binfile> to NVS partition" },
+	{ "function",	function,	"add function named <f> of type <t> with params {p}" },
+	{ "genpart",	genpart,	"generate an NVS partition from current config" },
+	{ "hw",		to_hw,		"switch to hardware configuration" },
+	{ "idf",	set_idf,	"set directory of IDF to <path>" },
+	{ "json",	json_config,	"output current config as JSON" },
+	{ "nvsaddr",	nvsaddr,	"set address of NVS partition" },
+	{ "passwd",	set_password,	"-c to clear password hash, otherwise calc hash from <pass>" },
+	{ "port",	setport,	"set port for flash programming (default: /dev/ttyUSB0)" },
+	{ "print",	show_config,	"print currecnt configuration" },
+	{ "quit",	term,		"alias to exit" },
+	{ "read",	read_config,	"read config from file <filename>" },
+	{ "set",	set_config,	"set field <f> to value <v>" },
+	{ "show",	show_config,	"print current configuration" },
+	{ "signal",	signal_add,	"add signal with name <s> and type <t> and initival value <i>" },
+	{ "size",	print_size,	"print size of current configuration" },
+	{ "sw",		to_sw,		"switch to software configuration" },
+	{ "updatenvs",	updatenvs,	"update NVS partition on target with currenct configuration" },
+	{ "verify",	verify_config,	"perform some sanity checks on current config" },
+	{ "write",	write_config,	"write config to file <filename>" },
+	{ "xxd" ,	print_hex,	"print ASCII hex dump of config" },
+};
+
 
 int print_help(const char *arg)
 {
-	printf(	"help                 : display this help\n"
-		"add <fieldname>      : add element to array\n"
-		"signal <s> <t> [<i>] : add signal with name <s> and type <t> and initival value <i>\n"
-		"function <f> <t> {p} : add function named <f> of type <t> with params {p}\n"
-		//"functions            : list available function types\n"
-		"clear                : clear config\n"
-		"exit                 : terminate\n"
-		"file <name>          : set current file to filename\n"
-		"flashnvs <binfile>   : flash binary file <binfile> to NVS partition\n"
-		"genpart <bindf>      : generate an NVS partition from current config\n"
-		"hw                   : switch to hardware configuration\n"
-		"idf <path>           : set directory of IDF to <path>\n"
-		"nvsaddr [<addr>]     : set address of NVS partition\n"
-		"json                 : output current config as JSON\n"
-		"passwd {-c|<pass>}   : -c to clear password hash, otherwise calc hash from <pass>\n"
-		"port <p>             : set target communication port to <p> (default: /dev/ttyUSB0)\n"
-		"print                : print currecnt configuration\n"
-		"quit                 : alias to exit\n"
-		"read [<file>]        : read config from file <filename>\n"
-		"set <f> <v>          : set field <f> to value <v>\n"
-		"show                 : print current configuration\n"
-		"size                 : print size of current configuration\n"
-		"sw                   : switch to software configuration\n"
-		"updatenvs            : update NVS partition on target with currenct configuration\n"
-		"verify               : perform some sanity checks on current config\n"
-		"write [<file>]       : write config to file <filename>\n"
-	      );
+	for (const auto &p : Functions)
+		printf("%-10s: %s\n",p.name,p.help);
 	return 0;
 }
-
-
-pair<const char *, int (*)(const char *)> Functions[] = {
-	{ "help", print_help },
-	{ "?", print_help },
-	{ "add", add_field },
-	{ "clear", clear_config },
-	{ "exit", term },
-	{ "file", set_filename },
-	{ "flashnvs", flashnvs },
-	{ "function", function },
-	{ "genpart", genpart },
-	{ "hw", to_hw },
-	{ "idf", set_idf },
-	{ "json", json_config },
-	{ "nvsaddr", nvsaddr },
-	{ "passwd", set_password },
-	{ "port", setport },
-	{ "print", show_config },
-	{ "quit", term },
-	{ "read", read_config },
-	{ "set", set_config },
-	{ "show", show_config },
-	{ "signal", signal_add },
-	{ "size", print_size },
-	{ "sw", to_sw },
-	{ "updatenvs", updatenvs },
-	{ "verify", verify_config },
-	{ "write", write_config },
-};
 
 
 void readSettings()
@@ -1205,8 +1229,8 @@ int main(int argc, char **argv)
 		char *arg = strtok(0," \t");
 		bool found = false;
 		for (int i = 0; i < sizeof(Functions)/sizeof(Functions[0]); ++i) {
-			if (!strcmp(Functions[i].first,cmd)) {
-				int r = Functions[i].second(arg);
+			if (!strcmp(Functions[i].name,cmd)) {
+				int r = Functions[i].func(arg);
 				printf("%s\n",r ? "Error" : "OK");
 				found = true;
 				break;

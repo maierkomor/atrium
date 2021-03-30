@@ -280,8 +280,10 @@ timefuse_t timefuse_create(const char *n, uint32_t d_ms, bool repeat)
 	if ((timeout == 0) || (stopped == 0) || (started == 0))
 		return 0;
 	TimerHandle_t id = xTimerCreate(n,pdMS_TO_TICKS(d_ms),repeat,(void*)(int)timeout,trigger_timeout);
-	if (id == 0)
+	if (id == 0) {
+		log_warn(TAG,"create %s failed",n);
 		return 0;
+	}
 	Lock lock(Mtx);
 	Timer *t = new Timer(strdup(n),id,started,stopped,timeout,Timers);
 	if (t != 0) {

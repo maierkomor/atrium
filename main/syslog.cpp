@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -20,202 +20,322 @@
 
 #ifdef CONFIG_SYSLOG
 
+#include "actions.h"
 #include "binformats.h"
+#include "event.h"
 #include "globals.h"
 #include "log.h"
 #include "netsvc.h"
+#include "shell.h"
+#include "terminal.h"
 #include "wifi.h"
 #include "versions.h"
 
 #include <string.h>
 
 #include <lwip/udp.h>
-#include <sys/socket.h>
+#include <lwip/dns.h>
+#include <lwip/pbuf.h>
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <freertos/task.h>
 
 #define SYSLOG_PORT 514
-#define BUF_SIZE 256
+#define PBUF_SIZE 256
+#define MAX_FRAME_SIZE 1472
 
-struct syslog_elem
+struct LogMsg
 {
-	syslog_elem()
-	{
-	}
-	struct timeval tv;
+	LogMsg *next;
+	uint32_t ts;
 	const char *a;
-	char msg[LOG_MAXLEN+1];
-	size_t ml;
+	char *msg;
+	uint8_t ml;
 	log_level_t lvl;
+	bool ntp;			// true: sec sind 1970, false msec since start
+	bool sent;
 };
 
-static char TAG[] = "rlog";
-static SemaphoreHandle_t SyslogLock, SyslogBufSem, SyslogSendSem;
-static syslog_elem SyslogQ[8];
-static uint8_t SyslogIn = 0, SyslogOut = 0;
-static bool SyslogRunning = false;
-static int LastErr = 0;
-static unsigned Skipped = 0;
+struct Syslog
+{
+	Syslog()
+	: mtx(xSemaphoreCreateMutex())
+	{ }
 
+	ip_addr_t addr;
+	struct udp_pcb *pcb = 0;
+	char *buf = 0;
+	LogMsg *first = 0, *last = 0;
+	uint16_t alloc = 0;
+	uint16_t unsent = 0, overwr = 0;
+	event_t ev = 0;
+	SemaphoreHandle_t mtx;
+};
+
+static const char TAG[] = "rlog";
+static Syslog *Ctx = 0;
+
+
+static void syslog_start(void*);
+
+
+static int sendmsg(LogMsg *m)
+{
+	if (Ctx->pcb == 0) {
+		if (!wifi_station_isup())
+			return 1;
+		syslog_start(0);
+		if (Ctx->pcb == 0)
+			return 1;
+	}
+//	log_dbug(TAG,"sendmsg %p,%p",m,Ctx->pcb);
+	const char *hn = Config.nodename().c_str();
+	size_t hs = Config.nodename().size();
+	int n;
+	size_t s = m->ml+64;
+	struct pbuf *pbuf = pbuf_alloc(PBUF_TRANSPORT, s, PBUF_RAM);
+	if (m->ntp) {
+		struct tm tm;
+		time_t ts = m->ts;
+		gmtime_r(&ts,&tm);
+		n = snprintf((char*)pbuf->payload,s,"<%d>1 %4u-%02u-%02uT%02u:%02u:%02u.%03u %.*s %s - - - %.*s"
+			, 16 << 3 | (m->lvl+3)	// facility local use = 16, pri = (facility)<<3|serverity
+			, tm.tm_year+1900, tm.tm_mon+1, tm.tm_mday
+			, tm.tm_hour, tm.tm_min, tm.tm_sec, m->ts%1000
+			, hs
+			, hn
+			, m->a
+			, m->ml
+			, m->msg
+			);
+	} else {
+		n = snprintf((char*)pbuf->payload,s,"<%d>1 - %.*s %s - - - %.*s"
+			, 16 << 3 | (m->lvl+3)	// facility local use = 16, pri = (facility)<<3|serverity
+			, hs
+			, hn
+			, m->a
+			, m->ml
+			, m->msg
+			);
+	}
+	if (n > s) {
+		// pbuf too small
+		n = m->ml+64;
+	}
+	err_t e = 0;
+	if (n > 0) {
+		pbuf->tot_len = n;
+		pbuf->len = n;
+		e = udp_sendto(Ctx->pcb,pbuf,&Ctx->addr,SYSLOG_PORT);
+		if (0 == e) {
+			m->sent = true;
+			--Ctx->unsent;
+		} else {
+			log_dbug(TAG,"sendto %d",e);
+		}
+	}
+	pbuf_free(pbuf);
+	return e;
+}
+
+
+static void sendall(void * = 0)
+{
+	if (Ctx->pcb == 0) {
+//		log_dbug(TAG,"no pcb");
+		return;
+	}
+#ifdef CONFIG_IDF_TARGET_ESP32
+	if ((Ctx->addr.u_addr.ip4.addr == 0) || (Ctx->unsent == 0))
+#else
+	if ((Ctx->addr.addr == 0) || (Ctx->unsent == 0))
+#endif
+	{
+//		log_dbug(TAG,"no IP");
+		return;
+	}
+	unsigned x = 0;
+	xSemaphoreTake(Ctx->mtx,portMAX_DELAY);
+	LogMsg *m = Ctx->first;
+	while (m) {
+		if (!m->sent) {
+			if (0 != sendmsg(m)) {
+				if (x) {
+					vTaskDelay(1);	// needed for UDP stack to catch up
+					continue;
+				} else
+					break;
+			}
+			++x;
+#ifdef CONFIG_IDF_TARGET_ESP8266
+//			vTaskDelay(2);	// needed for the UDP transmission
+#endif
+		}
+		m = m->next;
+	}
+	xSemaphoreGive(Ctx->mtx);
+	log_dbug(TAG,"sent %u log messages",x);
+}
+
+
+static void syslog_start(void*)
+{
+	const char *host = Config.syslog_host().c_str();
+	log_dbug(TAG,"host %s",host);
+	uint32_t ip4 = resolve_hostname(host);
+#ifdef CONFIG_IDF_TARGET_ESP32
+	Ctx->addr.u_addr.ip4.addr = ip4;
+	Ctx->addr.type = IPADDR_TYPE_V4;
+	if ((Ctx->addr.u_addr.ip4.addr == IPADDR_NONE) || (Ctx->addr.u_addr.ip4.addr == 0))
+#else
+	Ctx->addr.addr = ip4;
+	if ((Ctx->addr.addr == IPADDR_NONE) || (Ctx->addr.addr == 0))
+#endif
+	{
+		log_dbug(TAG,"error resolving: %s",host);
+		return;
+	}
+	log_dbug(TAG,"IP %d.%d.%d.%d",ip4&0xff,(ip4>>8)&0xff,(ip4>>16)&0xff,(ip4>>24)&0xff);
+	Lock lock(Ctx->mtx);
+	if (Ctx->pcb)
+		udp_remove(Ctx->pcb);
+	Ctx->pcb = udp_new();
+	ip_addr_t ip;
+	ip = *IP4_ADDR_ANY;
+#ifdef CONFIG_IDF_TARGET_ESP32
+	ip.type = IPADDR_TYPE_V4;
+#endif
+	if (err_t e = udp_bind(Ctx->pcb,&ip,0))	// 0: sending port can be any port
+		log_warn(TAG,"udp_bind %d",e);
+	event_trigger(Ctx->ev);
+}
 
 extern "C"
 void log_syslog(log_level_t lvl, const char *a, const char *msg, size_t ml)
 {
-	if (!SyslogRunning)
-		return;
 	// header: pri version timestamp hostname app-name procid msgid
+	if ((Ctx == 0) || (a == TAG))
+		return;
 	struct timeval tv;
 	tv.tv_sec = 0;
 	gettimeofday(&tv,0);
-	if (pdFALSE == xSemaphoreTake(SyslogBufSem,50/portTICK_PERIOD_MS)) {
-//		con_print("syslog skip");
-		++Skipped;
+	xSemaphoreTake(Ctx->mtx,portMAX_DELAY);
+	LogMsg *m;
+	if (Ctx->alloc + 128 > Config.dmesg_size()) {
+		if (Ctx->first == Ctx->last) {
+			m = Ctx->first;
+		} else {
+			m = Ctx->first;
+			Ctx->first = m->next;
+			Ctx->last->next = m;
+			Ctx->last = m;
+			Ctx->alloc -= m->ml;
+			m->msg = (char*)realloc(m->msg,ml);
+			if (!m->sent) {
+				--Ctx->unsent;
+				++Ctx->overwr;
+			}
+		}
 	} else {
-		xSemaphoreTake(SyslogLock,portMAX_DELAY);
-		syslog_elem *e = SyslogQ+SyslogIn;
-		++SyslogIn;
-		if (SyslogIn == sizeof(SyslogQ)/sizeof(SyslogQ[0]))
-			SyslogIn = 0;
-		e->lvl = lvl;
-		e->tv = tv;
-		e->a = a;
-		assert(ml<=LOG_MAXLEN);
-		e->ml = ml;
-		memcpy(e->msg,msg,ml+1);
-		xSemaphoreGive(SyslogLock);
-		xSemaphoreGive(SyslogSendSem);
+		m = new LogMsg;
+		m->msg = (char*)malloc(ml);
+		if (Ctx->last) {
+			Ctx->last->next = m;
+			Ctx->last = m;
+		} else {
+			Ctx->first = m;
+			Ctx->last = m;
+		}
+		Ctx->alloc += sizeof(LogMsg);
 	}
+	m->lvl = lvl;
+	m->ml = ml;
+	m->next = 0;
+	Ctx->alloc += ml;
+	m->a = a;
+	memcpy(m->msg,msg,ml);
+	m->ntp = tv.tv_sec > 10000000;
+	if (m->ntp)
+		m->ts = tv.tv_sec;
+	else
+		m->ts = tv.tv_sec * 1000 + tv.tv_usec/1000;
+	m->sent = false;
+	++Ctx->unsent;
+	event_trigger(Ctx->ev);
+	xSemaphoreGive(Ctx->mtx);
 }
 
 
-static void report_error(int s, const char *m)
+int dmesg(Terminal &term, int argc, const char *args[])
 {
-	int errcode;
-	uint32_t optlen = sizeof(int);
-	int err = getsockopt(s, SOL_SOCKET, SO_ERROR, &errcode, &optlen);
-	const char *errstr;
-	if (err == -1) {
-		if (LastErr == -1)
-			return;
-		errstr = "unable to determine error";
-		LastErr = -1;
-	} else {
-		if (LastErr == errcode)
-			return;
-		errstr = strerror(errcode);
-		LastErr = errcode;
+	if (argc > 2) {
+		term.printf("invalid number of arguments\n");
+		return 1;
 	}
-	if (errstr == 0)
-		errstr = "unknown error";
-	log_error(TAG,"%s: %s",m,errstr);
+	if (argc == 2) {
+		char *eptr;
+		long l = strtol(args[1],&eptr,0);
+		if ((eptr == args[1]) || (l < 0)) {
+			return arg_invalid(term,args[1]);
+		}
+		if (((l > 0) && (l < 512)) || (l > UINT16_MAX))
+			return arg_invalid(term,args[1]);
+		Config.set_dmesg_size(l);
+		return 0;
+	}
+	if (Ctx == 0) {
+		term.printf("dmesg is inactive\n");
+		return 1;
+	}
+	Lock lock(Ctx->mtx);
+	LogMsg *m = Ctx->first;
+	term.printf("%u bytes, %u queued, %u overwritten\n",Ctx->alloc,Ctx->unsent,Ctx->overwr);
+	while (m) {
+		if (m->ntp) {
+			struct tm tm;
+			time_t ts = m->ts;
+			gmtime_r(&ts,&tm);
+			term.printf("%c %02u:%02u:%02u.%03lu %-8s: %.*s\n"
+				, m->sent ? ' ' : '*'
+				, tm.tm_hour, tm.tm_min, tm.tm_sec, m->ts%1000
+				, m->a
+				, m->ml
+				, m->msg
+				);
+		} else {
+			term.printf("%c %8u.%03lu %-8s: %.*s\n"
+				, m->sent ? ' ' : '*'
+				, m->ts/1000, m->ts%1000
+				, m->a
+				, m->ml
+				, m->msg
+				);
+		}
+		m = m->next;
+	}
+	return 0;
 }
 
 
-static void syslog(void *param)
+int dmesg_setup()
 {
-	log_info(TAG,"starting...");
-	char buf[BUF_SIZE];
-	for (;;) {
-		if (!Config.has_syslog_host()) {
-			vTaskDelay(3000/portTICK_PERIOD_MS);
-			continue;
-		}
-		wifi_wait();
-		int sock = socket(AF_INET,SOCK_DGRAM,IPPROTO_UDP);
-		if (sock == -1) {
-			if (-2 != LastErr) {
-				log_error(TAG,"unable to create socket");
-				LastErr = -2;
-			}
-			vTaskDelay(3000/portTICK_PERIOD_MS);
-			continue;
-		}
-		const char *hn = Config.nodename().c_str();
-		size_t hs = Config.nodename().size();
-		struct sockaddr_in sin, addr;
-		int r;
-		bzero(&sin,sizeof(sin));
-		sin.sin_family = AF_INET;
-		sin.sin_port = htons(SYSLOG_PORT);
-		sin.sin_addr.s_addr = htonl(INADDR_ANY);
-		if (-1 == bind(sock,(struct sockaddr *)&sin,sizeof(sin)))
-			report_error(sock,"bind failed");
-		in_addr_t ip = resolve_hostname(Config.syslog_host().c_str());
-		if ((ip == INADDR_NONE) || (ip == 0)) {
-			if (-3 != LastErr) {
-				log_error(TAG,"unable to resolve host %s",Config.syslog_host().c_str());
-				LastErr = -3;
-			}
-			goto restart;
-		}
-		bzero(&addr,sizeof(addr));
-		addr.sin_family = AF_INET;
-		addr.sin_addr.s_addr = ip;
-		addr.sin_port = htons(SYSLOG_PORT);
-		log_info(TAG,"ready");
-		SyslogRunning = true;
-		log_info(TAG,"Atrium version " VERSION);
-		do {
-			xSemaphoreTake(SyslogSendSem,portMAX_DELAY);
-			syslog_elem *e = SyslogQ+SyslogOut;
-			size_t n;
-			if (e->tv.tv_sec < 1E6) {
-				n = snprintf(buf,sizeof(buf),"<%d>1 - %.*s %s - - - %.*s"
-					, 16 << 3 | (e->lvl+3)	// facility local use = 16, pri = (facility)<<3|serverity
-					, hs
-					, hn
-					, e->a
-					, e->ml
-					, e->msg
-					);
-			} else {
-				struct tm tm;
-				gmtime_r(&e->tv.tv_sec,&tm);
-				n = snprintf(buf,sizeof(buf),"<%d>1 %4u-%02u-%02uT%02u:%02u:%02u.%03lu %.*s %s - - - %.*s"
-					, 16 << 3 | (e->lvl+3)	// facility local use = 16, pri = (facility)<<3|serverity
-					, tm.tm_year+1900, tm.tm_mon+1, tm.tm_mday
-					, tm.tm_hour, tm.tm_min, tm.tm_sec, e->tv.tv_usec/1000
-					, hs
-					, hn
-					, e->a
-					, e->ml
-					, e->msg
-					);
-			}
-			xSemaphoreGive(SyslogBufSem);
-			r = sendto(sock,buf,n,0,(const struct sockaddr *) &addr,sizeof(addr));
-			if (-1 == r)
-				con_printf("syslog: send %s",strerror(errno));
-			++SyslogOut;
-			if (SyslogOut == sizeof(SyslogQ)/sizeof(SyslogQ[0]))
-				SyslogOut = 0;
-		} while (r != -1);
-		SyslogRunning = false;
-		report_error(sock,"send failed");
-restart:
-		close(sock);
-		vTaskDelay(3000/portTICK_PERIOD_MS);
+	if (Config.dmesg_size() != 0) {
+		if (Ctx == 0)
+			Ctx = new Syslog;
 	}
+	return 0;
 }
 
-
-#ifdef CONFIG_IDF_TARGET_ESP32
-#define stack_size 4096
-#else
-#define stack_size 2048
-#endif
 
 int syslog_setup(void)
 {
-	SyslogLock = xSemaphoreCreateMutex();
-	SyslogBufSem = xSemaphoreCreateCounting(sizeof(SyslogQ)/sizeof(SyslogQ[0]),sizeof(SyslogQ)/sizeof(SyslogQ[0]));
-	SyslogSendSem = xSemaphoreCreateCounting(sizeof(SyslogQ)/sizeof(SyslogQ[0]),0);
-	BaseType_t r = xTaskCreate(&syslog, "syslog", stack_size, NULL, 5, NULL);
-	if (r != pdPASS) {
-		log_error("syslog","unable to create task: %ld",(long)r);
-		return 1;
+	if (Ctx->ev == 0) {
+		action_add("syslog!start",syslog_start,0,"start syslog");
+		event_callback("wifi`station_up","syslog!start");
+		Action *a = action_add("syslog!send",sendall,0,"start syslog");
+		Ctx->ev = event_register("syslog`send");
+		event_callback(Ctx->ev,a);
 	}
 	return 0;
 }

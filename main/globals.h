@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2017-2020, Thomas Maier-Komor
+ *  Copyright (C) 2017-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -44,10 +44,12 @@ extern JsonString *UpdateState, *Localtime;
 void globals_setup();
 void rtd_lock();
 void rtd_unlock();
+void rtd_update();	// assumes rtd_lock()'ed
 void runtimedata_to_json(class stream &json);
 void get_time_of_day(uint8_t *h, uint8_t *m, uint8_t *s = 0, uint8_t *wd = 0, uint8_t *md = 0, uint8_t *mon = 0, unsigned *year = 0);
 #endif
 
+extern const char ResetReasons[][12];
 
 // time in usec
 typedef int64_t timestamp_t;

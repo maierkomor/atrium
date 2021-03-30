@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2019, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -23,9 +23,9 @@
 extern "C" {
 #endif
 
-void mqtt_start(void);
-void mqtt_stop(void);
-int mqtt_pub(const char *t, const char *v, int len, int retain);
+void mqtt_start(void* = 0);
+void mqtt_stop(void* = 0);
+int mqtt_pub(const char *t, const char *v, int len, int retain, int qos);
 int mqtt_sub(const char *topic, void (*callback)(const char *,const void*,size_t));
 void mqtt_set_dmesg(const char *m, size_t s);
 

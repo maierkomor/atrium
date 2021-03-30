@@ -16,6 +16,9 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+option author="Thomas Maier-Komor";
+option copyright="2018-2021";
+
 option common {
 	id0=true;
 	header="support.h";
@@ -76,8 +79,6 @@ option esp8266 : esp {
 }
 
 option esp8285 : esp8266 {
-	//header="astring.h";
-	//stringtype=AString;
 	/OwDeviceConfig:		used = false;
 	/NodeConfig/httpd:		used = false;
 	/NodeConfig/app_params:		used = false;
@@ -88,26 +89,8 @@ option esp8285 : esp8266 {
 	/HardwareConfig/tlc5947:	used = false;
 	/HardwareConfig/ws2812b:	used = false;
 	/HardwareConfig/hcsr04:		used = false;
-	/HardwareConfig/onewire:	used = false;
-}
-
-option s20 : esp8285 {
 	/HardwareConfig/dht:		used = false;
-	/HardwareConfig/terminal:	used = false;
-}
-
-option dht_term : esp8285 {
-	/NodeConfig/holidays:		used = false;
-	/NodeConfig/at_actions:		used = false;
-}
-
-option d1_lite : esp8266 {
-	withUnequal=false;
-}
-
-option termserv : d1_lite {
-	/NodeConfig/holidays:		used = false;
-	/NodeConfig/at_actions:		used = false;
+	/HardwareConfig/onewire:	used = false;
 }
 
 
@@ -220,7 +203,7 @@ message FtpdConfig
 }
 
 
-message HttpdConfig
+message FtpHttpConfig
 {
 	fixed16 port = 1	[ default = 80 ];
 	bool start = 2		[ default = true ];
@@ -331,8 +314,8 @@ message NodeConfig
 	repeated string debugs = 23;
 
 	// TODO
-	//FtpdConfig ftpd = 24;
-	HttpdConfig httpd = 25;
+	FtpHttpConfig ftpd = 24;
+	FtpHttpConfig httpd = 25;
 
 	// event timer/timefuse
 	repeated EventTimer timefuses = 30;

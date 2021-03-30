@@ -62,13 +62,13 @@ static void found_hostname(const char *hn, const ip_addr_t *addr, void *arg)
 		return;
 	}
 	if (addr == 0) {
-		//log_warn(TAG,"unknown host %s",hn);
+		log_dbug(TAG,"unknown host %s",hn);
 		xSemaphoreGive(NscSem);
 		return;
 	}
 #if defined CONFIG_LWIP_IPV6 || defined CONFIG_IDF_TARGET_ESP32
 	if (addr->type != IPADDR_TYPE_V4) {
-		log_warn(TAG,"got unspported address type %d for %s",addr->type,hn);
+		log_dbug(TAG,"got unspported address type %d for %s",addr->type,hn);
 		xSemaphoreGive(NscSem);
 		return;
 	}
@@ -122,10 +122,14 @@ static uint32_t ns_cache_lookup(const char *h)
 {
 	for (int i = 0; i < sizeof(NsCache)/sizeof(NsCache[0]); ++i) {
 		if (NsCache[i].hn && (0 == strcmp(NsCache[i].hn,h))) {
-			log_dbug(TAG,"cache hit %s",h);
-			return NsCache[i].ip4.addr;
+			uint32_t ip = NsCache[i].ip4.addr;
+			log_dbug(TAG,"cache hit %s: %d.%d.%d.%d"
+					,h
+					,ip&0xff,(ip>>8)&0xff,(ip>>16)&0xff,(ip>>24)&0xff);
+			return ip;
 		}
 	}
+	log_dbug(TAG,"cache miss");
 	return IPADDR_NONE;
 }
 
@@ -159,6 +163,7 @@ uint32_t resolve_fqhn(const char *h)
 		if (a != IPADDR_NONE)
 			return a;
 	}
+	log_dbug(TAG,"timeout");
 #ifdef CONFIG_MDNS
 	ip4_addr_t ip4;
 	e = mdns_query_a(h,1,&ip4);

@@ -3,4 +3,5 @@ valid options are:
 -l  : list actions
 -f  : disable factory reset action (needs config write and reboot)
 -F  : enable factory reset action (needs config write and reboot)
+-p  : print performance statistics (if supported)
 <action>: trigger action

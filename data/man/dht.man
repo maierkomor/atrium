@@ -1,0 +1,3 @@
+synopsis: dht [sample]
+Without arguemnt the last sampled temparature and humidity are printed.
+Argument 'sample' triggers the DHT to sample data.

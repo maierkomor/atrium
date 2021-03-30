@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -66,8 +66,6 @@
 
 
 void log_syslog(log_level_t lvl, const char *a, const char *msg, size_t ml);
-void mqtt_set_dmesg(const char *m, size_t s);
-void dmesg_log(const char *m, size_t ml);
 
 
 static SemaphoreHandle_t UartLock;
@@ -164,10 +162,6 @@ void log_setup()
 void log_set_uart(int8_t uart)
 {
 	xSemaphoreTake(UartLock,portMAX_DELAY);
-#ifdef CONFIG_DMESG
-	if ((uart != -1) && (LogUart == -1))
-		dmesg_to_uart(uart);
-#endif
 	LogUart = uart;
 	xSemaphoreGive(UartLock);
 }
@@ -276,19 +270,12 @@ void log_common(log_level_t l, const char *a, const char *f, va_list val)
 		buf[p+s+1] = '\n';
 	}
 	log_uart(l,buf,s+p+2);
-#if CONFIG_DMESG
-	dmesg_log(out+7,s+p-7+2);
-#endif
 #ifdef HAVE_FS
 	if (LogFile == -1)
 		log_file(out+7,s+p-7+2);
 #endif
 #ifdef CONFIG_SYSLOG
 	log_syslog(l,a,out+p,s);
-#endif
-#ifdef CONFIG_MQTT
-	if (l != ll_debug)
-		mqtt_set_dmesg(out+7,s+p-7);
 #endif
 }
 

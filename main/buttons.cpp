@@ -45,7 +45,7 @@ using namespace std;
 #error gpio value for button out of range
 #endif
 
-static char TAG[] = "buttons";
+static const char TAG[] = "buttons";
 static Button *Buttons = 0;
 
 

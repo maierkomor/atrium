@@ -71,21 +71,6 @@
 static const char TAG[] = "init";
 static const char BootStr[] = "Starting Atrium Firmware...\r\n";
 
-static const char ResetReasons[][12] = {
-	"unknown",
-	"powerup",
-	"external",
-	"software",
-	"panic",
-	"internal_wd",
-	"task_wd",
-	"watchdog",
-	"deepsleep",
-	"brownout",
-	"sdio",
-};
-
-
 /*
 static void init_detached(int (*fn)(),const char *name,void *arg)
 {
@@ -176,11 +161,11 @@ extern "C"
 void app_main()
 {
 	log_setup();
-#ifdef CONFIG_DMESG
+#ifdef CONFIG_SYSLOG
 	dmesg_setup();
 #endif
 	log_info(TAG,"Atrium Firmware for ESP based systems");
-	log_info(TAG,"Copyright 2019-2020, Thomas Maier-Komor, License: GPLv3");
+	log_info(TAG,"Copyright 2019-2021, Thomas Maier-Komor, License: GPLv3");
 	log_info(TAG,"Version: " VERSION);
 	log_info(TAG,"IDF: %s",esp_get_idf_version());
 	globals_setup();
@@ -214,6 +199,9 @@ void app_main()
 #ifdef CONFIG_UART_CONSOLE
 	console_setup();
 #endif
+#ifdef CONFIG_MQTT
+	mqtt_setup();	// before any subscription occurs
+#endif
 
 #ifdef CONFIG_AT_ACTIONS
 	alarms_setup();
@@ -246,6 +234,9 @@ void app_main()
 	wifi_setup();
 	cfg_activate();
 	uart_setup();
+#ifdef CONFIG_SYSLOG
+	syslog_setup();
+#endif
 	//BaseType_t r = xTaskCreate(settings_setup,"cfginit",4096,(void*)0,8,0);
 
 #ifdef CONFIG_NIGHTSKY
@@ -265,9 +256,6 @@ void app_main()
 #endif
 
 	// client network services
-#ifdef CONFIG_MQTT
-	mqtt_setup();
-#endif
 #ifdef CONFIG_INFLUX
 	influx_setup();
 #endif
@@ -281,14 +269,11 @@ void app_main()
 #endif
 	cfg_activate_triggers();
 
-#ifdef CONFIG_SYSLOG
-	syslog_setup();
-#endif
 #ifdef CONFIG_UDPCTRL
 	udpctrl_setup();
 #endif
 
-	// inetd bound services
+	// inetd bound services must be setup before inetd itself
 #ifdef CONFIG_TELNET
 	telnet_setup();
 #endif
@@ -298,12 +283,10 @@ void app_main()
 #ifdef CONFIG_FTP
 	ftpd_setup();
 #endif
-#ifdef CONFIG_INETD
 	inetd_setup();
-#endif
 
 #ifdef CONFIG_IDF_TARGET_ESP32
 	esp_ota_mark_app_valid_cancel_rollback();
 #endif
-	log_info(TAG,"done");
+	log_info(TAG,"Atrium Version " VERSION);
 }

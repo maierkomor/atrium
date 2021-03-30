@@ -35,10 +35,23 @@
 
 using namespace std;
 
+const char ResetReasons[][12] = {
+	"unknown",
+	"powerup",
+	"external",
+	"software",
+	"panic",
+	"internal_wd",
+	"task_wd",
+	"watchdog",
+	"deepsleep",
+	"brownout",
+	"sdio",
+};
+
 NodeConfig Config;
 HardwareConfig HWConf;
 nvs_handle NVS = 0;
-static char TAG[] = "time";
 
 JsonObject *RTData = 0;
 JsonInt *Uptime = 0;
@@ -46,6 +59,9 @@ JsonFloat *Temperature = 0, *Humidity = 0, *Pressure = 0;
 #ifdef CONFIG_OTA
 JsonString *UpdateState = 0;
 #endif
+
+
+static const char TAG[] = "time";
 
 static SemaphoreHandle_t Mtx = 0;
 
@@ -90,13 +106,19 @@ void rtd_unlock()
 }
 
 
+void rtd_update()
+{
+	if (Uptime == 0)
+		Uptime = RTData->add("uptime",0);
+	Uptime->set(timestamp()/1000000ULL);
+}
+
+
 void runtimedata_to_json(stream &json)
 {
 	TimeDelta dt(__FUNCTION__);
 	rtd_lock();
-	if (Uptime == 0)
-		Uptime = RTData->add("uptime",0);
-	Uptime->set(timestamp()/1000000ULL);
+	rtd_update();
 	RTData->toStream(json);
 	rtd_unlock();
 }

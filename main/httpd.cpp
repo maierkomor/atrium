@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -66,10 +66,10 @@
 using namespace std;
 
 
+static const char TAG[] = "httpd";
+
 static HttpServer *WWW = 0;
 static SemaphoreHandle_t Sem = 0;
-
-static char TAG[] = "httpd";
 
 
 static void send_json(HttpRequest *req, void (*f)(stream&))
@@ -499,11 +499,13 @@ int httpd_setup()
 #ifdef HAVE_FS
 	if (Config.httpd().has_root())
 		root = Config.httpd().root().c_str();
+	char index[64];
+	strcpy(index,root);
+	strcat(index,"/index.html");
 	struct stat st;
-	if (stat(WWW_ROOT,&st) == -1) {
-		log_dbug(TAG,"setting up www root");
-		if (-1 == mkdir(WWW_ROOT,0777))
-			log_warn(TAG,"unable to create directory " WWW_ROOT ": %s",strerror(errno));
+	if (stat(index,&st) == -1) {
+		log_warn(TAG,"no index.html");
+		return 1;
 	}
 	WWW = new HttpServer(root,"/index.html");
 	WWW->addDirectory(root);
@@ -523,6 +525,10 @@ int httpd_setup()
 		}
 	}
 #else
+	if (-1 == romfs_open("index.html")) {
+		log_warn(TAG,"no index.html");
+		return 1;
+	}
 	WWW = new HttpServer(root,"/index.html");
 	WWW->addDirectory(root);
 #endif
@@ -548,7 +554,7 @@ int httpd_setup()
 	WWW->addFunction("/webcam.jpeg",webcam_sendframe);
 #endif
 	Sem = xSemaphoreCreateCounting(2,2);
-	return listen_tcp(HTTP_PORT,httpd_session,"httpd","_http",7,2048);
+	return listen_port(HTTP_PORT,m_tcp,httpd_session,"httpd","_http",7,2048);
 }
 
 #endif	// CONFIG_HTTP

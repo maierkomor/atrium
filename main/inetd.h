@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -19,13 +19,14 @@
 #ifndef INETD_H
 #define INETD_H
 
-#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-int listen_tcp(unsigned port, void (*session)(void*), const char *basename, const char *service, unsigned prio, unsigned stack);
+typedef enum { m_sock = 0, m_tcp = 1, m_udp = 2, m_bcast = 3 } inet_mode_t;
+
+int listen_port(int port, inet_mode_t mode, void (*session)(void*), const char *basename, const char *service, unsigned prio, unsigned stack);
 
 #ifdef __cplusplus
 }

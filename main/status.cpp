@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -43,7 +43,7 @@
 #endif
 
 
-static char TAG[] = "status";
+static const char TAG[] = "status";
 
 static uint16_t OnTime[] = {
 	/* auto */	0,
@@ -188,9 +188,9 @@ void status_task(void *param)
 {
 	const LedConfig *c = (const LedConfig *)param;
 	gpio_num_t gpio = (gpio_num_t) c->gpio();
-	uint8_t on = c->config() & 1;
+	uint32_t on = c->config() & 1;
 	Status = true;
-	log_info(TAG,"ready");
+	log_info(TAG,"gpio%d, on=%u",(int)gpio,on);
 	while(1) {
 		if (uint16_t d_on = CurMode < ledmode_max ? OnTime[CurMode] : CurMode) {
 			gpio_set_level(gpio, on);
@@ -208,9 +208,8 @@ void status_task(void *param)
 			gpio_set_level(gpio, on^1);
 			delay(d_off);
 		}
-		if (CurMode == ledmode_heartbeat) {
+		if (CurMode == ledmode_heartbeat)
 			delay(500);
-		}
 	}
 }
 

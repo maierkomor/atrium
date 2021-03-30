@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020, Thomas Maier-Komor
+ *  Copyright (C) 2020-2021, Thomas Maier-Komor
  *
  *  This source file belongs to Wire-Format-Compiler.
  *
@@ -29,6 +29,7 @@ class estring
 	public:
 	estring();
 	estring(const char *s);
+	estring(size_t l, char c);
 	estring(const char *s, size_t l);
 	estring(const char *s, const char *e);
 	estring(const estring &a);

@@ -1,3 +1,13 @@
+R2103:
+======
+- workaround for LWIP/MQTT crashing with multiple publish requests
+- reduction of RAM consumption
+- integrated cyclic into inetd
+- replaced LWIP MQTT with own MQTT implementation
+- syslog logging without dedicated task
+- syslog sends messages from dmesg buffer
+  (i.e. if dmesg is big enough, you get the complete boot log)
+
 R2102:
 ======
 - fix Influx submission of structured run-time data

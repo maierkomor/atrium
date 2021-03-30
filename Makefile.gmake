@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2018-2020, Thomas Maier-Komor
+#  Copyright (C) 2018-2021, Thomas Maier-Komor
 #  Atrium Firmware Package for ESP
 #
 #  This program is free software: you can redistribute it and/or modify
@@ -16,7 +16,7 @@
 #  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #  
 
-# no default project set
+# no default project set - Set to a filename in projects directory.
 #PROJECT=
 
 # place following variables in settings.mk or use setupenv.sh to create it
@@ -122,11 +122,11 @@ fflash:
 
 ota: prepare
 	-rm $(BUILD_DIR_BASE)/$(PROJECT_NAME).elf $(BUILD_DIR_BASE)/esp8266/esp8266_out.ld
-	+$(MAKE) -f $(CHIP).mk all
-	cp $(BUILD_DIR_BASE)/$(PROJECT_NAME).bin $(BUILD_DIR_BASE)/$(PROJECT_NAME).app1
-	-rm $(BUILD_DIR_BASE)/$(PROJECT_NAME).elf $(BUILD_DIR_BASE)/esp8266/esp8266_out.ld
 	+$(MAKE) -f $(CHIP).mk app2
 	cp $(BUILD_DIR_BASE)/$(PROJECT_NAME).bin $(BUILD_DIR_BASE)/$(PROJECT_NAME).app2
+	-rm $(BUILD_DIR_BASE)/$(PROJECT_NAME).elf $(BUILD_DIR_BASE)/esp8266/esp8266_out.ld
+	+$(MAKE) -f $(CHIP).mk all
+	cp $(BUILD_DIR_BASE)/$(PROJECT_NAME).bin $(BUILD_DIR_BASE)/$(PROJECT_NAME).app1
 
 menuconfig:
 	+$(MAKE) -f $(CHIP).mk menuconfig

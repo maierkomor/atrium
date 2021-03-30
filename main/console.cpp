@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2017-2020, Thomas Maier-Komor
+ *  Copyright (C) 2017-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -44,8 +44,8 @@ using namespace std;
 #endif
 
 extern SemaphoreHandle_t UartLock;
-static char TAG[] = "con";
 
+static const char TAG[] = "con";
 static UartTerminal Console(CONFIG_CONSOLE_UART_NUM);
 
 int ps(Terminal &term, int argc, const char *args[]);

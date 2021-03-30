@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -49,7 +49,7 @@ typedef enum clockmode {
 	CLOCK_MODE_MAX,
 } clockmode_t;
 
-static char TAG[] = "clock";
+static const char TAG[] = "clock";
 static MAX7219Drv Driver;
 static uint32_t Start, Delta;
 static uint8_t Digits, Display[8];

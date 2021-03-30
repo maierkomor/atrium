@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020, Thomas Maier-Komor
+ *  Copyright (C) 2020-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -107,7 +107,7 @@ void diag_setup()
 
 void uart_setup()
 {
-	log_info(TAG,"uart setup");
+	log_info(TAG,"setup %u ports",Config.uart_size());
 	for (const UartSettings &c : Config.uart()) {
 		if (!c.has_port()) {
 			log_warn(TAG,"ignoring config where port is not set");

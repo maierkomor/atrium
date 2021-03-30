@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -119,15 +119,13 @@ static esp_err_t wifi_event_handler(void *ctx, system_event_t *event)
 	case SYSTEM_EVENT_AP_STOP:
 		log_info(TAG,"system event ap stop");
 		xEventGroupClearBits(WifiEvents, SOFTAP_UP);
-		if (xEventGroupGetBits(WifiEvents) == WIFI_UP)
-			xEventGroupClearBits(WifiEvents, WIFI_UP);
+		xEventGroupClearBits(WifiEvents, WIFI_UP);
 		break;
 	case SYSTEM_EVENT_STA_STOP:
 	case SYSTEM_EVENT_STA_LOST_IP:
 		log_info(TAG,"station stopped");
 		xEventGroupClearBits(WifiEvents, STATION_UP);
-		if (xEventGroupGetBits(WifiEvents) == WIFI_UP)
-			xEventGroupClearBits(WifiEvents, WIFI_UP);
+		xEventGroupClearBits(WifiEvents, WIFI_UP);
 #ifdef CONFIG_SNTP
 		sntp_stop();
 #endif
@@ -369,6 +367,11 @@ bool eth_isup()
 
 uint32_t resolve_hostname(const char *h)
 {
+	if ((h[0] >= '0') && (h[0] <= '9')) {
+		uint32_t i4 = ipaddr_addr(h);
+		if (i4 != IPADDR_NONE)
+			return i4;
+	}
 	if (!Config.has_domainname() || (0 != strchr(h,'.')))
 		return resolve_fqhn(h);
 	size_t hl = strlen(h);

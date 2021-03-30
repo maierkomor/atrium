@@ -20,7 +20,6 @@
 
 #ifdef CONFIG_FTP
 
-#define FTP_PORT 21
 #define FTP_ROOT "/"
 
 #ifdef ESP8266
@@ -67,7 +66,8 @@ typedef struct ftpcom
 } ftpcom_t;
 
 
-static char TAG[] = "ftpd";
+static const char TAG[] = "ftpd";
+
 
 static char *arg2fn(ftpctx_t *ctx, const char *arg)
 {
@@ -703,7 +703,7 @@ static void quit(ftpctx_t *ctx, const char *arg)
 }
 
 
-static ftpcom_t Commands[] = {
+static const ftpcom_t Commands[] = {
 	{ "RETR", retrive },
 	{ "STOR", store },
 	{ "LIST", list },
@@ -775,7 +775,7 @@ void ftpd_session(void *arg)
 	ctxt.con = con;
 	ctxt.dcon = -1;
 	ctxt.wd = strdup("/");
-	ctxt.root = FTP_ROOT;
+	ctxt.root = Config.ftpd().root().c_str();
 	ctxt.rnfr = 0;
 	char buf[256];
 	size_t fill = 0;
@@ -806,7 +806,20 @@ void ftpd_session(void *arg)
 
 int ftpd_setup()
 {
-	return listen_tcp(FTP_PORT,ftpd_session,"ftpd","_ftp",4,4096);
+	if (!Config.has_ftpd())
+		return 0;
+	const FtpHttpConfig &c = Config.ftpd();
+	uint16_t p = c.port();
+	if (!c.has_root() || (0 == p))
+		return 0;
+	const char *r = c.root().c_str();
+	struct stat st;
+	if (-1 == stat(r,&st)) {
+		log_warn(TAG,"error accessing root '%s': %s",r,strerror(errno));
+		return 1;
+	}
+	log_info(TAG,"port %hu, root %s",p,r);
+	return listen_port(p,m_tcp,ftpd_session,"ftpd","_ftp",4,4096);
 }
 
 #endif

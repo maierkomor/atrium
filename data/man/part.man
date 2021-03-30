@@ -1,0 +1,4 @@
+synopsis: part [erase <partition>]
+Without arguments part lists all partitions.
+With arguemtns "erase <partition>" the specified data partiton
+will be erased.
