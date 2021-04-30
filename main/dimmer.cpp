@@ -70,7 +70,7 @@ struct Dimmer
 {
 	Dimmer *next;
 	const char *name;
-	JsonInt *json;
+	JsonNumber *json;
 	duty_t duty_set,duty_cur;
 	gpio_num_t gpio;
 	ledc_channel_t channel;
@@ -248,7 +248,7 @@ int dimmer_setup()
 		Dimmers = dim;
 		dim->gpio = (gpio_num_t)conf.gpio();
 		dim->channel = (ledc_channel_t) conf.pwm_ch();
-		dim->json = RTData->add(conf.name().c_str(),0);
+		dim->json = RTData->add(conf.name().c_str(),0.0);
 		if (conf.has_name())
 			dim->name = strdup(conf.name().c_str());
 		else

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -25,6 +25,9 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
+class JsonObject;
+class JsonNumber;
+
 
 // DHTModel_t
 typedef enum {
@@ -40,9 +43,7 @@ typedef enum {
 class DHT
 {
 	public:
-	DHT()
-	: m_ready(false)
-	{ }
+	DHT();
 
 	int init(uint8_t pin, uint16_t model);
 	float getTemperature() const;
@@ -53,9 +54,6 @@ class DHT
 
 	DHTModel_t getModel() const
 	{ return m_model; }
-
-	const char *getError() const
-	{ return m_error; }
 
 	int getMinimumSamplingPeriod()
 	{ return m_model == DHT_MODEL_DHT11 ? 1000 : 2000; }
@@ -75,23 +73,23 @@ class DHT
 	int8_t getUpperBoundHumidity()
 	{ return m_model == DHT_MODEL_DHT11 ? 90 : 100; }
 
+	void attach(JsonObject *);
+
 	private:
 	static void fallIntr(void *arg);
 
 	DHTModel_t m_model;
-	char *m_error;
+	JsonNumber *m_temp = 0, *m_humid = 0;
 	unsigned long m_lastReadTime;
 	long m_lastEdge;
 	SemaphoreHandle_t m_mtx;
 	uint8_t m_data[5];
 	uint8_t m_bit, m_edges, m_errors;
 	uint16_t m_start;
-	bool m_ready;
+	bool m_ready, m_error;
 
 	protected:
 	uint8_t m_pin;
-	void setError(const char *fmt, ...);
-	void clearError();
 };
 
 

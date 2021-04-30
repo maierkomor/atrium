@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020, Thomas Maier-Komor
+ *  Copyright (C) 2020-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -29,7 +29,15 @@ void JsonElement::toStream(stream &o) const
 	o.print("\"");
 	o.print(m_name);
 	o.print("\":");
-	writeValue(o);
+	if (m_dim) {
+		o.write("\"",1);
+		writeValue(o);
+		o.write(" ",1);
+		o.print(m_dim);
+		o.write("\"",1);
+	} else {
+		writeValue(o);
+	}
 }
 
 
@@ -39,47 +47,25 @@ void JsonElement::writeValue(stream &o) const
 }
 
 
-
-/*
-void JsonBool::toStream(stream &o) const
-{
-	o.write("\"");
-	o.print(m_name);
-	o.write("\":");
-	writeValue(o);
-}
-*/
-
-
 void JsonBool::writeValue(stream &o) const
 {
 	if (m_value)
-		o.print("true");
+		o.write("true",4);
 	else
-		o.print("false");
+		o.write("false",5);
 }
 
 
-/*
-void JsonInt::toStream(stream &o) const
+bool JsonNumber::isValid() const
 {
-	o.write("\"");
-	o.print(m_name);
-	o.write("\":");
-	o << m_value;
-}
-*/
-
-void JsonInt::writeValue(stream &o) const
-{
-	o << m_value;
+	return !isnan(m_value) && !isinf(m_value);
 }
 
 
-void JsonFloat::writeValue(stream &o) const
+void JsonNumber::writeValue(stream &o) const
 {
 	if (isnan(m_value))
-		o << "\"NaN\"";
+		o.write("\"NaN\"",5);
 	else
 		o << m_value;
 }
@@ -184,17 +170,9 @@ JsonBool *JsonObject::add(const char *n, bool v)
 }
 
 
-JsonInt *JsonObject::add(const char *n, int32_t v)
+JsonNumber *JsonObject::add(const char *n, double v)
 {
-	JsonInt *r = new JsonInt(n,v);
-	append(r);
-	return r;
-}
-
-
-JsonFloat *JsonObject::add(const char *n, float v)
-{
-	JsonFloat *r = new JsonFloat(n,v);
+	JsonNumber *r = new JsonNumber(n,v);
 	append(r);
 	return r;
 }
@@ -205,37 +183,6 @@ JsonString *JsonObject::add(const char *n, const char *v)
 	JsonString *r = new JsonString(n,v);
 	append(r);
 	return r;
-}
-
-
-void JsonDegC::writeValue(stream &o) const
-{
-	if (isnan(m_value)) {
-		o << "NaN";
-	} else {
-		o << m_value;
-		o.write(" \u00b0C",5);
-	}
-}
-
-
-void JsonHumid::toStream(stream &o) const
-{
-	if (isnan(m_value))
-		return;
-	JsonElement::toStream(o);
-        o << m_value;
-        o.write(" %\"",3);
-}
-
-
-void JsonPress::toStream(stream &o) const
-{
-	if (isnan(m_value))
-		return;
-	JsonElement::toStream(o);
-        o << m_value;
-        o.write(" hPa\"",3);
 }
 
 

@@ -55,7 +55,7 @@ static Timer *Timers = 0;
 
 static void trigger_timeout(TimerHandle_t h)
 {
-	event_isr_trigger((event_t)(int)pvTimerGetTimerID(h));
+	event_trigger((event_t)(int)pvTimerGetTimerID(h));
 }
 
 

@@ -25,7 +25,6 @@
 #include "shell.h"
 #include "uarts.h"
 #include "uart_terminal.h"
-#include "versions.h"
 
 #include "freertos/FreeRTOS.h"
 #include <freertos/task.h>
@@ -55,71 +54,73 @@
 // uart2/rx: gpio16/pin
 // uart2/tx: gpio17/pin
 
-static const char TAG[] = "uart";
-
-void diag_setup()
+struct Term
 {
-	int diag = HWConf.system().diag_uart();
-	if (diag != -1) {
-		if (esp_err_t e = uart_driver_install((uart_port_t)diag,256,256,0,DRIVER_ARG))
-			log_error(TAG,"uart %d driver error: %s",diag,esp_err_to_name(e));
-		log_set_uart(diag);
-	}
-#ifdef CONFIG_IDF_TARGET_ESP32
-	for (const UartConfig &c : HWConf.uart()) {
-		if (c.has_port()) {
-			int8_t p = c.port();
-			int8_t tx = c.has_tx_gpio() ? c.tx_gpio() : UART_PIN_NO_CHANGE;
-			int8_t rx = c.has_rx_gpio() ? c.rx_gpio() : UART_PIN_NO_CHANGE;
-			int8_t cts = c.has_cts_gpio() ? c.cts_gpio() : UART_PIN_NO_CHANGE;
-			int8_t rts = c.has_rts_gpio() ? c.rts_gpio() : UART_PIN_NO_CHANGE;
-			if (esp_err_t e = uart_set_pin((uart_port_t)p, tx, rx, cts, rts))
-				log_error(TAG,"set pin failed: %s",esp_err_to_name(e));
-			else
-				log_info(TAG,"uart %d pins set to tx=%d,rx=%d,cts=%d,rts=%d",p,tx,rx,cts,rts);
-			switch (p) {
-				/*
-			case 1:
-				if (rx == -1) {
-					PIN_FUNC_SELECT(PERIPHS_IO_MUX_SD_DATA2_U,FUNC_SD_DATA2_U1RXD);
-				}
-				if (tx == -1) {
-					PIN_FUNC_SELECT(PERIPHS_IO_MUX_SD_DATA3_U,FUNC_SD_DATA3_U1TXD);
-				}
-				break;
-				*/
-			case 2:
-				if (rx == -1) {
-					PIN_FUNC_SELECT(PERIPHS_IO_MUX_GPIO16_U,FUNC_GPIO16_U2RXD);
-				}
-				if (tx == -1) {
-					PIN_FUNC_SELECT(PERIPHS_IO_MUX_GPIO17_U,FUNC_GPIO17_U2TXD);
-				}
-				break;
-			default:
-				;
-			}
+	Term(int8_t r, int8_t t)
+	: rx(r), tx(t)
+	{ }
+
+	char *name = 0;
+	Term *next;
+	uint8_t rx,tx;
+	bool connected = false;
+};
+
+
+static const char TAG[] = "uart", MON[] = "mon";
+static Term *Terminals = 0;
+
+
+#ifdef CONFIG_UART_MONITOR
+static volatile uint8_t Monitors = 0;
+
+static void monitor(void *uart)
+{
+	int rx_uart = (int) uart;
+	char buf[256];
+	size_t fill = 0;
+	for (;;) {
+		char *in = buf + fill;
+		int n = uart_read_bytes((uart_port_t)rx_uart, (uint8_t*)in, sizeof(buf)-1-fill, portMAX_DELAY);
+		if (n < 0) {
+			log_error(MON,"read error %d",n);
+			vTaskDelete(0);
+		}
+		fill += n;
+		buf[fill] = 0;
+		char *at = buf, *nl = strchr(in,'\n');
+		while (nl) {
+			if (nl-at > 0)
+				log_syslog(ll_info,MON,at,nl-at);
+			at = nl+1;
+			if (*at == '\r')
+				++at;
+			nl = strchr(at,'\n');
+		}
+		if (at > buf) {
+			fill -= at-buf;
+			if (fill)
+				memmove(buf,at,fill);
+		} else if (fill == sizeof(buf)-1) {
+			assert(buf == at);
+			log_syslog(ll_info,MON,at,nl-at);
+			in = buf;
+			fill = 0;
 		}
 	}
-#endif
 }
+#endif //CONFIG_MONITOR
 
 
 void uart_setup()
 {
-	log_info(TAG,"setup %u ports",Config.uart_size());
+	log_info(TAG,"%u ports",Config.uart_size());
+	int8_t diag = HWConf.system().diag_uart();
 	for (const UartSettings &c : Config.uart()) {
 		if (!c.has_port()) {
-			log_warn(TAG,"ignoring config where port is not set");
 			continue;
 		}
 		uart_port_t port = (uart_port_t) c.port();
-#if 0 //CONFIG_UART_CONSOLE_NONE != 1
-		if (port == CONFIG_CONSOLE_UART_NUM) {
-			log_info(TAG,"console uart already configured");
-			continue;
-		}
-#endif
 		log_info(TAG,"configuring port %d",port);
 		uart_config_t uc;
 		bzero(&uc,sizeof(uc));
@@ -145,47 +146,66 @@ void uart_setup()
 		}
 		unsigned rx_buf = c.has_rx_bufsize() ? c.rx_bufsize() : 256;
 		unsigned tx_buf = c.has_tx_bufsize() ? c.tx_bufsize() : 256;
-		//uart_driver_delete(port);
-/*
-#ifdef CONFIG_IDF_TARGET_ESP32
-		switch (port) {
-		case 0:
-			//if (esp_err_t e = uart_set_pin(UART_NUM_0,GPIO_NUM_4,GPIO_NUM_5,UART_PIN_NO_CHANGE,UART_PIN_NO_CHANGE))
-			if (esp_err_t e = uart_set_pin(UART_NUM_0,GPIO_NUM_1,GPIO_NUM_22,UART_PIN_NO_CHANGE,UART_PIN_NO_CHANGE))
-				log_error(TAG,"set pin failure: %d",e);
-			else
-				log_info(TAG,"set pin OK");
-			break;
-		case 1:
-			//PIN_FUNC_SELECT(FUNC_GPIO16_U2RXD
-			if (esp_err_t e = uart_set_pin(UART_NUM_1,GPIO_NUM_19,GPIO_NUM_18,UART_PIN_NO_CHANGE,UART_PIN_NO_CHANGE))
-				log_error(TAG,"set pin failure: %d",e);
-			else
-				log_info(TAG,"set pin OK");
-			break;
-		case 2:
-			//PIN_FUNC_SELECT(FUNC_GPIO16_U2RXD
-			//if (esp_err_t e = uart_set_pin(UART_NUM_2,GPIO_NUM_17,GPIO_NUM_16,UART_PIN_NO_CHANGE,UART_PIN_NO_CHANGE))
-			if (esp_err_t e = uart_set_pin(UART_NUM_2,UART_PIN_NO_CHANGE,GPIO_NUM_4,UART_PIN_NO_CHANGE,UART_PIN_NO_CHANGE))
-				log_error(TAG,"set pin failure: %d",e);
-			else
-				log_info(TAG,"set pin OK");
-			break;
-		default:
-			;
-		}
-#endif
-*/
-		if (port == HWConf.system().diag_uart()) { 
+		if (port == diag) {
 			// already handled
-			log_info(TAG,"port %d is diag port, no driver needed",port);
+			log_info(TAG,"diag on uart%d",port);
 		} else if (esp_err_t e = uart_param_config(port,&uc)) {
-			log_error(TAG,"unable to configure uart %d: %s",port,esp_err_to_name(e));
+			log_error(TAG,"uart%d config: %s",port,esp_err_to_name(e));
 		} else if (esp_err_t e = uart_driver_install(port,rx_buf,tx_buf,0,DRIVER_ARG)) {
-			log_error(TAG,"unable to install uart driver on port %d: %s",port,esp_err_to_name(e));
+			log_error(TAG,"uart%d driver: %s",port,esp_err_to_name(e));
 		} else {
 			log_info(TAG,"uart%u setup done",port);
 		}
+	}
+	uint8_t rx_used = 0, tx_used = 0;
+	int crx = HWConf.system().console_rx();
+	int ctx = HWConf.system().console_tx();
+	if (crx != -1)
+		rx_used = 1<<crx;
+	if (ctx != -1)
+		tx_used = 1<<ctx;
+	for (auto &c : Config.terminal()) {
+		int8_t rx = c.uart_rx();
+		int8_t tx = c.uart_tx();
+		if ((tx != -1) && (tx_used & (1 << tx))) {
+			log_warn(TAG,"multiple use of uart%d/tx",tx);
+			continue;
+		}
+		if ((rx != -1) && (rx_used & (1 << rx))) {
+			log_warn(TAG,"multiple use of uart%d/rx",rx);
+			continue;
+		}
+#ifdef CONFIG_UART_MONITOR
+		if ((tx == -1) && (rx != -1)) {
+			// this is a monitor
+			BaseType_t r = xTaskCreatePinnedToCore(monitor, MON, 2048, (void*)(int)rx, 19, 0, PRO_CPU_NUM);
+			if (r == pdPASS) {
+				rx_used |= (1 << rx);
+				log_info(TAG,"monitor uart%d",rx);
+			} else {
+				log_error(TAG,"monitor task: %s",esp_err_to_name(r));
+			}
+		}
+#endif
+#ifdef CONFIG_TERMSERV
+		if ((tx != -1) && (rx != -1)) {
+			// this is a terminal
+			log_info(TAG,"UART terminal on %d/%d",rx,tx);
+			Term *n = new Term(rx,tx);
+			if (c.has_name())
+				n->name = strdup(c.name().c_str());
+			if (Terminals == 0) {
+				Terminals = n;
+			} else {
+				Term *l = Terminals;
+				while (l->next)
+					l = l->next;
+				l->next = n;
+			}
+			rx_used |= (1 << rx);
+			tx_used |= (1 << tx);
+		}
+#endif
 	}
 }
 
@@ -228,64 +248,53 @@ static void handle_input(con_st_t &state, char c, uart_port_t tx)
 
 int uart_termcon(Terminal &term, int argc, const char *args[])
 {
-	//static atomic<uint8_t> Connections(0);	// still unsupported on ESP
-	static volatile uint8_t Connections = 0;
-	int8_t con;
 	if (argc > 2)
 		return arg_invnum(term);
+	Term *t = Terminals;
 	if (argc == 2) {
-		con = -1;
 		if ((args[1][0] >= '0') && (args[1][0] <= '9') && (args[1][1] == 0)) {
-			con = args[1][0] - '0';
-		} else {
-			int8_t c = 0;
-			for (auto &t : Config.terminal()) {
-				if (0 == strcmp(args[1],t.name().c_str())) {
-					con = c;
-					break;
-				}
-				++c;
+			int con = args[1][0] - '0';
+			while (con) {
+				if (t == 0)
+					return arg_invalid(term,args[1]);
+				t = t->next;
+				--con;
 			}
+		} else {
+			while (t && strcmp(t->name,args[1]))
+				t = t->next;
 		}
-		if (con == -1)
-			return arg_invalid(term,args[1]);
-	} else {
-		con = 0;
 	}
-	if (con >= Config.terminal_size())
-		return arg_invalid(term,args[1]);
-	const TerminalConfig &t = Config.terminal(con);
-	uart_port_t rx = (uart_port_t) t.uart_rx();
-	uart_port_t tx = (uart_port_t) t.uart_tx();
-	Connections = Connections ^ (1 << con);
-	if ((Connections & (1 << con)) == 0) {
-		Connections = Connections ^ (1 << con);
+	if (t == 0) {
+		term.println("no such terminal");
+		return 1;
+	}
+	if (t->connected) {
 		term.println("already connected");
 		return 1;
 	}
-	if ((rx == -1) && (tx == -1)) {
-		term.println("no uarts configured");
-		return 1;
-	}
+	t->connected = true;
+	uart_port_t rx = (uart_port_t) t->rx;
+	uart_port_t tx = (uart_port_t) t->tx;
 	term.printf("connecting to uart rx%d/tx%d. Enter ~. to escape\n",(int)rx,(int)tx);
 	con_st_t state = con_inp;
 #define CON_BUF_SIZE 196
 	uint8_t *buf = (uint8_t *) malloc(CON_BUF_SIZE);
 	if (buf == 0) {
 		term.printf("out of memory");
+		t->connected = false;
 		return 1;
 	}
 	bool crnl = term.get_crnl();
 	term.set_crnl(false);
+	int r = 0;
 	while (1) {
 		size_t a = 0;
 		if (rx >= 0) {
 			if (esp_err_t e = uart_get_buffered_data_len(rx,&a)) {
-				Connections = Connections ^ (1 << con);
 				term.printf("uart error: %s\n",esp_err_to_name(e));
-				term.set_crnl(crnl);
-				free(buf);
-				return 1;
+				r = 1;
+				break;
 			}
 			if (a > 0) {
 				//log_info(TAG,"%u bytes av",a);
@@ -303,19 +312,19 @@ int uart_termcon(Terminal &term, int argc, const char *args[])
 			if (state == con_fin)
 				break;
 		} else if ((i == -1) && term.error()) {
-			Connections = Connections ^ (1 << con);
+			r = 1;
 			const char *e = term.error();
 			log_info(TAG,"terminal read error: %s; closing console session", e ? e : "<null>");
-			free(buf);
-			return 1;
+			break;
 		}
 		if ((a == 0) && (i <= 0))
 			vTaskDelay(100/portTICK_PERIOD_MS);
 	}
 	free(buf);
-	Connections = Connections ^ (1 << con);
+	t->connected = false;
 	term.set_crnl(crnl);
-	return 0;
+	return r;
 }
+
 
 #endif // CONFIG_TERMSERV

@@ -1,0 +1,4 @@
+synopsis: relay [<name> <state>]
+Without arguments all relays and their state are listed.
+With arguments the state of the relay named <name> is changed to
+<state>.

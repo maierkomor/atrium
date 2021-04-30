@@ -43,6 +43,7 @@
 #include <freertos/FreeRTOSConfig.h>
 #include <freertos/task.h>
 
+#include <lwip/tcp.h>
 #include <lwip/udp.h>
 #include <stdlib.h>
 #include <sys/socket.h>
@@ -55,10 +56,23 @@
 using namespace std;
 
 static const char TAG[] = "influx";
+
+typedef enum state {
+	offline, connecting, running, error
+} state_t;
+
+#ifdef SOCKAPI
 static int Sock = -1;
 static struct sockaddr_in Addr;
+#else
+static struct udp_pcb *UPCB = 0;
+static struct tcp_pcb *TPCB = 0;
+static state_t State = offline;
+static char *TcpHdr = 0;
+static uint16_t THL = 0;
+#endif
 static char *Header = 0;
-static size_t HL = 0;
+static uint16_t HL = 0;
 static SemaphoreHandle_t Mtx = 0;
 
 
@@ -121,57 +135,159 @@ void FnInfluxSend::operator () (DataSignal *s)
 #endif //CONFIG_SIGNAL_PROC
 
 
-static int influx_init(void * = 0)
+static void handle_err(void *arg, err_t e)
+{
+	log_warn(TAG,"handle error %d",e);
+	if (e == ERR_ABRT)
+		TPCB = 0;
+	else if (e == ERR_ISCONN)
+		State = running;
+	else
+		State = error;
+}
+
+
+static err_t handle_sent(void *arg, struct tcp_pcb *pcb, u16_t l)
+{
+//	log_dbug(TAG,"sent %p %u",pcb,l);
+	return 0;
+}
+
+
+static err_t handle_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *pbuf, err_t e)
+{
+//	log_dbug(TAG,"recv %u err=%d",pbuf ? pbuf->tot_len : 0,e);
+	assert(pcb);
+	if (e == 0) {
+		if (pbuf) {
+			char *tmp = (char *) malloc(pbuf->tot_len + 1);
+			tmp[pbuf->tot_len] = 0;
+			pbuf_copy_partial(pbuf,tmp,pbuf->tot_len,0);
+			log_dbug(TAG,"answer:\n%.*s",pbuf->tot_len,tmp);
+			tcp_recved(pcb,pbuf->tot_len);
+			free(tmp);
+		}
+	} else {
+		log_dbug(TAG,"recv error %d",e);
+	}
+	if (pbuf)
+		pbuf_free(pbuf);
+	return 0;
+}
+
+
+static err_t handle_connect(void *arg, struct tcp_pcb *pcb, err_t x)
+{
+	if (x) {
+		log_warn(TAG,"connect error %d",x);
+		State = offline;
+		tcp_close(pcb);
+		return 0;
+	}
+	log_dbug(TAG,"connect %u",tcp_sndbuf(pcb));
+	tcp_recv(pcb,handle_recv);
+	tcp_sent(pcb,handle_sent);
+	State = running;
+	return 0;
+}
+
+
+static int influx_init()
 {
 	if (Mtx == 0)
 		Mtx = xSemaphoreCreateMutex();
+	if (StationMode != station_connected)
+		return 0;
 	if (!Config.has_influx() || !Config.has_nodename())
 		return 1;
 	const Influx &influx = Config.influx();
 	if (!influx.has_hostname() || !influx.has_port() || !influx.has_measurement())
 		return 1;
+	uint16_t port = influx.port();
+	if (port == 0)
+		return 1;
 	uint32_t ip = resolve_hostname(influx.hostname().c_str());
 	if ((IPADDR_NONE == ip) || (ip == 0)) {
-		log_error(TAG,"unknown host %s",influx.hostname().c_str());
+		log_warn(TAG,"unknown host %s",influx.hostname().c_str());
 		return 1;
 	}
+	log_dbug(TAG,"init");
 	Lock lock(Mtx);
-	if (Sock != -1) {
-		close(Sock);
-		Sock = -1;
-	}
-	if (Header) {
-		free(Header);
-		Header = 0;
+	if (State == connecting) {
+		log_dbug(TAG,"init stopped, already connecting");
+		return 1;
 	}
 	size_t hl = influx.measurement().size();
-	size_t nl = Config.nodename().size() + 1;	// 1 for trailing space of header
+	size_t nl = Config.nodename().size();	// 1 for trailing space of header
 	if (nl)
-		hl += 6 + nl;
-	char *h = (char*)malloc(hl+1);			// 1 for \0
-	if (h == 0) {
+		hl += 7 + nl;
+	Header = (char*)realloc(Header,hl+1);			// 1 for \0
+	if (Header == 0) {
+		HL = 0;
 		log_warn(TAG,"out of memory");
 		return 1;
 	}
-	strcpy(h,influx.measurement().c_str());
+	strcpy(Header,influx.measurement().c_str());
 	if (nl) {
-		strcat(h,",node=");
-		strcat(h,Config.nodename().c_str());
+		strcat(Header,",node=");
+		strcat(Header,Config.nodename().c_str());
 	}
-	h[hl-1] = ' ';
-	h[hl] = 0;
-	memset(&Addr,0,sizeof(Addr));
-	Addr.sin_family = AF_INET;
-	Addr.sin_addr.s_addr = ip;
-	Addr.sin_port = htons(influx.port());
-	Sock = socket(AF_INET,SOCK_DGRAM,IPPROTO_UDP);
-	if (Sock == -1) {
-		free(h);
-		log_error(TAG,"create socket: %s",strerror(errno));
-		return 1;
-	}
-	Header = h;
+	Header[hl-1] = ' ';
+	Header[hl] = 0;
 	HL = hl;
+	ip_addr_t addr;
+#ifdef CONFIG_IDF_TARGET_ESP8266
+	addr.addr = ip;
+#else
+	addr.type = IPADDR_TYPE_V4;
+	addr.u_addr.ip4.addr = ip;
+#endif
+	if (Config.influx().database().empty()) {
+		if (UPCB == 0) {
+			UPCB = udp_new();
+			if (err_t e = udp_connect(UPCB,&addr,port))
+				log_warn(TAG,"udp connect %d",e);
+			else
+				log_dbug(TAG,"udp connect %d.%d.%d.%d:%u"
+						,ip&0xff
+						,(ip>>8)&0xff
+						,(ip>>16)&0xff
+						,(ip>>24)&0xff
+						,port);
+			State = running;
+		}
+		if (TPCB != 0) {
+			tcp_abort(TPCB);
+			TPCB = 0;
+		}
+	} else {
+		if (UPCB) {
+			udp_remove(UPCB);
+			UPCB = 0;
+		}
+		if (TPCB == 0)
+			TPCB = tcp_new();
+		State = connecting;
+		tcp_err(TPCB,handle_err);
+		err_t e = tcp_connect(TPCB,&addr,port,handle_connect);
+		log_dbug(TAG,"tcp connect: %d",e);
+		if (e) {
+			tcp_abort(TPCB);
+			TPCB = 0;
+			State = offline;
+			return 1;
+		}
+		astream str(128,true);
+		const auto &i = Config.influx();
+		str <<	"POST /write?db=" << i.database() << " HTTP/1.1\n"
+			"Connection: keep-alive\n"
+			"Content-Type: application/x-www-form-urlencoded\n"
+			"Host: " << i.hostname() << ':' << i.port() << "\n"
+			"Content-Length: ";
+		free(TcpHdr);
+		THL = str.size();
+		TcpHdr = str.take();
+	}
 	log_info(TAG,"init done");
 	return 0;
 }
@@ -216,26 +332,46 @@ void influx_sendf(const char *fmt, ...)
 
 int influx_send(const char *data, size_t l)
 {
-	if (Sock == -1) {
-		influx_init();
-		if (Sock == -1)
-			return 1;
-		assert(Header);
-		assert(HL > 0);
+	if (State != running) {
+		log_dbug(TAG,"send: not running");
+		if (State != connecting)
+			influx_init();
+		return 0;
 	}
-	log_dbug(TAG,"%*s",l,data);
 	Lock lock(Mtx);
-	if (-1 == sendto(Sock,data,l,0,(const struct sockaddr *) &Addr,sizeof(Addr))) {
-		log_error(TAG,"sendto failed: %s",strneterr(Sock));
-		close(Sock);
-		Sock = -1;
-		return 1;
+	if (TPCB) {
+//		log_dbug(TAG,"tcp send '%.*s'",l,data);
+		char len[16];
+		int n = sprintf(len,"%u\r\n\r\n",l);
+		if (err_t e = tcp_write(TPCB,TcpHdr,THL,TCP_WRITE_FLAG_COPY)) {
+			log_warn(TAG,"send header failed %d",e);
+			State = error;
+			return e;
+		}
+		if (err_t e = tcp_write(TPCB,len,n,TCP_WRITE_FLAG_COPY)) {
+			log_warn(TAG,"send length failed %d",e);
+			State = error;
+			return e;
+		}
+		if (err_t e = tcp_write(TPCB,data,l,TCP_WRITE_FLAG_COPY)) {
+			log_warn(TAG,"send data failed %d",e);
+			State = error;
+			return e;
+		}
+		tcp_output(TPCB);
+	} else if (UPCB) {
+		log_dbug(TAG,"udp send '%.*s'",l,data);
+		struct pbuf *pbuf = pbuf_alloc(PBUF_TRANSPORT,l,PBUF_RAM);
+		pbuf_take(pbuf,data,l);
+		if (err_t e = udp_send(UPCB,pbuf))
+			log_warn(TAG,"send failed: %d",e);
+		pbuf_free(pbuf);
 	}
 	return 0;
 }
 
 
-static void send_element(JsonElement *e, stream &str, char extra)
+static void send_element(JsonNumber *e, stream &str, char extra)
 {
 	if (extra)
 		str << extra;
@@ -248,13 +384,14 @@ static void send_element(JsonElement *e, stream &str, char extra)
 static char send_elements(JsonObject *o, stream &str, char comma)
 {
 	JsonElement *e = o->first();
-	const char *n = o->name();
+	const char *name = o->name();
 	while (e) {
-		if (e->toInt()) {
+		JsonNumber *n = e->toNumber();
+		if (n && n->isValid()) {
 			if (comma)
 				str << comma;
-			str << n;
-			send_element(e,str,'_');
+			str << name;
+			send_element(n,str,'_');
 			comma = ',';
 		}
 		e = e->next();
@@ -267,8 +404,10 @@ static void send_rtdata(void *)
 {
 	if (RTData == 0)
 		return;
-	if ((Header == 0) && influx_init()) {
-		log_dbug(TAG,"rtdata: not initialized");
+	if (State != running) {
+		log_dbug(TAG,"rtdata: not connected");
+		if (State != connecting)
+			influx_init();
 		return;
 	}
 	astream str;
@@ -282,15 +421,22 @@ static void send_rtdata(void *)
 	while (e) {
 		if (JsonObject *o = e->toObject()) {
 			comma = send_elements(o,str,comma);
-		} else if (e->toInt()||e->toFloat()) {
-			send_element(e,str,comma);
-			comma = ',';
+		} else if (JsonNumber *n = e->toNumber()) {
+			if (n->isValid()) {
+				send_element(n,str,comma);
+				comma = ',';
+			}
 		}
 		e = e->next();
 	}
 	rtd_unlock();
-	log_dbug(TAG,"send rtdata %s",str.c_str());
-	influx_send(str.buffer(),str.size());
+	str << '\n';
+	if (comma) {
+		log_dbug(TAG,"send rtdata %s",str.c_str());
+		influx_send(str.buffer(),str.size());
+	} else {
+		log_dbug(TAG,"nothing to send");
+	}
 }
 
 
@@ -300,20 +446,23 @@ static unsigned LNT = 0;
 
 static void compare_task_sets(TaskStatus_t *st, unsigned nt, stream &s)
 {
+	unsigned dt[nt] = {0}, sum = 0;
 	for (int i = 0; i < nt; ++i) {
-		if (0 == memcmp("IDLE",st[i].pcTaskName,4))
-			continue;
 		for (int j = 0; j < LNT; ++j) {
 			if (st[i].xTaskNumber == LSt[j].xTaskNumber) {
-				s << ",task_";
-				if (char *c = strchr(st[i].pcTaskName,' '))
-					*c = '_';
-				s << st[i].pcTaskName;
-				s << '=';
-				s << st[i].ulRunTimeCounter - LSt[j].ulRunTimeCounter;
+				dt[i] = st[i].ulRunTimeCounter - LSt[j].ulRunTimeCounter;
+				sum += dt[i];
 				break;
 			}
 		}
+	}
+	for (int i = 0; i < nt; ++i) {
+		s << ",task_";
+		if (char *c = strchr(st[i].pcTaskName,' '))
+			*c = '_';
+		s << st[i].pcTaskName;
+		s << '=';
+		s << (float)dt[i] * 100.0 / (float)sum;
 	}
 }
 
@@ -339,13 +488,15 @@ static void proc_mon(stream &s)
 
 static void send_sys_info(void *)
 {
-	if ((Header == 0) && influx_init()) {
-		log_dbug(TAG,"sysinfo: not initialized");
+	if (State != running) {
+		log_dbug(TAG,"sysinfo: not connected");
+		if (State != connecting)
+			influx_init();
 		return;
 	}
 	astream str;
-	str.printf("%suptime=%u,mem32=%u,mem8=%u,memd=%u"
-		,Header
+	str.write(Header,HL);
+	str.printf("uptime=%u,mem32=%u,mem8=%u,memd=%u"
 		,uptime()
 		,heap_caps_get_free_size(MALLOC_CAP_32BIT)
 		,heap_caps_get_free_size(MALLOC_CAP_8BIT)
@@ -360,7 +511,9 @@ static void send_sys_info(void *)
 
 int influx_setup()
 {
+#ifdef SOCKAPI
 	Sock = -1;
+#endif
 	if (Mtx == 0)
 		Mtx = xSemaphoreCreateMutex();
 #ifdef CONFIG_SIGNAL_PROC
@@ -368,8 +521,6 @@ int influx_setup()
 #endif
 	action_add("influx!sysinfo",send_sys_info,0,"send system info to influx");
 	action_add("influx!rtdata",send_rtdata,0,"send runtime data to influx");
-	if (Action *a = action_add("influx!start",(void (*)(void*))influx_init,0,"start influx connector"))
-		event_callback(StationUpEv,a);
 	return 0;
 }
 
@@ -384,11 +535,21 @@ int influx(Terminal &term, int argc, const char *args[])
 			if (i.has_hostname())
 				term.printf("host       : %s\n",i.hostname().c_str());
 			if (i.has_port())
-				term.printf("port       : %u\n",i.port());
+				term.printf("port       : %u (%s)\n",i.port(),i.has_database()?"TCP":"UDP");
+			if (i.has_database())
+				term.printf("database   : %s\n",i.database().c_str());
 			if (i.has_measurement())
 				term.printf("measurement: %s\n",i.measurement().c_str());
 			if (Header)
 				term.printf("header     : '%s'\n",Header);
+			if (State == running) {
+				const char *mode = "";
+				if (UPCB)
+					mode = "UDP ready";
+				else if (TPCB)
+					mode = "TCP connected";
+				term.println(mode);
+			}
 		} else {
 			term.printf("not configured\n");
 		}
@@ -412,6 +573,8 @@ int influx(Terminal &term, int argc, const char *args[])
 			}
 			i->set_port(l);
 		} else if (0 == strcmp(args[1],"db")) {
+			i->set_database(args[2]);
+		} else if (0 == strcmp(args[1],"mm")) {
 			i->set_measurement(args[2]);
 		} else if (0 == strcmp(args[1],"config")) {
 			char *c = strchr(args[2],':');
@@ -434,6 +597,12 @@ int influx(Terminal &term, int argc, const char *args[])
 			i->set_measurement(s+1);
 		} else if (0 == strcmp(args[1],"send")) {
 			influx_send(args[2]);
+		} else if (0 == strcmp(args[1],"clear")) {
+			if (0 == strcmp(args[2],"db"))
+				return Config.mutable_influx()->setByName("database",0);
+			if (0 == strcmp(args[2],"mm"))
+				return Config.mutable_influx()->setByName("measurement",0);
+			return Config.mutable_influx()->setByName(args[2],0);
 		} else {
 			return arg_invalid(term,args[1]);
 		}

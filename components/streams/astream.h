@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -26,14 +26,12 @@
 class astream : public stream
 {
 	public:
-	astream(size_t s = 512);
+	explicit astream(size_t s = 512, bool crnl = false);
 	~astream();
 
 	int put(char c);
 	int write(const char *s, size_t n);
-
-	bool had_error() const
-	{ return m_err; }
+	const char *c_str();
 
 	char *at() const
 	{ return m_at; }
@@ -44,23 +42,16 @@ class astream : public stream
 	const char *buffer() const
 	{ return m_buf; }
 
-	const char *c_str()
-	{
-		if (m_at == m_end)
-			resize(1);
-		*m_at = 0;
-		return m_buf;
-	}
+	const char *data()
+	{ return m_buf; }
 
 	void reset()
-	{
-		m_at = m_buf;
-		m_err = false;
-	}
+	{ m_at = m_buf; }
+
+	char *take();
 
 	private:
 	char *m_buf, *m_at, *m_end;
-	bool m_err;
 
 	astream(const astream &);
 	astream &operator = (const astream &);

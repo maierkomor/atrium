@@ -57,57 +57,11 @@ static void execute_packet(int sock, struct sockaddr_in *a, char *buf, size_t n)
 	log_dbug(TAG,"packet with %d bytes from %s:%u",n,inet_ntoa(a->sin_addr.s_addr),ntohs(a->sin_port));
 	++Cmds;
 	MemTerminal term(buf,n);
-	shell(term);
+	shell(term,false);
 	log_dbug(TAG,"response: '%s'",term.getBuffer());
 	if (-1 == sendto(sock,term.getBuffer(),term.getSize(),0,(struct sockaddr*)a,sizeof(struct sockaddr_in)))
 		log_warn(TAG,"sendto failed: %s",strneterr(sock));
 }
-
-
-#if 0 //ndef CONFIG_INETD
-static void udpctrl(void *param)
-{
-	uint16_t port = htons((uint16_t)(uint32_t)param);
-	for (;;) {
-		wifi_wait();
-		int on = 1;
-		struct sockaddr_in addr;
-		int ls = socket(AF_INET,SOCK_DGRAM,IPPROTO_UDP);
-		int ts = socket(AF_INET,SOCK_DGRAM,IPPROTO_UDP);
-		if ((ls == -1) || (ts == -1)) {
-			log_error(TAG,"unable to create socket");
-			goto restart;
-		}
-		if (-1 == setsockopt(ls, SOL_SOCKET, SO_BROADCAST, &on, sizeof(on)))
-			log_warn(TAG,"unable to enable broadcast reception: %s",strneterr(ls));
-		bzero(&addr,sizeof(addr));
-		addr.sin_family = AF_INET;
-		addr.sin_port = port;
-		if (-1 == bind(ls,(struct sockaddr *)&addr,sizeof(addr)))
-			log_error(TAG,"unable to bind socket: %s",strneterr(ls));
-		log_info(TAG,"listening on port %u",(uint32_t)param);
-		for (;;) {
-			char buf[256];
-			struct sockaddr_in addr;
-			memset(&addr,0,sizeof(addr));
-			addr.sin_port = port;
-			socklen_t as = sizeof(addr);
-			int r = recvfrom(ls,buf,sizeof(buf)-1,0,(struct sockaddr *) &addr,&as);
-			addr.sin_port = port;
-			if (r < 0)
-				break;
-			if (r > 0)
-				execute_packet(ts,&addr,buf,r);
-		}
-		log_error(TAG,"receive failed: %s",strneterr(ls));
-restart:
-		++Errors;
-		close(ls);
-		close(ts);
-		vTaskDelay(3000/portTICK_PERIOD_MS);
-	}
-}
-#endif
 
 
 int udpc_stats(Terminal &term, int argc, const char *args[])
@@ -150,31 +104,7 @@ int udpctrl_setup(void)
 		log_info(TAG,"disabled");
 		return 0;
 	}
-#if 1 //def CONFIG_INETD
 	listen_port(p,m_bcast,proc_packet,"udpctrl","udpctrl",8,2048);
-#else
-	int ls = socket(AF_INET,SOCK_DGRAM,IPPROTO_UDP);
-	if (ls == -1) {
-		log_error(TAG,"unable to create socket");
-		return 1;
-	}
-	int on = 1;
-	if (-1 == setsockopt(ls, SOL_SOCKET, SO_BROADCAST, &on, sizeof(on)))
-		log_warn(TAG,"unable to enable broadcast reception: %s",strneterr(ls));
-	struct sockaddr_in addr;
-	bzero(&addr,sizeof(addr));
-	addr.sin_family = AF_INET;
-	addr.sin_port = p;
-	if (-1 == bind(ls,(struct sockaddr *)&addr,sizeof(addr))) {
-		log_error(TAG,"unable to bind socket: %s",strneterr(ls));
-		return 1;
-	}
-	BaseType_t r = xTaskCreatePinnedToCore(&udpctrl, TAG, stacksize, (void*)(uint32_t)p, 8, NULL, PRO_CPU_NUM);
-	if (r != pdPASS) {
-		log_error(TAG,"create task: %s",esp_err_to_name(r));
-		return 1;
-	}
-#endif
 	return 0;
 }
 

@@ -29,16 +29,14 @@ extern nvs_handle NVS;
 class NodeConfig;
 class HardwareConfig;
 class JsonObject;
-class JsonFloat;
-class JsonInt;
 class JsonString;
+class JsonNumber;
 
 extern NodeConfig Config;
 extern HardwareConfig HWConf;
 extern bool StationUp;
 extern JsonObject *RTData;
-extern JsonInt *Uptime;
-extern JsonFloat *Temperature, *Humidity, *Pressure;
+extern JsonNumber *Uptime;
 extern JsonString *UpdateState, *Localtime;
 
 void globals_setup();

@@ -24,6 +24,8 @@
 #include "alarms.h"
 #include "binformats.h"
 #include "button.h"
+#include "cyclic.h"
+#include "event.h"
 #include "globals.h"
 #include "log.h"
 #include "shell.h"
@@ -45,27 +47,91 @@
 
 static const char TAG[] = "status";
 
-static uint16_t OnTime[] = {
-	/* auto */	0,
-	/* off */	0,
-	/* on */	1000,
-	/* seldom */	70,
-	/* often */	70,
-	/* -seldom */	1800,
-	/* -often */	500,
-	/* heartbeat */	150,
+struct StatusCtx
+{
+	uint32_t update;
+	int8_t mode;
+	ledmode_t basemode;
+	gpio_num_t gpio;
+	bool on;
+};
+
+static uint32_t PressTime = 0;
+static StatusCtx *Status = 0;
+
+// 0: automatic
+// < 0: rewind x steps
+// > 0: bit 0: on/off, bit 6-1: x*10ms
+static const int8_t Modes[] = {
+#define MODEOFF_AUTO 0
+	0,		// basemode=0 => not an auto-mode
+#define MODEOFF_OFF 1
+	(63 << 1) | 0,	// 630ms off
+	-1,
+#define MODEOFF_ON 3
+	(63 << 1) | 1,	// 630ms on
+	-1,
+#define MODEOFF_SELDOM 5
+	(7 << 1) | 1,	// 70ms on
+	(60 << 1) | 0,	// 600ms off
+	(60 << 1) | 0,	// 600ms off
+	(60 << 1) | 0,	// 600ms off
+	-4,
+#define MODEOFF_OFTEN 10
+	(7 << 1) | 1,	// 70ms on
+	(50 << 1) | 0,	// 500ms off
+	-2,
+#define MODEOFF_NSELDOM 13
+	(7 << 1) | 0,	// 70ms off
+	(60 << 1) | 1,	// 600ms on
+	(60 << 1) | 1,	// 600ms on
+	(60 << 1) | 1,	// 600ms on
+	-4,
+#define MODEOFF_NOFTEN 18
+	(7 << 1) | 0,	// 70ms off
+	(50 << 1) | 1,	// 500ms on
+	-2,
+#define MODEOFF_HEARTBEAT 21
+	(15 << 1) | 1,	// 150ms on
+	(40 << 1) | 0,	// 400ms off
+	(15 << 1) | 1,	// 150ms on
+	(40 << 1) | 0,	// 400ms off
+	(40 << 1) | 0,	// 400ms off
+	-5,
+#define MODEOFF_SLOW 27
+	(50 << 1) | 1,	// 500ms on
+	(50 << 1) | 1,	// 500ms on
+	(50 << 1) | 0,	// 500ms off
+	(50 << 1) | 0,	// 500ms off
+	-4,
+#define MODEOFF_MEDIUM 32
+	(40 << 1) | 1,	// 400ms on
+	(40 << 1) | 0,	// 400ms off
+	-2,
+#define MODEOFF_FAST 35
+	(10 << 1) | 1,	// 100ms on
+	(10 << 1) | 0,	// 100ms off
+	-2,
+#define MODEOFF_VFAST 38
+	(5 << 1) | 1,	// 50ms on
+	(5 << 1) | 0,	// 50ms off
+	-2,
 };
 
 
-static uint16_t OffTime[] = {
-	/* auto */	0,
-	/* off */	1000,
-	/* on */	0,
-	/* seldom */	1800,
-	/* often */	500,
-	/* -seldom */	70,
-	/* -often */	70,
-	/* heartbeat */	400,
+static const uint8_t ModeOffset[] = {
+	MODEOFF_AUTO,
+	MODEOFF_OFF,
+	MODEOFF_ON,
+	MODEOFF_SELDOM,
+	MODEOFF_OFTEN,
+	MODEOFF_NSELDOM,
+	MODEOFF_NOFTEN,
+	MODEOFF_HEARTBEAT,
+	MODEOFF_SLOW,
+	MODEOFF_MEDIUM,
+	MODEOFF_FAST,
+	MODEOFF_VFAST,
 };
 
 
@@ -78,94 +144,80 @@ static const char *ModeNames[] = {
 	"neg-seldom",
 	"neg-often",
 	"heartbeat",
+	"slow",
+	"medium",
+	"fast",
+	"very-fast",
 };
 
-static uint16_t LedMode, CurMode;
-static uint32_t PressTime = 0;
-static bool Status = false;
 
-
-void statusled_set(uint16_t l)
+static void update_mode(StatusCtx *ctx, uint32_t now)
 {
-	log_dbug(TAG,"set mode %d",(int)l);
-	LedMode = l;
+	if (ctx->basemode == ledmode_auto)
+		return;
+	ledmode_t l = ctx->basemode;
+	if (PressTime) {
+		uint32_t dt = now - PressTime;
+		if (dt > BUTTON_LONG_START*2)
+			l = ledmode_on;
+		else if (dt > BUTTON_LONG_START)
+			l = ledmode_fast;
+		else if (dt > BUTTON_MED_START)
+			l = ledmode_medium;
+		else
+			l = ctx->basemode;
+	} else if (StationMode == station_connected)
+		l = alarms_enabled() ? ledmode_off : ledmode_pulse_seldom;
+	else if (StationMode == station_starting)
+		l = ledmode_medium;
+	else if (StationMode == station_disconnected)
+		l = ledmode_slow;
+	else if (StationMode == station_stopped)
+		l = alarms_enabled() ? ledmode_on : ledmode_neg_seldom;
+	else
+		abort();
+	if (l != ctx->basemode) {
+		log_dbug(TAG,"switching to %s",ModeNames[l]);
+		ctx->basemode = l;
+		ctx->mode = ModeOffset[l];
+		ctx->update = 0;
+	}
 }
 
 
-uint16_t statusled_get()
+static unsigned status_subtask(void *arg)
 {
-	return LedMode;
+	StatusCtx *ctx = (StatusCtx *)arg;
+	uint32_t now = esp_timer_get_time()/1000;
+	if (ctx->basemode)
+		update_mode(ctx,now);
+	if (now < ctx->update)
+		return now - ctx->update;
+	uint8_t mode = ctx->mode;
+	int8_t d = Modes[mode];
+	if (d < 0) {
+		mode += d;
+		ctx->mode = mode;
+		d = Modes[mode];
+	}
+	gpio_set_level(ctx->gpio, ctx->on == (d&1));
+	unsigned dt = (d>>1) * 10;
+	ctx->update = now + dt;
+	++ctx->mode;
+	log_dbug(TAG,"mode 0x%x, update %u, newmode-offset %u",d,ctx->update,ctx->mode);
+	return dt > 50 ? 50 : dt;
 }
 
 
-static void button_press_callback(void *)
-{
-	PressTime = esp_timer_get_time()/1000;
-}
-
-
-static void button_rel_callback(void *)
+static void button_rel_callback(void*)
 {
 	PressTime = 0;
 }
 
 
-static unsigned update_mode()
+static void button_press_callback(void*)
 {
-	if (LedMode) {
-		if (LedMode == CurMode)
-			return 0;
-		CurMode = LedMode;
-		return 1;
-	}
-	uint16_t l;
-	uint32_t now = esp_timer_get_time()/1000;
-	bool t = alarms_enabled();
-	if (PressTime) {
-		uint32_t dt = now - PressTime;
-		if (dt > BUTTON_LONG_START*2)
-			l = LedMode;
-		else if (dt > BUTTON_LONG_START)
-			l = 150;
-		else if (dt > BUTTON_MED_START)
-			l = 400;
-		else
-			l = LedMode;
-	} else if (t && (StationMode == station_connected))
-		l = ledmode_on;
-	else if (!t && (StationMode == station_connected))
-		l = ledmode_neg_seldom;
-	else if (StationMode == station_starting)
-		l = 200;
-	else if (StationMode == station_disconnected)
-		l = 100;
-	else if (t && (StationMode == station_stopped))
-		l = ledmode_pulse_seldom;
-	else
-		l = 1000;
-	if (l != CurMode) {
-		if (l < ledmode_max)
-			log_info(TAG,"switching to %s",ModeNames[l]);
-		else
-			log_info(TAG,"switching to blink %ums",l);
-		CurMode = l;
-		return 1;
-	}
-	return 0;
-}
-
-
-static void delay(uint32_t d)
-{
-#define CHECK_INTERVAL 100
-	while (d > CHECK_INTERVAL) {
-		vTaskDelay(CHECK_INTERVAL/portTICK_PERIOD_MS);
-		if (update_mode())
-			return;
-		d -= CHECK_INTERVAL;
-	}
-	vTaskDelay(d/portTICK_PERIOD_MS);
-	update_mode();
+	PressTime = esp_timer_get_time()/1000;
 }
 
 
@@ -183,78 +235,33 @@ void gpio_high(void *arg)
 }
 
 
-extern "C"
-void status_task(void *param)
+void statusled_set(ledmode_t m)
 {
-	const LedConfig *c = (const LedConfig *)param;
-	gpio_num_t gpio = (gpio_num_t) c->gpio();
-	uint32_t on = c->config() & 1;
-	Status = true;
-	log_info(TAG,"gpio%d, on=%u",(int)gpio,on);
-	while(1) {
-		if (uint16_t d_on = CurMode < ledmode_max ? OnTime[CurMode] : CurMode) {
-			gpio_set_level(gpio, on);
-			delay(d_on);
-		}
-		if (uint16_t d_off = CurMode < ledmode_max ? OffTime[CurMode] : CurMode) {
-			gpio_set_level(gpio, on^1);
-			delay(d_off);
-		}
-		if (uint16_t d_on = CurMode < ledmode_max ? OnTime[CurMode] : CurMode) {
-			gpio_set_level(gpio, on);
-			delay(d_on);
-		}
-		if (uint16_t d_off = CurMode < ledmode_max ? OffTime[CurMode] : CurMode) {
-			gpio_set_level(gpio, on^1);
-			delay(d_off);
-		}
-		if (CurMode == ledmode_heartbeat)
-			delay(500);
-	}
-}
-
-
-extern "C"
-void heartbeat_task(void *param)
-{
-	const LedConfig *c = (LedConfig *)param;
-	gpio_num_t gpio = (gpio_num_t) c->gpio();
-	uint8_t on = c->config() & 1;
-	if (esp_err_t e = gpio_set_direction(gpio,GPIO_MODE_OUTPUT)) {
-		log_error(TAG,"gpio %d set direction: %s",(int)gpio,esp_err_to_name(e));
+	if (Status == 0)
 		return;
-	}
-	while(1) {
-		gpio_set_level(gpio,on);
-		vTaskDelay(100/portTICK_PERIOD_MS);
-		gpio_set_level(gpio,on^1);
-		vTaskDelay(300/portTICK_PERIOD_MS);
-		gpio_set_level(gpio,on);
-		vTaskDelay(100/portTICK_PERIOD_MS);
-		gpio_set_level(gpio,on^1);
-		vTaskDelay(1000/portTICK_PERIOD_MS);
+	if (m == ledmode_auto) {
+		Status->basemode = ledmode_on;
+		Status->mode = MODEOFF_ON;
+	} else {
+		Status->basemode = ledmode_auto;
+		Status->mode = ModeOffset[m];
 	}
 }
 
 
 int status(Terminal &term, int argc, const char *args[])
 {
-	/*
-	assert(sizeof(OnTime) == sizeof(OffTime));
-	for (size_t i = 0; i < sizeof(OnTime)/sizeof(OnTime[0]); ++i)
-		assert((OnTime[i] != 0) || (OffTime[i] != 0));
-	*/
-	if (!Status) {
+	if (Status == 0) {
 		term.println("no statusled defined");
 		return 1;
 	}
 	if (argc > 2)
 		return arg_invnum(term);
 	if (argc == 1) {
-		if (LedMode < sizeof(ModeNames)/sizeof(ModeNames[0]))
-			term.printf("%s mode %s\n",CurMode == ledmode_auto ? "auto" : "manual",ModeNames[LedMode]);
+		if (Status->basemode < sizeof(ModeNames)/sizeof(ModeNames[0]))
+			term.printf("%s mode %s\n",Status->basemode != 0 ? "auto" : "manual",ModeNames[Status->basemode]);
 		else
-			term.printf("fixed interval %dms",CurMode);
+			term.printf("invalid mode %d\n",Status->basemode);
 		return 0;
 	}
 	if (0 == strcmp(args[1],"-l")) {
@@ -263,17 +270,14 @@ int status(Terminal &term, int argc, const char *args[])
 		return 0;
 	}
 	if (0 == strcmp(args[1],"auto")) {
-		LedMode = ledmode_auto;
-		return 0;
-	}
-	long l = strtol(args[1],0,0);
-	if ((l > ledmode_max) && (l <= UINT16_MAX)) {
-		LedMode = l;
+		Status->basemode = ledmode_on;
+		Status->mode = MODEOFF_ON;
 		return 0;
 	}
 	for (size_t i = 0; i < sizeof(ModeNames)/sizeof(ModeNames[0]); ++i) {
 		if (!strcmp(args[1],ModeNames[i])) {
-			LedMode = i;
+			Status->mode = ModeOffset[i];
+			Status->basemode = ledmode_auto;
 			return 0;
 		}
 	}
@@ -295,23 +299,27 @@ int status_setup()
 		gpio_num_t gpio = (gpio_num_t) c.gpio();
 		gpio_pad_select_gpio(gpio);
 		gpio_set_direction(gpio, GPIO_MODE_OUTPUT);
+		uint8_t on = c.config() & 1;
 		if (0 == strcmp(n,"heartbeat")) {
-			BaseType_t r = xTaskCreatePinnedToCore(heartbeat_task, "heartbeat", stacksize, (void*)&c, 1, NULL, APP_CPU_NUM);
-			if (r != pdPASS) {
-				log_error(TAG,"heartbeat task creation failed: %s",esp_err_to_name(r));
-				return 1;
-			}
-			log_info(TAG,"heartbeat started");
+			StatusCtx *ctx = new StatusCtx;
+			ctx->update = 0;
+			ctx->gpio = gpio;
+			ctx->mode = MODEOFF_HEARTBEAT;
+			ctx->basemode = ledmode_auto;
+			ctx->on = on;
+			cyclic_add_task("heartbeat",status_subtask,(void*)ctx);
+			log_dbug(TAG,"heartbeat started");
 		} else if (0 == strcmp(n,"status")) {
-			LedMode = (uint16_t)ledmode_auto;
-			CurMode = (uint16_t)ledmode_off;
-			BaseType_t r = xTaskCreatePinnedToCore(status_task, "status", stacksize, (void*)&c, 21, NULL, APP_CPU_NUM);
-			if (r != pdPASS) {
-				log_error(TAG,"status task creation failed: %s",esp_err_to_name(r));
-				return 1;
-			}
+			StatusCtx *ctx = new StatusCtx;
+			ctx->update = 0;
+			ctx->gpio = gpio;
+			ctx->mode = MODEOFF_ON;
+			ctx->basemode = ledmode_on;
+			ctx->on = on;
+			Status = ctx;
+			cyclic_add_task("status",status_subtask,(void*)ctx);
+			log_dbug(TAG,"status started");
 		} else {
-			uint8_t on = c.config() & 1;
 			action_add(concat(n,"!on"),on ? gpio_high : gpio_low,(void*)gpio,"turn led on");
 			action_add(concat(n,"!off"),on ? gpio_low : gpio_high,(void*)gpio,"turn led off");
 		}

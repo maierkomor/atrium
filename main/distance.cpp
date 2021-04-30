@@ -83,7 +83,7 @@ int distance(Terminal &term, int argc, const char *args[])
 int distance_setup()
 {
 	if (!HWConf.has_hcsr04()) {
-		log_info(TAG,"driver not configured");
+		log_dbug(TAG,"driver not configured");
 		return 0;
 	}
 	const HcSr04Config &c = HWConf.hcsr04();

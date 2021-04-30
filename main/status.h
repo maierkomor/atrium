@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -34,7 +34,9 @@ typedef enum ledmode {
 	ledmode_neg_seldom,
 	ledmode_neg_often,
 	ledmode_heartbeat,
-
+	ledmode_slow,
+	ledmode_medium,
+	ledmode_fast,
 	ledmode_max	// not a mode, just for iteration
 } ledmode_t;
 
@@ -42,7 +44,7 @@ typedef enum ledmode {
 extern "C" {
 #endif
 int status_setup();
-void statusled_set(uint16_t);
+void statusled_set(ledmode_t);
 //void status_task(void *ignored);
 uint16_t statusled_get();
 

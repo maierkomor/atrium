@@ -36,6 +36,7 @@
 #ifdef CONFIG_SIGNAL_PROC
 #include "dataflow.h"
 #endif
+#include "event.h"
 #include "func.h"
 #include "globals.h"
 #include "log.h"
@@ -47,11 +48,9 @@
 #include "terminal.h"
 #include "ujson.h"
 #include "wifi.h"
-#include "versions.h"
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
-//#include <lwip/apps/mqtt.h>
 #include <lwip/tcp.h>
 
 #include <string.h>
@@ -139,7 +138,7 @@ struct PubReq
 #endif
 
 
-typedef enum { offline = 0, connecting, running, stopping } state_t;
+typedef enum { offline = 0, connecting, running, stopping, error } state_t;
 
 
 struct MqttClient
@@ -240,13 +239,9 @@ struct pbuf *pbuf_of(struct pbuf *pbuf, unsigned off)
 
 static void mqtt_term()
 {
-	log_dbug(TAG,"term");
-	if (Client->pcb) {
-		tcp_recv(Client->pcb,0);
-		tcp_poll(Client->pcb,0,0);
-		tcp_sent(Client->pcb,0);
-		tcp_err(Client->pcb,0);
-		tcp_abort(Client->pcb);
+	if (struct tcp_pcb *pcb = Client->pcb) {
+		log_dbug(TAG,"term");
+		tcp_abort(pcb);
 		Client->pcb = 0;
 	}
 	Client->state = offline;
@@ -255,6 +250,7 @@ static void mqtt_term()
 
 static void mqtt_restart()
 {
+	log_dbug(TAG,"restart");
 	mqtt_term();
 	mqtt_start();
 }
@@ -344,8 +340,8 @@ static err_t handle_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *pbuf, err_
 	}
 	assert(pcb);
 	if (0 == pbuf) {
+		log_dbug(TAG,"recv: pbuf=0");
 		// connection has been closed
-		log_warn(TAG,"connection closed");
 		mqtt_restart();
 		return 0;
 	}
@@ -382,13 +378,13 @@ static err_t handle_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *pbuf, err_
 		case CONACK:
 			log_dbug(TAG,"CONACK");
 			Client->state = running;
-			mqtt_pub("version",VERSION,0,1,1);
+			mqtt_pub("version",Version,0,1,1);
 			mqtt_pub("reset_reason",ResetReasons[(int)esp_reset_reason()],0,1,1);
 			if (!Client->subscriptions.empty()) {
 				for (const auto &s : Client->subscriptions)
 					send_sub(s.first.c_str(),false);
-				tcp_output(pcb);
 			}
+			tcp_output(pcb);
 			break;
 		case PUBLISH:
 			log_dbug(TAG,"PUBLISH");
@@ -435,7 +431,12 @@ static err_t handle_sent(void *arg, struct tcp_pcb *pcb, u16_t l)
 static void handle_err(void *arg, err_t e)
 {
 	log_warn(TAG,"handle error %d",e);
-	mqtt_restart();
+	if (e == ERR_ABRT)
+		Client->pcb = 0;
+	else if (e == ERR_ISCONN)
+		Client->state = running;
+	else
+		Client->state = error;
 }
 
 
@@ -685,6 +686,8 @@ void mqtt_stop(void *arg)
 
 void mqtt_start(void *arg)
 {
+	if (StationMode != station_connected)
+		return;
 	log_dbug(TAG,"start");
 	const auto &mqtt = Config.mqtt();
 	if (!mqtt.has_uri() || !mqtt.enable() || !Config.has_nodename()) {
@@ -792,7 +795,6 @@ int mqtt_setup(void)
 {
 	if (!Config.has_mqtt())
 		return 0;
-	log_info(TAG,"setup");
 	action_add("mqtt!start",mqtt_start,0,"mqtt start");
 	action_add("mqtt!stop",mqtt_stop,0,"mqtt stop");
 	action_add("mqtt!pub_rtdata",mqtt_pub_rtdata,0,"mqtt publish data");
@@ -800,6 +802,7 @@ int mqtt_setup(void)
 	new FuncFact<FnMqttSend>;
 #endif
 	Client = new MqttClient;
+	log_dbug(TAG,"initialized");
 	return 0;
 }
 
@@ -858,8 +861,10 @@ int mqtt(Terminal &term, int argc, const char *args[])
 			return arg_invalid(term,args[1]);
 	} else if (!strcmp(args[1],"enable")) {
 		m->set_enable(true);
+		event_callback("wifi`station_up","mqtt!start");
 	} else if (!strcmp(args[1],"disable")) {
 		m->set_enable(false);
+		event_detach("wifi`station_up","mqtt!start");
 	} else if (!strcmp(args[1],"clear")) {
 		m->clear();
 	} else if (!strcmp(args[1],"start")) {

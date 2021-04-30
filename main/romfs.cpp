@@ -165,7 +165,7 @@ int romfs_read_at(int i, char *buf, size_t n, size_t o)
 	memcpy(buf,(void*)(RomfsBaseAddr+off+o),n);
 #else
 	if (auto e = spi_flash_read(RomfsBaseAddr+off+o,buf,n)) {
-		log_error(TAG,"spi_flash_read: %s",esp_err_to_name(e));
+		log_warn(TAG,"spi_flash_read: %s",esp_err_to_name(e));
 		return -1;
 	}
 #endif
@@ -230,7 +230,7 @@ void romfs_setup()
 	char magic[8];
 	spi_flash_read(flashrom,magic,sizeof(magic));
 	if (strcmp(magic,ROMFS_MAGIC)) {
-		log_error(TAG,"no " ROMFS_MAGIC " at 0x%x",flashrom);
+		log_info(TAG,"no " ROMFS_MAGIC " at 0x%x",flashrom);
 		return;
 	}
 	flashrom += 8;

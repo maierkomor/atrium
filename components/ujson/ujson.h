@@ -28,6 +28,7 @@
 // - no checking for invalid characters
 // - no string escape sequences
 
+#include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -37,17 +38,17 @@ class stream;
 
 class JsonObject;
 class JsonBool;
-class JsonFloat;
+class JsonNumber;
 class JsonInt;
 class JsonString;
 
 class JsonElement
 {
 	public:
-	explicit JsonElement(const char *n)
+	explicit JsonElement(const char *n, const char *dim = 0)
 	: m_name(n)
 	, m_next(0)
-	, m_dim(0)
+	, m_dim(dim)
 	{ }
 
 	// pure virtual functions causes problems on ESP8266/xtensa toolchain
@@ -67,10 +68,7 @@ class JsonElement
 	virtual JsonBool *toBool()
 	{ return 0; }
 
-	virtual JsonInt *toInt()
-	{ return 0; }
-
-	virtual JsonFloat *toFloat()
+	virtual JsonNumber *toNumber()
 	{ return 0; }
 
 	void setNext(JsonElement *e)
@@ -123,51 +121,35 @@ class JsonBool : public JsonElement
 };
 
 
-class JsonInt : public JsonElement
+class JsonNumber : public JsonElement
 {
 	public:
-	JsonInt(const char *name, int64_t v)
+	explicit JsonNumber(const char *name, const char *dim = 0)
+	: JsonElement(name,dim)
+	, m_value(NAN)
+	{ }
+
+	JsonNumber(const char *name, double v)
 	: JsonElement(name)
 	, m_value(v)
 	{ }
 
-	JsonInt *toInt()
+	JsonNumber *toNumber()
 	{ return this; }
 
-	void writeValue(stream &) const;
-
-	void set(int64_t v)
-	{ m_value = v; }
-
-	int64_t get() const
-	{ return m_value; }
-
-	private:
-	int64_t m_value;
-};
-
-
-class JsonFloat : public JsonElement
-{
-	public:
-	JsonFloat(const char *name, float v)
-	: JsonElement(name)
-	, m_value(v)
-	{ }
-
-	JsonFloat *toFloat()
-	{ return this; }
+	bool isValid() const;
 
 	void writeValue(stream &) const;
 
 	void set(float v)
 	{ m_value = v; }
 
-	float get() const
+	double get() const
 	{ return m_value; }
 
 	protected:
-	float m_value;
+	// must be double to be conforming to JSON spec
+	double m_value;
 };
 
 
@@ -194,39 +176,6 @@ class JsonString : public JsonElement
 };
 
 
-class JsonDegC : public JsonFloat
-{
-	public:
-	JsonDegC(const char *name, float f)
-	: JsonFloat(name,f)
-	{ }
-
-	void writeValue(stream &o) const;
-};
-
-
-class JsonHumid : public JsonFloat
-{
-	public:
-	JsonHumid(const char *name, float f)
-	: JsonFloat(name,f)
-	{ }
-
-	void toStream(stream &o) const;
-};
-
-
-class JsonPress : public JsonFloat
-{
-	public:
-	JsonPress(const char *name, float f)
-	: JsonFloat(name,f)
-	{ }
-
-	void toStream(stream &o) const;
-};
-
-
 class JsonObject : public JsonElement
 {
 	public:
@@ -239,8 +188,7 @@ class JsonObject : public JsonElement
 	{ return this; }
 
 	JsonBool *add(const char *name, bool value);
-	JsonInt *add(const char *name, int32_t value);
-	JsonFloat *add(const char *name, float value);
+	JsonNumber *add(const char *name, double value);
 	JsonString *add(const char *name, const char *value);
 	JsonObject *add(const char *name);
 	JsonElement *get(const char *) const;

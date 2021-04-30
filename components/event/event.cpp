@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020, Thomas Maier-Komor
+ *  Copyright (C) 2020-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -17,6 +17,7 @@
  */
 
 #include "actions.h"
+#include "cyclic.h"
 #include "event.h"
 #include "log.h"
 
@@ -144,6 +145,22 @@ int event_detach(event_t e, Action *a)
 }
 
 
+int event_detach(const char *event, const char *action)
+{
+	event_t e = event_id(event);
+	if (e == 0) {
+		log_warn(TAG,"event_detach('%s',%s'): unknown event",event,action);
+		return 1;
+	}
+	Action *a = action_get(action);
+	if (a == 0) {
+		log_warn(TAG,"event_detach('%s',%s'): unknown action",event,action);
+		return 2;
+	}
+	return event_detach(e,a);
+}
+
+
 event_t event_id(const char *n)
 {
 	{
@@ -191,12 +208,17 @@ void event_isr_trigger(event_t e)
  }
  
  
-static void events_task(void *)
+static void event_task(void *)
 {
+	unsigned d = 1;
 	for (;;) {
 		event_t e;
-		BaseType_t r = xQueueReceive(EventsQ,&e,portMAX_DELAY);
-		assert(r == pdTRUE);
+		BaseType_t r = xQueueReceive(EventsQ,&e,d * portTICK_PERIOD_MS);
+		if (r == pdFALSE) {
+			// timeout: process cyclic
+			d = cyclic_execute();
+			continue;
+		}
 		Lock lock(Mtx);
 		if (e < EventHandlers.size()) {
 			log_dbug(TAG,"execute callbacks of %s",EventHandlers[e].name);
@@ -216,7 +238,7 @@ int event_setup(void)
 	EventHandlers.emplace_back("");	// (event_t)0 is an invalid event
 	EventsQ = xQueueCreate(32,sizeof(event_t));
 	Mtx = xSemaphoreCreateMutex();
-	BaseType_t r = xTaskCreatePinnedToCore(&events_task, "events", 4096, (void*)0, 20, NULL, 1);
+	BaseType_t r = xTaskCreatePinnedToCore(&event_task, "events", 4096, (void*)0, 14, NULL, 1);
 	if (r != pdPASS) {
 		log_error(TAG,"task creation failed: freertos error %d",r);
 		return 1;

@@ -80,22 +80,45 @@ int DS18B20::create(uint64_t id, const char *n)
 void DS18B20::read()
 {
 	OneWire *ow = OneWire::getInstance();
-	ow->sendCommand(getId(),DS18B20_READ);	// read scratchpad
+	if (ow->sendCommand(getId(),DS18B20_READ)) {	// read scratchpad
+		if (m_json)
+			m_json->set(NAN);
+		return;
+	}
 	uint8_t sp[9];
 	for (int i = 0; i < sizeof(sp); ++i)
 		sp[i] = ow->readByte();
-	m_value = (float)(((uint16_t)sp[1] << 8) | (uint16_t)sp[0]);
-	m_value *= 0.0625;
-	if (m_json)
-		m_json->set(m_value);
-	log_info(TAG,"%s: %f",m_name,m_value);
+	uint8_t crc = OneWire::crc8(sp,8);
+	if (crc != sp[8]) {
+		log_warn(TAG,"read CRC: expected 0x%02x, got 0x%02x",sp[8],crc);
+		if (m_json)
+			m_json->set(NAN);
+		return;
+	}
+	log_dbug(TAG,"CRC ok");
+	uint16_t v = ((uint16_t)(sp[1] & 0x7f) << 8) | (uint16_t)sp[0];
+	if (v == 0x7fff) {
+		log_dbug(TAG,"%s: NAN",m_name);
+		if (m_json)
+			m_json->set(NAN);
+	} else {
+		float f = v;
+		if (sp[1] & 0x80)
+			f *= -1;
+		f *= 0.0625;
+		if (m_json)
+			m_json->set(f);
+		log_dbug(TAG,"%s: %f",m_name,f);
+	}
 }
 
 
 void DS18B20::attach(JsonObject *o)
 {
-	if (m_json == 0)
-		m_json = o->add(m_name,0.0f);
+	if (m_json == 0) {
+		m_json = new JsonNumber(m_name,"\u00b0C");
+		o->append(m_json);
+	}
 }
 
 #endif // CONFIG_ONEWIRE

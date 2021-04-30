@@ -1,0 +1,8 @@
+synopsis: ow <cmd> [<id> <name>]
+where <cmd> is:
+list : list configured devices
+read : read the ROM ID of a single attached device
+scan : scan for available devices on 1-wire bus
+reset: reset 1-wire bus
+name : set name of device with <id> to <name>
+power: read power mode of devices

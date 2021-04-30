@@ -1,0 +1,2 @@
+synopsis: ip
+ip lists the available network interfaces and their settings.

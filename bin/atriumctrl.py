@@ -42,7 +42,7 @@ def receiver():
 		if addr[0] == localip:
 			continue
 		host = socket.gethostbyaddr(addr[0])
-		print "%s (%s):\n%s\n" % (host[0],addr[0],msg)
+		print("%s (%s):\n%s\n" % (host[0], addr[0], msg.decode()))
 
 
 def term(x,r):
@@ -67,6 +67,7 @@ bc.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 while True:
 	try:
 		sys.stdout.write(">> ")
+		sys.stdout.flush()
 		line = sys.stdin.readline()
 		if line:
 			line = line.rstrip()
@@ -81,42 +82,42 @@ while True:
 	if com == 'exit':
 		term(0,receivethr)
 	elif com == 'help':
-		print "@<node> <command>     : send command to <node>"
-		print "send <command>        : broadcast command to all nodes"
-		print "port <p>              : set UDP port (default: 12719)"
-		print "hwcfg <node> [<file>] : send hardware config to node"
-		print "exit                  : terminate"
+		print("@<node> <command>     : send command to <node>")
+		print("send <command>        : broadcast command to all nodes")
+		print("port <p>              : set UDP port (default: 12719)")
+		print("hwcfg <node> [<file>] : send hardware config to node")
+		print("exit                  : terminate")
 
 	if (len(args) == 1):
-		print "error: missing argument or unknown command"
+		print("error: missing argument or unknown command")
 		continue
 	# commands with arguments
 	arg = args[1]
-        arg += '\n'
+	arg += '\n'
 	if com == 'port':
 		if to_int(arg) != 0:
 			Port = to_int(arg)
 			continue
 		try:
 			Port = socket.getservbyname(arg,'udp')
-			print "service %s is on port %u" % (arg,Port)
+			print("service %s is on port %u" % (arg,Port))
 		except socket.error as e:
-			print "error resolving service %s: %s" % (arg,e)
+			print("error resolving service %s: %s" % (arg,e))
 	elif com[0] == '@':
 		node = com[1:]
 	elif com == "send":
 		try:
-			bc.sendto(arg,("<broadcast>",Port))
+			bc.sendto(arg.encode(),("<broadcast>",Port))
 		except socket.gaierror as e:
-			print "error sending: %s" % arg,e
+			print("error sending: %s" % arg,e)
 		time.sleep(0.5)
 		continue
-        elif com == "hwcfg":
+	elif com == "hwcfg":
 		args = arg.split(' ',2)
 		node = args[0]
 		arg = 'hwconf parsexxd\r\n'
-                if len(args) == 1:
-			print "please input config hex, end with empty line"
+		if len(args) == 1:
+			print("please input config hex, end with empty line")
 			while line != '\n':
 				line = sys.stdin.readline()
 				arg += line.rstrip()
@@ -125,14 +126,14 @@ while True:
 				f = open(args[1].rstrip(),"r")
 				buf = f.read()
 				f.close()
-			except IOError, e:
-				print e
+			except IOError as e:
+				print(e)
 				continue
 			arg += buf.encode('hex')
 		arg += '\r\n\r\n'
-#		print "%u bytes" % len(arg)
+#		print("%u bytes" % len(arg))
 	else:
-		print "error unkown command '%s'" % com
+		print("error unkown command '%s'" % com)
 		continue
 #	print "sending to %s:%u" % (node,Port)
 #	print "====="
@@ -140,8 +141,8 @@ while True:
 #	print "====="
 	try:
 		addr = (node,Port)
-		out.sendto(arg,addr)
+		out.sendto(arg.encode(),addr)
 	except socket.gaierror as e:
-		print "error sending: %s" % arg,e
+		print("error sending: %s" % arg,e)
 	time.sleep(0.5)
 

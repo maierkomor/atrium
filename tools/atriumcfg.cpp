@@ -499,16 +499,15 @@ int verify_hw()
 			ret = 1;
 		}
 	}
-	if (HwCfg.has_bme280()) {
-		const Bme280Config &c = HwCfg.bme280();
+	for (const I2CConfig &c : HwCfg.i2c()) {
 		int8_t sda = c.sda();
 		if ((sda != -1) && !gpios.insert(sda).second) {
-			printf("gpio %d: duplicate use in bme280\n",sda);
+			printf("gpio %d: duplicate use in i2c\n",sda);
 			ret = 1;
 		}
 		int8_t scl = c.sda();
 		if ((scl != -1) && !gpios.insert(scl).second) {
-			printf("gpio %d: duplicate use in bme280\n",scl);
+			printf("gpio %d: duplicate use in i2c\n",scl);
 			ret = 1;
 		}
 		if ((sda != -1) && (scl != -1)) {

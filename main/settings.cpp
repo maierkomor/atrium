@@ -756,7 +756,7 @@ void initDns()
 	if (a.u_addr.ip4.addr != INADDR_NONE)
 #else
 		a.addr = inet_addr(dns);
-	log_info(TAG,"setting dns server %d.%d.%d.%d"
+	log_info(TAG,"dns server %d.%d.%d.%d"
 			, (a.addr) & 0xff
 			, (a.addr >> 8) & 0xff
 			, (a.addr >> 16) & 0xff
@@ -780,6 +780,12 @@ void sntp_start()
 		setenv("TZ",Config.timezone().c_str(),1);
 	sntp_stop();
 	const char *server = Config.sntp_server().c_str();
+	if (char *cur = sntp_getservername(0)) {
+		if ((cur != 0) && (cur != server)) {
+			free(cur);
+			sntp_setservername(0,0);
+		}
+	}
 	bool set = false;
 	if (strchr(server,'.')) {
 		const char *s = Config.sntp_server().c_str();
@@ -787,14 +793,12 @@ void sntp_start()
 		log_info(TAG,"sntp server %s",s);
 		set = true;
 	} else if (Config.has_domainname()) {
-		static char *fqhn = 0;
-		if (fqhn)
-			free(fqhn);
+		char *fqhn;
 		asprintf(&fqhn,"%s.%s",server,Config.domainname().c_str());
 		if (fqhn) {
+			log_info(TAG,"sntp server %s",fqhn);
 			set = true;
 			sntp_setservername(0,fqhn);
-			log_info(TAG,"sntp server %s",fqhn);
 		}
 	}
 	if (set)
@@ -822,6 +826,14 @@ void cfg_activate()
 		if (s.has_ssid() && s.has_pass() && s.activate())
 			wifi_start_station(s.ssid().c_str(),s.pass().c_str());
 	} else if (!softap) {
+		/* just too flaky to auto-trigger...
+#ifdef CONFIG_WPS
+		wifi_wps_start();
+#elif defined CONFIG_SMARTCONFIG
+		smartconfig_start();
+#endif
+		}
+		*/
 		wifi_start_softap(Config.nodename().c_str(),"");
 	}
 
@@ -907,18 +919,21 @@ void cfg_activate_actions()
 void cfg_activate_triggers()
 {
 	for (const auto &t : Config.triggers()) {
-		Action *a = action_get(t.action().c_str());
-		if (a == 0) {
-			log_warn(TAG,"unknown action '%s'",t.action().c_str());
-			continue;
-		}
-		event_t e = event_id(t.event().c_str());
+		const char *en = t.event().c_str();
+		event_t e = event_id(en);
 		if (e == 0) {
-			log_warn(TAG,"unknown event %s",t.event().c_str());
+			log_warn(TAG,"unknown event %s",en);
 			continue;
 		}
-		log_dbug(TAG,"event %s triggers action %s",t.event().c_str(),t.action().c_str());
-		event_callback(e,a);
+		for (const auto &action : t.action()) {
+			const char *an = action.c_str();
+			if (Action *a = action_get(an)) {
+				log_dbug(TAG,"event %s triggers action %s",en,an);
+				event_callback(e,a);
+			} else {
+				log_warn(TAG,"unknown action '%s'",an);
+			}
+		}
 	}
 }
 
@@ -1105,13 +1120,6 @@ void settings_setup()
 		if (cfg_read_nodecfg()) {
 			cfg_init_defaults();
 			set_cfg_err(2);
-		}
-		if (!Config.has_station()) {
-#ifdef CONFIG_WPS
-			wifi_wps_start();
-#elif defined CONFIG_SMARTCONFIG
-			smartconfig_start();
-#endif
 		}
 	} else if (setup == 1) {
 		cfg_init_defaults();

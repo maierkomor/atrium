@@ -25,7 +25,8 @@
 #define con_print(...)
 #define con_printf(...)
 #else
-int con_print(const char *,...);
+extern "C" int con_print(const char *);
+extern "C" int con_printf(const char *,...);
 #endif
 
 estring::estring()
@@ -41,9 +42,9 @@ estring::estring()
 estring::estring(size_t l, char c)
 : str((char*)malloc(l))
 , len(l)
-, alloc(1)
+, alloc(l)
 {
-	con_print("estring(%u,'\\0%02o')",l,c);
+	con_printf("estring(%u,'\\0%02o')",l,c);
 	memset(str,c,l);
 }
 
@@ -52,7 +53,7 @@ estring::estring(const char *s)
 : str(0)
 , alloc(0)
 {
-	con_printf("estring(s) %s\n",s);
+	con_printf("estring(s) %s",s);
 	assign(s,strlen(s));
 }
 
@@ -61,7 +62,7 @@ estring::estring(const char *s, size_t l)
 : str(0)
 , alloc(0)
 {
-	con_printf("estring(s,l) %s\n",s);
+	con_printf("estring('%.*s',%d)",l,s,l);
 	assign(s,l);
 }
 
@@ -70,7 +71,7 @@ estring::estring(const char *s, const char *e)
 : str(0)
 , alloc(0)
 {
-	con_printf("estring(s,e) %s\n",s);
+	con_printf("estring(s,e) %.*s",e-s,s);
 	assign(s,e-s);
 }
 
@@ -80,7 +81,7 @@ estring::estring(const estring &a)
 , len(a.len)
 , alloc(a.alloc)
 {
-	con_printf("estring(const estring &) %s\n",a.str?a.str:"<null>");
+	con_printf("estring(const estring &) %s",a.str?a.str:"<null>");
 	memcpy(str,a.str,len+1);
 }
 
@@ -91,7 +92,7 @@ estring::estring(const estring &&a)
 , len(a.len)
 , alloc(a.alloc)
 {
-	con_printf("estring(const estring &&) %s\n",a.str);
+	con_printf("estring(const estring &&) %s",a.str);
 	memcpy(str,a.str,len+1);
 }
 
@@ -101,7 +102,7 @@ estring::estring(estring &&a)
 , len(a.len)
 , alloc(a.alloc)
 {
-	con_printf("estring(estring &&) %s\n",str);
+	con_printf("estring(estring &&) %s",str);
 	a.len = 0;
 	a.alloc = 0;
 }
@@ -110,7 +111,7 @@ estring::estring(estring &&a)
 
 estring::~estring()
 {
-	con_printf("~estring() %s\n",str);
+	con_printf("~estring() %s",str);
 	free(str);
 }
 
@@ -121,7 +122,7 @@ void estring::reserve(size_t ns)
 		return;
 	// must always allocate ns+1 byte at minimum for trailing \0
 	alloc = (ns+16) & ~15;	// reserve ns + [1..16]
-	con_printf("reserve(%d) %d",ns,alloc);
+	con_printf("estring %p::reserve(%d) %d",this,ns,alloc);
 	char *n = (char *)realloc(str,alloc);
 	assert(n);
 	str = n;
@@ -130,7 +131,7 @@ void estring::reserve(size_t ns)
 
 estring &estring::operator = (const estring &a)
 {
-	con_printf("operator =(const estring &) %s\n",a.str);
+	con_printf("operator =(const estring &) %s",a.str);
 	reserve(a.len);
 	memcpy(str,a.str,a.len+1);
 	len = a.len;

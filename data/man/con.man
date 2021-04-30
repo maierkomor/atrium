@@ -1,0 +1,4 @@
+synopsis: con [<console>]
+Without argument the connection is redirected to console <console>.
+<console> can be either the integer id of the console or its name.
+To disconnect from the console, type the sequence "~.".

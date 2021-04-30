@@ -41,6 +41,8 @@ class OneWire
 	static OneWire *getInstance()
 	{ return Instance; }
 
+	static uint8_t crc8(const uint8_t *in, size_t len);
+
 	private:
 	int addDevice(uint64_t);
 	int searchRom(uint64_t &id, std::vector<uint64_t> &collisions);

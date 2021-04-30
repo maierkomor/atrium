@@ -47,7 +47,8 @@ char *float_to_str(char *buf, float f)
 		++a;
 	}
 	int n = sprintf(o,"%u.%u",a,b);
-	return buf + n;
+	o += n;		// don't forget the potential minus
+	return o;
 }
 
 

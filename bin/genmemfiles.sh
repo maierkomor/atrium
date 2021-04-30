@@ -27,34 +27,43 @@ if [ ! -d $ldir ]; then
 	mkdir -p $ldir
 fi
 
-echo "#ifndef MEMFILES_H" > memfiles.h.new
-echo "#define MEMFILES_H" >> memfiles.h.new
-echo >> memfiles.h.new
+cat > memfiles.h.new << EOF
+#ifndef MEMFILES_H
+#define MEMFILES_H
+
+#ifdef CONFIG_IDF_TARGET_ESP8266
+#define ROMSTR __attribute__((section(".irom0.text.romstr")))
+#else
+#define ROMSTR
+#endif
+
+EOF
+
 for i in $MEMFILES; do
 	file="$i"
 	filename=`basename "$i"`
+	cpp_file=`echo $filename|sed 's/\.html/_html.cpp/;s/\.man/_man.cpp/'`
 	if [ "$CONFIG_INTEGRATED_HELP" = "y" ]; then
-		echo "extern char $(echo $filename | sed 's/\./_/g')[];" >> memfiles.h.new
+		echo "extern const char ROMSTR $(echo $filename | sed 's/\./_/g')[];" >> memfiles.h.new
 		echo "#define $(echo $filename | sed 's/\./_/g')_len $(stat --printf='%s' $i)" >> memfiles.h.new
+		#echo comparing $file against $ldir/$cpp_file
+		test -e "$ldir/$cpp_file"
+		ex=$?
+		test "$file" -nt "$ldir/$cpp_file"
+		nt=$?
+		if [ "$ex" == "1" ] ||  [ "$nt" == "0" ]; then
+			echo updating $ldir/$cpp_file
+			pushd `dirname $i`
+			xxd -i $filename "$ldir/$cpp_file"
+			sed -i 's/unsigned char /#include "memfiles.h"\nconst char ROMSTR /;s/]/]/' "$ldir/$cpp_file"
+			popd > /dev/null
+			sed -i 's/^unsigned //;' "$ldir/$cpp_file"
+			sed -i 's/}/ ,0x00}/' "$ldir/$cpp_file"
+			sed -i 's/int .*;//' "$ldir/$cpp_file"
+		fi
 	else
 		echo "#define $(echo $filename | sed 's/\./_/g') 0" >> memfiles.h.new
-	fi
-	cpp_file=`echo $filename|sed 's/\.html/_html.cpp/;s/\.man/_man.cpp/'`
-	#echo comparing $file against $ldir/$cpp_file
-	test -e "$ldir/$cpp_file"
-	ex=$?
-	test "$file" -nt "$ldir/$cpp_file"
-	nt=$?
-	if [ "$ex" == "1" ] ||  [ "$nt" == "0" ]; then
-		echo updating $ldir/$cpp_file
-		pushd `dirname $i`
-		xxd -i $filename "$ldir/$cpp_file"
-		popd > /dev/null
-		sed -i 's/^unsigned //;' "$ldir/$cpp_file"
-		sed -i 's/}/ ,0x00}/' "$ldir/$cpp_file"
-		sed -i 's/int .*;//' "$ldir/$cpp_file"
-#	else
-#		echo $ldir/$cpp_file is up-to-date
+		rm -f "$ldir/$cpp_file"
 	fi
 	shift
 done

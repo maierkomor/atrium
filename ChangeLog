@@ -1,3 +1,17 @@
+R2104:
+======
+- make 'mqtt start' implicit
+- bugfix for shell interface of timer
+- fix crash, when starting without config
+- man pages update
+- ds18b20 driver should verify CRC before accepting the value
+- do not trigger WPS per default on startup without config
+- provide dimensions for measurements
+- updated atriumctrl.py to python version 3
+- added support BMP280, BME680
+- freed up more RAM
+- added a UART monitor (forwards uart rx to syslog)
+
 R2103:
 ======
 - workaround for LWIP/MQTT crashing with multiple publish requests

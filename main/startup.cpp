@@ -47,7 +47,6 @@
 #include "status.h"
 #include "uart_terminal.h"
 #include "uarts.h"
-#include "versions.h"
 #include "wifi.h"
 
 #ifndef CHIP_FEATURE_EMB_FLASH
@@ -84,7 +83,6 @@ static void init_detached(int (*fn)(),const char *name,void *arg)
 
 int adc_setup();
 int alarms_setup();
-int bme_setup();
 int button_setup();
 int clockapp_setup();
 int console_setup();
@@ -97,6 +95,7 @@ int ftpd_setup();
 int gpio_setup();
 int hall_setup();
 int httpd_setup();
+int i2c_setup();
 int inetd_setup();
 int influx_setup();
 int ledstrip_setup();
@@ -166,7 +165,7 @@ void app_main()
 #endif
 	log_info(TAG,"Atrium Firmware for ESP based systems");
 	log_info(TAG,"Copyright 2019-2021, Thomas Maier-Komor, License: GPLv3");
-	log_info(TAG,"Version: " VERSION);
+	log_info(TAG,"Version %s",Version);
 	log_info(TAG,"IDF: %s",esp_get_idf_version());
 	globals_setup();
 	nvs_setup();
@@ -180,7 +179,8 @@ void app_main()
 	gpio_install_isr_service(ESP_INTR_FLAG_LEVEL1 | ESP_INTR_FLAG_IRAM);
 #endif
 	settings_setup();
-	event_setup();	// needed for most drivers including gpio
+	cyclic_setup();	// before event_setup
+	event_setup();	// needed for most drivers and wifi including gpio
 	gpio_setup();
 	adc_setup();
 #ifdef CONFIG_IDF_TARGET_ESP32
@@ -189,10 +189,6 @@ void app_main()
 
 #ifdef CONFIG_STATUSLEDS
 	status_setup();
-#endif
-
-#ifdef CONFIG_SUBTASKS
-	cyclic_setup();
 #endif
 	init_fs();
 
@@ -215,11 +211,11 @@ void app_main()
 #ifdef CONFIG_DIMMER
 	dimmer_setup();
 #endif
-#ifdef CONFIG_BME280
-	bme_setup();
-#endif
 #ifdef CONFIG_DHT
 	dht_setup();
+#endif
+#ifdef CONFIG_I2C
+	i2c_setup();
 #endif
 #ifdef CONFIG_TOUCHPAD
 	touchpads_setup();
@@ -237,7 +233,6 @@ void app_main()
 #ifdef CONFIG_SYSLOG
 	syslog_setup();
 #endif
-	//BaseType_t r = xTaskCreate(settings_setup,"cfginit",4096,(void*)0,8,0);
 
 #ifdef CONFIG_NIGHTSKY
 	nightsky_setup();
@@ -288,5 +283,5 @@ void app_main()
 #ifdef CONFIG_IDF_TARGET_ESP32
 	esp_ota_mark_app_valid_cancel_rollback();
 #endif
-	log_info(TAG,"Atrium Version " VERSION);
+	log_info(TAG,"Atrium Version %s",Version);
 }

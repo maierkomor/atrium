@@ -52,7 +52,7 @@ static void init_spiffs()
 	conf.format_if_mount_failed = false;
 
 	if (esp_err_t e = esp_vfs_spiffs_register(&conf)) {
-		log_error(TAG, "SPIFFS mounting failed: %s",esp_err_to_name(e));
+		log_info(TAG, "SPIFFS mounting failed: %s",esp_err_to_name(e));
 	} else {
 		size_t total = 0, used = 0;
 		if (esp_err_t e = esp_spiffs_info(DATA_PARTITION, &total, &used)) log_error(TAG, "error getting SPIFFS info: %s",esp_err_to_name(e));

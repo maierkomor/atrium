@@ -27,9 +27,15 @@ config SIGNAL_PROC
 
 config UART_CONSOLE
 	bool "serial console to configure and operate target device"
-	default false
+	default true
 	help
 		serial console is especially helpful for devices under development
+
+config UART_MONITOR
+	bool "serial monitor"
+	default true
+	help
+		serial monitor that forwards input data to syslog"
 
 config INTEGRATED_HELP
 	bool "integrate help in app binary"
@@ -49,12 +55,6 @@ config MQTT
 	default true
 	help
 		MQTT support
-
-config SUBTASKS
-	bool "subtasks"
-	default true
-	help
-		execute cyclic tasks in a common tasks
 
 config AT_ACTIONS
 	bool "at service"
@@ -161,7 +161,7 @@ endmenu # filesystem
 menu "hardware support"
 
 config STATUSLEDS
-bool "heartbeat/status LEDs"
+	bool "heartbeat/status LEDs"
 	default true
 	help
 		heartbeat/status LED
@@ -204,12 +204,18 @@ config DHT
 	help
 		temperature/humidity measurement with a DHT-xx sensor
 
-config BME280
-	bool "BME280 sensor"
+config I2C
+	bool "I2C bus"
 	default false
 	help
-		Temperature, pressure, humidity measurements with BME280 in I2C mode.
-		Connect CSB to 3.3V and SDO to GND.
+		I2C bus with BMP280 and BME280
+
+config BME680
+	depends on I2C
+	bool "BME680"
+	default false
+	help
+		I2C driver for BME680
 
 config DIST
 	bool "distance measurement"

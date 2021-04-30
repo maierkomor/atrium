@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -43,6 +43,36 @@ class Lock
 	SemaphoreHandle_t m_mtx;
 };
 
+class TryLock
+{
+	public:
+	TryLock(SemaphoreHandle_t mtx, unsigned ms)
+	: m_mtx(mtx)
+	, held(pdTRUE == xSemaphoreTake(mtx,ms/portTICK_PERIOD_MS))
+	{ }
+
+	~TryLock()
+	{
+		if (held)
+			xSemaphoreGive(m_mtx);
+	}
+
+	bool locked() const
+	{ return held; }
+
+	void release()
+	{
+		if (held) {
+			xSemaphoreGive(m_mtx);
+			held = false;
+		}
+	}
+
+	private:
+	SemaphoreHandle_t m_mtx;
+	bool held;
+};
+
 void log_module_print(class Terminal &t);
 
 extern "C" {
@@ -68,9 +98,13 @@ void log_error(const char *m, const char *f, ...);
 void log_warn(const char *m, const char *f, ...);
 void log_info(const char *m, const char *f, ...);
 void log_dbug(const char *m, const char *f, ...);
+void log_hex(const char *m, const uint8_t *d, unsigned n);
+
+void log_syslog(log_level_t lvl, const char *a, const char *msg, size_t ml);
 
 int log_module_disable(const char *m);
 int log_module_enable(const char *m);
+int log_module_enabled(const char *m);
 
 void log_common(log_level_t l, const char *a, const char *f, va_list val);
 

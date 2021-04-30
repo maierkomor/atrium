@@ -19,6 +19,8 @@
 #ifndef STREAM_H
 #define STREAM_H
 
+#include "estring.h"
+
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -58,8 +60,12 @@ class stream
 	{ return operator << ((uint64_t) v); }
 
 	stream &operator << (double);
+
 	stream &operator << (const char *s)
 	{ print(s); return *this; }
+
+	stream &operator << (const estring &s)
+	{ print(s.data(),s.size()); return *this; }
 
 	void println();
 	void println(const char *);

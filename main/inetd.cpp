@@ -173,27 +173,11 @@ static void init_port(InetArg *p)
 void inet_server(void *ignored)
 {
 	//log_dbug(TAG,"maximum fd number: %d",MaxFD);
-	int64_t next = 0;
 	for (;;) {
-		//wifi_wait();
 		Started = true;
 
 		fd_set rfds = PortFDs;
-		int64_t now = esp_timer_get_time();
-		struct timeval tv;
-		tv.tv_sec = 0;
-		int64_t dt = next - now;
-		if (dt < 0)
-			dt = 0;
-		tv.tv_usec = dt;
-		//log_dbug(TAG,"select() %lu",tv.tv_usec);
-		int n = lwip_select(MaxFD,&rfds,0,0,&tv);
-		if (n == 0) {
-			// timeout is used to trigger cyclic subtasks
-			unsigned d = cyclic_execute();
-			next = now + d * 1000;
-			continue;
-		}
+		int n = lwip_select(MaxFD,&rfds,0,0,0);
 		if (n == -1) {
 			log_dbug(TAG,"errno %d",errno);
 			if (errno != 0) {
@@ -285,7 +269,7 @@ int listen_port(int port, inet_mode_t mode, void (*session)(void *), const char 
 
 int inetd_setup(void)
 {
-	log_info(TAG,"init");
+	log_dbug(TAG,"init");
 	FD_ZERO(&PortFDs);
 	InetArg *p = Ports;
 	while (p) {
@@ -293,7 +277,7 @@ int inetd_setup(void)
 		p = p->next;
 	}
 	++MaxFD;
-	BaseType_t r = xTaskCreatePinnedToCore(&inet_server, "inetd", 2560, 0, 12, NULL, PRO_CPU_NUM);
+	BaseType_t r = xTaskCreatePinnedToCore(&inet_server, "inetd", 2560, 0, 5, NULL, PRO_CPU_NUM);
 	if (r != pdPASS)
 		log_error(TAG,"create inetd: %s",esp_err_to_name(r));
 	return 0;

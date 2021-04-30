@@ -23,7 +23,7 @@
 #ifdef __cplusplus
 class Terminal;
 int shellexe(Terminal &, const char *cmd);
-void shell(Terminal &term);
+void shell(Terminal &term, bool prompt = true);
 int arg_missing(Terminal &t);
 int arg_invalid(Terminal &t, const char *a);
 int arg_invnum(Terminal &t);

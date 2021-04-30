@@ -29,7 +29,6 @@
 #include "shell.h"
 #include "terminal.h"
 #include "wifi.h"
-#include "versions.h"
 
 #include <string.h>
 
@@ -59,18 +58,23 @@ struct LogMsg
 
 struct Syslog
 {
-	Syslog()
-	: mtx(xSemaphoreCreateMutex())
+	explicit Syslog(size_t s)
+	: maxsize(s)
+	, mtx(xSemaphoreCreateMutex())
 	{ }
 
-	ip_addr_t addr;
 	struct udp_pcb *pcb = 0;
-	char *buf = 0;
 	LogMsg *first = 0, *last = 0;
-	uint16_t alloc = 0;
+	uint16_t maxsize, alloc = 0;
 	uint16_t unsent = 0, overwr = 0;
 	event_t ev = 0;
 	SemaphoreHandle_t mtx;
+	bool triggered = false;
+
+	private:
+	~Syslog();	// cannot be delete during runtime, as lock may be already waited on
+	Syslog(const Syslog &);
+	Syslog& operator = (const Syslog &);
 };
 
 static const char TAG[] = "rlog";
@@ -127,7 +131,7 @@ static int sendmsg(LogMsg *m)
 	if (n > 0) {
 		pbuf->tot_len = n;
 		pbuf->len = n;
-		e = udp_sendto(Ctx->pcb,pbuf,&Ctx->addr,SYSLOG_PORT);
+		e = udp_send(Ctx->pcb,pbuf);
 		if (0 == e) {
 			m->sent = true;
 			--Ctx->unsent;
@@ -142,17 +146,10 @@ static int sendmsg(LogMsg *m)
 
 static void sendall(void * = 0)
 {
+	if (Ctx == 0)
+		return;
 	if (Ctx->pcb == 0) {
 //		log_dbug(TAG,"no pcb");
-		return;
-	}
-#ifdef CONFIG_IDF_TARGET_ESP32
-	if ((Ctx->addr.u_addr.ip4.addr == 0) || (Ctx->unsent == 0))
-#else
-	if ((Ctx->addr.addr == 0) || (Ctx->unsent == 0))
-#endif
-	{
-//		log_dbug(TAG,"no IP");
 		return;
 	}
 	unsigned x = 0;
@@ -168,12 +165,10 @@ static void sendall(void * = 0)
 					break;
 			}
 			++x;
-#ifdef CONFIG_IDF_TARGET_ESP8266
-//			vTaskDelay(2);	// needed for the UDP transmission
-#endif
 		}
 		m = m->next;
 	}
+	Ctx->triggered = false;
 	xSemaphoreGive(Ctx->mtx);
 	log_dbug(TAG,"sent %u log messages",x);
 }
@@ -184,32 +179,45 @@ static void syslog_start(void*)
 	const char *host = Config.syslog_host().c_str();
 	log_dbug(TAG,"host %s",host);
 	uint32_t ip4 = resolve_hostname(host);
-#ifdef CONFIG_IDF_TARGET_ESP32
-	Ctx->addr.u_addr.ip4.addr = ip4;
-	Ctx->addr.type = IPADDR_TYPE_V4;
-	if ((Ctx->addr.u_addr.ip4.addr == IPADDR_NONE) || (Ctx->addr.u_addr.ip4.addr == 0))
-#else
-	Ctx->addr.addr = ip4;
-	if ((Ctx->addr.addr == IPADDR_NONE) || (Ctx->addr.addr == 0))
-#endif
-	{
+	if (ip4 == 0) {
 		log_dbug(TAG,"error resolving: %s",host);
 		return;
 	}
 	log_dbug(TAG,"IP %d.%d.%d.%d",ip4&0xff,(ip4>>8)&0xff,(ip4>>16)&0xff,(ip4>>24)&0xff);
 	Lock lock(Ctx->mtx);
-	if (Ctx->pcb)
+	if (Ctx->pcb) {
 		udp_remove(Ctx->pcb);
-	Ctx->pcb = udp_new();
+		Ctx->pcb = 0;
+	}
+	udp_pcb *pcb = udp_new();
 	ip_addr_t ip;
-	ip = *IP4_ADDR_ANY;
 #ifdef CONFIG_IDF_TARGET_ESP32
 	ip.type = IPADDR_TYPE_V4;
+#else
+	ip.addr = ip4;
 #endif
-	if (err_t e = udp_bind(Ctx->pcb,&ip,0))	// 0: sending port can be any port
-		log_warn(TAG,"udp_bind %d",e);
+	if (err_t e = udp_connect(pcb,&ip,SYSLOG_PORT)) {
+		log_warn(TAG,"udp_connect %d",e);
+		return;
+	}
+	Ctx->pcb = pcb;
 	event_trigger(Ctx->ev);
 }
+
+
+static void shrink_dmesg(uint16_t ns)
+{
+	// assume lock is alread taken
+	while ((Ctx->alloc > ns) && Ctx->first) {
+		LogMsg *r = Ctx->first;
+		Ctx->first = r->next;
+		free(r->msg);
+		Ctx->alloc -= r->ml;
+		Ctx->alloc -= sizeof(LogMsg);
+		delete r;
+	}
+}
+
 
 extern "C"
 void log_syslog(log_level_t lvl, const char *a, const char *msg, size_t ml)
@@ -217,25 +225,27 @@ void log_syslog(log_level_t lvl, const char *a, const char *msg, size_t ml)
 	// header: pri version timestamp hostname app-name procid msgid
 	if ((Ctx == 0) || (a == TAG))
 		return;
+	if ((ml<<2) > Ctx->maxsize)
+		return;
 	struct timeval tv;
 	tv.tv_sec = 0;
 	gettimeofday(&tv,0);
-	xSemaphoreTake(Ctx->mtx,portMAX_DELAY);
+	Lock lock(Ctx->mtx);
 	LogMsg *m;
-	if (Ctx->alloc + 128 > Config.dmesg_size()) {
-		if (Ctx->first == Ctx->last) {
-			m = Ctx->first;
-		} else {
-			m = Ctx->first;
+	if (Ctx->alloc + ml + sizeof(LogMsg) > Ctx->maxsize) {
+		shrink_dmesg(Ctx->maxsize-ml-sizeof(LogMsg));
+		m = Ctx->first;
+		if (m != Ctx->last) {
 			Ctx->first = m->next;
 			Ctx->last->next = m;
 			Ctx->last = m;
-			Ctx->alloc -= m->ml;
-			m->msg = (char*)realloc(m->msg,ml);
-			if (!m->sent) {
-				--Ctx->unsent;
-				++Ctx->overwr;
-			}
+		}
+		Ctx->alloc -= m->ml;
+		Ctx->alloc += ml;
+		m->msg = (char*)realloc(m->msg,ml);
+		if (!m->sent) {
+			--Ctx->unsent;
+			++Ctx->overwr;
 		}
 	} else {
 		m = new LogMsg;
@@ -248,11 +258,11 @@ void log_syslog(log_level_t lvl, const char *a, const char *msg, size_t ml)
 			Ctx->last = m;
 		}
 		Ctx->alloc += sizeof(LogMsg);
+		Ctx->alloc += ml;
 	}
 	m->lvl = lvl;
 	m->ml = ml;
 	m->next = 0;
-	Ctx->alloc += ml;
 	m->a = a;
 	memcpy(m->msg,msg,ml);
 	m->ntp = tv.tv_sec > 10000000;
@@ -262,7 +272,10 @@ void log_syslog(log_level_t lvl, const char *a, const char *msg, size_t ml)
 		m->ts = tv.tv_sec * 1000 + tv.tv_usec/1000;
 	m->sent = false;
 	++Ctx->unsent;
-	event_trigger(Ctx->ev);
+	if (!Ctx->triggered) {
+		event_trigger(Ctx->ev);
+		Ctx->triggered = true;
+	}
 	xSemaphoreGive(Ctx->mtx);
 }
 
@@ -282,6 +295,12 @@ int dmesg(Terminal &term, int argc, const char *args[])
 		if (((l > 0) && (l < 512)) || (l > UINT16_MAX))
 			return arg_invalid(term,args[1]);
 		Config.set_dmesg_size(l);
+		if (Ctx) {
+			Lock lock(Ctx->mtx);
+			if (l < Ctx->maxsize)
+				shrink_dmesg(l);
+			Ctx->maxsize = l;
+		}
 		return 0;
 	}
 	if (Ctx == 0) {
@@ -320,9 +339,9 @@ int dmesg(Terminal &term, int argc, const char *args[])
 
 int dmesg_setup()
 {
-	if (Config.dmesg_size() != 0) {
+	if (size_t ds = Config.dmesg_size()) {
 		if (Ctx == 0)
-			Ctx = new Syslog;
+			Ctx = new Syslog(ds);
 	}
 	return 0;
 }
@@ -334,7 +353,7 @@ int syslog_setup(void)
 		action_add("syslog!start",syslog_start,0,"start syslog");
 		event_callback("wifi`station_up","syslog!start");
 		Action *a = action_add("syslog!send",sendall,0,"start syslog");
-		Ctx->ev = event_register("syslog`send");
+		Ctx->ev = event_register("syslog`msg");
 		event_callback(Ctx->ev,a);
 	}
 	return 0;

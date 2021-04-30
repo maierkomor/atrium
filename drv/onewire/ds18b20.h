@@ -36,8 +36,7 @@ struct DS18B20 : public OwDevice
 	private:
 	explicit DS18B20(uint64_t id, const char *name);
 
-	float m_value;
-	class JsonFloat *m_json = 0;
+	class JsonNumber *m_json = 0;
 };
 
 

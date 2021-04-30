@@ -120,19 +120,14 @@ bool HttpServer::runFile(HttpRequest *req)
 {
 #ifdef HAVE_FS
 	const char *uri = req->getURI();
-	log_info(TAG,"looking for file %s",uri);
 	auto i = m_files.find(uri);
-	if (i == m_files.end()) {
-		for (auto x = m_files.begin(), y = m_files.end(); x != y; ++x) {
-			log_info(TAG,"file %s",*x);
-		}
-		log_info(TAG,"file not found");
+	if (i == m_files.end())
 		return false;
-	}
 	if (m_wwwroot == 0) {
 		log_warn(TAG,"looking for file but no wwwroot given");
 		return false;
 	}
+	log_dbug(TAG,"found file %s",uri);
 	size_t rl = strlen(m_wwwroot);
 	if (m_wwwroot[rl-1] == '/')
 		--rl;
@@ -160,7 +155,7 @@ bool HttpServer::runFile(HttpRequest *req)
 		++uri;
 	int r = romfs_open(uri);
 	if (r < 0) {
-		log_dbug(TAG,"%s is not in romfs",uri);
+		//log_dbug(TAG,"%s is not in romfs",uri);
 		return false;
 	}
 	ssize_t s = romfs_size_fd(r);
@@ -203,9 +198,9 @@ bool HttpServer::runFunction(HttpRequest *req)
 {
 	auto i = m_functions.find(req->getURI());
 	if (i == m_functions.end()) {
-		log_dbug(TAG,"function %s not found",req->getURI());
 		return false;
 	}
+	log_dbug(TAG,"found function %s",req->getURI());
 	www_fun_t f = i->second;
 	f(req);
 	return true;
@@ -215,10 +210,9 @@ bool HttpServer::runFunction(HttpRequest *req)
 bool HttpServer::runMemory(HttpRequest *req)
 {
 	auto m = m_memfiles.find(req->getURI());
-	if (m == m_memfiles.end()) {
-		log_info(TAG,"memfile %s not found",req->getURI());
+	if (m == m_memfiles.end())
 		return false;
-	}
+	log_dbug(TAG,"found memfile %s",req->getURI());
 	HttpResponse ans;
 	ans.setResult(HTTP_OK);
 	ans.addContent(m->second);
@@ -262,7 +256,7 @@ void HttpServer::performPOST(HttpRequest *req)
 void HttpServer::performPUT(HttpRequest *req)
 {
 	const char *uri = req->getURI();
-	log_info(TAG,"put request %s",uri);
+	log_dbug(TAG,"put request %s",uri);
 	const char *sl = strrchr(uri,'/');
 	char fn[strlen(m_wwwroot)+strlen(sl)];
 	int fd = open(fn,O_CREAT|O_WRONLY,0666);

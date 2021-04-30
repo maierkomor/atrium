@@ -39,7 +39,6 @@
 #include "support.h"
 #include "terminal.h"
 #include "timefuse.h"
-#include "versions.h"
 #include "wifi.h"
 
 #include <sstream>
@@ -238,19 +237,34 @@ static int event(Terminal &t, int argc, const char *args[])
 			return arg_invalid(t,args[2]);
 		} else if (!strcmp(args[1],"-a")) {
 			event_callback(e,a);
-			Trigger *t = Config.add_triggers();
-			t->set_event(args[2]);
-			t->set_action(args[3]);
-			return 0;
-		} else  if (!strcmp(args[1],"-d")) {
-			event_detach(e,a);
-			auto &t = *Config.mutable_triggers();
-			for (auto i = t.begin(), e = t.end(); i != e; ++i) {
-				if ((i->event() == args[2]) && (i->action() == args[3])) {
-					t.erase(i);
+			for (auto &t : *Config.mutable_triggers()) {
+				if (t.event() == args[2]) {
+					t.add_action(args[3]);
 					return 0;
 				}
 			}
+			Trigger *t = Config.add_triggers();
+			t->set_event(args[2]);
+			t->add_action(args[3]);
+			return 0;
+		} else  if (!strcmp(args[1],"-d")) {
+			event_detach(e,a);
+			int r = 1;
+			auto &t = *Config.mutable_triggers();
+			for (auto i = t.begin(), e = t.end(); i != e; ++i) {
+				if (i->event() == args[2]) {
+					auto &ma = *i->mutable_action();
+					auto j = ma.begin();
+					while (j != ma.end()) {
+						if (*j == args[3]) {
+							j = ma.erase(j);
+							r = 0;
+						} else
+							++j;
+					}
+				}
+			}
+			return r;
 		} else {
 			return arg_invalid(t,args[1]);
 		} 
@@ -615,22 +629,11 @@ static int shell_reboot(Terminal &term, int argc, const char *args[])
 }
 
 
-static int restore(Terminal &term, int argc, const char *args[])
-{
-	if (argc != 1) {
-		return arg_invnum(term);
-	}
-	esp_wifi_restore();
-	return 0;
-}
-
-
 #if defined CONFIG_SPIFFS || defined CONFIG_FATFS
 static int shell_df(Terminal &term, int argc, const char *args[])
 {
-	if (argc != 1) {
+	if (argc != 1)
 		return arg_invnum(term);
-	}
 #ifdef CONFIG_SPIFFS
 	size_t total = 0, used = 0;
 	esp_err_t ret = esp_spiffs_info("storage", &total, &used);
@@ -647,7 +650,7 @@ static int shell_df(Terminal &term, int argc, const char *args[])
 		term.printf("%s: %lu kiB free\n",PWD.c_str(),nc*fs->csize*fs->ssize>>10);
 		return 0;
 	}
-	term.printf("error getting information: %d\n",err);
+	term.printf("error: %d\n",err);
 #endif
 	return 1;
 }
@@ -700,9 +703,13 @@ static int part(Terminal &term, int argc, const char *args[])
 
 static int mem(Terminal &term, int argc, const char *args[])
 {
-	term.printf("32bit mem   : %u\n",heap_caps_get_free_size(MALLOC_CAP_32BIT));
-	term.printf("8bit mem    : %u\n",heap_caps_get_free_size(MALLOC_CAP_8BIT));
-	term.printf("DMA  mem    : %u\n",heap_caps_get_free_size(MALLOC_CAP_DMA));
+	term.printf(
+		"32bit mem   : %u\n"
+		"8bit mem    : %u\n"
+		"DMA  mem    : %u\n"
+		,heap_caps_get_free_size(MALLOC_CAP_32BIT)
+		,heap_caps_get_free_size(MALLOC_CAP_8BIT)
+		,heap_caps_get_free_size(MALLOC_CAP_DMA));
 #ifdef CONFIG_IDF_TARGET_ESP32
 	term.printf("exec mem    : %u\n",heap_caps_get_free_size(MALLOC_CAP_EXEC));
 	term.printf("SPI  mem    : %u\n",heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
@@ -1070,10 +1077,10 @@ static int timefuse(Terminal &term, int argc, const char *args[])
 	t->set_name(args[2]);
 	t->set_time(l);
 	unsigned config = 0;
-	if (argc >= 4)
-		config |= parse_bool(argc,args,3,false);
-	if (argc == 5)
-		config |= parse_bool(argc,args,4,false) << 1;
+	if (argc >= 5)
+		config |= parse_bool(argc,args,4,false);
+	if (argc == 6)
+		config |= parse_bool(argc,args,5,false) << 1;
 	if (config)
 		t->set_config(config);
 	timefuse_t r = timefuse_create(t->name().c_str(),l,config&1);
@@ -1087,6 +1094,7 @@ static int wifi(Terminal &term, int argc, const char *args[])
 {
 	if (argc > 2)
 		return arg_invnum(term);
+	term.printf("station mode %d\n",StationMode);
 	wifi_mode_t m = WIFI_MODE_NULL;
 	if (esp_err_t e = esp_wifi_get_mode(&m)) {
 		term.printf("get wifi mode: %s\n",esp_err_to_name(e));
@@ -1814,8 +1822,6 @@ static int signal(Terminal &term, int argc, const char *args[])
 		if (f == 0)
 			return arg_invalid(term,args[3]);
 		s->addFunction(f);
-//		Trigger *t = Config.add_triggers();
-//		t->set
 		return 0;
 	}
 	return arg_invalid(term,args[1]);
@@ -1970,6 +1976,7 @@ extern int dmesg(Terminal &term, int argc, const char *args[]);
 extern int gpio(Terminal &term, int argc, const char *args[]);
 extern int hall(Terminal &term, int argc, const char *args[]);
 extern int holiday(Terminal &term, int argc, const char *args[]);
+extern int i2c(Terminal &term, int argc, const char *args[]);
 extern int inetadm(Terminal &term, int argc, const char *args[]);
 extern int influx(Terminal &term, int argc, const char *args[]);
 extern int lightctrl(Terminal &term, int argc, const char *args[]);
@@ -2011,7 +2018,7 @@ ExeName ExeNames[] = {
 	{"cd",0,shell_cd,"change directory",0},
 #endif
 #ifdef CONFIG_TERMSERV
-	{"con",0,uart_termcon,"switch to UART console",0},
+	{"con",0,uart_termcon,"switch to UART console",con_man},
 #endif
 	{"config",1,config,"system configuration",config_man},
 	{"cpu",1,cpu,"CPU speed",0},
@@ -2023,13 +2030,13 @@ ExeName ExeNames[] = {
 	{"df",0,shell_df,"available storage",0},
 #endif
 #if CONFIG_SYSLOG
-	{"dmesg",0,dmesg,"system log",0},
+	{"dmesg",0,dmesg,"system log",dmesg_man},
 #endif
 #ifdef CONFIG_DHT
-	{"dht",0,dht,"DHTxx family of sensors",0},
+	{"dht",0,dht,"DHTxx family of sensors",dht_man},
 #endif
 #ifdef CONFIG_DIMMER_GPIO
-	{"dim",0,dim,"dimmer driver",0},
+	{"dim",0,dim,"dimmer driver",dim_man},
 #endif
 #ifdef CONFIG_DIST
 	{"dist",0,distance,"hc_sr04 distance measurement",0},
@@ -2045,7 +2052,7 @@ ExeName ExeNames[] = {
 	{"func",1,func,"function related operations",func_man},
 #endif
 	//{"flashtest",flashtest,0},
-	{"gpio",1,gpio,"GPIO access",0},
+	{"gpio",1,gpio,"GPIO access",gpio_man},
 #ifdef CONFIG_IDF_TARGET_ESP32
 	{"hall",0,hall,"hall sensor",0},
 #endif
@@ -2054,11 +2061,14 @@ ExeName ExeNames[] = {
 	{"holiday",0,holiday,"holiday settings",holiday_man},
 #endif
 	{"hwconf",1,hwconf,"hardware configuration",hwconf_man},
-	{"ifconfig",0,ifconfig,"network interface settings",0},
+#ifdef CONFIG_I2C
+	{"i2c",0,i2c,"list I2C devices",0},
+#endif
 	{"inetadm",1,inetadm,"manage network services",inetadm_man},
 #ifdef CONFIG_INFLUX
 	{"influx",1,influx,"configure influx UDP data gathering",influx_man},
 #endif
+	{"ip",0,ifconfig,"network IP and interface settings",ip_man},
 #ifdef CONFIG_LIGHTCTRL
 	{"lightctrl",0,lightctrl,"light control APP settings",0},
 #endif
@@ -2080,9 +2090,9 @@ ExeName ExeNames[] = {
 #endif
 	{"nslookup",0,nslookup,"lookup hostname in DNS",0},
 #ifdef CONFIG_ONEWIRE
-	{"ow",0,onewire,"one-wire driver access",0},
+	{"ow",0,onewire,"one-wire driver access",ow_man},
 #endif
-	{"part",0,part,"partition table",0},
+	{"part",0,part,"partition table",part_man},
 	{"passwd",1,password,"set password",passwd_man},
 #if configUSE_TRACE_FACILITY == 1
 	{"ps",0,ps,"task statistics",0},
@@ -2090,9 +2100,8 @@ ExeName ExeNames[] = {
 	//{"process",1,process,"define and modify processing objects",0},
 	{"reboot",1,shell_reboot,"reboot system",0},
 #ifdef CONFIG_RELAY
-	{"relay",0,relay,"relay status and operation",0},
+	{"relay",0,relay,"relay status and operation",relay_man},
 #endif
-	{"restore",1,restore,"restore system defaults",0},
 #ifdef HAVE_FS
 	{"rm",1,shell_rm,"remove file",0},
 #endif
@@ -2117,11 +2126,9 @@ ExeName ExeNames[] = {
 	{"status",1,status,"status LED",status_man},
 #endif
 	{"su",0,su,"set user privilege level",su_man},
-#ifdef CONFIG_SUBTASKS
-	{"subtasks",0,subtasks,"cyclic tasks procedures",0},
-#endif
+	{"subtasks",0,subtasks,"list statistics of cyclic subtasks",0},
 	{"timer",1,timefuse,"create timer",timer_man},
-	{"timezone",1,timezone,"set time zone for NTP",0},
+	{"timezone",1,timezone,"set time zone for NTP (offset to GMT or 'CET')",0},
 #ifdef HAVE_FS
 	{"touch",1,shell_touch,"create file, update time-stamp",0},
 #endif
@@ -2232,20 +2239,23 @@ int shellexe(Terminal &term, const char *cmd)
 }
 
 
-void shell(Terminal &term)
+void shell(Terminal &term, bool prompt)
 {
 	char com[128];
-	term.write("> ",2);
+	if (prompt)
+		term.write("> ",2);
 	int r = term.readInput(com,sizeof(com)-1,true);
 	while (r > 0) {
-		term.print("\n");
+		term.println();
 		com[r] = 0;
 		if ((r == 4) && !memcmp(com,"exit",4))
 			break;
 		if (shellexe(term,com))
-			term.printf("\nError.\n> ");
+			term.printf("\nError.\n");
 		else
-			term.printf("\nOK.\n> ");
+			term.printf("\nOK.\n");
+		if (prompt)
+			term.write("> ",2);
 		r = term.readInput(com,sizeof(com)-1,true);
 	}
 }

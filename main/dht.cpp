@@ -39,7 +39,7 @@ static const char TAG[] = "DHT";
 static DHT *Dht = 0;
 
 
-int dht_init()
+int dht_init(JsonObject *root)
 {
 	if (!HWConf.has_dht())
 		return 1;
@@ -49,32 +49,15 @@ int dht_init()
 	Dht = new DHT;
 	if (Dht->init(c.gpio(), c.model()))
 		return 1;
+	Dht->attach(root);
 	return 0;
 }
 
 
 static void gatherData(void *)
 {
-	if (Dht == 0)
-		return;
-	Dht->read();
-	if (const char *err = Dht->getError()) {
-		log_info(TAG,"driver error: %s",err);
-		Temperature->set(NAN);
-		Humidity->set(NAN);
-	} else {
-		double t = Dht->getTemperature();
-		double h = Dht->getHumidity();
-		rtd_lock();
-		Temperature->set(t);
-		Humidity->set(h);
-		rtd_unlock();
-		char buf[8];
-		float_to_str(buf,t);
-		log_info(TAG,"temperature %s\u00b0C",buf);
-		float_to_str(buf,h);
-		log_info(TAG,"humidity %s%%",buf);
-	}
+	if (Dht != 0)
+		Dht->read();
 }
 
 
@@ -87,8 +70,6 @@ int dht(Terminal &term, int argc, const char *args[])
 			gatherData(0);
 		else
 			return arg_invalid(term,args[1]);
-	} else if (const char *e = Dht->getError()) {
-		term.printf("dht error: %s\n",e);
 	} else {
 		char buf[12];
 		float_to_str(buf,Dht->getTemperature());
@@ -104,15 +85,7 @@ int dht_setup(void)
 {
 	if (!HWConf.has_dht())
 		return 0;
-	if (Temperature == 0) {
-		Temperature = RTData->add("temperature",NAN);
-		Temperature->setDimension("\u00b0C");
-	}
-	if (Humidity == 0) {
-		Humidity = RTData->add("humidity",NAN);
-		Humidity->setDimension("%");
-	}
-	if (dht_init())
+	if (dht_init(RTData))
 		return 1;
 	action_add("dht!sample",gatherData,0,"poll DHT data");
 	return 0;

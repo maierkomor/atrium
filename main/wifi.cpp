@@ -29,7 +29,6 @@
 #include "status.h"
 #include "support.h"
 #include "wifi.h"
-#include "versions.h"
 
 #include <esp_err.h>
 #include <esp_wifi.h>
@@ -57,7 +56,7 @@
 #define PINSTR "%c%c%c%c%c%c%c%c"
 #define PIN2STR(a) a[0],a[1],a[2],a[3],a[4],a[5],a[6],a[7]
 
-EventGroupHandle_t WifiEvents;
+EventGroupHandle_t WifiEvents = 0;
 
 sta_mode_t StationMode;
 
@@ -560,6 +559,8 @@ void wifi_wait_station()
 #ifdef CONFIG_WPS
 void wifi_wps_start(void *)
 {
+	if (WifiEvents == 0)
+		wifi_setup();
 	log_info(TAG,"starting wps");
 	wifi_mode_t m;
 	esp_wifi_get_mode(&m);
@@ -619,6 +620,8 @@ static void start_sntp(void *)
 
 int wifi_setup()
 {
+	if (WifiEvents != 0)
+		return 1;
 	log_info(TAG,"init");
 	tcpip_adapter_init();
 	if (esp_err_t e = esp_event_loop_create_default())

@@ -268,8 +268,6 @@ int gpio(Terminal &term, int argc, const char *args[])
 		return arg_invnum(term);
 #ifdef CONFIG_IDF_TARGET_ESP32
 	if (argc == 1) {
-		term.printf("gpio [pins|<pin>]\n");
-	} else if (0 == strcmp(args[1],"pins")) {
 		uint64_t enabled = GPIO_ENABLE_REG | ((uint64_t)GPIO_ENABLE1_REG << 32);
 		for (unsigned pin = 0; pin < 32; ++pin)
 			term.printf("pin %2u: gpio 0x%08x=%08x, %s\n"
@@ -278,7 +276,7 @@ int gpio(Terminal &term, int argc, const char *args[])
 				,*(uint32_t*)GPIO_REG(pin)
 				,((enabled>>pin)&1) ? "enabled" : "disabled"
 				);
-	} else if ((args[1][0] >= '0') && (args[1][0] <= '9')) {
+	} else if ((argc == 2) && (args[1][0] >= '0') && (args[1][0] <= '9')) {
 		long pin = strtol(args[1],0,0);
 		if (!GPIO_IS_VALID_GPIO(pin)) {
 			term.printf("gpio %ld out of range\n",pin);

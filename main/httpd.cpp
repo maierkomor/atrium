@@ -504,7 +504,7 @@ int httpd_setup()
 	strcat(index,"/index.html");
 	struct stat st;
 	if (stat(index,&st) == -1) {
-		log_warn(TAG,"no index.html");
+		log_info(TAG,"no index.html");
 		return 1;
 	}
 	WWW = new HttpServer(root,"/index.html");

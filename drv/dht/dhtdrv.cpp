@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -20,6 +20,7 @@
 
 #include "dhtdrv.h"
 #include "log.h"
+#include "ujson.h"
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -46,6 +47,14 @@
 #include <string.h>
 #include <time.h>
 
+
+#ifdef CONFIG_IDF_TARGET_ESP32
+#define ENTER_CRITICAL() portDISABLE_INTERRUPTS()
+#define EXIT_CRITICAL() portENABLE_INTERRUPTS()
+#elif defined CONFIG_IDF_TARGET_ESP8266
+#define ENTER_CRITICAL() portENTER_CRITICAL()
+#define EXIT_CRITICAL() portEXIT_CRITICAL()
+#endif
 
 
 #ifdef ESP32
@@ -105,10 +114,29 @@ long gettime()
 // define to get calibration data
 //#define CALIBRATION
 
+static char TAG[] = "dht";
+
 #ifdef CALIBRATION
 uint16_t Edges[48], *Edge = Edges;
-static char TAG[] = "dht";
 #endif
+
+DHT::DHT()
+: m_ready(false)
+, m_error(true)
+{
+
+}
+
+
+void DHT::attach(JsonObject *root)
+{
+	log_info(TAG,"attaching DHT%u at gpio %u",m_model,m_pin);
+	m_temp = new JsonNumber("temperature","\u00b0C");
+	m_humid = new JsonNumber("humidity","%");
+	root->append(m_temp);
+	root->append(m_humid);
+}
+
 
 void DHT::fallIntr(void *arg)
 {
@@ -142,61 +170,42 @@ int DHT::init(uint8_t pin, uint16_t model)
 		model = 21;
 	else if ((model == 2302) || (model == 3))
 		model = 22;
-	else if ((model != 11) && (model != 21) && (model != 22))
+	else if ((model != 11) && (model != 21) && (model != 22)) {
+		log_warn(TAG,"unsupported mode");
 		return 1;
+	}
 	m_pin = pin;
 	m_model = (DHTModel_t)model;
-	setError("no sample");
 	m_ready = false;
 	m_mtx = xSemaphoreCreateMutex();
 #ifdef ESP32
 	if (esp_err_t e = gpio_reset_pin((gpio_num_t)m_pin)) {
-		setError("unable to reset pin %u: %s",m_pin,esp_err_to_name(e));
+		log_warn(TAG,"reset pin%u: %s",m_pin,esp_err_to_name(e));
 		return 2;
 	}
 #endif
 	gpio_pad_select_gpio(m_pin);
 	if (esp_err_t e = gpio_isr_handler_add((gpio_num_t)m_pin,fallIntr,(void*)this)) {
-		setError("unable to add isr hander: %s",esp_err_to_name(e));
+		log_warn(TAG,"gpio%u isr hander: %s",m_pin,esp_err_to_name(e));
 		return 3;
 	}
 	if (esp_err_t e = gpio_set_intr_type((gpio_num_t)m_pin,GPIO_INTR_DISABLE)) {
-		setError("unable to set intr type: %s",esp_err_to_name(e));
+		log_warn(TAG,"gpio%u intr: %s",m_pin,esp_err_to_name(e));
 		return 4;
 	}
 	if (esp_err_t e = gpio_set_direction((gpio_num_t)m_pin, GPIO_MODE_INPUT)) {
-		setError("cannot set gpio %u as input: %s",m_pin,esp_err_to_name(e));
+		log_warn(TAG,"gpio%u input: %s",m_pin,esp_err_to_name(e));
 		return 5;
 	}
 	if (esp_err_t e = gpio_pullup_en((gpio_num_t)m_pin)) {
-		setError("cannot activate pull-up on %u: %s",m_pin,esp_err_to_name(e));
+		log_warn(TAG,"pull-up on %u: %s",m_pin,esp_err_to_name(e));
 		return 6;
 	}
 	// sampling should be possible right after setup
 	m_lastReadTime = gettime()/1000 - getMinimumSamplingPeriod();
-	clearError();
+	m_error = true;
 	m_ready = true;
 	return 0;
-}
-
-
-void DHT::setError(const char *fmt, ...)
-{
-	if (m_error)
-		free(m_error);
-	va_list val;
-	va_start(val,fmt);
-	vasprintf(&m_error,fmt,val);
-	va_end(val);
-}
-
-
-void DHT::clearError()
-{
-	if (m_error) {
-		free(m_error);
-		m_error = 0;
-	}
 }
 
 
@@ -204,34 +213,35 @@ void DHT::clearError()
 bool DHT::read(bool force)
 {
 	if (!m_ready) {
-		setError("driver not ready");
+		log_dbug(TAG,"not ready");
 		return false;
 	}
-	if (xSemaphoreTake(m_mtx,100/portTICK_PERIOD_MS))
-		return false;
 	// don't read more than every getMinimumSamplingPeriod() milliseconds
 	unsigned long currentTime = gettime()/1000;
 	if (!force && ((currentTime - m_lastReadTime) < getMinimumSamplingPeriod())) {
-		setError("sampling too early");
-		xSemaphoreGive(m_mtx);
+		log_dbug(TAG,"too early");
 		return false;
 	}
+	log_dbug(TAG,"read");
+	TryLock lock(m_mtx,200);
+	if (!lock.locked()) {
+		log_dbug(TAG,"lock timeout");
+		return false;
+	}
+	m_error = true;
+	if (m_temp)
+		m_temp->set(NAN);
+	if (m_humid)
+		m_humid->set(NAN);
 
 	// reset lastReadTime, temperature and humidity
 	m_lastReadTime = currentTime;
 	memset(m_data,0,sizeof(m_data));
 
+	ENTER_CRITICAL();
 	// send start signal
-	if (esp_err_t e = gpio_set_direction((gpio_num_t)m_pin, GPIO_MODE_OUTPUT)) {
-		setError("unable to set output: %s",esp_err_to_name(e));
-		xSemaphoreGive(m_mtx);
-		return false;
-	}
-	if (esp_err_t e = gpio_set_level((gpio_num_t)m_pin,0)) {
-		setError("unable to set low level: %s",esp_err_to_name(e));
-		xSemaphoreGive(m_mtx);
-		return false;
-	}
+	gpio_set_direction((gpio_num_t)m_pin, GPIO_MODE_OUTPUT);
+	gpio_set_level((gpio_num_t)m_pin,0);
 #ifdef CALIBRATION
 	Edge = Edges;
 #endif
@@ -242,32 +252,17 @@ bool DHT::read(bool force)
 		ets_delay_us(800); // [0.8-20]ms
 
 	// start reading the data line
-	if (esp_err_t e =  gpio_set_direction((gpio_num_t)m_pin, GPIO_MODE_INPUT)) {
-		setError("unable to set gpio %u to input: %s",m_pin,esp_err_to_name(e));
-		xSemaphoreGive(m_mtx);
-		return false;
-	}
-	if (esp_err_t e = gpio_pullup_en((gpio_num_t)m_pin)) {
-		setError("unable to enable pull-up on gpio %u: %s",m_pin,esp_err_to_name(e));
-		xSemaphoreGive(m_mtx);
-		return false;
-	}
+	gpio_set_direction((gpio_num_t)m_pin, GPIO_MODE_INPUT);
+	gpio_pullup_en((gpio_num_t)m_pin);
 
 	m_bit = 0;
 	m_edges = 0;
 	m_errors = 0;
 	m_start = 0;
-	if (esp_err_t e = gpio_set_intr_type((gpio_num_t)m_pin,GPIO_INTR_NEGEDGE)) {
-		setError("error setting interrupt type to negative edge: %s",esp_err_to_name(e));
-		xSemaphoreGive(m_mtx);
-		return false;
-	}
+	gpio_set_intr_type((gpio_num_t)m_pin,GPIO_INTR_NEGEDGE);
+	EXIT_CRITICAL();
 	vTaskDelay(200);
-	if (esp_err_t e = gpio_set_intr_type((gpio_num_t)m_pin,GPIO_INTR_DISABLE)) {
-		setError("cannot disable interrupts: %s",esp_err_to_name(e));
-		xSemaphoreGive(m_mtx);
-		return false;
-	}
+	gpio_set_intr_type((gpio_num_t)m_pin,GPIO_INTR_DISABLE);
 #ifdef CALIBRATION
 	// ignore Edge[0], it will always be out-of-range, and gets ignored
 	log_dbug(TAG,"%u %u %u %u %u %u %u %u %u %u"
@@ -286,37 +281,46 @@ bool DHT::read(bool force)
 	log_dbug(TAG,"%02x %02x %02x %02x %02x",m_data[0],m_data[1],m_data[2],m_data[3],m_data[4]);
 	for (int i = 0; i < sizeof(Edges)/sizeof(Edges[0]); ++i) {
 		if (Edges[i] < DT_MIN)
-			setError("edge %u: time %u too low",i,Edges[i]);
+			log_warn(TAG,"edge %u: time %u too low",i,Edges[i]);
 		else if (Edges[i] > DT_MAX)
-			setError("edge %u: time %u too high",i,Edges[i]);
+			log_warn(TAG,"edge %u: time %u too high",i,Edges[i]);
 	}
 #endif
 
-	//ESP_LOGD(TAG,"0: %ld-%ld = %ld",FallTimes[1],FallTimes[0],FallTimes[1]-FallTimes[0]);
 	if (m_errors > 0) {
-		xSemaphoreGive(m_mtx);
-		setError("got %u edges with unexpected timing",m_errors);
-		//return false;
+		log_dbug(TAG,"got %u edges with unexpected timing",m_errors);
+		return false;
 	}
 	if (m_bit != 40) {
-		setError("got %u bits with %u edges instead of 40 bits",m_bit,m_edges);
-		//return false;
+		log_dbug(TAG,"got %u bits with %u edges instead of 40 bits",m_bit,m_edges);
+		return false;
 	}
 
 	// verify checksum
 	uint8_t cs = m_data[0]+m_data[1]+m_data[2]+m_data[3];
 	if (m_data[4] != cs) {
-		setError("checksum error: %x + %x + %x + %x = %x, expected %x"
+		log_warn(TAG,"checksum error: %x + %x + %x + %x = %x, expected %x"
 			, m_data[0], m_data[1], m_data[2], m_data[3]
 			, cs
 			, m_data[4]);
-		xSemaphoreGive(m_mtx);
 		return false;
 	}
 
 	// we made it
-	clearError();
-	xSemaphoreGive(m_mtx);
+	m_error = false;
+	double t = getTemperature();
+	double h = getHumidity();
+	if (m_temp)
+		m_temp->set(t);
+	if (m_humid)
+		m_humid->set(h);
+	if (log_module_enabled(TAG)) {
+		char buf[8];
+		float_to_str(buf,t);
+		log_dbug(TAG,"temperature %s\u00b0C",buf);
+		float_to_str(buf,h);
+		log_dbug(TAG,"humidity %s%%",buf);
+	}
 	return true;
 }
 
@@ -327,18 +331,18 @@ float DHT::getTemperature() const
 		return NAN;
 	float t;
 	switch (m_model) {
-	case DHT_MODEL_DHT11:
-		t = m_data[2];
-		break;
-	case DHT_MODEL_DHT22:
-	case DHT_MODEL_DHT21:
-		t = (m_data[2] & 0x7F) << 8 | m_data[3];
-		t *= 0.1;
-		if (m_data[2] & 0x80)
-			t *= -1;
-		break;
-	default:
-		return NAN;
+		case DHT_MODEL_DHT11:
+			t = m_data[2];
+			break;
+		case DHT_MODEL_DHT22:
+		case DHT_MODEL_DHT21:
+			t = (m_data[2] & 0x7F) << 8 | m_data[3];
+			t *= 0.1;
+			if (m_data[2] & 0x80)
+				t *= -1;
+			break;
+		default:
+			return NAN;
 	}
 	return t;
 }
@@ -350,16 +354,16 @@ float DHT::getHumidity() const
 		return NAN;
 	float h;
 	switch (m_model) {
-	case DHT_MODEL_DHT11:
-		h = m_data[0];
-		break;
-	case DHT_MODEL_DHT22:
-	case DHT_MODEL_DHT21:
-		h = m_data[0] << 8 | m_data[1];
-		h *= 0.1;
-		break;
-	default:
-		return NAN;
+		case DHT_MODEL_DHT11:
+			h = m_data[0];
+			break;
+		case DHT_MODEL_DHT22:
+		case DHT_MODEL_DHT21:
+			h = m_data[0] << 8 | m_data[1];
+			h *= 0.1;
+			break;
+		default:
+			return NAN;
 	}
 	return h;
 }

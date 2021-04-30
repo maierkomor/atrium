@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -17,6 +17,7 @@
  */
 
 #include "astream.h"
+
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
@@ -24,22 +25,57 @@
 
 #include <assert.h>
 
+#if 1
+#define con_print(...)
+#define con_printf(...)
+#else
+extern "C" int con_printf(const char *,...);
+#endif
+
 using namespace std;
 
 
-astream::astream(size_t s)
-: stream()
-, m_err(false)
+astream::astream(size_t s, bool crnl)
+: stream(crnl)
 {
 	m_buf = (char *) malloc(s);
-	m_end = m_buf + s;
+	if (m_buf)
+		m_end = m_buf + s;
+	else
+		m_end = 0;
 	m_at = m_buf;
 }
 
 astream::~astream()
 {
-	if (m_buf)
-		free(m_buf);
+	con_printf("~astream() %p",m_buf);
+	free(m_buf);
+}
+
+
+char *astream::take()
+{
+	if (m_at == m_end)
+		resize(1);
+	assert(m_at < m_end);
+	*m_at = 0;
+	con_printf("astream::take() %s",m_buf);
+	char *r = m_buf;
+	m_buf = 0;
+	m_end = 0;
+	m_at = 0;
+	return r;
+}
+
+
+const char *astream::c_str()
+{
+	if (m_at == m_end)
+		resize(1);
+	assert(m_at < m_end);
+	*m_at = 0;
+	con_printf("astream::c_str() %s",m_buf);
+	return m_buf;
 }
 
 
@@ -47,59 +83,47 @@ int astream::put(char c)
 {
 	if (m_at+3 >= m_end)
 		resize(16);
-	if (m_err)
-		return -1;
 	int r = 1;
 	if (c == '\n') {
 		*m_at++ = '\r';
 		++r;
 	}
 	*m_at++ = c;
-	*m_at = 0;
 	return r;
 }
 
 
 int astream::resize(size_t ns)
 {
-	ns += m_at-m_buf;
+	con_printf("astream %p::resize(%u)",this,ns);
+	unsigned fill = m_at-m_buf;
+	ns += fill;
 	char *nb = (char *)realloc(m_buf,ns);
 	if (nb == 0) {
-		m_err = true;
+		free(m_buf);
+		m_buf = 0;
+		m_at = 0;
+		m_end = 0;
+		con_printf("FAILED!");
 		return 1;
 	}
-	m_at = nb + (m_at-m_buf);
+	m_at = nb + fill;
 	m_end = nb + ns;
 	m_buf = nb;
+	con_printf("resize now %d",m_end-m_at);
 	return 0;
 }
 
 
 int astream::write(const char *s, size_t l)
 {
-	int r = l;
-	size_t nn = chrcntn(s,'\n',l);
-	size_t rs = l + nn + 1;
-	if (rs > (m_end - m_at)) {
-		if (resize(rs))
+	if (m_end-m_at < l) {
+		if (resize(l+1))
 			return -1;
 	}
-	while (l) {
-		if (const char *nl = (const char *)memchr(s,'\n',l)) {
-			memcpy(m_at,s,nl-s);
-			*m_at++ = '\r';
-			*m_at++ = '\n';
-			++r;
-			l -= (nl-s)+1;
-			s = nl + 1;
-		} else {
-			memcpy(m_at,s,l);
-			m_at += l;
-			l = 0;
-		}
-	}
-	assert(m_at < m_end);
-	*m_at = 0;
-	return r;
+	con_printf("astream::write('%.*s',%d):m_at=%p,m_end=%p,free=%d",l,s,l,m_at,m_end,m_end-m_at);
+	memcpy(m_at,s,l);
+	m_at += l;
+	return l;
 }
 

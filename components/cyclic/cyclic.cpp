@@ -50,7 +50,6 @@ using namespace std;
 
 static char TAG[] = "cyclic";
 
-#ifdef CONFIG_SUBTASKS
 struct SubTask
 {
 	SubTask(const char *n, unsigned(*c)(void*), void *a, unsigned nr)
@@ -88,17 +87,18 @@ static SemaphoreHandle_t Lock;
 int cyclic_add_task(const char *name, unsigned (*loop)(void*), void *arg, unsigned initdelay)
 {
 	log_info(TAG,"add subtask %s",name);
+	SubTask *n = new SubTask(name,loop,arg,esp_timer_get_time()+initdelay*1000);
 	xSemaphoreTake(Lock,portMAX_DELAY);
 	SubTask *s = SubTasks;
 	while (s) {
 		if (0 == strcmp(s->name,name)) {
 			xSemaphoreGive(Lock);
+			delete n;
 			log_error(TAG,"subtask %s already exists",name);
 			return 1;
 		}
 		s = s->next;
 	}
-	SubTask *n = new SubTask(name,loop,arg,esp_timer_get_time()+initdelay*1000);
 	n->next = SubTasks;
 	SubTasks = n;
 	xSemaphoreGive(Lock);
@@ -116,8 +116,8 @@ int cyclic_rm_task(const char *name)
 				p->next = s->next;
 			else
 				SubTasks = s->next;
-			delete s;
 			xSemaphoreGive(Lock);
+			delete s;
 			log_info(TAG,"removed subtask %s",name);
 			return 0;
 		}
@@ -159,18 +159,10 @@ unsigned cyclic_execute()
 }
 
 
-static void cyclic_tasks(void *)
-{
-	for (;;) {
-		unsigned delay = cyclic_execute();
-		vTaskDelay(delay ? delay/portTICK_PERIOD_MS : 1);
-	}
-}
-
-
 void cyclic_setup()
 {
 	Lock = xSemaphoreCreateMutex();
+	// cyclic_execute is called from the inted
 }
 
 
@@ -184,53 +176,4 @@ int subtasks(Terminal &term, int argc, const char *args[])
 	}
 	return 0;
 }
-
-#else	// no CONFIG_SUBTASKS
-
-struct subtask_args
-{
-	unsigned initdelay;
-	unsigned (*loopfnc)();
-};
-
-static void cyclic_task(void *param)
-{
-	struct subtask_args *st = (struct subtask_args*) param;
-	if (st->initdelay)
-		vTaskDelay(st->initdelay/portTICK_PERIOD_MS);
-	unsigned (*func)() = (unsigned (*)())st->loopfnc;
-	free(param);
-	for (;;) {
-		unsigned d = func();
-		if (d == 0)
-			vTaskDelete(0);
-		vTaskDelay(d/portTICK_PERIOD_MS);
-	}
-}
-
-
-int cyclic_add_task(const char *name, unsigned (*loop_fnc)(void), unsigned initdelay)
-{
-	struct subtask_args *st = (struct subtask_args*) malloc(sizeof(struct subtask_args));
-	st->initdelay = initdelay;
-	st->loopfnc = loop_fnc;
-	BaseType_t r = xTaskCreatePinnedToCore(&cyclic_task, name, 4096, (void*)st, 5, NULL, 1);
-	if (r != pdPASS) {
-		log_error(TAG,"error creating task %s: %s",name,esp_err_to_name(r));
-		return r;
-	}
-	return 0;
-}
-
-
-/*
-void cyclic_rm_task(const char *name)
-{
-	// not supported right now!
-	abort();
-}
-*/
-
-#endif // CONFIG_SUBTASKS
-
 

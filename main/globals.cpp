@@ -54,8 +54,7 @@ HardwareConfig HWConf;
 nvs_handle NVS = 0;
 
 JsonObject *RTData = 0;
-JsonInt *Uptime = 0;
-JsonFloat *Temperature = 0, *Humidity = 0, *Pressure = 0;
+JsonNumber *Uptime = 0;
 #ifdef CONFIG_OTA
 JsonString *UpdateState = 0;
 #endif
@@ -109,7 +108,7 @@ void rtd_unlock()
 void rtd_update()
 {
 	if (Uptime == 0)
-		Uptime = RTData->add("uptime",0);
+		Uptime = RTData->add("uptime",0.0);
 	Uptime->set(timestamp()/1000000ULL);
 }
 

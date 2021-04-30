@@ -29,6 +29,9 @@
 #include "terminal.h"
 
 
+static const char TAG[] = "owb";
+
+
 static int ow_scan()
 {
 	int r = OneWire::getInstance()->scanBus();
@@ -58,9 +61,10 @@ static int ow_scan()
 
 int ow_setup()
 {
-	if (!HWConf.has_onewire())
+	if (!HWConf.has_onewire()) {
+		log_dbug(TAG,"not configured");
 		return 0;
-	log_info("owb","conf");
+	}
 	new OneWire(HWConf.onewire().gpio(),HWConf.onewire().pullup());
 	auto *owdevs = Config.mutable_owdevices();
 	for (const auto &cfg : *owdevs) {
@@ -75,6 +79,7 @@ int ow_setup()
 			d->attach(RTData);
 		}
 	}
+	log_dbug(TAG,"setup done");
 	return 0;
 }
 
@@ -87,7 +92,7 @@ int onewire(Terminal &term, int argc, const char *args[])
 		return 1;
 	}
 	if (argc != 2)
-		return 1;
+		return arg_invnum(term);;
 	if (!strcmp(args[1],"scan"))
 		return ow_scan();
 	if (!strcmp(args[1],"read"))

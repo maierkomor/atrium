@@ -27,6 +27,7 @@ Software services:
 - telnet server and console shell with many commands
 - inet server
 - syslog support for sending log messages to a syslog server
+- serial monitor to forward uart to syslog
 - WPS support
 - SmartConfig support (compatible hardware required)
 
@@ -368,7 +369,7 @@ Security Considerations:
 
 RAM considerations:
 ===================
-Even the ESP8285 can be loaded with telnet, http, mqtt, uart console, and more, when it comes to required ROM. But be aware that the RAM might not be enough in certain situations. So you cannot expect to have multiple http connections active at the same time while MQTT is used, too. MQTT alone will need more than 10k of RAM.
+Even the ESP8285 can be loaded with telnet, http, mqtt, uart console, and more, when it comes to required ROM. But be aware that the RAM might not be enough in certain situations. So you cannot expect to have multiple http connections active at the same time while MQTT is used, too.
 
 
 Smart Config:
@@ -478,9 +479,24 @@ Interface Stability:
 
 Remarks on terminal server:
 ===========================
-As the ESP8266 has only one UART/rx port, but two UART/tx ports, the terminal server will only run, if the UART console is disabled. This is done automatically in the code at compile-time. Nevertheless, logging to UART0/tx will work. In consequence access to the UART terminal is only possible via telnet.
+As the ESP8266 has only one UART/rx port, but two UART/tx ports. Therfore, the terminal server will only run, if the UART console is disabled via `hwconf set system.console\_rx -1` and `hwconf set system.console\_tx -1`. Nevertheless, logging to UART0/tx will work (`system.diag`). In consequence access to the UART terminal is only possible via telnet.
 
 The ESP32 does not suffer the same restriction. I.e. dedicated UARTs can be allocated for the terminal server and the console, so that these features won't interfere with eachother.
+
+Enabling UART monitor:
+======================
+The UART monitor forwards data send to UART0/rx to the syslog with
+priority information. To enable the UART monitor, you need to disable
+the console for this UART, and define a terminal without a TX port.
+I.e.:
+
+```
+hwconf set system.console\_rx -1
+config add terminal
+config set tmerinal[0].uart_rx 0
+hwconf write
+config write
+```
 
 
 Stating a new flash image configuration:

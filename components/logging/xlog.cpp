@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020, Thomas Maier-Komor
+ *  Copyright (C) 2020-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -27,7 +27,13 @@
 
 using namespace std;
 
-static set<estring,estring_cmp> Modules;
+struct cstrcmp
+{
+	bool operator () (const char *l, const char *r) const
+	{ return strcmp(l,r) < 0; }
+};
+
+static set<const char *,cstrcmp> Modules;
 static bool EnableAll = false;
 
 
@@ -36,7 +42,7 @@ void log_module_print(Terminal &t)
 	if (EnableAll)
 		t.println("*");
 	for (auto &m : Modules)
-		t.println(m.c_str());
+		t.println(m);
 }
 
 
@@ -44,20 +50,55 @@ int log_module_enable(const char *m)
 {
 	log_info("log","debug %s",m);
 	if (strcmp(m,"*"))
-		return Modules.emplace(m).second ? 0 : 1;
+		return Modules.emplace(strdup(m)).second ? 0 : 1;
 	EnableAll = true;
 	return 0;
 }
 
 
+int log_module_enabled(const char *m)
+{
+	return Modules.find(m) != Modules.end();
+}
+
+
 int log_module_disable(const char *m)
 {
-	if (strcmp(m,"*"))
-		return (Modules.erase(m) == 0);
+	if (strcmp(m,"*")) {
+		set<const char *,cstrcmp>::iterator i = Modules.find(m);
+		if (i == Modules.end())
+			return 1;
+		free((void*)*i);
+		Modules.erase(i);
+		return 0;
+	}
 	if (!EnableAll)
 		return 1;
 	EnableAll = false;
 	return 0;
+}
+
+
+void log_hex(const char *m, const uint8_t *d, unsigned n)
+{
+	char line[32], *at = line;
+	unsigned x = 0;
+	va_list val;
+	while (x != n) {
+		sprintf(at,"%02x",d[x]);
+		at += 2;
+		++x;
+		if ((x & 7) == 0) {
+			*at = 0;
+			log_common(ll_debug,m,line,val);
+			at = line;
+			continue;
+		} else if ((x & 3) == 0)
+			*at++ = ' ';
+		*at++ = ' ';
+	}
+	*at = 0;
+	log_common(ll_debug,m,line,val);
 }
 
 

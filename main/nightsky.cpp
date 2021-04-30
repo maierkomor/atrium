@@ -231,7 +231,7 @@ int nightsky_setup()
 {
 	const Tlc5947Config &c = HWConf.tlc5947();
 	if (!c.has_sin() || !c.has_sclk() || !c.has_xlat() || !c.has_blank() || (0 == c.ntlc())) {
-		log_info(TAG,"not configured");
+		log_dbug(TAG,"not configured");
 		return 0;
 	}
 	int r = Drv.init
@@ -254,12 +254,12 @@ int nightsky_setup()
 		cfg_set_uvalue("nightsky_randomitv",0);
 	if (cfg_get_uvalue("nightsky_interval",&Interval,40))
 		cfg_set_uvalue("nightsky_interval",40);
-	action_add("nightsky_on",nightsky_on,0,"turn on nightsky");
-	action_add("nightsky_off",nightsky_off,0,"turn off nightsky");
-	action_add("nightsky_toggle",nightsky_toggle,0,"toggle on/off nightsky");
-	action_add("nightsky_max",nightsky_fade,(void*)(MAX_BRIGHT),"all stars maximum brightness");
-	action_add("nightsky_min",nightsky_fade,0,"all stars dark");
-	action_add("nightsky_random",nightsky_random,0,"randomize stars' brightness");
+	action_add("nightsky!on",nightsky_on,0,"turn on nightsky");
+	action_add("nightsky!off",nightsky_off,0,"turn off nightsky");
+	action_add("nightsky!toggle",nightsky_toggle,0,"toggle on/off nightsky");
+	action_add("nightsky!max",nightsky_fade,(void*)(MAX_BRIGHT),"all stars maximum brightness");
+	action_add("nightsky!min",nightsky_fade,0,"all stars dark");
+	action_add("nightsky!random",nightsky_random,0,"randomize stars' brightness");
 	int e = cyclic_add_task("nightsky_step",nightsky_step);
 	if (e != 0)
 		return e;

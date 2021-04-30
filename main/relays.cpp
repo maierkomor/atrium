@@ -48,7 +48,7 @@ static void relay_callback(Relay *r)
 	rtd_lock();
 	JsonObject *o = static_cast<JsonObject *>(RTData->get(r->name()));
 	assert(o);
-	JsonInt *i = static_cast<JsonInt*>(o->get("on"));
+	JsonNumber *i = static_cast<JsonNumber*>(o->get("on"));
 	assert(i);
 	JsonString *s = static_cast<JsonString*>(o->get("state"));
 	assert(s);
@@ -139,7 +139,7 @@ int relay_setup()
 			iv = ((cfg&rc_init_on) != 0);
 		}
 		JsonObject *o = RTData->add(n);
-		o->add("on",iv?1:-1);
+		o->add("on",iv?1.0:-1.0);
 		o->add("state",iv?"on":"off");
 		o->add("laston",iv?Localtime->get():"");
 		o->add("lastoff",iv?"":Localtime->get());

@@ -71,7 +71,7 @@ OneWire *OneWire::Instance = 0;
 /* 
  * imported from OneWireNg, BSD-2 license
  */
-static uint8_t crc8(uint8_t crc, const uint8_t *in, size_t len)
+uint8_t OneWire::crc8(const uint8_t *in, size_t len)
 {
 	static const uint8_t CRC8_16L[] = {
 		0x00, 0x5e, 0xbc, 0xe2, 0x61, 0x3f, 0xdd, 0x83,
@@ -81,6 +81,7 @@ static uint8_t crc8(uint8_t crc, const uint8_t *in, size_t len)
 		0x00, 0x9d, 0x23, 0xbe, 0x46, 0xdb, 0x65, 0xf8,
 		0x8c, 0x11, 0xaf, 0x32, 0xca, 0x57, 0xe9, 0x74
 	};
+	uint8_t crc = 0;
 	while (len--) {
 		crc ^= *in++;
 		crc = CRC8_16L[(crc & 0x0f)] ^ CRC8_16H[(crc >> 4)];
@@ -115,10 +116,9 @@ OneWire::OneWire(unsigned bus, bool pullup)
 
 int OneWire::addDevice(uint64_t id)
 {
-	log_dbug(TAG,"add device " IDFMT,IDARG(id));
-	uint8_t crc = crc8(0,(uint8_t*)&id,7);
+	uint8_t crc = crc8((uint8_t*)&id,7);
 	if (crc != (id >> 56)) {
-		log_warn(TAG,"CRC error");
+		log_warn(TAG,"CRC error: calculated 0x%02x, expected 0x%02x",(unsigned)crc,(unsigned)(id>>56));
 		return 1;
 	}
 	if (OwDevice::getDevice(id)) {
@@ -137,13 +137,14 @@ int OneWire::scanBus()
 	uint64_t id = 0;
 	do {
 		log_dbug(TAG,"searchRom(" IDFMT ",%d)",IDARG(id),collisions.size());
-		if (int e = searchRom(id,collisions)) {
+		int e = searchRom(id,collisions);
+		if (e > 0) {
 			log_error(TAG,"searchRom(" IDFMT ",%d):%d",IDARG(id),collisions.size(),e);
 			return 1;	// error occured
 		}
+		if (e < 0)
+			log_dbug(TAG,"no response");
 		log_dbug(TAG,"searchRom(): " IDFMT,IDARG(id));
-		for (auto c : collisions)
-			log_dbug(TAG,"collision %08lx%08lx",(uint32_t)(c>>32),(uint32_t)c);
 		if (id)
 			addDevice(id);
 		if (collisions.empty()) {
@@ -161,23 +162,24 @@ int OneWire::scanBus()
 int OneWire::searchRom(uint64_t &id, vector<uint64_t> &coll)
 {
 	if (resetBus()) {
-		log_error(TAG,"reset failed");
+		log_warn(TAG,"reset failed");
 		return OW_PRESENCE_ERR;
 	}
 	uint64_t x0 = 0, x1 = 0;
 	uint8_t c = writeByte(OW_SEARCH_ROM);
 	if (OW_SEARCH_ROM != c) {
-		log_error(TAG,"search ROM command failed: %02x",c);
+		log_warn(TAG,"search ROM command failed: %02x",c);
 		return 1;
 	}
 	int r = 0;
+	unsigned nc = 0;
 	ENTER_CRITICAL();
 	for (unsigned b = 0; b < 64; ++b) {
 		uint8_t t0 = xmitBit(1);
 		uint8_t t1 = xmitBit(1);
 //		log_dbug(TAG,"t0=%u,t1=%u",t0,t1);
 		if (t0 & t1) {
-			r = -1;	// data error
+			r = -1;	// no response
 			break;
 		}
 		x0 |= (uint64_t)t0 << b;
@@ -186,10 +188,11 @@ int OneWire::searchRom(uint64_t &id, vector<uint64_t> &coll)
 			id |= 1LL<<b;
 		if ((t1|t0) == 0) {
 			// collision
-//			log_dbug(TAG,"collission id %x",id|1<<b);
-			if ((id >> b) & 1) {	// collission seen before
+//			log_dbug(TAG,"collision id %x",id|1<<b);
+			if ((id >> b) & 1) {	// collision seen before
 				xmitBit(1);
 			} else {
+				++nc;
 				coll.push_back(id|1<<b);
 				xmitBit(0);
 			}
@@ -197,9 +200,14 @@ int OneWire::searchRom(uint64_t &id, vector<uint64_t> &coll)
 			xmitBit(t0);
 	}
 	EXIT_CRITICAL();
-	//log_info(TAG,"x0=%016lx, x1=%016lx",x0,x1);
-	log_dbug(TAG,"x0=" IDFMT,IDARG(x0));
-	log_dbug(TAG,"x1=" IDFMT,IDARG(x1));
+	while (nc) {
+		uint64_t c = coll[coll.size()-nc];
+		log_dbug(TAG,"collision %08lx%08lx",(uint32_t)(c>>32),(uint32_t)c);
+		--nc;
+	}
+	if (r == -1)
+		log_dbug(TAG,"no response");
+	log_dbug(TAG,"x0=%016lx, x1=%016lx",x0,x1);
 	log_dbug(TAG,"id=" IDFMT,IDARG(id));
 	return r;
 }
@@ -219,9 +227,9 @@ int OneWire::readRom()
 	uint8_t id[8];
 	for (int i = 0; i < 8; ++i)
 		id[i] = readByte();
-	uint8_t crc = crc8(0,id,7);
+	uint8_t crc = crc8(id,7);
 	if (crc == id[7])
-		log_info(TAG,"CRC ok");
+		log_dbug(TAG,"CRC ok");
 	else
 		log_warn(TAG,"crc mismatch: expected %02x, got %02x",id[7],crc);
 	uint64_t id64 = 0;

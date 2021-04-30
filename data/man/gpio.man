@@ -1,0 +1,10 @@
+synopsis: gpio
+synopsis: gpio <id>
+synopsis: gpio <id> <dir>
+synopsis: gpio <id> <level>
+Without arguments all gpios are listed.
+With argument <id> the direction and level of gpio<id> is printed.
+With arguments <id> and <dir> the direction of gpio<id> is set.
+With arguments <id> and <level> the level of gpio<id> is set.
+<dir> is 'in' or 'out'
+<level> is '0' or '1'
