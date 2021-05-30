@@ -47,7 +47,8 @@ static void relay_callback(Relay *r)
 		store_nvs_u8(r->name(),r->is_on());
 	rtd_lock();
 	JsonObject *o = static_cast<JsonObject *>(RTData->get(r->name()));
-	assert(o);
+	if (o == 0)
+		o = RTData;
 	JsonNumber *i = static_cast<JsonNumber*>(o->get("on"));
 	assert(i);
 	JsonString *s = static_cast<JsonString*>(o->get("state"));
@@ -168,7 +169,7 @@ int relay(Terminal &term, int argc, const char *args[])
 {
 	Relay *r = Relay::first();
 	if (r == 0) {
-		term.printf("no relays attached\n");
+		term.printf("no relays\n");
 		return 1;
 	}
 	if (argc == 1) {

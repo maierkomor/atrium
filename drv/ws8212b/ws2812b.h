@@ -37,7 +37,9 @@ class WS2812BDrv
 	WS2812BDrv()
 	: m_set(0)
 	, m_cur(0)
+#ifdef CONFIG_IDF_TARGET_ESP32
 	, m_items(0)
+#endif
 	, m_num(0)
 	, m_tmr(0)
 	{ }
@@ -58,7 +60,9 @@ class WS2812BDrv
 	void commit();
 
 	uint8_t *m_set, *m_cur;
+#ifdef CONFIG_IDF_TARGET_ESP32
 	rmt_item32_t *m_items;
+#endif
 	size_t m_num;
 	TimerHandle_t m_tmr;
 	gpio_num_t m_gpio;

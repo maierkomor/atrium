@@ -243,7 +243,7 @@ int Telnet::get_ch(char *oc)
 				// default: we don't support it so we answer with WONT
 				char resp[] = {RFC854_IAC,RFC854_WONT,c};
 				write(resp,sizeof(resp));
-				log_info(TAG,"received unknown DO %d, answering WONT %d",c,c);
+				log_info(TAG,"unknown DO %d, answering WONT %d",c,c);
 			}
 			m_state = XMDATA;
 			break;
@@ -257,7 +257,7 @@ int Telnet::get_ch(char *oc)
 				// default: we don't support it so we answer with WONT
 				char resp[] = {RFC854_IAC,RFC854_WONT,c};
 				write(resp,sizeof(resp));
-				log_info(TAG,"received unknown DONT %d",c);
+				log_info(TAG,"unknown DONT %d",c);
 			}
 			m_state = XMDATA;
 			break;
@@ -271,11 +271,11 @@ int Telnet::get_ch(char *oc)
 			break;
 		case XMSN:
 			if (c == RFC854_SE) {
-				log_info(TAG,"ending subnegotiation");
+				log_dbug(TAG,"ending subnegotiation");
 				m_state = XMDATA;
 				break;
 			} else {
-				log_info(TAG,"subnegotiation %d",c);
+				log_dbug(TAG,"subnegotiation %d",c);
 			}
 			break;
 		default:

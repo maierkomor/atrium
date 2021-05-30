@@ -51,6 +51,7 @@
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
+#include <lwip/tcpip.h>
 #include <lwip/tcp.h>
 
 #include <string.h>
@@ -324,9 +325,9 @@ static void parse_suback(uint8_t *buf, size_t rlen)
 			log_warn(TAG,"subscription for pid %x, topic %s failed",(unsigned)pid,t);
 		}
 		if (0 == Client->subs.erase(pid))
-			log_warn(TAG,"got suback for unknown pid %x",(unsigned)pid);
+			log_warn(TAG,"suback for unknown pid %x",(unsigned)pid);
 	} else {
-		log_warn(TAG,"suback with invalid rlen %u",rlen);
+		log_warn(TAG,"suback rlen %u",rlen);
 	}
 
 }
@@ -431,12 +432,12 @@ static err_t handle_sent(void *arg, struct tcp_pcb *pcb, u16_t l)
 static void handle_err(void *arg, err_t e)
 {
 	log_warn(TAG,"handle error %d",e);
-	if (e == ERR_ABRT)
-		Client->pcb = 0;
-	else if (e == ERR_ISCONN)
+	if (e == ERR_ISCONN) {
 		Client->state = running;
-	else
+	} else {
+		Client->pcb = 0;
 		Client->state = error;
+	}
 }
 
 
@@ -533,11 +534,12 @@ int mqtt_pub(const char *t, const char *v, int len, int retain, int qos)
 		// TODO qos: add packet id
 	}
 	memcpy(b,v,len);
-	log_dbug(TAG,"publish %s",t);
-	xSemaphoreTake(Client->mtx,portMAX_DELAY);
+	log_dbug(TAG,"publish %s %u",t,sizeof(request));
 	uint8_t flags = TCP_WRITE_FLAG_COPY;
 	if (more)
 		flags |= TCP_WRITE_FLAG_MORE;
+	xSemaphoreTake(Client->mtx,portMAX_DELAY);
+	LOCK_TCPIP_CORE();
 	err_t e = tcp_write(Client->pcb,request,sizeof(request),flags);
 	if (e) {
 		log_warn(TAG,"pub write %d",e);
@@ -546,6 +548,7 @@ int mqtt_pub(const char *t, const char *v, int len, int retain, int qos)
 		if (e)
 			log_warn(TAG,"pub output %d",e);
 	}
+	UNLOCK_TCPIP_CORE();
 	xSemaphoreGive(Client->mtx);
 	return 0;
 }
@@ -612,32 +615,30 @@ static void mqtt_pub_uptime(void * = 0)
 void mqtt_pub_rtdata(void *)
 {
 	if ((Client == 0) || (Client->state != running)) {
-		if (Config.mqtt().enable() && ((Client == 0) || (Client->state == offline)))
+		if (Config.mqtt().enable() && ((Client == 0) || (Client->state == offline) || (Client->state == error)))
 			mqtt_start();
 		return;
 	}
 	mqtt_pub_uptime();
 	rtd_lock();
 	rtd_update();
-	JsonElement *e = RTData->first();
-	while (e) {
+	LOCK_TCPIP_CORE();
+	for (JsonElement *e : RTData->getChilds()) {
 		const char *n = e->name();
 		if (!strcmp(n,"node") || !strcmp(n,"version") || !strcmp(n,"reset_reason")) {
 			// skip
 		} else if (JsonObject *o = e->toObject()) {
 			const char *n = e->name();
-			JsonElement *c = o->first();
-			while (c) {
+			for (auto c : o->getChilds()) {
 				pub_element(c,n);
-				c = c->next();
 			}
 		} else {
 			pub_element(e);
 		}
-		e = e->next();
 	}
 	rtd_unlock();
 	tcp_output(Client->pcb);
+	UNLOCK_TCPIP_CORE();
 }
 
 
@@ -656,9 +657,11 @@ int mqtt_sub(const char *t, void (*callback)(const char *,const void *,size_t))
 	memcpy(topic+hl+1,t,tl+1);
 	log_dbug(TAG,"subscribe %s",topic);
 	xSemaphoreTake(Client->mtx,portMAX_DELAY);
+	LOCK_TCPIP_CORE();
 	Client->subscriptions.insert(make_pair((estring)topic,callback));
 	if (Client->state == running)
 		send_sub(topic,true);
+	UNLOCK_TCPIP_CORE();
 	xSemaphoreGive(Client->mtx);
 	return 0;
 }
@@ -671,12 +674,14 @@ void mqtt_stop(void *arg)
 	log_dbug(TAG,"stop");
 	xSemaphoreTake(Client->mtx,portMAX_DELAY);
 	char request[] { DISCONNECT, 0 };
+	LOCK_TCPIP_CORE();
 	err_t e = tcp_write(Client->pcb,request,sizeof(request),TCP_WRITE_FLAG_COPY);
 	if (e)
 		log_warn(TAG,"write DISCONNECT %d",e);
 	else
 		tcp_output(Client->pcb);
 	e = tcp_close(Client->pcb);
+	UNLOCK_TCPIP_CORE();
 	if (e)
 		log_warn(TAG,"stop: close error %d",e);
 	mqtt_term();
@@ -694,10 +699,10 @@ void mqtt_start(void *arg)
 		log_warn(TAG,"incomplete config");
 		return;
 	}
-	if (Client == 0)
+	if (Client == 0) {
 		mqtt_setup();
-	else if (Client->state != offline) {
-		log_warn(TAG,"not offline");
+	} else if ((Client->state != offline) && (Client->state != error)) {
+		log_dbug(TAG,"state %d",Client->state);
 		return;
 	}
 	const char *uri = mqtt.uri().c_str();

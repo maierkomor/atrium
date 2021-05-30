@@ -38,24 +38,12 @@
 
 using namespace std;
 
-
-struct AName
-{
-	const char *name;
-};
+static char TAG[] = "action";
 
 bool operator < (const Action &l, const Action &r)
 { return strcmp(l.name,r.name) < 0; }
 
-bool operator < (const Action &l, const AName &r)
-{ return strcmp(l.name,r.name) < 0; }
-
-bool operator < (const AName &l, const Action &r)
-{ return strcmp(l.name,r.name) < 0; }
-
 static set<Action,less<Action>> Actions;
-
-static char TAG[] = "action";
 
 
 Action::Action(const char *n, void (*f)(void*),void *a, const char *t)
@@ -68,10 +56,12 @@ Action::Action(const char *n, void (*f)(void*),void *a, const char *t)
 }
 
 
-void Action::activate()
+void Action::activate(void *a)
 {
+	if (a == 0)
+		a = arg;
 	uint64_t st = esp_timer_get_time();
-	func(arg);
+	func(a);
 	uint64_t end = esp_timer_get_time();
 	++num;
 	unsigned dt = end - st;
@@ -131,3 +121,5 @@ void action_iterate(void (*f)(void*,const Action *),void *p)
 		f(p,&a);
 	f(p,0);
 }
+
+

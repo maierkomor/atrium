@@ -53,29 +53,38 @@ extern "C" {
 #include <esp_clk.h>
 }
 #include <driver/rtc.h>
-//// 160MHz values - warum hat das mal funktioniert?! commit 6b3ae96eea4d
-//#define T0H160	2
-//#define T0L160	6
-//#define T1H160	6
-//#define T1L160	2
-//#define TR160	500
-// 160MHz values
-#define T0H160	8
-#define T0L160	20
-#define T1H160	20
-#define T1L160	8
-#define TR160	1500
-// 80MHz values
-#define T0H80	4
-#define T0L80	10
-#define T1H80	10
-#define T1L80	4
-#define TR80	800
 // ws2812b requirements:
+// 160MHz : 6.25ns per tick
+// 80MHz  : 12.5ns per tick
 // t0h 0.40us +/-150ns	:  64 ticks @ 160MHz
 // t0l 0.85us +/-150ns  : 136 ticks @ 160MHz
 // t1h 0.80us +/-150ns  : 128 ticks @ 160MHz
 // t1l 0.45us +/-150ns	:  72 ticks @ 160MHz
+
+// ws2812b new calculation:
+// 160MHz : 6.25ns per tick
+// 80MHz  : 12.5ns per tick
+// T0H: 400ns = 64 cycles
+// T0L: 850ns = 136 cycles
+// T1H: 800ns = 128 cycles
+// T1L: 450ns = 72 cycles
+#define T0H160	52
+#define T0L160	118
+#define T1H160	115
+#define T1L160	58
+#define TR160	8100
+
+#define T0H80	14
+#define T0L80	46
+#define T1H80	44
+#define T1L80	17
+#define TR80	4050
+
+#define T0H m_t0h
+#define T0L m_t0l
+#define T1H m_t1h
+#define T1L m_t1l
+#define TR m_tr
 #else
 #error unknwon target
 #endif
@@ -88,28 +97,55 @@ typedef struct rmt_item32_s {
 } rmt_item32_t;
 
 
-static inline IRAM_ATTR void delay_iter(volatile unsigned x)
+// extern linkage to force a dedicated function in IRAM
+IRAM_ATTR void ws2812b_write(unsigned gpio, uint8_t *d, uint8_t *end, uint8_t t0l, uint8_t t0h, uint8_t t1l, uint8_t t1h)
 {
-	// for some reason execution time is not deterministic
-	while (x)
-		--x;
-}
-
-
-static IRAM_ATTR void write_items(gpio_num_t p, rmt_item32_t *i, unsigned n)
-{
-	unsigned gpio = 1<<p;
-	rmt_item32_t *e = i + n;
 	portENTER_CRITICAL();
 	do {
-		GPIO_REG_WRITE(GPIO_OUT_W1TS_ADDRESS,gpio);
-		delay_iter(i->duration0);
-		GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS,gpio);
-		delay_iter(i->duration1);
-		++i;
-	} while (i != e);
+		uint8_t l = *d;
+		uint8_t b = 0x80;
+		do {
+			uint32_t s,e;
+			GPIO_REG_WRITE(GPIO_OUT_W1TS_ADDRESS,gpio);
+			asm volatile ("rsr %0, ccount" : "=r"(s));
+			uint8_t tl, th;
+			if (l & b) {
+				tl = t1l;
+				th = t1h;
+			} else {
+				tl = t0l;
+				th = t0h;
+			}
+			do {
+				asm volatile ("rsr %0, ccount" : "=r"(e));
+			} while (e-s < th);
+			GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS,gpio);
+			asm volatile ("rsr %0, ccount" : "=r"(s));
+			do {
+				asm volatile ("rsr %0, ccount" : "=r"(e));
+			} while (e-s < tl);
+			b >>= 1;
+		} while (b);
+		++d;
+	} while (d != end);
 	portEXIT_CRITICAL();
 }
+
+
+// extern linkage to force a dedicated function in IRAM
+IRAM_ATTR void ws2812b_reset(unsigned gpio, uint16_t tr)
+{
+	portENTER_CRITICAL();
+	GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS,gpio);
+	uint32_t s,e;
+	asm volatile ("rsr %0, ccount" : "=r"(s));
+	do {
+		asm volatile ("rsr %0, ccount" : "=r"(e));
+	} while (e-s < tr);
+	portEXIT_CRITICAL();
+}
+
+
 #endif	// CONFIG_IDF_TARGET_ESP8266
 
 
@@ -137,13 +173,17 @@ int WS2812BDrv::init(gpio_num_t gpio, size_t nleds, rmt_channel_t ch)
 	m_num = 0;
 	m_gpio = gpio;
 	m_set = (uint8_t*) calloc(1,nleds*3*2);
-	m_cur = m_set+nleds*3;
-	m_items = (rmt_item32_t*) calloc(sizeof(rmt_item32_t),(24*nleds+1/*for reset*/));
-	if ((m_set == 0) || (m_items == 0)) {
+	if (m_set == 0) {
 		log_error(TAG,"out of memory");
 		return 1;
 	}
+	m_cur = m_set+nleds*3;
 #ifdef CONFIG_IDF_TARGET_ESP32
+	m_items = (rmt_item32_t*) calloc(sizeof(rmt_item32_t),(24*nleds+1/*for reset*/));
+	if (m_items == 0) {
+		log_error(TAG,"out of memory");
+		return 1;
+	}
 	m_ch = ch;
 	rmt_config_t rmt_tx;
 	memset(&rmt_tx,0,sizeof(rmt_tx));
@@ -172,7 +212,7 @@ int WS2812BDrv::init(gpio_num_t gpio, size_t nleds, rmt_channel_t ch)
 	m_num = nleds;
 	if (m_tmr == 0)
 		m_tmr = xTimerCreate("ws2812b",pdMS_TO_TICKS(20),false,(void*)this,timerCallback);
-	log_info(TAG,"init ok");
+	log_dbug(TAG,"init ok");
 	return 0;
 }
 
@@ -183,7 +223,7 @@ void WS2812BDrv::set_led(unsigned led, uint8_t r, uint8_t g, uint8_t b)
 		log_warn(TAG,"LED inaccessible");
 		return;
 	}
-	log_info(TAG,"set(%u,%u,%u,%u)",led,r,g,b);
+	log_dbug(TAG,"set(%u,%u,%u,%u)",led,r,g,b);
 	uint8_t *v = m_set+led*3;
 	*v++ = g;
 	*v++ = r;
@@ -197,7 +237,7 @@ void WS2812BDrv::set_led(unsigned led, uint32_t rgb)
 		log_warn(TAG,"LED inaccessible");
 		return;
 	}
-	log_info(TAG,"set(%u,%06x)",led,rgb);
+	log_dbug(TAG,"set(%u,%06x)",led,rgb);
 	uint8_t *v = m_set+led*3;
 	*v++ = (rgb >> 8) & 0xff;
 	*v++ = (rgb >> 16) & 0xff;
@@ -207,7 +247,7 @@ void WS2812BDrv::set_led(unsigned led, uint32_t rgb)
 
 void WS2812BDrv::set_leds(uint32_t rgb)
 {
-	//log_info(TAG,"set(%06x)",rgb);
+	log_dbug(TAG,"set_leds(%06x)",rgb);
 	uint8_t *v = m_set;
 	uint8_t b = rgb & 0xff;
 	rgb >>= 8;
@@ -265,31 +305,25 @@ void WS2812BDrv::commit()
 	//log_info(TAG,"update0");
 	assert(m_set);
 	uint8_t *v = m_cur, *e = m_cur+m_num*3;
+#ifdef CONFIG_IDF_TARGET_ESP8266
+	uint8_t tmp[e-v];		// move data to IRAM!
+	memcpy(tmp,v,sizeof(tmp));
+	ws2812b_write(1 << m_gpio,tmp,tmp+sizeof(tmp),m_t0l,m_t0h,m_t1l,m_t1h);
+	ws2812b_reset(1 << m_gpio,m_tr);
+#else
 	assert(m_items);
 	rmt_item32_t *r = m_items;
 	while (v != e) {
 		uint8_t l = *v++;
 		for (int i = 0; i < 8; ++i) {
-#ifdef CONFIG_IDF_TARGET_ESP32
 			r->level0 = 1;
 			r->level1 = 0;
-#endif
 			if (l & 0x80) {
-#ifdef CONFIG_IDF_TARGET_ESP32
 				r->duration0 = T1H;
 				r->duration1 = T1L;
-#else
-				r->duration0 = m_t1h;
-				r->duration1 = m_t1l;
-#endif
 			} else {
-#ifdef CONFIG_IDF_TARGET_ESP32
 				r->duration0 = T0H;
 				r->duration1 = T0L;
-#else
-				r->duration0 = m_t0h;
-				r->duration1 = m_t0l;
-#endif
 			}
 			l <<= 1;
 			++r;
@@ -298,19 +332,12 @@ void WS2812BDrv::commit()
 	}
 	// add reset after data
 	r->duration0 = 0;
-#ifdef CONFIG_IDF_TARGET_ESP8266
-	r->duration1 = m_tr;
-#elif defined CONFIG_IDF_TARGET_ESP32
 	r->duration1 = TR;
 	r->level0 = 1;
 	r->level1 = 0;
-#endif
 	assert(r-m_items <= 24*m_num+1);
 	//log_info(TAG,"writing %u items",r-m_items);
-#ifdef CONFIG_IDF_TARGET_ESP32
 	rmt_write_items(m_ch, m_items, m_num*24+1, true);
-#else
-	write_items(m_gpio, m_items, m_num*24+1);
 #endif
 }
 
@@ -318,20 +345,15 @@ void WS2812BDrv::commit()
 void WS2812BDrv::reset()
 {
 	//log_info(TAG,"reset0");
-	rmt_item32_t rst;
 #ifdef CONFIG_IDF_TARGET_ESP32
+	rmt_item32_t rst;
 	rst.level0 = 0;
 	rst.level1 = 0;
 	rst.duration0 = TR;
-#elif defined CONFIG_IDF_TARGET_ESP8266
-	rst.duration0 = m_tr;
-#endif
 	rst.duration1 = 0;
-	//log_info(TAG,"reset");
-#ifdef CONFIG_IDF_TARGET_ESP32
 	rmt_write_items(m_ch, &rst, 1, true);
 #else
-	write_items(m_gpio, &rst, 1);
+	ws2812b_reset(1 << m_gpio,m_tr);
 #endif
 }
 

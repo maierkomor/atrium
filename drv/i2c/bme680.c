@@ -233,38 +233,6 @@ static void boundary_check(uint8_t *value, uint8_t min, uint8_t max, struct bme6
 
 /****************** Global Function Definitions *******************************/
 /*!
- *@brief This API is the entry point.
- *It reads the chip-id and calibration data from the sensor.
- */
-int8_t bme680_probe(uint8_t bus, uint8_t addr)
-{
-	int8_t rslt;
-	/* Soft reset to restore it to default values*/
-	rslt = bme680_soft_reset(bus,addr);
-	if (rslt == BME680_OK) {
-		uint8_t chip_id;
-		rslt = i2c_read(bus,addr,BME680_CHIP_ID_ADDR,&chip_id,1);
-		if ((rslt == BME680_OK) && (chip_id != BME680_CHIP_ID))
-			rslt = BME680_E_DEV_NOT_FOUND;
-	}
-	return rslt;
-}
-
-/*!
- * @brief This API performs the soft reset of the sensor.
- */
-int8_t bme680_soft_reset(uint8_t bus, uint8_t addr)
-{
-	int8_t rslt;
-
-	/* Reset the device */
-	rslt = i2c_write2(bus, addr, BME680_SOFT_RESET_ADDR, BME680_SOFT_RESET_CMD);
-	/* Wait for 5ms */
-	vTaskDelay(BME680_RESET_PERIOD);
-	return rslt;
-}
-
-/*!
  * @brief This API is used to set the oversampling, filter and T,P,H, gas selection
  * settings in the sensor.
  */
@@ -286,7 +254,7 @@ int8_t bme680_set_sensor_settings(uint16_t desired_settings, struct bme680_dev *
 		boundary_check(&dev->tph_sett.filter, BME680_FILTER_SIZE_0, BME680_FILTER_SIZE_127, dev);
 		uint8_t reg_addr = BME680_CONF_ODR_FILT_ADDR;
 
-		rslt = i2c_read(dev->bus,dev->addr,reg_addr,&data,1);
+		rslt = i2c_w1rd(dev->bus,dev->addr,reg_addr,&data,1);
 
 		if (desired_settings & BME680_FILTER_SEL)
 			data = BME680_SET_BITS(data, BME680_FILTER, dev->tph_sett.filter);
@@ -298,7 +266,7 @@ int8_t bme680_set_sensor_settings(uint16_t desired_settings, struct bme680_dev *
 	if (desired_settings & BME680_HCNTRL_SEL) {
 		boundary_check(&dev->gas_sett.heatr_ctrl, BME680_ENABLE_HEATER, BME680_DISABLE_HEATER, dev);
 		uint8_t reg_addr = BME680_CONF_HEAT_CTRL_ADDR;
-		rslt = i2c_read(dev->bus,dev->addr,reg_addr,&data,1);
+		rslt = i2c_w1rd(dev->bus,dev->addr,reg_addr,&data,1);
 		data = BME680_SET_BITS_POS_0(data, BME680_HCTRL, dev->gas_sett.heatr_ctrl);
 		rslt = i2c_write2(dev->bus, dev->addr, reg_addr, data);
 	}
@@ -307,7 +275,7 @@ int8_t bme680_set_sensor_settings(uint16_t desired_settings, struct bme680_dev *
 	if (desired_settings & (BME680_OST_SEL | BME680_OSP_SEL)) {
 		boundary_check(&dev->tph_sett.os_temp, BME680_OS_NONE, BME680_OS_16X, dev);
 		uint8_t reg_addr = BME680_CONF_T_P_MODE_ADDR;
-		rslt = i2c_read(dev->bus,dev->addr,reg_addr,&data,1);
+		rslt = i2c_w1rd(dev->bus,dev->addr,reg_addr,&data,1);
 		if (desired_settings & BME680_OST_SEL)
 			data = BME680_SET_BITS(data, BME680_OST, dev->tph_sett.os_temp);
 		if (desired_settings & BME680_OSP_SEL)
@@ -319,7 +287,7 @@ int8_t bme680_set_sensor_settings(uint16_t desired_settings, struct bme680_dev *
 	if (desired_settings & BME680_OSH_SEL) {
 		boundary_check(&dev->tph_sett.os_hum, BME680_OS_NONE, BME680_OS_16X, dev);
 		uint8_t reg_addr = BME680_CONF_OS_H_ADDR;
-		rslt = i2c_read(dev->bus,dev->addr,reg_addr,&data,1);
+		rslt = i2c_w1rd(dev->bus,dev->addr,reg_addr,&data,1);
 		data = BME680_SET_BITS_POS_0(data, BME680_OSH, dev->tph_sett.os_hum);
 		rslt = i2c_write2(dev->bus, dev->addr, reg_addr, data);
 	}
@@ -330,7 +298,7 @@ int8_t bme680_set_sensor_settings(uint16_t desired_settings, struct bme680_dev *
 		/* Validate boundary conditions */
 		boundary_check(&dev->gas_sett.nb_conv, BME680_NBCONV_MIN, BME680_NBCONV_MAX, dev);
 		uint8_t reg_addr = BME680_CONF_ODR_RUN_GAS_NBC_ADDR;
-		rslt = i2c_read(dev->bus,dev->addr,reg_addr,&data,1);
+		rslt = i2c_w1rd(dev->bus,dev->addr,reg_addr,&data,1);
 		if (desired_settings & BME680_RUN_GAS_SEL)
 			data = BME680_SET_BITS(data, BME680_RUN_GAS, dev->gas_sett.run_gas);
 		if (desired_settings & BME680_NBCONV_SEL)
@@ -354,7 +322,7 @@ int8_t bme680_get_sensor_settings(uint16_t desired_settings, struct bme680_dev *
 	uint8_t reg_addr = BME680_CONF_HEAT_CTRL_ADDR;
 	uint8_t data_array[BME680_REG_BUFFER_LENGTH] = { 0 };
 
-	rslt = i2c_read(dev->bus,dev->addr,reg_addr,data_array,sizeof(data_array));
+	rslt = i2c_w1rd(dev->bus,dev->addr,reg_addr,data_array,sizeof(data_array));
 
 	if (rslt == BME680_OK) {
 		if (desired_settings & BME680_GAS_MEAS_SEL)
@@ -401,7 +369,7 @@ int8_t bme680_set_sensor_mode(struct bme680_dev *dev)
 
 	/* Call repeatedly until in sleep */
 	do {
-		rslt = i2c_read(dev->bus,dev->addr,BME680_CONF_T_P_MODE_ADDR,&tmp_pow_mode,1);
+		rslt = i2c_w1rd(dev->bus,dev->addr,BME680_CONF_T_P_MODE_ADDR,&tmp_pow_mode,1);
 		if (rslt == BME680_OK) {
 			/* Put to sleep before changing mode */
 			pow_mode = (tmp_pow_mode & BME680_MODE_MSK);
@@ -409,7 +377,7 @@ int8_t bme680_set_sensor_mode(struct bme680_dev *dev)
 			if (pow_mode != BME680_SLEEP_MODE) {
 				tmp_pow_mode = tmp_pow_mode & (~BME680_MODE_MSK); /* Set to sleep */
 				rslt = i2c_write2(dev->bus, dev->addr, reg_addr, tmp_pow_mode);
-				vTaskDelay(BME680_POLL_PERIOD_MS);
+				return BME680_POLL_PERIOD_MS;
 			}
 		}
 	} while (pow_mode != BME680_SLEEP_MODE);
@@ -431,7 +399,7 @@ int8_t bme680_get_sensor_mode(struct bme680_dev *dev)
 	int8_t rslt;
 	uint8_t mode;
 
-	rslt = i2c_read(dev->bus,dev->addr,BME680_CONF_T_P_MODE_ADDR,&mode,1);
+	rslt = i2c_w1rd(dev->bus,dev->addr,BME680_CONF_T_P_MODE_ADDR,&mode,1);
 	/* Masking the other register bit info*/
 	dev->power_mode = mode & BME680_MODE_MSK;
 	return rslt;
@@ -523,11 +491,11 @@ int8_t bme680_init(struct bme680_dev *dev)
 	uint8_t temp_var = 0; /* Temporary variable */
 
 //	rslt = bme680_get_regs(BME680_COEFF_ADDR1, coeff_array, BME680_COEFF_ADDR1_LEN, dev);
-	rslt = i2c_read(dev->bus,dev->addr,BME680_COEFF_ADDR1,coeff_array,BME680_COEFF_ADDR1_LEN);
+	rslt = i2c_w1rd(dev->bus,dev->addr,BME680_COEFF_ADDR1,coeff_array,BME680_COEFF_ADDR1_LEN);
 	/* Append the second half in the same array */
 	if (rslt == BME680_OK)
 //		rslt = bme680_get_regs(BME680_COEFF_ADDR2, &coeff_array[BME680_COEFF_ADDR1_LEN], BME680_COEFF_ADDR2_LEN, dev);
-		rslt = i2c_read(dev->bus,dev->addr,BME680_COEFF_ADDR2,coeff_array+BME680_COEFF_ADDR1_LEN,BME680_COEFF_ADDR2_LEN);
+		rslt = i2c_w1rd(dev->bus,dev->addr,BME680_COEFF_ADDR2,coeff_array+BME680_COEFF_ADDR1_LEN,BME680_COEFF_ADDR2_LEN);
 
 	/* Temperature related coefficients */
 	dev->calib.par_t1 = (uint16_t) (BME680_CONCAT_BYTES(coeff_array[BME680_T1_MSB_REG], coeff_array[BME680_T1_LSB_REG]));
@@ -562,15 +530,15 @@ int8_t bme680_init(struct bme680_dev *dev)
 
 	/* Other coefficients */
 	if (rslt == BME680_OK) {
-		rslt = i2c_read(dev->bus,dev->addr,BME680_ADDR_RES_HEAT_RANGE_ADDR,&temp_var,1);
+		rslt = i2c_w1rd(dev->bus,dev->addr,BME680_ADDR_RES_HEAT_RANGE_ADDR,&temp_var,1);
 
 		dev->calib.res_heat_range = ((temp_var & BME680_RHRANGE_MSK) / 16);
 		if (rslt == BME680_OK) {
-			rslt = i2c_read(dev->bus,dev->addr,BME680_ADDR_RES_HEAT_VAL_ADDR,&temp_var,1);
+			rslt = i2c_w1rd(dev->bus,dev->addr,BME680_ADDR_RES_HEAT_VAL_ADDR,&temp_var,1);
 
 			dev->calib.res_heat_val = (int8_t) temp_var;
 			if (rslt == BME680_OK)
-				rslt = i2c_read(dev->bus,dev->addr,BME680_ADDR_RANGE_SW_ERR_ADDR,&temp_var,1);
+				rslt = i2c_w1rd(dev->bus,dev->addr,BME680_ADDR_RANGE_SW_ERR_ADDR,&temp_var,1);
 		}
 	}
 	dev->calib.range_sw_err = ((int8_t) temp_var & (int8_t) BME680_RSERROR_MSK) / 16;
@@ -591,7 +559,7 @@ static int8_t set_gas_config(struct bme680_dev *dev)
 			, BME680_RES_HEAT0_ADDR, calc_heater_res(dev->gas_sett.heatr_temp, dev)
 			, BME680_GAS_WAIT0_ADDR, calc_heater_dur(dev->gas_sett.heatr_dur)
 			};
-		rslt = i2c_write(dev->bus, cmd, sizeof(cmd));
+		rslt = i2c_write(dev->bus, cmd, sizeof(cmd), 1, 1);
 	} else {
 		rslt = BME680_W_DEFINE_PWR_MODE;
 	}
@@ -609,10 +577,10 @@ static int8_t get_gas_config(struct bme680_dev *dev)
 	/* starting address of the register array for burst read*/
 	uint8_t reg_data = 0;
 
-	rslt = i2c_read(dev->bus,dev->addr,BME680_ADDR_SENS_CONF_START,&reg_data,1);
+	rslt = i2c_w1rd(dev->bus,dev->addr,BME680_ADDR_SENS_CONF_START,&reg_data,1);
 	if (rslt == BME680_OK) {
 		dev->gas_sett.heatr_temp = reg_data;
-		rslt = i2c_read(dev->bus,dev->addr,BME680_ADDR_GAS_CONF_START,&reg_data,1);
+		rslt = i2c_w1rd(dev->bus,dev->addr,BME680_ADDR_GAS_CONF_START,&reg_data,1);
 		if (rslt == BME680_OK) {
 			/* Heating duration register value */
 			dev->gas_sett.heatr_dur = reg_data;
@@ -904,12 +872,11 @@ static int8_t read_field_data(struct bme680_field_data *data, struct bme680_dev 
 
 	/* Check for null pointer in the device structure*/
 	do {
-		int8_t rslt = i2c_read(dev->bus,dev->addr,BME680_FIELD0_ADDR,buff,sizeof(buff));
+		int8_t rslt = i2c_w1rd(dev->bus,dev->addr,BME680_FIELD0_ADDR,buff,sizeof(buff));
 		if (rslt == BME680_OK) {
 
 			if (((buff[14] & BME680_GASM_VALID_MSK) == 0) && (tries > 0)) {
-				vTaskDelay(BME680_POLL_PERIOD_MS);
-				continue;
+				return BME680_POLL_PERIOD_MS;
 			}
 
 			data->status = buff[0] & BME680_NEW_DATA_MSK;
@@ -934,7 +901,7 @@ static int8_t read_field_data(struct bme680_field_data *data, struct bme680_dev 
 			return BME680_OK;
 		}
 		/* Delay to poll the data */
-		vTaskDelay(BME680_POLL_PERIOD_MS);
+		return BME680_POLL_PERIOD_MS;
 	} while (--tries);
 	return BME680_W_NO_NEW_DATA;
 }

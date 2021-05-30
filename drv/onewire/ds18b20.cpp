@@ -115,10 +115,9 @@ void DS18B20::read()
 
 void DS18B20::attach(JsonObject *o)
 {
-	if (m_json == 0) {
+	if (m_json == 0)
 		m_json = new JsonNumber(m_name,"\u00b0C");
-		o->append(m_json);
-	}
+	o->append(m_json);
 }
 
 #endif // CONFIG_ONEWIRE

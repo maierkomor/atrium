@@ -23,6 +23,7 @@
 
 #include <assert.h>
 #include <string.h>
+#include <esp_timer.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <freertos/task.h>
@@ -39,7 +40,14 @@ struct EventHandler
 	{ } 
 
 	const char *name;	// name of event
+	uint32_t occur = 0;
+	uint64_t time = 0;
 	vector<Action *> callbacks;
+};
+
+struct Event {
+	event_t id;
+	void *arg;
 };
 
 
@@ -47,6 +55,7 @@ static QueueHandle_t EventsQ = 0;
 static SemaphoreHandle_t Mtx = 0;
 static vector<EventHandler> EventHandlers;
 static char TAG[] = "event";
+static uint8_t Lost = 0;
 
 
 char *concat(const char *s0, const char *s1)
@@ -81,9 +90,24 @@ event_t event_register(const char *cat, const char *type)
 			return (event_t) i;
 		}
 	}
-	assert(n <= EVENT_T_MAX);
 	EventHandlers.emplace_back(name);
 	return (event_t) n;
+}
+
+
+uint32_t event_occur(event_t e)
+{
+	if (e >= EventHandlers.size())
+		return 0;
+	return EventHandlers[e].occur;
+}
+
+
+uint64_t event_time(event_t e)
+{
+	if (e >= EventHandlers.size())
+		return 0;
+	return EventHandlers[e].time;
 }
 
 
@@ -187,21 +211,49 @@ const char *event_name(event_t e)
 }
 
 
-void event_trigger(event_t e)
+void event_trigger(event_t id)
 {
-	if (e == 0)
+	if (id == 0) {
+		log_warn(TAG,"triggered null event");
 		return;
-	log_dbug(TAG,"trigger event %d",e);
-	BaseType_t r = xQueueSend(EventsQ,&e,portMAX_DELAY);
-	assert(r == pdTRUE);
+	}
+	struct Event e = {id,0};
+	log_dbug(TAG,"trigger event %d",id);
+	BaseType_t r = xQueueSend(EventsQ,&e,1000);
+	if (r != pdTRUE)
+		++Lost;
 }
 
 
-void event_isr_trigger(event_t e)
+void event_trigger_nd(event_t id)	// no-debug version for syslog only
+{
+	struct Event e = {id,0};
+	BaseType_t r = xQueueSend(EventsQ,&e,1000);
+	if (r != pdTRUE)
+		++Lost;
+}
+
+
+void event_trigger_arg(event_t id, void *arg)
+{
+	if (id == 0) {
+		log_warn(TAG,"triggered null event");
+		return;
+	}
+	struct Event e = {id,arg};
+	log_dbug(TAG,"trigger event %d",id);
+	BaseType_t r = xQueueSend(EventsQ,&e,1000);
+	if (r != pdTRUE)
+		++Lost;
+}
+
+
+void event_isr_trigger(event_t id)
 {
 	// ! don't log from ISR
-	if (e == 0)
+	if (id == 0)
 		return;
+	Event e = {id,0};
 	BaseType_t r = xQueueSendFromISR(EventsQ,&e,0);
  	if (r != pdTRUE)
 		log_fatal(TAG,"send from ISR: %d",r);
@@ -212,20 +264,29 @@ static void event_task(void *)
 {
 	unsigned d = 1;
 	for (;;) {
-		event_t e;
+		Event e;
 		BaseType_t r = xQueueReceive(EventsQ,&e,d * portTICK_PERIOD_MS);
+		if (Lost) {
+			log_warn(TAG,"lost %u events",(unsigned)Lost);
+			Lost = 0;
+		}
 		if (r == pdFALSE) {
 			// timeout: process cyclic
 			d = cyclic_execute();
 			continue;
 		}
 		Lock lock(Mtx);
-		if (e < EventHandlers.size()) {
-			log_dbug(TAG,"execute callbacks of %s",EventHandlers[e].name);
-			for (auto a : EventHandlers[e].callbacks) {
+		if (e.id < EventHandlers.size()) {
+			EventHandler &h = EventHandlers[e.id];
+			log_dbug(TAG,"execute callbacks of %s",h.name);
+			++h.occur;
+			int64_t start = esp_timer_get_time();
+			for (auto a : h.callbacks) {
 				log_dbug(TAG,"\tfunction %s",a->name);
-				a->activate();
+				a->activate(e.arg);
 			}
+			int64_t end = esp_timer_get_time();
+			h.time += end-start;
 		} else {
 			log_error(TAG,"invalid/unknown event_t %u",e);
 		}
@@ -235,7 +296,7 @@ static void event_task(void *)
 
 int event_setup(void)
 {
-	EventHandlers.emplace_back("");	// (event_t)0 is an invalid event
+	EventHandlers.emplace_back("<null>");	// (event_t)0 is an invalid event
 	EventsQ = xQueueCreate(32,sizeof(event_t));
 	Mtx = xSemaphoreCreateMutex();
 	BaseType_t r = xTaskCreatePinnedToCore(&event_task, "events", 4096, (void*)0, 14, NULL, 1);

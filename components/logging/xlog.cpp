@@ -79,11 +79,16 @@ int log_module_disable(const char *m)
 }
 
 
-void log_hex(const char *m, const uint8_t *d, unsigned n)
+void log_hex(const char *m, const uint8_t *d, unsigned n, const char *f, ...)
 {
+	if (!EnableAll && (Modules.find(m) == Modules.end()))
+		return;
+	va_list val;
+	va_start(val,f);
+	log_common(ll_debug,m,f,val);
+	va_end(val);
 	char line[32], *at = line;
 	unsigned x = 0;
-	va_list val;
 	while (x != n) {
 		sprintf(at,"%02x",d[x]);
 		at += 2;
@@ -104,13 +109,12 @@ void log_hex(const char *m, const uint8_t *d, unsigned n)
 
 void log_dbug(const char *m, const char *f, ...)
 {
-	va_list val;
-	va_start(val,f);
 	if (EnableAll || (Modules.find(m) != Modules.end())) {
+		va_list val;
+		va_start(val,f);
 		log_common(ll_debug,m,f,val);
-//		vTaskDelay(20);
+		va_end(val);
 	}
-	va_end(val);
 }
 
 

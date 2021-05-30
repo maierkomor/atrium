@@ -43,6 +43,7 @@
 #include <freertos/FreeRTOSConfig.h>
 #include <freertos/task.h>
 
+#include <lwip/tcpip.h>
 #include <lwip/tcp.h>
 #include <lwip/udp.h>
 #include <stdlib.h>
@@ -138,12 +139,12 @@ void FnInfluxSend::operator () (DataSignal *s)
 static void handle_err(void *arg, err_t e)
 {
 	log_warn(TAG,"handle error %d",e);
-	if (e == ERR_ABRT)
-		TPCB = 0;
-	else if (e == ERR_ISCONN)
+	if (e == ERR_ISCONN) {
 		State = running;
-	else
+	} else {
 		State = error;
+		TPCB = 0;
+	}
 }
 
 
@@ -178,12 +179,7 @@ static err_t handle_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *pbuf, err_
 
 static err_t handle_connect(void *arg, struct tcp_pcb *pcb, err_t x)
 {
-	if (x) {
-		log_warn(TAG,"connect error %d",x);
-		State = offline;
-		tcp_close(pcb);
-		return 0;
-	}
+	assert(x == ERR_OK);
 	log_dbug(TAG,"connect %u",tcp_sndbuf(pcb));
 	tcp_recv(pcb,handle_recv);
 	tcp_sent(pcb,handle_sent);
@@ -242,7 +238,8 @@ static int influx_init()
 	addr.type = IPADDR_TYPE_V4;
 	addr.u_addr.ip4.addr = ip;
 #endif
-	if (Config.influx().database().empty()) {
+	LOCK_TCPIP_CORE();
+	if (influx.database().empty()) {
 		if (UPCB == 0) {
 			UPCB = udp_new();
 			if (err_t e = udp_connect(UPCB,&addr,port))
@@ -272,9 +269,7 @@ static int influx_init()
 		err_t e = tcp_connect(TPCB,&addr,port,handle_connect);
 		log_dbug(TAG,"tcp connect: %d",e);
 		if (e) {
-			tcp_abort(TPCB);
-			TPCB = 0;
-			State = offline;
+			State = error;
 			return 1;
 		}
 		astream str(128,true);
@@ -288,6 +283,7 @@ static int influx_init()
 		THL = str.size();
 		TcpHdr = str.take();
 	}
+	UNLOCK_TCPIP_CORE();
 	log_info(TAG,"init done");
 	return 0;
 }
@@ -339,6 +335,7 @@ int influx_send(const char *data, size_t l)
 		return 0;
 	}
 	Lock lock(Mtx);
+	LOCK_TCPIP_CORE();
 	if (TPCB) {
 //		log_dbug(TAG,"tcp send '%.*s'",l,data);
 		char len[16];
@@ -367,6 +364,7 @@ int influx_send(const char *data, size_t l)
 			log_warn(TAG,"send failed: %d",e);
 		pbuf_free(pbuf);
 	}
+	UNLOCK_TCPIP_CORE();
 	return 0;
 }
 
@@ -383,9 +381,8 @@ static void send_element(JsonNumber *e, stream &str, char extra)
 
 static char send_elements(JsonObject *o, stream &str, char comma)
 {
-	JsonElement *e = o->first();
 	const char *name = o->name();
-	while (e) {
+	for (JsonElement *e : o->getChilds()) {
 		JsonNumber *n = e->toNumber();
 		if (n && n->isValid()) {
 			if (comma)
@@ -394,7 +391,6 @@ static char send_elements(JsonObject *o, stream &str, char comma)
 			send_element(n,str,'_');
 			comma = ',';
 		}
-		e = e->next();
 	}
 	return comma;
 }
@@ -416,9 +412,8 @@ static void send_rtdata(void *)
 		str << Header;
 	}
 	rtd_lock();
-	JsonElement *e = RTData->first();
 	char comma = 0;
-	while (e) {
+	for (JsonElement *e : RTData->getChilds()) {
 		if (JsonObject *o = e->toObject()) {
 			comma = send_elements(o,str,comma);
 		} else if (JsonNumber *n = e->toNumber()) {
@@ -427,7 +422,6 @@ static void send_rtdata(void *)
 				comma = ',';
 			}
 		}
-		e = e->next();
 	}
 	rtd_unlock();
 	str << '\n';

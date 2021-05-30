@@ -32,7 +32,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include "stream.h"
+
+#include <vector>
 
 class stream;
 
@@ -47,14 +48,13 @@ class JsonElement
 	public:
 	explicit JsonElement(const char *n, const char *dim = 0)
 	: m_name(n)
-	, m_next(0)
 	, m_dim(dim)
 	{ }
 
 	// pure virtual functions causes problems on ESP8266/xtensa toolchain
 	// cxx_demangle is linked to iram0, which overflows the segment!
 	//virtual ~JsonElement() = 0;
-	virtual ~JsonElement();
+	virtual ~JsonElement() = default;
 
 	virtual void toStream(stream &) const;
 	virtual void writeValue(stream &) const;
@@ -71,12 +71,6 @@ class JsonElement
 	virtual JsonNumber *toNumber()
 	{ return 0; }
 
-	void setNext(JsonElement *e)
-	{ m_next = e; }
-
-	JsonElement *next() const
-	{ return m_next; }
-
 	const char *name() const
 	{ return m_name; }
 
@@ -88,7 +82,6 @@ class JsonElement
 
 	protected:
 	const char *m_name;
-	JsonElement *m_next;
 	const char *m_dim;
 
 	private:
@@ -181,7 +174,6 @@ class JsonObject : public JsonElement
 	public:
 	JsonObject(const char *n)
 	: JsonElement(n)
-	, m_childs(0)
 	{ }
 
 	JsonObject *toObject()
@@ -191,22 +183,28 @@ class JsonObject : public JsonElement
 	JsonNumber *add(const char *name, double value);
 	JsonString *add(const char *name, const char *value);
 	JsonObject *add(const char *name);
+	void add(JsonElement *e)
+	{ m_childs.push_back(e); }
+	void remove(JsonElement *e);
 	JsonElement *get(const char *) const;
-	JsonElement *first() const
+	JsonElement *find(const char *) const;
+	JsonElement *getChild(unsigned i) const
+	{
+		if (i >= m_childs.size())
+			return 0;
+		return m_childs[i];
+	}
+
+	std::vector<JsonElement *> &getChilds()
 	{ return m_childs; }
 
 	void append(JsonElement *);
 	void toStream(stream &) const;
 
 	private:
-	JsonElement *m_childs;
+	JsonObject *m_parent = 0;
+	std::vector<JsonElement *> m_childs;
 };
-
-
-inline JsonElement::~JsonElement()
-{
-	abort();	// deletion is not supported
-}
 
 
 JsonElement *ujson_forward(JsonElement *, const char *basename, const char *subname);

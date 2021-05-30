@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -22,12 +22,13 @@
 #include <event.h>
 #include <driver/gpio.h>
 
-#define BUTTON_SHORT_START	80
-#define BUTTON_SHORT_END	400
-#define BUTTON_MED_START	1000
-#define BUTTON_MED_END		2000
-#define BUTTON_LONG_START	4000
-#define BUTTON_LONG_END		7000
+#define BUTTON_SHORT_START	40
+#define BUTTON_SHORT_END	200
+#define BUTTON_MED_START	500
+#define BUTTON_MED_END		1000
+#define BUTTON_LONG_START	1500
+#define BUTTON_LONG_END		3000
+
 
 
 class Button

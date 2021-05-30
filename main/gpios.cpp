@@ -205,7 +205,7 @@ void Gpio::init(unsigned config)
 	gpio_int_type_t intr = (gpio_int_type_t)((config >> 2) & 0x3);
 	gpio_mode_t mode = (gpio_mode_t)(config & 0x3);
 	if (esp_err_t e = gpio_set_direction(m_gpio,mode))
-		log_error(TAG,"cannot set direction on gpio %d: %s",m_gpio,esp_err_to_name(e));
+		log_error(TAG,"set direction on gpio%d: %s",m_gpio,esp_err_to_name(e));
 	else
 		log_dbug(TAG,"gpio%d set direction ok",m_gpio);
 	if (config & (1<<5)) {
@@ -243,7 +243,7 @@ void Gpio::init(unsigned config)
 #endif
 		action_add(concat(m_name,"!sample"),action_sample,(void*)this,"sample gpio");
 		if (esp_err_t e = gpio_isr_handler_add(m_gpio,isr_handler,this))
-			log_error(TAG,"error adding interrupt handler for gpio %d: %s",m_gpio,esp_err_to_name(e));
+			log_error(TAG,"add ISR for gpio%d: %s",m_gpio,esp_err_to_name(e));
 	}
 }
 
@@ -367,10 +367,8 @@ int gpio(Terminal &term, int argc, const char *args[])
 #endif
 	} else if ((args[1][0] >= '0') && (args[1][0] <= '9')) {
 		long l = strtol(args[1],0,0);
-		if ((l > 16) || (l < 0)) {
-			term.printf("gpio value out of range");
-			return 1;
-		}
+		if ((l > 16) || (l < 0))
+			return arg_invalid(term,args[1]);
 		if (argc == 2) {
 			term.println(gpio_get_level((gpio_num_t)l) ? "1" : "0");
 		} else if (argc == 3) {

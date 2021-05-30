@@ -1,3 +1,23 @@
+R2105:
+======
+- added event accounting
+- added SGP30 support
+- added CC811B support
+- added env command to print variables more readable
+- enhanced button event debouncing
+- async BME280/BMP280 driver operation
+- changed default dmesg size to 1024
+- syslog shutdown/resume support
+- enhanced handling of multiple I2C devices
+- link unique variables to root node
+- fix: MQTT may hang in disconnected state, and needs a manual stop
+- fix: BMX sensor data should yield NAN on error
+- fix: respect LWIP locking
+- fix: LWIP related double free
+- fix: dmesg size not picked up from config
+- fix: WS2812B may not work depending on memory layout on ESP8266
+- fix: several minor fixes
+
 R2104:
 ======
 - make 'mqtt start' implicit

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -16,51 +16,60 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "MAX7219.h"
+#include <sdkconfig.h>
 
+#if defined CONFIG_I2C && defined CONFIG_LEDDISP
+
+#include "MAX7219.h"
 #include "log.h"
 
 #include <string.h>
 
-#define MAXFREQDEL 1
-
 static char TAG[] = "MAX7219";
 
 
-int MAX7219Drv::init(gpio_num_t clk, gpio_num_t dout, gpio_num_t cs, bool odrain)
+MAX7219Drv::MAX7219Drv(gpio_num_t clk, gpio_num_t dout, gpio_num_t cs)
+: LedCluster()
+, m_clk(clk)
+, m_dout(dout)
+, m_cs(cs)
 {
-	if (m_attached) {
-		log_error(TAG,"cannot attach: device already attached");
-		return 1;
-	}
-	memset(m_digits,0xff,8);
-	m_clk = clk;
-	m_dout = dout;
-	m_cs = cs;
-	m_odrain = odrain;
-	m_attached = true;
-	m_intensity = 0;
-	if (ESP_OK != gpio_set_direction(m_clk, m_odrain ? GPIO_MODE_OUTPUT_OD : GPIO_MODE_OUTPUT)) {
-		log_error(TAG,"cannot set direction of clock gpio %d",m_clk);
-	} else if (ESP_OK != gpio_set_direction(m_dout, m_odrain ? GPIO_MODE_OUTPUT_OD : GPIO_MODE_OUTPUT)) {
-		log_error(TAG,"cannot set direction of dout gpio %d",m_dout);
-	} else if (ESP_OK != gpio_set_direction(m_cs, GPIO_MODE_OUTPUT)) {
-		log_error(TAG,"cannot set direction of cs gpio %d",m_cs);
-	} else {
-		log_info(TAG,"attached driver");
-		chip_select(1);
-		clock(0);
+	bzero(m_digits,sizeof(m_digits));
+	chip_select(1);
+	clock(0);
+	displayTest(true);
+	displayTest(false);
+	clear();
+	setDecoding(0x0);
+	setDim(15);
+	setOn(true);
+}
+
+
+MAX7219Drv *MAX7219Drv::create(gpio_num_t clk, gpio_num_t dout, gpio_num_t cs, bool odrain)
+{
+
+	if (ESP_OK != gpio_set_direction(clk, odrain ? GPIO_MODE_OUTPUT_OD : GPIO_MODE_OUTPUT)) {
+		log_error(TAG,"cannot set direction of clock gpio %d",clk);
 		return 0;
 	}
-	return 1;
+	if (ESP_OK != gpio_set_direction(dout, odrain ? GPIO_MODE_OUTPUT_OD : GPIO_MODE_OUTPUT)) {
+		log_error(TAG,"cannot set direction of dout gpio %d",dout);
+		return 0;
+	}
+	if (ESP_OK != gpio_set_direction(cs, GPIO_MODE_OUTPUT)) {
+		log_error(TAG,"cannot set direction of cs gpio %d",cs);
+		return 0;
+	}
+	log_dbug(TAG,"attached driver");
+	return new MAX7219Drv(clk,dout,cs);
 }
 
 
 void MAX7219Drv::clock(int c)
 {
-	if (ESP_OK != gpio_set_level(m_clk,c)) {
+	if (ESP_OK != gpio_set_level(m_clk,c))
 		log_error(TAG,"cannot set level of clk at gpio %d",m_cs);
-	}
 }
 
 
@@ -101,26 +110,46 @@ void MAX7219Drv::setreg(uint8_t r, uint8_t v)
 }
 
 
-void MAX7219Drv::setDigit(uint8_t d, uint8_t v)
+int MAX7219Drv::setOffset(unsigned off)
 {
-	assert(d < sizeof(m_digits)/sizeof(m_digits[0]));
-	if (v == m_digits[d])
-		return;
-//	log_dbug(TAG,"setDigit(%d,0x%x)",d,v);
-	m_digits[d] = v;
-	setreg(d+1,v);
+	if (off >= 8)
+		return -1;
+	m_at = off;
+	return 0;
 }
 
 
-void MAX7219Drv::powerup()
+int MAX7219Drv::write(uint8_t v, int off)
 {
-	setreg(0x0c,1);
+	if (off < 0)
+		off = m_at;
+	if (off >= m_ndigits)
+		return 1;
+	log_dbug(TAG,"write(0x%x,%d)",v,off);
+	if (v != m_digits[off]) {
+		m_digits[off] = v;
+		setreg(8-off,v);
+	}
+	++m_at;
+	return 0;
 }
 
 
-void MAX7219Drv::shutdown()
+void MAX7219Drv::clear()
 {
-	setreg(0x0c,0);
+	int i = 0;
+	do {
+		m_digits[i] = 0;
+		++i;
+		setreg(i,0x00);
+	} while (i < 8);
+}
+
+
+int MAX7219Drv::setOn(bool on)
+{
+	setreg(0x0c,on);
+	return 0;
 }
 
 
@@ -130,16 +159,24 @@ void MAX7219Drv::displayTest(bool t)
 }
 
 
-void MAX7219Drv::setDigits(uint8_t n)	// set number of scanned digits
+int MAX7219Drv::setNumDigits(unsigned n)	// set number of scanned digits
 {
+	if (n > 8) {
+		setreg(0xb,7);
+		return -1;
+	}
 	setreg(0xb,n-1);
+	return 0;
 }
 
 
-void MAX7219Drv::setIntensity(uint8_t i)
+int MAX7219Drv::setDim(uint8_t i)
 {
-	setreg(0xa,i);
-	m_intensity = i;
+	if (i != m_intensity) {
+		setreg(0xa,i);
+		m_intensity = i;
+	}
+	return 0;
 }
 
 
@@ -147,3 +184,6 @@ void MAX7219Drv::setDecoding(uint8_t modes)	// bit 0..7 => digit 0..7; 1 for cod
 {
 	setreg(0x9,modes);
 }
+
+
+#endif

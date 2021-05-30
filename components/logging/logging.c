@@ -93,10 +93,7 @@ void con_print(const char *str)
 #if CONFIG_CONSOLE_UART_NONE != 1
 	if (LogUart == -1)
 		return;
-	xSemaphoreTake(UartLock,portMAX_DELAY);
-	uart_write_bytes(LogUart,str,strlen(str));
-	uart_write_bytes(LogUart,"\r\n",2);
-	xSemaphoreGive(UartLock);
+	con_write(str,strlen(str));
 #endif
 }
 
@@ -111,20 +108,19 @@ void con_printf(const char *f, ...)
 	va_start(val,f);
 	int n = vsnprintf(buf,sizeof(buf),f,val);
 	va_end(val);
-	if (n > sizeof(buf))
-		n = sizeof(buf);
-	xSemaphoreTake(UartLock,portMAX_DELAY);
-	uart_write_bytes(LogUart,buf,n);
-	uart_write_bytes(LogUart,"\r\n",2);
-	xSemaphoreGive(UartLock);
+	if (n > 0) {
+		if (n > sizeof(buf))
+			n = sizeof(buf);
+		con_write(buf,n);
+	}
 #endif
 }
 
 
-void con_write(const char *str,size_t s)
+void con_write(const char *str, ssize_t s)
 {
 #if CONFIG_CONSOLE_UART_NONE != 1
-	if (LogUart == -1)
+	if ((LogUart == -1) || (s <= 0))
 		return;
 	xSemaphoreTake(UartLock,portMAX_DELAY);
 	uart_write_bytes(LogUart,str,s);

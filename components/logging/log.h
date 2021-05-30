@@ -83,22 +83,20 @@ typedef enum {
 } log_level_t;
 
 void log_setup();
-int dmesg_setup();
 void dmesg_to_uart(int8_t);
-int dmesg_resize(unsigned);
 void log_set_uart(int8_t);
 void writelog(const char *f, ...);
 
 void con_print(const char *str);
 void con_printf(const char *f, ...);
-void con_write(const char *str,size_t l);
+void con_write(const char *str, ssize_t l);
 
 void log_fatal(const char *m, const char *f, ...);
 void log_error(const char *m, const char *f, ...);
 void log_warn(const char *m, const char *f, ...);
 void log_info(const char *m, const char *f, ...);
 void log_dbug(const char *m, const char *f, ...);
-void log_hex(const char *m, const uint8_t *d, unsigned n);
+void log_hex(const char *m, const uint8_t *d, unsigned n, const char *f, ...);
 
 void log_syslog(log_level_t lvl, const char *a, const char *msg, size_t ml);
 

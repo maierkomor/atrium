@@ -39,20 +39,26 @@ struct BMP280 : public I2CSensor
 	{ return "bmp280"; }
 
 	int init();
-	uint8_t status();
-	int sample();
 	void attach(class JsonObject *);
+	virtual unsigned cyclic();
 
 	protected:
 	float calc_press(int32_t adc_P, int32_t t_fine);
 	int32_t calc_tfine(uint8_t *);
 	void init_calib(uint8_t *);
+	static void trigger(void *);
+	bool status();
+	virtual bool sample();
+	virtual bool read();
+	virtual void handle_error();
 
 	JsonNumber *m_temp = 0, *m_press = 0;
 	uint16_t T1 = 0;
 	int16_t T2 = 0, T3 = 0;
 	uint16_t P1 = 0;
 	int16_t P2 = 0, P3 = 0, P4 = 0, P5 = 0, P6 = 0, P7 = 0, P8 = 0, P9 = 0;
+	typedef enum { st_idle, st_sample, st_measure, st_read } state_t;
+	state_t m_state = st_idle;
 };
 
 
@@ -66,16 +72,18 @@ struct BME280 : public BMP280
 	{ return "bme280"; }
 
 	int init();
-	int sample();
 	void attach(class JsonObject *);
 
 	protected:
 	float calc_humid(int32_t adc_H, int32_t t_fine);
+	bool sample();
+	bool read();
+	void handle_error();
 
 	JsonNumber *m_humid = 0;
 	uint8_t H1 = 0, H3 = 0;
 	int16_t H2 = 0, H4 = 0, H5 = 0;
-	int8_t H6;
+	int8_t H6 = 0;
 };
 
 
@@ -89,12 +97,19 @@ struct BME680 : public I2CSensor
 	{ return "bme680"; }
 
 	int init();
-	int sample();
 	void attach(class JsonObject *);
 
 	protected:
+	unsigned sample();
+	unsigned read();
+	static unsigned cyclic(void *);
+	static void trigger(void *);
+
 	JsonNumber *m_temp = 0, *m_press = 0, *m_humid = 0, *m_gas = 0;
 	bme680_dev m_dev;
+	typedef enum { st_idle, st_sample, st_read, st_error } state_t;
+	state_t m_state = st_idle;
+	bool m_sample = false;
 };
 
 

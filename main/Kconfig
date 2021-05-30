@@ -21,7 +21,7 @@ config APP_PARAMS
 		enable to add application parameters as key/value pairs in Config.app_params
 
 config SIGNAL_PROC
-	bool "singal processing infrastructure (Buggy, ALPHA!)"
+	bool "signal processing infrastructure (Buggy, ALPHA!)"
 	help
 		infrastructure for dynamic signal definition and processing
 
@@ -208,14 +208,28 @@ config I2C
 	bool "I2C bus"
 	default false
 	help
-		I2C bus with BMP280 and BME280
+		I2C bus with BMP280 (temperature, pressure) and BME280 (temperature, humidity, pressure)
 
 config BME680
 	depends on I2C
 	bool "BME680"
 	default false
 	help
-		I2C driver for BME680
+		I2C driver for BME680 air sensor (temperature, humidity, pressure, electric resistance)
+
+config SGP30
+	depends on I2C
+	bool "SGP30"
+	default false
+	help
+		I2C driver for SGP30 sensor (TVOC,CO2)
+
+config CCS811B
+	depends on I2C
+	bool "CCS811B"
+	default true
+	help
+		I2C driver for CCS811B sensor (TVOC,CO2)
 
 config DIST
 	bool "distance measurement"
@@ -229,9 +243,15 @@ config DIMMER
 	help
 		multi-channel PWM dimmer (esp32: hardware, esp8266: software)
 
+config LEDDISP
+	depends on !ESPTOOLPY_FLASHSIZE_1MB
+	bool	"LED strip support"
+	default true
+	help
+		LED based displays (7/14-segments)
+
 config LEDSTRIP
 	depends on SIGNAL_PROC
-	#depends on IDF_TARGET_ESP32
 	bool	"LED strip support"
 	default false
 	help

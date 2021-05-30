@@ -236,7 +236,7 @@ int OneWire::readRom()
 	for (int i = 0; i < sizeof(id); ++i)
 		id64 |= id[i] << (i<<3);
 	addDevice(id64);
-	log_info(TAG,"read ROM: %02x %02x %02x %02x %02x %02x %02x %02x",id[0],id[1],id[2],id[3],id[4],id[5],id[6],id[7]);
+	log_hex(TAG,id,sizeof(id),"read ROM");
 	return 0;
 }
 

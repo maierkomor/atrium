@@ -27,11 +27,13 @@
 #include "log.h"
 #include "netsvc.h"
 #include "shell.h"
+#include "syslog.h"
 #include "terminal.h"
 #include "wifi.h"
 
 #include <string.h>
 
+#include <lwip/tcpip.h>
 #include <lwip/udp.h>
 #include <lwip/dns.h>
 #include <lwip/pbuf.h>
@@ -58,30 +60,47 @@ struct LogMsg
 
 struct Syslog
 {
-	explicit Syslog(size_t s)
-	: maxsize(s)
-	, mtx(xSemaphoreCreateMutex())
-	{ }
+	explicit Syslog(size_t s);
+	~Syslog();
 
 	struct udp_pcb *pcb = 0;
 	LogMsg *first = 0, *last = 0;
 	uint16_t maxsize, alloc = 0;
 	uint16_t unsent = 0, overwr = 0;
 	event_t ev = 0;
-	SemaphoreHandle_t mtx;
 	bool triggered = false;
 
 	private:
-	~Syslog();	// cannot be delete during runtime, as lock may be already waited on
 	Syslog(const Syslog &);
 	Syslog& operator = (const Syslog &);
 };
 
 static const char TAG[] = "rlog";
+static SemaphoreHandle_t Mtx = 0;
 static Syslog *Ctx = 0;
 
 
 static void syslog_start(void*);
+
+
+Syslog::Syslog(size_t s)
+: maxsize(s)
+{
+
+}
+
+
+Syslog::~Syslog()
+{
+	if (pcb)
+		udp_remove(pcb);
+	LogMsg *m = first;
+	while (m) {
+		LogMsg * n = m->next;
+		delete m;
+		m = n;
+	}
+}
 
 
 static int sendmsg(LogMsg *m)
@@ -93,12 +112,17 @@ static int sendmsg(LogMsg *m)
 		if (Ctx->pcb == 0)
 			return 1;
 	}
-//	log_dbug(TAG,"sendmsg %p,%p",m,Ctx->pcb);
 	const char *hn = Config.nodename().c_str();
 	size_t hs = Config.nodename().size();
 	int n;
 	size_t s = m->ml+64;
+	LOCK_TCPIP_CORE();
 	struct pbuf *pbuf = pbuf_alloc(PBUF_TRANSPORT, s, PBUF_RAM);
+	if (pbuf == 0) {
+		con_print("no pbuf - out of memory?");
+		UNLOCK_TCPIP_CORE();
+		return 1;
+	}
 	if (m->ntp) {
 		struct tm tm;
 		time_t ts = m->ts;
@@ -140,6 +164,7 @@ static int sendmsg(LogMsg *m)
 		}
 	}
 	pbuf_free(pbuf);
+	UNLOCK_TCPIP_CORE();
 	return e;
 }
 
@@ -153,7 +178,7 @@ static void sendall(void * = 0)
 		return;
 	}
 	unsigned x = 0;
-	xSemaphoreTake(Ctx->mtx,portMAX_DELAY);
+	xSemaphoreTake(Mtx,portMAX_DELAY);
 	LogMsg *m = Ctx->first;
 	while (m) {
 		if (!m->sent) {
@@ -169,13 +194,15 @@ static void sendall(void * = 0)
 		m = m->next;
 	}
 	Ctx->triggered = false;
-	xSemaphoreGive(Ctx->mtx);
+	xSemaphoreGive(Mtx);
 	log_dbug(TAG,"sent %u log messages",x);
 }
 
 
 static void syslog_start(void*)
 {
+	if (Ctx == 0)
+		return;
 	const char *host = Config.syslog_host().c_str();
 	log_dbug(TAG,"host %s",host);
 	uint32_t ip4 = resolve_hostname(host);
@@ -184,7 +211,7 @@ static void syslog_start(void*)
 		return;
 	}
 	log_dbug(TAG,"IP %d.%d.%d.%d",ip4&0xff,(ip4>>8)&0xff,(ip4>>16)&0xff,(ip4>>24)&0xff);
-	Lock lock(Ctx->mtx);
+	Lock lock(Mtx);
 	if (Ctx->pcb) {
 		udp_remove(Ctx->pcb);
 		Ctx->pcb = 0;
@@ -201,7 +228,10 @@ static void syslog_start(void*)
 		return;
 	}
 	Ctx->pcb = pcb;
-	event_trigger(Ctx->ev);
+	if (Ctx->ev == 0)
+		Ctx->ev = event_id("syslog`msg");
+	if (Ctx->ev != 0)
+		event_trigger(Ctx->ev);
 }
 
 
@@ -210,10 +240,17 @@ static void shrink_dmesg(uint16_t ns)
 	// assume lock is alread taken
 	while ((Ctx->alloc > ns) && Ctx->first) {
 		LogMsg *r = Ctx->first;
-		Ctx->first = r->next;
+		if (r->next == 0) {
+			Ctx->first = 0;
+			Ctx->last = 0;
+		} else {
+			Ctx->first = r->next;
+		}
 		free(r->msg);
 		Ctx->alloc -= r->ml;
 		Ctx->alloc -= sizeof(LogMsg);
+		if (!r->sent)
+			--Ctx->unsent;
 		delete r;
 	}
 }
@@ -230,36 +267,43 @@ void log_syslog(log_level_t lvl, const char *a, const char *msg, size_t ml)
 	struct timeval tv;
 	tv.tv_sec = 0;
 	gettimeofday(&tv,0);
-	Lock lock(Ctx->mtx);
+	Lock lock(Mtx);
 	LogMsg *m;
 	if (Ctx->alloc + ml + sizeof(LogMsg) > Ctx->maxsize) {
 		shrink_dmesg(Ctx->maxsize-ml-sizeof(LogMsg));
 		m = Ctx->first;
-		if (m != Ctx->last) {
+		if (m == Ctx->last) {
+			Ctx->first = 0;
+			Ctx->last = 0;
+		} else {
 			Ctx->first = m->next;
-			Ctx->last->next = m;
-			Ctx->last = m;
 		}
 		Ctx->alloc -= m->ml;
-		Ctx->alloc += ml;
-		m->msg = (char*)realloc(m->msg,ml);
 		if (!m->sent) {
 			--Ctx->unsent;
 			++Ctx->overwr;
 		}
 	} else {
 		m = new LogMsg;
-		m->msg = (char*)malloc(ml);
-		if (Ctx->last) {
-			Ctx->last->next = m;
-			Ctx->last = m;
-		} else {
-			Ctx->first = m;
-			Ctx->last = m;
-		}
+		m->msg = 0;
 		Ctx->alloc += sizeof(LogMsg);
-		Ctx->alloc += ml;
 	}
+	char *buf = (char*)realloc(m->msg,ml);
+	if (buf == 0) {
+		free(m->msg);
+		delete m;
+		con_print("syslog: out of memory");
+		return;
+	}
+	m->msg = buf;
+	if (Ctx->last) {
+		Ctx->last->next = m;
+		Ctx->last = m;
+	} else {
+		Ctx->first = m;
+		Ctx->last = m;
+	}
+	Ctx->alloc += ml;
 	m->lvl = lvl;
 	m->ml = ml;
 	m->next = 0;
@@ -272,20 +316,17 @@ void log_syslog(log_level_t lvl, const char *a, const char *msg, size_t ml)
 		m->ts = tv.tv_sec * 1000 + tv.tv_usec/1000;
 	m->sent = false;
 	++Ctx->unsent;
-	if (!Ctx->triggered) {
-		event_trigger(Ctx->ev);
+	if (!Ctx->triggered && (Ctx->ev != 0)) {
+		event_trigger_nd(Ctx->ev);
 		Ctx->triggered = true;
 	}
-	xSemaphoreGive(Ctx->mtx);
 }
 
 
 int dmesg(Terminal &term, int argc, const char *args[])
 {
-	if (argc > 2) {
-		term.printf("invalid number of arguments\n");
-		return 1;
-	}
+	if (argc > 2)
+		return arg_invnum(term);;
 	if (argc == 2) {
 		char *eptr;
 		long l = strtol(args[1],&eptr,0);
@@ -295,19 +336,16 @@ int dmesg(Terminal &term, int argc, const char *args[])
 		if (((l > 0) && (l < 512)) || (l > UINT16_MAX))
 			return arg_invalid(term,args[1]);
 		Config.set_dmesg_size(l);
-		if (Ctx) {
-			Lock lock(Ctx->mtx);
-			if (l < Ctx->maxsize)
-				shrink_dmesg(l);
-			Ctx->maxsize = l;
-		}
+		dmesg_resize();
+		if ((l != 0) && wifi_station_isup())
+			syslog_start(0);
 		return 0;
 	}
 	if (Ctx == 0) {
 		term.printf("dmesg is inactive\n");
 		return 1;
 	}
-	Lock lock(Ctx->mtx);
+	Lock lock(Mtx);
 	LogMsg *m = Ctx->first;
 	term.printf("%u bytes, %u queued, %u overwritten\n",Ctx->alloc,Ctx->unsent,Ctx->overwr);
 	while (m) {
@@ -337,25 +375,40 @@ int dmesg(Terminal &term, int argc, const char *args[])
 }
 
 
-int dmesg_setup()
+void dmesg_setup()
 {
-	if (size_t ds = Config.dmesg_size()) {
-		if (Ctx == 0)
-			Ctx = new Syslog(ds);
+	Mtx = xSemaphoreCreateMutex();
+}
+
+
+void dmesg_resize()
+{
+	size_t ds = Config.dmesg_size();
+	if (Ctx) {
+		Lock lock(Mtx);
+		if (ds == 0) {
+			delete Ctx;
+			Ctx = 0;
+		} else {
+			if (ds < Ctx->maxsize)
+				shrink_dmesg(ds);
+			Ctx->maxsize = ds;
+		}
+	} else if (ds) {
+		Ctx = new Syslog(ds);
 	}
-	return 0;
 }
 
 
 int syslog_setup(void)
 {
-	if (Ctx->ev == 0) {
-		action_add("syslog!start",syslog_start,0,"start syslog");
-		event_callback("wifi`station_up","syslog!start");
-		Action *a = action_add("syslog!send",sendall,0,"start syslog");
-		Ctx->ev = event_register("syslog`msg");
-		event_callback(Ctx->ev,a);
-	}
+	action_add("syslog!start",syslog_start,0,"start syslog");
+	event_callback("wifi`station_up","syslog!start");
+	Action *a = action_add("syslog!send",sendall,0,"start syslog");
+	event_t e = event_register("syslog`msg");
+	event_callback(e,a);
+	if (Ctx)
+		Ctx->ev = e;
 	return 0;
 }
 

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2019, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -19,9 +19,10 @@
 #ifndef HTTP_SERVER_H
 #define HTTP_SERVER_H
 
+#include "support.h"
+
 #include <map>
 #include <set>
-#include <string.h>
 #include <assert.h>
 
 class HttpRequest;
@@ -57,25 +58,6 @@ class HttpServer
 	void performGET(HttpRequest *);
 	void performPOST(HttpRequest *);
 	void performPUT(HttpRequest *);
-
-	struct CStrLess
-	{
-		bool operator () (const char *l, const char *r)
-		{
-			assert(l && r);
-			return strcmp(l,r) < 0;
-		}
-	};
-
-	struct SubstrLess
-	{
-		bool operator () (const char *l, const char *r)
-		{
-			size_t ll = strlen(l);
-			size_t rl = strlen(r);
-			return memcmp(l,r,ll < rl ? ll : rl) < 0;
-		}
-	};
 
 	const char *m_wwwroot, *m_rootmap, *m_upload;
 	std::set<const char *,CStrLess> m_files;

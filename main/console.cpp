@@ -69,7 +69,7 @@ int console_setup(void)
 			con->setPrivLevel(1);
 		BaseType_t r = xTaskCreatePinnedToCore(console_task, "tty", 4096, con, 8, 0, PRO_CPU_NUM);
 		if (r != pdPASS) {
-			log_error(TAG,"task creation failed: %s",esp_err_to_name(r));
+			log_error(TAG,"create task: %s",esp_err_to_name(r));
 			return 1;
 		}
 	}

@@ -31,6 +31,7 @@
 #include "mqtt.h"
 #include "profiling.h"
 #include "settings.h"
+#include "syslog.h"
 #include "terminal.h"
 #include "timefuse.h"
 #include "versions.h"
@@ -780,9 +781,9 @@ void sntp_start()
 		setenv("TZ",Config.timezone().c_str(),1);
 	sntp_stop();
 	const char *server = Config.sntp_server().c_str();
-	if (char *cur = sntp_getservername(0)) {
+	if (const char *cur = sntp_getservername(0)) {
 		if ((cur != 0) && (cur != server)) {
-			free(cur);
+			free((void*)cur);
 			sntp_setservername(0,0);
 		}
 	}
@@ -1125,6 +1126,10 @@ void settings_setup()
 		cfg_init_defaults();
 		set_cfg_err(2);
 	}
+#ifdef CONFIG_SYSLOG
+	if (Config.has_dmesg_size())
+		dmesg_resize();		// update dmesg buffer size
+#endif
 #ifdef CONFIG_WPS
 	action_add("wps!start",wifi_wps_start,0,"start WPS configuration");
 #endif

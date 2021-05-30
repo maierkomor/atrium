@@ -21,7 +21,9 @@
 
 #include <assert.h>
 #include <math.h>
+#include <algorithm>
 
+using namespace std;
 
 
 void JsonElement::toStream(stream &o) const
@@ -64,10 +66,14 @@ bool JsonNumber::isValid() const
 
 void JsonNumber::writeValue(stream &o) const
 {
-	if (isnan(m_value))
-		o.write("\"NaN\"",5);
-	else
+	if (isnan(m_value)) {
+		if (m_dim)
+			o.write("NaN",3);
+		else
+			o.write("\"NaN\"",5);
+	} else {
 		o << m_value;
+	}
 }
 
 
@@ -116,11 +122,14 @@ void JsonObject::toStream(stream &o) const
 	} else {
 		o << '{';
 	}
-	if (JsonElement *e = m_childs) {
-		e->toStream(o);
-		while ((e = e->next()) != 0) {
-			o << ',';
+	if (unsigned n = m_childs.size()) {
+		unsigned c = 0;
+		for (;;) {
+			JsonElement *e = m_childs[c];
 			e->toStream(o);
+			if (++c == n)
+				break;
+			o << ',';
 		}
 	}
 	o << '}';
@@ -129,28 +138,32 @@ void JsonObject::toStream(stream &o) const
 
 void JsonObject::append(JsonElement *e)
 {
-	if (m_childs == 0) {
-		m_childs = e;
-		return;
-	}
-	JsonElement *a = m_childs;
-	while (JsonElement *n = a->next())
-		a = n;
-	a->setNext(e);
+	if (JsonObject *o = e->toObject())
+		o->m_parent = this;
+	m_childs.push_back(e);
 }
 
 
 JsonElement *JsonObject::get(const char *n) const
 {
-	JsonElement *e = m_childs;
-	while (e && strcmp(e->name(),n)) {
+	for (JsonElement *e : m_childs) {
+		if (0 == strcmp(e->name(),n))
+			return e;
 		if (JsonObject *o = e->toObject()) {
 			if (JsonElement *c = o->get(n))
 				return c;
 		}
-		e = e->next();
 	}
-	return e;
+	return 0;
+}
+
+
+JsonElement *JsonObject::find(const char *n) const
+{
+	const JsonObject *o = this;
+	while (o->m_parent)
+		o = o->m_parent;
+	return o->get(n);
 }
 
 
@@ -185,7 +198,15 @@ JsonString *JsonObject::add(const char *n, const char *v)
 	return r;
 }
 
+void JsonObject::remove(JsonElement *x)
+{
+	auto e = m_childs.end();
+	auto i = std::find(m_childs.begin(),e,x);
+	if (i != e)
+		m_childs.erase(i,i+1);
+}
 
+/*
 JsonElement *ujson_forward(JsonElement *e, const char *basename, const char *subname)
 {
 	assert(e);
@@ -196,6 +217,7 @@ JsonElement *ujson_forward(JsonElement *e, const char *basename, const char *sub
 	assert(e);
 	return e;
 }
+*/
 
 
 #ifdef TEST_MODULE

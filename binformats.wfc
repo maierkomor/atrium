@@ -91,6 +91,7 @@ option esp8285 : esp8266 {
 	/HardwareConfig/hcsr04:		used = false;
 	/HardwareConfig/dht:		used = false;
 	/HardwareConfig/onewire:	used = false;
+	/HardwareConfig/display:	used = false;
 }
 
 
@@ -288,7 +289,7 @@ message NodeConfig
 	string sntp_server = 8		[ unset = "" ];
 	string timezone = 9		[ unset = "" ];
 	MQTT mqtt = 10;
-	fixed16 dmesg_size = 11	[ default = 512 ];
+	fixed16 dmesg_size = 11	[ default = 1024 ];
 	Influx influx = 12;
 	unsigned station2ap_time = 13;	// failover time from station to ap mode [s]
 	string domainname = 15	[ unset = "" ];
@@ -460,6 +461,7 @@ message I2CConfig
 	sint8 sda = 2		[ unset = -1 ];
 	sint8 scl = 3		[ unset = -1 ];
 	unsigned freq = 4	[ default = 100000 ];
+	bool xpullup = 5;	// have external pull-ups
 }
 
 
@@ -550,6 +552,23 @@ message GpioConfig
 }
 
 
+enum segdisp_t
+{
+	sd_raw = 0;
+	sd_7seg = 1;
+	sd_14seg = 2;
+}
+
+
+message DisplayConfig
+{
+	segdisp_t mode = 1	[ default = sd_raw ];
+
+	unsigned maxx = 3;
+	unsigned maxy = 4	[ default = 1 ];
+}
+
+
 message HardwareConfig
 {
 	fixed32 magic = 0;	// should always be set to 0xAE54EDCB
@@ -574,45 +593,6 @@ message HardwareConfig
 	repeated I2CConfig i2c = 36;
 	HcSr04Config hcsr04 = 37;
 	OneWireConfig onewire = 38;
+
+	DisplayConfig display = 50;
 }
-
-
-/*
-// draft/idea - maybe better direct structs for mmap access
-enum ledaction_t
-{
-	la_nop = 0;	// no operation
-	la_set = 1;	// set specific led
-	la_mask = 2;	// set color mask
-	la_setall = 3;	// set all leds to value
-	la_delay = 4;	// delay ms
-	la_dim = 5;	// r/g/b delta as int8
-	la_jump = 6;	// index of next action to execute
-	la_random = 7;	// generate random arg
-}
-
-message LedAction
-{
-	ledaction_t action = 1;
-	// 0xff000000	: led mask
-	// 0x00ff0000	: red mask
-	// 0x0000ff00	: green mask
-	// 0x000000ff	: blue mask
-	unsigned arg = 2;
-}
-
-
-message LedStripMode
-{
-	string name = 1;
-	repeated LedAction actions = 2;
-}
-
-
-message LedStripData
-{
-	fixed32 magic = 0;
-	repeated LedStripMode modes = 1;
-
-}
-*/

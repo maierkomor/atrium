@@ -23,10 +23,9 @@
 #include "actions.h"
 #include "binformats.h"
 #include "cyclic.h"
-//#include "event.h"
+#include "display.h"
 #include "globals.h"
 #include "log.h"
-#include "MAX7219.h"
 #include "timefuse.h"
 #include "ujson.h"
 
@@ -45,6 +44,9 @@ typedef enum clockmode {
 	cm_temperature,
 	cm_humidity,
 	cm_pressure,
+	cm_gasr,
+	cm_co2,
+	cm_tvoc,
 	cm_display_bin,	// display something - e.g. alarm set value, binary data
 	cm_display_dec,	// display something - e.g. alarm set value, decimal data
 	CLOCK_MODE_MAX,
@@ -53,14 +55,13 @@ typedef enum clockmode {
 
 struct Clock
 {
-	MAX7219Drv drv;
-	uint32_t sw_start = 0, sw_delta = 0;
+	SegmentDisplay *disp;
+	uint32_t sw_start = 0, sw_delta = 0, sw_pause = 0;
 	uint8_t digits, display[8];
-	uint32_t datestart = 0;
+	uint32_t modestart = 0;
 	clockmode_t mode = cm_time;
 	bool modech = false;
 
-	void display_float(float);
 	void display_time();
 	void display_date();
 	void display_data();
@@ -72,27 +73,36 @@ struct Clock
 static const char TAG[] = "clock";
 static Clock *ctx = 0;
 
-static void sw_start(void *arg)
-{
-	ctx->sw_start = uptime();
-	ctx->sw_delta = 0;
-}
-
-
-static void sw_stop(void *arg)
+static void sw_startstop(void *arg)
 {
 	uint32_t now = uptime();
-	ctx->sw_delta = now - ctx->sw_start;
-	ctx->sw_start = 0;
+	Clock *ctx = (Clock *)arg;
+	if (ctx->sw_start) {
+		ctx->sw_delta = now-ctx->sw_start;
+		ctx->sw_start = 0;
+	} else {
+		ctx->sw_start = uptime() - ctx->sw_delta;
+		ctx->sw_delta = 0;
+	}
 }
 
 
-static void sw_cont(void *arg)
+static void sw_clear(void *arg)
 {
 	Clock *ctx = (Clock *)arg;
-	uint32_t now = uptime();
-	ctx->sw_start = now - ctx->sw_delta;
+	ctx->sw_start = 0;
 	ctx->sw_delta = 0;
+	ctx->sw_pause = 0;
+}
+
+
+static void sw_pause(void *arg)
+{
+	Clock *ctx = (Clock *)arg;
+	if (ctx->sw_pause == 0)
+		ctx->sw_pause = uptime() - ctx->sw_start;
+	else
+		ctx->sw_pause = 0;
 }
 
 
@@ -112,10 +122,21 @@ static void switch_mode(void *arg)
 		if (0 == RTData->get("pressure"))
 			ctx->mode = (clockmode_t)((int)ctx->mode + 1);
 	}
+	if (ctx->mode == cm_gasr) {
+		if (0 == RTData->get("gasresistance"))
+			ctx->mode = (clockmode_t)((int)ctx->mode + 1);
+	}
+	if (ctx->mode == cm_co2) {
+		if (0 == RTData->get("CO2"))
+			ctx->mode = (clockmode_t)((int)ctx->mode + 1);
+	}
+	if (ctx->mode == cm_tvoc) {
+		if (0 == RTData->get("TVOC"))
+			ctx->mode = (clockmode_t)((int)ctx->mode + 1);
+	}
 	if (ctx->mode >= cm_display_bin)
 		ctx->mode = cm_time;
-	if (ctx->mode == cm_date)
-		ctx->datestart = uptime();
+	ctx->modestart = uptime();
 	ctx->modech = true;
 }
 
@@ -138,48 +159,55 @@ static void time_mode(void *arg)
 
 static void bright_dec(void *arg)
 {
-	Clock *ctx = (Clock *)arg;
-	ctx->drv.setIntensity(ctx->drv.getIntensity()-1);
+	SegmentDisplay *disp = (SegmentDisplay *)arg;
+	uint8_t dim = disp->getDim();
+	if (dim != 0)
+		disp->setDim(dim-1);
 }
 
 
 static void bright_inc(void *arg)
 {
-	Clock *ctx = (Clock *)arg;
-	ctx->drv.setIntensity(ctx->drv.getIntensity()+1);
+	SegmentDisplay *disp = (SegmentDisplay *)arg;
+	uint8_t dim = disp->getDim();
+	if (dim != disp->maxDim())
+		disp->setDim(dim+1);
 }
 
 
 static void shutdown(void *arg)
 {
 	Clock *ctx = (Clock *)arg;
-	ctx->drv.shutdown();
+	ctx->disp->setOn(false);
 }
 
 static void poweron(void *arg)
 {
 	Clock *ctx = (Clock *)arg;
-	ctx->drv.powerup();
+	ctx->disp->setOn(true);
 }
 
 
 void Clock::display_time()
 {
 	uint8_t h=0,m=0,s=0;
-	get_time_of_day(&h,&m,&s);
-	if (digits >= 6) {
-		drv.setDigit(5,h/10);
-		drv.setDigit(4,h%10);
-		drv.setDigit(3,m/10);
-		drv.setDigit(2,m%10);
-		drv.setDigit(1,s/10);
-		drv.setDigit(0,s%10);
-	} else if (digits == 4) {
-		drv.setDigit(3,h/10);
-		drv.setDigit(2,h%10);
-		drv.setDigit(1,m/10);
-		drv.setDigit(0,m%10);
+	unsigned y=0;
+	get_time_of_day(&h,&m,&s,0,0,0,&y);
+	disp->setPos(0,0);
+	if (y < 2000) {
+		disp->write("--.--.--");
+		return;
 	}
+	disp->writeHex(h/10);
+	disp->writeHex(h%10,true);
+	disp->writeHex(m/10);
+	disp->writeHex(m%10,digits>=6?true:false);
+	if (digits >= 6) {
+		disp->writeHex(s/10);
+		disp->writeHex(s%10);
+	}
+	if (digits >= 8)
+		disp->write("  ");
 }
 
 
@@ -188,19 +216,23 @@ void Clock::display_date()
 	uint8_t wd=0,day=0,mon=0;
 	unsigned year=0;
 	get_time_of_day(0,0,0,&wd,&day,&mon,&year);
-	unsigned digit = digits;
-	drv.setDigit(--digit,day/10);
-	drv.setDigit(--digit,day%10);
-	drv.setDigit(--digit,mon/10);
-	drv.setDigit(--digit,mon%10);
-	if (digit == 4) {
-		drv.setDigit(--digit,year/1000);
-		drv.setDigit(--digit,(year%1000)/100);
+	disp->setPos(0,0);
+	if (year < 2000) {
+		disp->write("--.--.----");
+		return;
 	}
-	if (digit == 2) {
+	disp->writeHex(day/10);
+	disp->writeHex(day%10,true);
+	disp->writeHex(mon/10);
+	disp->writeHex(mon%10,true);
+	if (digits >= 8) {
+		disp->writeHex(year/1000);
+		disp->writeHex((year%1000)/100);
+	}
+	if (digits >= 6) {
 		year %= 100;
-		drv.setDigit(1,year/10);
-		drv.setDigit(0,year%10);
+		disp->writeHex(year/10);
+		disp->writeHex(year%10);
 	}
 }
 
@@ -208,9 +240,11 @@ void Clock::display_date()
 void Clock::display_sw()
 {
 	uint32_t dt;
-	if (ctx->sw_start) {
+	if (sw_pause) {
+		dt = sw_pause;
+	} else if (sw_start) {
 		uint32_t now = uptime();
-		dt = now - ctx->sw_start;
+		dt = now - sw_start;
 	} else {
 		dt = ctx->sw_delta;
 	}
@@ -224,124 +258,120 @@ void Clock::display_sw()
 	uint8_t m = dt / 60;
 	dt -= m * 60;
 	uint8_t s = dt;
-	if (digits == 8) {
-		ctx->drv.setDigit(digits-1,h/10);
-		ctx->drv.setDigit(digits-2,h%10);
-		ctx->drv.setDigit(digits-3,m/10);
-		ctx->drv.setDigit(digits-4,m%10);
-		ctx->drv.setDigit(digits-5,s/10);
-		ctx->drv.setDigit(digits-6,s%10);
-		ctx->drv.setDigit(digits-7,dsec);
-		ctx->drv.setDigit(digits-8,hsec);
+	if (digits >= 8) {
+		disp->writeHex(h/10);
+		disp->writeHex(h%10,true);
+		disp->writeHex(m/10);
+		disp->writeHex(m%10,true);
+		disp->writeHex(s/10);
+		disp->writeHex(s%10,true);
+		disp->writeHex(dsec);
+		disp->writeHex(hsec);
 	} else if (digits == 6) {
 		if (h) {
-			ctx->drv.setDigit(digits-1,h/10);
-			ctx->drv.setDigit(digits-2,h%10);
-			ctx->drv.setDigit(digits-3,m/10);
-			ctx->drv.setDigit(digits-4,m%10);
-			ctx->drv.setDigit(digits-5,s/10);
-			ctx->drv.setDigit(digits-6,s%10);
+			disp->writeHex(h/10);
+			disp->writeHex(h%10,true);
+			disp->writeHex(m/10);
+			disp->writeHex(m%10,true);
+			disp->writeHex(s/10);
+			disp->writeHex(s%10);
 		} else {
-			ctx->drv.setDigit(digits-1,m/10);
-			ctx->drv.setDigit(digits-2,m%10);
-			ctx->drv.setDigit(digits-3,s/10);
-			ctx->drv.setDigit(digits-4,s%10);
-			ctx->drv.setDigit(digits-5,dsec);
-			ctx->drv.setDigit(digits-6,hsec);
+			disp->writeHex(m/10);
+			disp->writeHex(m%10,true);
+			disp->writeHex(s/10);
+			disp->writeHex(s%10,true);
+			disp->writeHex(dsec);
+			disp->writeHex(hsec);
 		}
 	} else if (h != 0) {
-		ctx->drv.setDigit(digits-1,h/10);
-		ctx->drv.setDigit(digits-2,h%10);
-		ctx->drv.setDigit(digits-3,m/10);
-		ctx->drv.setDigit(digits-4,m%10);
+		disp->writeHex(h/10);
+		disp->writeHex(h%10,true);
+		disp->writeHex(m/10);
+		disp->writeHex(m%10);
 	} else if (m != 0) {
-		ctx->drv.setDigit(digits-1,m/10);
-		ctx->drv.setDigit(digits-2,m%10);
-		ctx->drv.setDigit(digits-3,s/10);
-		ctx->drv.setDigit(digits-4,s%10);
+		disp->writeHex(m/10);
+		disp->writeHex(m%10,true);
+		disp->writeHex(s/10);
+		disp->writeHex(s%10);
 	} else {
-		ctx->drv.setDigit(digits-1,s/10);
-		ctx->drv.setDigit(digits-2,s%10);
-		ctx->drv.setDigit(digits-3,dsec);
-		ctx->drv.setDigit(digits-4,hsec);
+		disp->writeHex(s/10);
+		disp->writeHex(s%10,true);
+		disp->writeHex(dsec);
+		disp->writeHex(hsec);
 	}
 }
 
 
 void Clock::display_data()
 {
-	for (int i = 0; i < digits; ++i)
-		ctx->drv.setDigit(ctx->digits-i-1,ctx->display[i]);
-}
-
-
-void Clock::display_float(float f)
-{
-	char buf[8];
-	sprintf(buf,"%3.1f",f);
-	char *b = buf;
-	unsigned digit = 8;
-	while (*b) {
-		uint8_t v = (*b++ - '0');
-		if (*b == '.') {
-			v |= 0x80;
-			++b;
-		}
-		drv.setDigit(--digit,v);
-	}
+	// TODO
+//	for (int i = 0; i < digits; ++i)
+//		ctx->disp->setDigit(ctx->digits-i-1,ctx->display[i]);
 }
 
 
 void Clock::clearscr()
 {
-	for (int d = 0; d < digits; ++d)
-		drv.setDigit(d,0);
+	disp->clear();
 }
 
 
 static unsigned clock_iter(void *arg)
 {
+	bool alpha = ctx->disp->hasAlpha();
 	Clock *ctx = (Clock *)arg;
 	if (ctx->modech) {
-		ctx->clearscr();
-		switch (ctx->mode) {
-		case cm_display_bin:
-			ctx->drv.setDecoding(0x0);
-			break;
-		case cm_time:
-			ctx->drv.setDecoding(0x3f);
-			break;
-		case cm_date:
-			ctx->drv.setDecoding(0xff);
-			break;
-		case cm_temperature:
-			ctx->drv.setDecoding(0xf0);
-			ctx->drv.setDigit(2,0x63);	// Degree
-			ctx->drv.setDigit(1,0x4e);
-			break;
-		case cm_humidity:
-			ctx->drv.setDecoding(0xf0);
-			ctx->drv.setDigit(2,0x63);	// Percent
-			ctx->drv.setDigit(1,0x1d);
-			break;
-		case cm_pressure:
-			ctx->drv.setDecoding(0xf0);
-			ctx->drv.setDigit(2,0x67);	// P
-			ctx->drv.setDigit(1,0x77);	// A
-			break;
-		case cm_display_dec:
-		case cm_stopwatch:
-			ctx->drv.setDecoding(0xff);
-			break;
-		default:
-			abort();
-		}
+		ctx->disp->clear();
+		ctx->disp->setPos(0,0);
 		ctx->modech = false;
+		if (alpha) {
+			switch (ctx->mode) {
+			case cm_display_bin:
+			case cm_display_dec:
+				break;
+			case cm_time:
+				ctx->disp->write("time");
+				break;
+			case cm_date:
+				ctx->disp->write("date");
+				break;
+			case cm_temperature:
+				ctx->disp->write("temp");
+				break;
+			case cm_humidity:
+				ctx->disp->write("humid");
+				break;
+			case cm_pressure:
+				ctx->disp->write("pres");
+				break;
+			case cm_gasr:
+				ctx->disp->write("gas-R");
+				break;
+			case cm_co2:
+				ctx->disp->write("CO2");
+				break;
+			case cm_tvoc:
+				ctx->disp->write("TVOC");
+				break;
+			case cm_stopwatch:
+				ctx->disp->write("stop");
+				break;
+			default:
+				abort();
+			}
+			return 50;
+		}
 	}
+	uint32_t now = uptime();
+	if (alpha && (now - ctx->modestart < 800))
+		return 50;
 	unsigned d = 100;
+	ctx->disp->setPos(0,0);
+	double v;
+	const char *fmt = 0, *dim = 0;
 	switch (ctx->mode) {
 	case cm_date:
-		if ((uptime() - ctx->datestart) < 3000) {
+		if ((uptime() - ctx->modestart) < 4000) {
 			ctx->display_date();
 			d = 500;
 			break;
@@ -355,17 +385,40 @@ static unsigned clock_iter(void *arg)
 		ctx->display_time();
 		break;
 	case cm_stopwatch:
-		ctx->display_sw();
+		if (ctx->sw_pause == 0)
+			ctx->display_sw();
 		d = 20;
 		break;
 	case cm_temperature:
-		ctx->display_float(RTData->get("temperature")->toNumber()->get());
+		v = RTData->get("temperature")->toNumber()->get();
+		fmt = "%4.1f";
+		dim = "#C";
 		break;
 	case cm_humidity:
-		ctx->display_float(RTData->get("humidity")->toNumber()->get());
+		v = RTData->get("humidity")->toNumber()->get();
+		fmt = "%4.1f";
+		dim = "%";
 		break;
 	case cm_pressure:
-		ctx->display_float(RTData->get("pressure")->toNumber()->get());
+		v = RTData->get("pressure")->toNumber()->get();
+		fmt = "%4.1f";
+		dim = "hPa";
+		break;
+	case cm_gasr:
+		v = RTData->get("gasresistance")->toNumber()->get();
+		fmt = "%4.1f";
+		if (alpha)
+			dim = "kO";
+		break;
+	case cm_co2:
+		v = RTData->get("CO2")->toNumber()->get();
+		fmt = "%3.0f";
+		dim = " ";
+		break;
+	case cm_tvoc:
+		v = RTData->get("TVOC")->toNumber()->get();
+		fmt = "%4.0f";
+		dim = " ";
 		break;
 	case cm_display_bin:
 	case cm_display_dec:
@@ -374,47 +427,42 @@ static unsigned clock_iter(void *arg)
 	default:
 		abort();
 	}
+	if (fmt) {
+		if (isnan(v)) {
+			ctx->disp->write("---");
+		} else {
+			char buf[8];
+			sprintf(buf,fmt,v);
+			ctx->disp->write(buf);
+			if (dim)
+				ctx->disp->write(dim);
+		}
+	}
 	return d;
 }
 
 
 int clockapp_setup()
 {
-	if (!HWConf.has_max7219()) {
-		log_dbug(TAG,"not configured");
+	SegmentDisplay *d = SegmentDisplay::getInstance();
+	if (d == 0)
 		return 0;
-	}
-	// 5V level adjustment necessary
-	// ESP8266 is not capable of driving directly
-	// ESP32 seems to work
-	const Max7219Config &c = HWConf.max7219();
-	if (!c.has_clk() || !c.has_dout() || !c.has_cs() || !c.has_digits()) {
-		log_warn(TAG,"incomplete config");
-		return 1;
-	}
 	ctx = new Clock;
-	ctx->digits = c.digits();
-	if (ctx->drv.init((gpio_num_t)c.clk(),(gpio_num_t)c.dout(),(gpio_num_t)c.cs(),c.odrain())) {
-		delete ctx;
-		return 1;
-	}
+	ctx->disp = d;
+	ctx->digits = d->maxX();
 	action_add("clock!switch_mode",switch_mode,ctx,"switch to next clock mode");
 	action_add("clock!time_mode",time_mode,ctx,"switch to display time display");
 	action_add("clock!temp_mode",temp_mode,(void*)ctx,"switch to display temperature");
-	action_add("clock!bright_inc",bright_inc,(void*)ctx,"clock: increase brightness");
-	action_add("clock!bright_dec",bright_dec,(void*)ctx,"clock: decrease brightness");
+	action_add("clock!bright_inc",bright_inc,(void*)d,"clock: increase brightness");
+	action_add("clock!bright_dec",bright_dec,(void*)d,"clock: decrease brightness");
 	action_add("clock!off",shutdown,ctx,"clock: turn off");
 	action_add("clock!on",poweron,ctx,"clock: turn on");
-	action_add("sw!start",sw_start,ctx,"stopwatch start");
-	action_add("sw!stop",sw_stop,ctx,"stopwatch stop");
-	action_add("sw!resume",sw_cont,ctx,"stopwatch resume");
+	action_add("sw!startstop",sw_startstop,ctx,"stopwatch start/stop");
+	action_add("sw!reset",sw_clear,ctx,"stopwatch reset");
+	action_add("sw!pause",sw_pause,ctx,"stopwatch pause/resume");
 	shutdown(ctx);
-	ctx->drv.setDigits(ctx->digits);
 	poweron(ctx);
-	ctx->drv.displayTest(true);
-	vTaskDelay(1000/portTICK_PERIOD_MS);
-	ctx->drv.displayTest(false);
-	ctx->drv.setIntensity(0xf);
+	ctx->disp->setDim(UINT8_MAX);
 	ctx->mode = cm_time;
 	ctx->modech = true;
 	ctx->clearscr();

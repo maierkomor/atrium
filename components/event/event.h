@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020, Thomas Maier-Komor
+ *  Copyright (C) 2020-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -22,8 +22,7 @@
 #include <stdint.h>
 #include <vector>
 
-#define EVENT_T_MAX 255
-typedef uint8_t event_t;
+typedef unsigned event_t;
 
 #ifdef __cplusplus
 class Action;
@@ -38,9 +37,13 @@ extern "C" {
 int event_callback(const char *e, const char *a);
 int event_detach(const char *e, const char *a);
 void event_trigger(event_t e);
+void event_trigger_nd(event_t id);	// no-debug version for syslog only
+void event_trigger_arg(event_t e, void *);
 void event_isr_trigger(event_t e);
 event_t event_id(const char *n);
 const char *event_name(event_t);
+uint32_t event_occur(event_t);
+uint64_t event_time(event_t);
 char *concat(const char *s0, const char *s1);
 
 #ifdef __cplusplus

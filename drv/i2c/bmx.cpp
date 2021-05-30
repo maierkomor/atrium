@@ -29,10 +29,14 @@
 #include <esp_err.h>
 #include <strings.h>
 
+#include "actions.h"
 #include "bmx.h"
+#include "cyclic.h"
+#include "event.h"
 #include "i2cdrv.h"
-#include "ujson.h"
 #include "log.h"
+#include "stream.h"
+#include "ujson.h"
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -71,20 +75,78 @@
 static const char TAG[] = "bmx";
 
 
+void BMP280::trigger(void *arg)
+{
+	BMP280 *dev = (BMP280 *)arg;
+	if (dev->m_state == st_idle)
+		dev->m_state = st_sample;
+}
+
+
+unsigned BMP280::cyclic()
+{
+	switch (m_state) {
+	case st_idle:
+		return 20;
+	case st_sample:
+		if (sample())
+			break;
+		m_state = st_measure;
+		return 10;
+	case st_measure:
+		if (status())
+			break;
+		return 5;
+	case st_read:
+		if (read())
+			break;
+		m_state = st_idle;
+		return 50;
+	default:
+		abort();
+	}
+	handle_error();
+	return 1000;
+}
+
+
+static unsigned bmx_cyclic(void *arg)
+{
+	BMP280 *drv = (BMP280 *) arg;
+	return drv->cyclic();
+}
+
+
 void BMP280::attach(JsonObject *root)
 {
-	m_temp = new JsonNumber("temperature","\u00b0C");
 	root->append(m_temp);
-	m_press = new JsonNumber("pressure","hPa");
 	root->append(m_press);
+	cyclic_add_task(m_name,bmx_cyclic,this,0);
+	action_add(concat(m_name,"!sample"),trigger,(void*)this,"BMP280 sample data");
 }
 
 
 void BME280::attach(JsonObject *root)
 {
-	BMP280::attach(root);
-	m_humid = new JsonNumber("humidity","%");
+	root->append(m_temp);
+	root->append(m_press);
 	root->append(m_humid);
+	cyclic_add_task(m_name,bmx_cyclic,this,0);
+	action_add(concat(m_name,"!sample"),trigger,(void*)(BME280*)this,"BME280 sample data");
+}
+
+
+void BMP280::handle_error()
+{
+	m_temp->set(NAN);
+	m_press->set(NAN);
+}
+
+
+void BME280::handle_error()
+{
+	BMP280::handle_error();
+	m_humid->set(NAN);
 }
 
 
@@ -177,57 +239,66 @@ float BME280::calc_humid(int32_t adc_H, int32_t t_fine)
 #endif	// USE_DOUBLE
 
 
-int BMP280::sample()
+bool BMP280::sample()
 {
 	// bit 7-5: temperature oversampling:	001=1x, ... 101=16x
 	// bit 4-2: pressure oversampling:	001=1x, ... 101=16x
 	// bit 1,0: sensor mode			00: sleep, 01/10: force, 11: normal
 	// ctrl_meas: t*1, p*1, force
 	uint8_t cmd[] = { m_addr, BME280_REG_CTRLMEAS, 0b00100101 };
-	i2c_write(m_bus, cmd, sizeof(cmd));
+	if (i2c_write(m_bus, cmd, sizeof(cmd), true, true))
+		return true;
+	return false;
+}
+
+
+bool BMP280::read()
+{
 	uint8_t data[6];
-	if (int r = i2c_read(m_bus,m_addr,BMX280_REG_BASE,data,sizeof(data)))
-		return r;
+	if (i2c_w1rd(m_bus,m_addr,BMX280_REG_BASE,data,sizeof(data)))
+		return true;
 	int32_t t_fine = calc_tfine(data);
 	float t = (float)((t_fine * 5 + 128) >> 8) / 100.0;
 	float p = calc_press((data[0] << 12) | (data[1] << 4) | (data[2] >> 4), t_fine);
 	m_temp->set(t);
 	m_press->set(p);
 #ifdef CONFIG_NEWLIB_LIBRARY_LEVEL_FLOAT_NANO
-	log_dbug(TAG,"t=%G, p=%G",m_temp->get(),m_press->get());
+	log_dbug(TAG,"t=%G, p=%G",t,p);
 #else
 	if (log_module_enabled(TAG)) {
-		char tmp[16];
-		float_to_str(tmp,m_temp->get());
-		log_dbug(TAG,"t=%s",tmp);
-		float_to_str(tmp,m_press->get());
-		log_dbug(TAG,"p=%s",tmp);
+		char ts[16],ps[16];
+		float_to_str(ts,t);
+		float_to_str(ps,p);
+		log_dbug(TAG,"t=%s,p=%s",ts,ps);
 	}
 #endif
-	return 0;
+	return false;
 }
 
 
-int BME280::sample()
+bool BME280::sample()
 {
 	uint8_t cmd[] =
 		// x1 sampling of humidity
-		{ BME280_REG_CTRLHUM, 0b001
+		{ m_addr
+		, BME280_REG_CTRLHUM, 0b001
 
 		 // bit 7-5: temperature oversampling:	001=1x, ... 101=16x
 		 // bit 4-2: pressure oversampling:	001=1x, ... 101=16x
 		 // bit 1,0: sensor mode		00: sleep, 01/10: force, 11: normal
 		, BME280_REG_CTRLMEAS, 0b00100101
 	};
-	i2c_writen(m_bus, m_addr, cmd, sizeof(cmd));
-	uint8_t status = 0;
-	do {
-		if (int e = i2c_read(m_bus,m_addr,BME280_REG_STATUS,&status,1))
-			return e;
-	} while (status & 0x8);	// still measuring
+	if (i2c_write(m_bus, cmd, sizeof(cmd), true, true))
+		return true;
+	return false;
+}
+
+
+bool BME280::read()
+{
 	uint8_t data[8] = {0};
-	if (int r = i2c_read(m_bus,m_addr,BMX280_REG_BASE,data,sizeof(data)))
-		return r;
+	if (i2c_w1rd(m_bus,m_addr,BMX280_REG_BASE,data,sizeof(data)))
+		return true;
 	int32_t t_fine = calc_tfine(data);
 	float t = (float)((t_fine * 5 + 128) >> 8) / 100.0;
 	float p = calc_press((data[0] << 12) | (data[1] << 4) | (data[2] >> 4), t_fine);
@@ -236,31 +307,28 @@ int BME280::sample()
 	m_press->set(p);
 	m_humid->set(h);
 #ifdef CONFIG_NEWLIB_LIBRARY_LEVEL_FLOAT_NANO
-	log_dbug(TAG,"t=%G, p=%G, h=%G",m_temp->get(),m_press->get(),m_humid->get());
+	log_dbug(TAG,"t=%G, p=%G, h=%G",t,p,h);
 #else
 	if (log_module_enabled(TAG)) {
-		char tmp[16];
-		float_to_str(tmp,m_temp->get());
-		log_dbug(TAG,"t=%s",tmp);
-		float_to_str(tmp,m_press->get());
-		log_dbug(TAG,"p=%s",tmp);
-		float_to_str(tmp,m_humid->get());
-		log_dbug(TAG,"h=%s",tmp);
+		char ts[16], ps[16], hs[16];
+		float_to_str(ts,t);
+		float_to_str(ps,p);
+		float_to_str(hs,h);
+		log_dbug(TAG,"t=%s,p=%s,h=%s",ts,ps,hs);
 	}
 #endif
-	return 0;
+	return false;
 }
 
 
-uint8_t BMP280::status()
+bool BMP280::status()
 {
-	uint8_t d;
-	esp_err_t e = i2c_read(m_bus,m_addr,BME280_REG_STATUS,&d,1);
-	if (e) {
-		log_error(TAG,"status error: %d, %s",e,esp_err_to_name(e));
-		return 0;
-	}
-	return d;
+	uint8_t status = 0;
+	if (i2c_w1rd(m_bus,m_addr,BME280_REG_STATUS,&status,1))
+		return true;
+	if ((status & 0x8) == 0)
+		m_state = st_read;
+	return false;
 }
 
 
@@ -296,10 +364,12 @@ int BMP280::init()
 	if (r)
 		return r;
 	uint8_t calib[26];
-	r = i2c_read(m_bus,m_addr,BME280_CALIB_DATA,calib,sizeof(calib));
+	r = i2c_w1rd(m_bus,m_addr,BME280_CALIB_DATA,calib,sizeof(calib));
 	if (r)
 		return r;
 	init_calib(calib);
+	m_temp = new JsonNumber("temperature","\u00b0C");
+	m_press = new JsonNumber("pressure","hPa");
 	return 0;
 }
 
@@ -308,25 +378,26 @@ int BME280::init()
 {
 	int r;
 	uint8_t cfg[] =
+		{ m_addr
 		// enable humidity sampling
-		{ BME280_REG_CTRLHUM, 1
+		, BME280_REG_CTRLHUM, 1
 		// bit 7-5: sampling time interval: 101=1000ms
 		// bit 4-2: iir filter time
 		// bit 0:   1=3-wire spi interace
 		, BME280_REG_CONFIG, 0b01100000		// config   : 200ms sampling, filter off, 3-wire disable
 	};
-	r = i2c_writen(m_bus, m_addr, cfg, sizeof(cfg));
+	r = i2c_write(m_bus, cfg, sizeof(cfg), true, true);
 	if (r)
 		return r;
 	uint8_t calib[26];
-	r = i2c_read(m_bus,m_addr,BME280_CALIB_DATA,calib,sizeof(calib));
+	r = i2c_w1rd(m_bus,m_addr,BME280_CALIB_DATA,calib,sizeof(calib));
 	if (r)
 		return r;
 	init_calib(calib);
 	H1 = calib[25];
 
 	uint8_t calib_h[7];
-	r = i2c_read(m_bus,m_addr,BME280_REG_CALIB,calib_h,sizeof(calib_h));
+	r = i2c_w1rd(m_bus,m_addr,BME280_REG_CALIB,calib_h,sizeof(calib_h));
 	if (r)
 		return r;
 	H2 = (int16_t)(calib_h[1] << 8) | calib_h[0];
@@ -334,6 +405,9 @@ int BME280::init()
 	H4 = ((int16_t)(int8_t)calib_h[3] << 4) | ((int16_t)calib_h[4] & 0xf);
 	H5 = (int16_t)(calib_h[4] >> 4) | (calib_h[5] << 4);
 	H6 = (int8_t)calib_h[6];
+	m_temp = new JsonNumber("temperature","\u00b0C");
+	m_press = new JsonNumber("pressure","hPa");
+	m_humid = new JsonNumber("humidity","%");
 	return 0;
 }
 
@@ -356,25 +430,74 @@ int BME680::init()
 	m_dev.power_mode = BME680_FORCED_MODE;
 	if (int r = bme680_set_sensor_settings(BME680_OST_SEL|BME680_OSP_SEL|BME680_OSH_SEL|BME680_FILTER_SEL|BME680_RUN_GAS_SEL|BME680_GAS_MEAS_SEL, &m_dev))
 		return r;
+	m_temp = new JsonNumber("temperature","\u00b0C");
+	m_press = new JsonNumber("pressure","hPa");
+	m_humid = new JsonNumber("humidity","%");
+	m_gas = new JsonNumber("gasresistance","kOhm");
 	return 0;
 }
 
 
-int BME680::sample()
+unsigned BME680::cyclic(void *arg)
+{
+	BME680 *dev = (BME680 *) arg;
+	switch (dev->m_state) {
+	case st_idle:
+		return 20;
+	case st_sample:
+		return dev->sample();
+	case st_read:
+		return dev->read();
+	case st_error:
+		dev->m_temp->set(NAN);
+		dev->m_press->set(NAN);
+		dev->m_humid->set(NAN);
+		dev->m_gas->set(NAN);
+		dev->m_state = st_idle;
+		return 1000;
+	default:
+		abort();
+		return 0;
+	}
+}
+
+
+void BME680::trigger(void *arg)
+{
+	BME680 *dev = (BME680 *)arg;
+	if (dev->m_state == st_idle)
+		dev->m_state = st_sample;
+}
+
+
+unsigned BME680::sample()
 {
 	bme680_set_sensor_mode(&m_dev);
 	uint16_t meas_period;
 	bme680_get_profile_dur(&meas_period,&m_dev);
-	uint8_t status;
-	int r;
-	do {
-		status = 0;
-		r = i2c_read(m_bus,m_addr,0x1d,&status,1);
-		vTaskDelay(5);
-	} while ((r == 0) && (status & 0x60));	// loop until measurement finished
+	m_state = st_read;
+	return meas_period;
+}
+
+
+unsigned BME680::read()
+{
+	uint8_t status = 0;
+	int r = i2c_w1rd(m_bus,m_addr,0x1d,&status,1);
+	if (r != 0) {
+		m_state = st_error;
+		return 50;
+	}
+	if (status & 0x60)
+		return 5;
 	struct bme680_field_data data;
-	if (int r = bme680_get_sensor_data(&data,&m_dev))
-		return r;
+	int8_t e = bme680_get_sensor_data(&data,&m_dev);
+	if (e) {
+		if (e == BME680_POLL_PERIOD_MS)
+			return BME680_POLL_PERIOD_MS;
+		m_state = st_error;
+		return 20;
+	}
 #ifdef BME680_FLOAT_POINT_COMPENSATION
 	m_temp->set(data.temperature);
 	m_press->set(data.pressure);
@@ -388,35 +511,33 @@ int BME680::sample()
 	log_dbug(TAG,"t=%G, p=%G, h=%G",m_temp->get(),m_press->get(),m_humid->get());
 #else
 	if (log_module_enabled(TAG)) {
-		char tmp[16];
-		float_to_str(tmp,m_temp->get());
-		log_dbug(TAG,"t=%s",tmp);
-		float_to_str(tmp,m_press->get());
-		log_dbug(TAG,"p=%s",tmp);
-		float_to_str(tmp,m_humid->get());
-		log_dbug(TAG,"h=%s",tmp);
+		char t[8],p[8],h[8];
+		float_to_str(t,m_temp->get());
+		float_to_str(p,m_press->get());
+		float_to_str(h,m_humid->get());
+		log_dbug(TAG,"t=%s,p=%s,h=%s",t,p,h);
 	}
 #endif
+	m_state = st_idle;
 	if (data.status & BME680_GASM_VALID_MSK) {
 		log_dbug(TAG,"r=%d", data.gas_resistance);
-		m_gas->set(data.gas_resistance);
+		m_gas->set((float)data.gas_resistance/1000.0);
 	} else {
 		log_dbug(TAG,"gas invalid");
+		m_gas->set(NAN);
 	}
-	return 0;
+	return 50;
 }
 
 
 void BME680::attach(JsonObject *root)
 {
-	m_temp = new JsonNumber("temperature","\u00b0C");
 	root->append(m_temp);
-	m_press = new JsonNumber("pressure","hPa");
 	root->append(m_press);
-	m_humid = new JsonNumber("humidity","%");
 	root->append(m_humid);
-	m_gas = new JsonNumber("resistance","Ohm");
 	root->append(m_gas);
+	cyclic_add_task(m_name,cyclic,this,0);
+	action_add(concat(m_name,"!sample"),trigger,(void*)this,"BME680 sample data");
 }
 
 
@@ -451,7 +572,7 @@ unsigned bmx_scan(uint8_t port)
 	unsigned num = 0;
 	uint8_t addr = 0xec, id;
 	do {
-		int r = i2c_read(port,addr,CHIP_ID_ADDR,&id,1);
+		int r = i2c_w1rd(port,addr,CHIP_ID_ADDR,&id,1);
 		if (0 <= r)
 			num += create_device(port,addr,id);
 		addr += 2;

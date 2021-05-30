@@ -37,7 +37,7 @@ class Action
 	, func(0)
 	{ }
 
-	void activate();
+	void activate(void * = 0);
 
 	private:
 	void (*func)(void *);

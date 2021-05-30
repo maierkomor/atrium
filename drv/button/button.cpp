@@ -78,11 +78,14 @@ void Button::intr(void *arg)
 	Button *b = static_cast<Button*>(arg);
 	event_t ev, xev = 0;
 	if (gpio_get_level(b->m_gpio) == b->m_presslvl) {
+		if (b->m_tpressed)	// debounce concecutive pressed events
+			return;
 		b->m_tpressed = now;
 		ev = b->m_pev;
 	} else {
 		ev = b->m_rev;
 		unsigned dt = now - b->m_tpressed;
+		b->m_tpressed = 0;
 		if (dt < BUTTON_SHORT_START) {
 			// fast debounce
 		} else if (dt < BUTTON_SHORT_END) {

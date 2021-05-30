@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -21,11 +21,30 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 
 #define null_indent(a,b)
 
 #ifdef __cplusplus
 class stream;
+
+struct CStrLess
+{
+	bool operator () (const char *l, const char *r)
+	{
+		return strcmp(l,r) < 0;
+	}
+};
+
+struct SubstrLess
+{
+	bool operator () (const char *l, const char *r)
+	{
+		size_t ll = strlen(l);
+		size_t rl = strlen(r);
+		return memcmp(l,r,ll < rl ? ll : rl) < 0;
+	}
+};
 
 void id64_to_ascii(stream &o, uint64_t id);
 void ip4_to_ascii(stream &o, uint32_t ip);

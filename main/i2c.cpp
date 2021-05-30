@@ -25,41 +25,33 @@
 #include "binformats.h"
 #include "globals.h"
 #include "i2cdrv.h"
+#include "log.h"
 #include "shell.h"
 #include "terminal.h"
 #include "ujson.h"
 
-static const char TAG[] = "i2c";
-
+static const char TAG[] = "IIC";
 
 
 int i2c_setup(void)
 {
-	unsigned num = 0;
 	for (const I2CConfig &c : HWConf.i2c()) {
 		if (c.has_sda() && c.has_scl()) {
 #ifdef CONFIG_IDF_TARGET_ESP8266
-			int r = i2c_init(c.port(),c.sda(),c.scl(),0);
+			int r = i2c_init(c.port(),c.sda(),c.scl(),0,c.xpullup());
 #else
-			int r = i2c_init(c.port(),c.sda(),c.scl(),c.freq());
+			int r = i2c_init(c.port(),c.sda(),c.scl(),c.freq(),c.xpullup());
 #endif
-			if (r > 0)
-				num += r;
+			if (r < 0) 
+				log_warn(TAG,"error %d",r);
 		}
 	}
-	bool o = RTData->get("temperature") || RTData->get("humidity");
 	I2CSensor *d = I2CSensor::getFirst();
-	if (num == 1)
-		d->setName(d->drvName());
 	while (d) {
 		JsonObject *r = RTData;
-		if (o || (num > 1)) {
-			JsonObject *o = new JsonObject(d->getName());
-			r->append(o);
-			r = o;
-		}
-		d->attach(r);
-		action_add(concat(d->getName(),"!sample"),I2CSensor::sample,d,d->getName());
+		JsonObject *o = new JsonObject(d->getName());
+		r->append(o);
+		d->attach(o);
 		d = d->getNext();
 	}
 	return 0;
@@ -73,7 +65,7 @@ int i2c(Terminal &term, int argc, const char *args[])
 	I2CSensor *s = I2CSensor::getFirst();
 	term.println("bus addr  name");
 	while (s) {
-		term.printf("%3d   %02x  %s",s->getBus(),s->getAddr(),s->getName());
+		term.printf("%3d   %02x  %s\n",s->getBus(),s->getAddr(),s->getName());
 		s = s->getNext();
 	}
 	return 0;

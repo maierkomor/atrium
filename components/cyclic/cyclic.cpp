@@ -168,10 +168,10 @@ void cyclic_setup()
 
 int subtasks(Terminal &term, int argc, const char *args[])
 {
-	term.printf("%-16s  %8s  %8s  %10s\n","name","calls","peak","total");
+	term.printf("%8s  %8s  %10s  %s\n","calls","peak","total","name");
 	SubTask *s = SubTasks;
 	while (s) {
-		term.printf("%-16s  %8u  %8u  %10lu\n",s->name,s->calls,s->peaktime,s->cputime);
+		term.printf("%8u  %8u  %10lu  %s\n",s->calls,s->peaktime,s->cputime,s->name);
 		s = s->next;
 	}
 	return 0;

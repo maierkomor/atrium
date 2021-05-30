@@ -45,9 +45,14 @@
 #include "ota.h"
 #include "settings.h"
 #include "status.h"
+#include "support.h"
+#include "syslog.h"
 #include "uart_terminal.h"
 #include "uarts.h"
+#include "ujson.h"
 #include "wifi.h"
+
+#include <set>
 
 #ifndef CHIP_FEATURE_EMB_FLASH
 #define CHIP_FEATURE_EMB_FLASH 0
@@ -66,6 +71,8 @@
 #else
 #define DRIVER_ARG 0
 #endif
+
+using namespace std;
 
 static const char TAG[] = "init";
 static const char BootStr[] = "Starting Atrium Firmware...\r\n";
@@ -89,6 +96,7 @@ int console_setup();
 int cyclic_setup();
 int dht_setup();
 int dimmer_setup();
+int display_setup();
 int distance_setup();
 int event_setup();
 int ftpd_setup();
@@ -118,24 +126,18 @@ static void system_info()
 {
 	esp_chip_info_t ci;
 	esp_chip_info(&ci);
-	log_info(TAG,"%s with %d CPU core%s, revision %d%s%s%s%s"
+	log_info(TAG,"ESP%u, revision %d"
 #if IDF_VERSION >= 32
 		", %dkB %s flash"
 #endif
-		, ci.model ? "ESP32" : "ESP8266"
-		, ci.cores
-		, ci.cores > 1 ? "s" : ""
+		, ci.model ? 32 : 8266
 		, ci.revision
-		, (ci.features & CHIP_FEATURE_EMB_FLASH) ? ", embedded flash" : ""
-		, (ci.features & CHIP_FEATURE_WIFI_BGN) ? ", WiFi" : ""
-		, (ci.features & CHIP_FEATURE_BT) ? ", BT" : ""
-		, (ci.features & CHIP_FEATURE_BLE) ? ", BLE" : ""
 #if IDF_VERSION >= 32
 		, spi_flash_get_chip_size() >> 10
 		, (ci.features & CHIP_FEATURE_EMB_FLASH) ? "embedded" : "external"
 #endif
 		);
-	log_info(TAG,"reset reason: %s",ResetReasons[(int)esp_reset_reason()]);
+	log_info(TAG,"%s reset",ResetReasons[(int)esp_reset_reason()]);
 
 #ifdef ESP_IF_ETH
 	uint8_t eth[6];
@@ -156,6 +158,50 @@ static void system_info()
 }
 
 
+static int count_name(JsonObject *o, const char *name)
+{
+	unsigned n = 0;
+	for (JsonElement *e : o->getChilds()) {
+		if (JsonObject *c = e->toObject()) {
+			n += count_name(c,name);
+		} else if (0 == strcmp(e->name(),name)) {
+			++n;
+		}
+	}
+	return n;
+}
+
+
+static int has_dups(JsonObject *o)
+{
+	for (JsonElement *e : o->getChilds()) {
+		if (JsonObject *c = e->toObject()) {
+			if (has_dups(c))
+				return 1;
+		} else if (1 < count_name(RTData,e->name())) {
+			return 1;
+		}
+	}
+	return 0;
+}
+
+
+static void env_setup()
+{
+	set<const char *,CStrLess> vars;
+	if (has_dups(RTData))
+		return;
+	unsigned i = 0;
+	while (JsonElement *x = RTData->getChild(i)) {
+		if (JsonObject *c = x->toObject()) {
+			for (JsonElement *m : c->getChilds())
+				RTData->add(m);
+		}
+		++i;
+	}
+}
+
+
 extern "C"
 void app_main()
 {
@@ -171,14 +217,15 @@ void app_main()
 	nvs_setup();
 	diag_setup();
 
-	system_info();
-
 #ifdef CONFIG_IDF_TARGET_ESP8266
 	gpio_install_isr_service(0);
 #else
 	gpio_install_isr_service(ESP_INTR_FLAG_LEVEL1 | ESP_INTR_FLAG_IRAM);
 #endif
 	settings_setup();
+
+	system_info();
+
 	cyclic_setup();	// before event_setup
 	event_setup();	// needed for most drivers and wifi including gpio
 	gpio_setup();
@@ -230,15 +277,14 @@ void app_main()
 	wifi_setup();
 	cfg_activate();
 	uart_setup();
+	env_setup();
+
 #ifdef CONFIG_SYSLOG
 	syslog_setup();
 #endif
 
 #ifdef CONFIG_NIGHTSKY
 	nightsky_setup();
-#endif
-#ifdef CONFIG_CLOCK
-	clockapp_setup();
 #endif
 #ifdef CONFIG_LEDSTRIP
 	ledstrip_setup();
@@ -255,6 +301,13 @@ void app_main()
 	influx_setup();
 #endif
 	
+#ifdef CONFIG_LEDDISP
+	display_setup();
+#ifdef CONFIG_CLOCK
+	clockapp_setup();
+#endif
+#endif // CONFIG_LEDDISP
+
 	// activate actions after all events and actions are setup
 	// otherwise this step will fail
 	cfg_activate_actions();

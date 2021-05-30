@@ -282,6 +282,8 @@ CONFIG_RELAY=y
 # CONFIG_DHT is not set
 CONFIG_I2C=y
 # CONFIG_BME680 is not set
+# CONFIG_SGP30 is not set
+# CONFIG_CCS811B is not set
 # CONFIG_DIST is not set
 # CONFIG_DIMMER is not set
 # CONFIG_NIGHTSKY is not set
