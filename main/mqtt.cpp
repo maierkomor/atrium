@@ -31,7 +31,6 @@
 
 #ifdef CONFIG_MQTT
 #include "actions.h"
-#include "binformats.h"
 #include "cyclic.h"
 #ifdef CONFIG_SIGNAL_PROC
 #include "dataflow.h"
@@ -45,6 +44,7 @@
 #include "settings.h"
 #include "shell.h"
 #include "support.h"
+#include "swcfg.h"
 #include "terminal.h"
 #include "ujson.h"
 #include "wifi.h"
@@ -312,6 +312,41 @@ static void send_sub(const char *t, bool commit)
 }
 
 
+static void parse_conack(uint8_t *buf, size_t rlen)
+{
+	if (rlen != 2) {
+		log_warn(TAG,"protocol error, CONACK has invalid length %d",rlen);
+	} else {
+		uint16_t status = buf[0] << 8 | buf[1];
+		if (status == 0) {
+			if (Client->pcb == 0) {
+				log_warn(TAG,"CONACK without pcb");
+				return;
+			}
+			log_dbug(TAG,"CONACK OK");
+			Client->state = running;
+			mqtt_pub("version",Version,0,1,1);
+			mqtt_pub("reset_reason",ResetReasons[(int)esp_reset_reason()],0,1,1);
+			if (!Client->subscriptions.empty()) {
+				for (const auto &s : Client->subscriptions)
+					send_sub(s.first.c_str(),false);
+			}
+			if (err_t e = tcp_output(Client->pcb)) {
+				log_warn(TAG,"tcp output %d",e);
+				Client->state = offline;
+				tcp_close(Client->pcb);
+				Client->pcb = 0;
+			}
+			return;
+		}
+		log_warn(TAG,"CONACK %d",status);
+	}
+	Client->state = offline;
+	tcp_close(Client->pcb);
+	Client->pcb = 0;
+}
+
+
 static void parse_suback(uint8_t *buf, size_t rlen)
 {
 	if (rlen == 3) {
@@ -343,7 +378,9 @@ static err_t handle_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *pbuf, err_
 	if (0 == pbuf) {
 		log_dbug(TAG,"recv: pbuf=0");
 		// connection has been closed
-		mqtt_restart();
+		Client->pcb = 0;
+		Client->state = offline;
+		mqtt_start();
 		return 0;
 	}
 //	log_dbug(TAG,"recv %u/%u: %d",pbuf->len,pbuf->tot_len,e);
@@ -377,15 +414,7 @@ static err_t handle_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *pbuf, err_
 		off += rlen;
 		switch (type & 0xf0) {
 		case CONACK:
-			log_dbug(TAG,"CONACK");
-			Client->state = running;
-			mqtt_pub("version",Version,0,1,1);
-			mqtt_pub("reset_reason",ResetReasons[(int)esp_reset_reason()],0,1,1);
-			if (!Client->subscriptions.empty()) {
-				for (const auto &s : Client->subscriptions)
-					send_sub(s.first.c_str(),false);
-			}
-			tcp_output(pcb);
+			parse_conack(buf,rlen);
 			break;
 		case PUBLISH:
 			log_dbug(TAG,"PUBLISH");
@@ -447,6 +476,7 @@ static err_t handle_connect(void *arg, struct tcp_pcb *pcb, err_t x)
 		log_warn(TAG,"connect error %d",x);
 		Client->state = offline;
 		tcp_close(pcb);
+		Client->pcb = 0;
 		return 0;
 	}
 	log_dbug(TAG,"connect %u",tcp_sndbuf(pcb));
@@ -681,6 +711,7 @@ void mqtt_stop(void *arg)
 	else
 		tcp_output(Client->pcb);
 	e = tcp_close(Client->pcb);
+	Client->pcb = 0;
 	UNLOCK_TCPIP_CORE();
 	if (e)
 		log_warn(TAG,"stop: close error %d",e);
@@ -742,10 +773,12 @@ void mqtt_start(void *arg)
 		return;
 	}
 	Client->subs.clear();
+	LOCK_TCPIP_CORE();
 	if (Client->pcb)
 		tcp_abort(Client->pcb);
 	Client->pcb = tcp_new();
 	err_t e = tcp_connect(Client->pcb,&ip,port,handle_connect);
+	UNLOCK_TCPIP_CORE();
 	if (e)
 		log_warn(TAG,"tcp_connect: %d",e);
 	tcp_err(Client->pcb,handle_err);

@@ -22,7 +22,6 @@
 
 #include "actions.h"
 #include "astream.h"
-#include "binformats.h"
 #include "dataflow.h"
 #ifdef CONFIG_SIGNAL_PROC
 #include "func.h"
@@ -34,6 +33,7 @@
 #include "netsvc.h"
 #include "shell.h"
 #include "support.h"
+#include "swcfg.h"
 #include "terminal.h"
 #include "wifi.h"
 

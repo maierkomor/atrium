@@ -21,7 +21,7 @@
 #ifdef CONFIG_SYSLOG
 
 #include "actions.h"
-#include "binformats.h"
+#include "swcfg.h"
 #include "event.h"
 #include "globals.h"
 #include "log.h"

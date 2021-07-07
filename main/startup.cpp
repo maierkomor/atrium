@@ -301,12 +301,10 @@ void app_main()
 	influx_setup();
 #endif
 	
-#ifdef CONFIG_LEDDISP
+#ifdef CONFIG_DISPLAY
 	display_setup();
-#ifdef CONFIG_CLOCK
 	clockapp_setup();
-#endif
-#endif // CONFIG_LEDDISP
+#endif // CONFIG_DISPLAY
 
 	// activate actions after all events and actions are setup
 	// otherwise this step will fail

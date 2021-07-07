@@ -20,7 +20,7 @@
 
 #ifdef CONFIG_AT_ACTIONS
 #include "actions.h"
-#include "binformats.h"
+#include "swcfg.h"
 #include "cyclic.h"
 #include "event.h"
 #include "ujson.h"

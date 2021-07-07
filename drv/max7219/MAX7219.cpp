@@ -18,7 +18,7 @@
 
 #include <sdkconfig.h>
 
-#if defined CONFIG_I2C && defined CONFIG_LEDDISP
+#if defined CONFIG_MAX7219
 
 #include "MAX7219.h"
 #include "log.h"
@@ -110,32 +110,33 @@ void MAX7219Drv::setreg(uint8_t r, uint8_t v)
 }
 
 
-int MAX7219Drv::setOffset(unsigned off)
+int MAX7219Drv::setPos(uint8_t x, uint8_t y)
 {
-	if (off >= 8)
+	log_dbug(TAG,"setPos(%u,%u)",(unsigned)x,(unsigned)y);
+	if (y > 0)
 		return -1;
-	m_at = off;
+	if (x >= sizeof(m_digits))
+		return -1;
+	m_at = x;
 	return 0;
 }
 
 
-int MAX7219Drv::write(uint8_t v, int off)
+int MAX7219Drv::write(uint8_t v)
 {
-	if (off < 0)
-		off = m_at;
-	if (off >= m_ndigits)
-		return 1;
-	log_dbug(TAG,"write(0x%x,%d)",v,off);
-	if (v != m_digits[off]) {
-		m_digits[off] = v;
-		setreg(8-off,v);
+	log_dbug(TAG,"write(0x%x), at %u",v,m_at);
+	if (v != m_digits[m_at]) {
+		m_digits[m_at] = v;
+		setreg(8-m_at,v);
 	}
 	++m_at;
+	if (m_at == sizeof(m_digits))
+		m_at = 0;
 	return 0;
 }
 
 
-void MAX7219Drv::clear()
+int MAX7219Drv::clear()
 {
 	int i = 0;
 	do {
@@ -143,6 +144,7 @@ void MAX7219Drv::clear()
 		++i;
 		setreg(i,0x00);
 	} while (i < 8);
+	return 0;
 }
 
 

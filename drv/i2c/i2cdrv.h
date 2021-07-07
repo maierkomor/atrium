@@ -24,20 +24,20 @@
 #ifdef __cplusplus
 class JsonObject;
 
-class I2CSensor
+class I2CDevice
 {
 	public:
 	virtual void attach(class JsonObject *);
 
 	virtual const char *drvName() const
-	{ return "I2CSensor"; }
+	{ return "I2CDevice"; }
 
 	void setName(const char *n);
 
-	static I2CSensor *getFirst()
+	static I2CDevice *getFirst()
 	{ return m_first; }
 
-	I2CSensor *getNext() const
+	I2CDevice *getNext() const
 	{ return m_next; }
 
 	const char *getName() const
@@ -55,16 +55,16 @@ class I2CSensor
 	static bool hasInstance(const char *);
 
 	protected:
-	I2CSensor(uint8_t bus, uint8_t addr, const char *name);
-	virtual ~I2CSensor() = default;
+	I2CDevice(uint8_t bus, uint8_t addr, const char *name);
+	virtual ~I2CDevice() = default;
 
 	static void updateNames(const char *);
 	void updateName();
 
-	I2CSensor *m_next;
+	I2CDevice *m_next;
 	uint8_t m_bus, m_addr;
 	char m_name[14] = {0};
-	static I2CSensor *m_first;
+	static I2CDevice *m_first;
 };
 
 

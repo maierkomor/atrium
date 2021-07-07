@@ -147,9 +147,14 @@ void JsonObject::append(JsonElement *e)
 JsonElement *JsonObject::get(const char *n) const
 {
 	for (JsonElement *e : m_childs) {
-		if (0 == strcmp(e->name(),n))
-			return e;
-		if (JsonObject *o = e->toObject()) {
+		if (0 == strcmp(e->name(),n)) {
+			if (JsonNumber *n = e->toNumber()) {
+				if (!isnan(n->get()))
+					return e;
+			} else {
+				return e;
+			}
+		} else if (JsonObject *o = e->toObject()) {
 			if (JsonElement *c = o->get(n))
 				return c;
 		}

@@ -22,8 +22,8 @@
 
 #include "actions.h"
 #include "event.h"
-#include "binformats.h"
 #include "globals.h"
+#include "hwcfg.h"
 #include "i2cdrv.h"
 #include "log.h"
 #include "shell.h"
@@ -46,7 +46,7 @@ int i2c_setup(void)
 				log_warn(TAG,"error %d",r);
 		}
 	}
-	I2CSensor *d = I2CSensor::getFirst();
+	I2CDevice *d = I2CDevice::getFirst();
 	while (d) {
 		JsonObject *r = RTData;
 		JsonObject *o = new JsonObject(d->getName());
@@ -62,7 +62,7 @@ int i2c(Terminal &term, int argc, const char *args[])
 {
 	if (argc != 1)
 		return arg_invnum(term);;
-	I2CSensor *s = I2CSensor::getFirst();
+	I2CDevice *s = I2CDevice::getFirst();
 	term.println("bus addr  name");
 	while (s) {
 		term.printf("%3d   %02x  %s\n",s->getBus(),s->getAddr(),s->getName());

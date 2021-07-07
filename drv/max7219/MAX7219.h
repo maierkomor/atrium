@@ -33,21 +33,22 @@ class MAX7219Drv : public LedCluster
 	public:
 	static MAX7219Drv *create(gpio_num_t clk, gpio_num_t dout, gpio_num_t cs, bool odrain);
 
-	void clear();
+	int clear();
 	uint8_t getDim() const
 	{ return m_intensity; }
 	uint8_t maxDim() const
 	{ return UINT8_MAX; }
 	void setDigits(uint8_t);
 	int setDim(uint8_t);
-	int setOffset(unsigned);
 	int setOn(bool);
 	int setNumDigits(unsigned);
-	int setPos(unsigned x, unsigned y);
-	int write(uint8_t v, int off = -1);
-//	int write(uint8_t *d, unsigned n, int off = -1);
+	int setPos(uint8_t x, uint8_t y) override;
+	int write(uint8_t v) override;
 	void setDecoding(uint8_t);
 	void displayTest(bool);
+
+	const char *drvName() const override
+	{ return "max7219"; }
 
 	private:
 	MAX7219Drv(gpio_num_t clk, gpio_num_t dout, gpio_num_t cs);

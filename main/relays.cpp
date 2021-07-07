@@ -20,9 +20,9 @@
 
 #ifdef CONFIG_RELAY
 
-#include "binformats.h"
 #include "cyclic.h"
 #include "globals.h"
+#include "hwcfg.h"
 #include "ujson.h"
 #include "log.h"
 #include "mqtt.h"
@@ -115,14 +115,20 @@ int relay_setup()
 		log_warn(TAG,"already initialized");
 		return 0;
 	}
-	for (const auto &c : HWConf.relay()) {
-		if (!c.has_gpio() || !c.has_name())
+	for (auto &c : *HWConf.mutable_relay()) {
+		if (!c.has_gpio())
 			continue;
 		int8_t gpio = c.gpio();
 		if (gpio < 0)
 			continue;
 		unsigned itv = c.min_itv();
 		const char *n = c.name().c_str();
+		if (*n == 0) {
+			char name[12];
+			sprintf(name,"relay@%d",(int)gpio);
+			c.set_name(name);
+			n = c.name().c_str();
+		}
 		uint8_t cfg = (uint8_t)c.config();
 #ifdef CONFIG_MQTT
 		if (cfg & rc_mqtt) {

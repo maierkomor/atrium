@@ -16,8 +16,9 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "binformats.h"
-#include "strstream.h"
+#include "hwcfg.h"
+#include "swcfg.h"
+//#include "strstream.h"
 #include "version.h"
 
 #if defined __MINGW32__ || defined __MINGW64__
@@ -34,11 +35,12 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <estring.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
 #include <set>
+#include <string>
+#include <sstream>
 #include <utility>
 
 using namespace std;
@@ -331,26 +333,32 @@ int check_ident(const char *id)
 }
 
 
+int check_gpio(int gpio, set<int8_t> &gpios)
+{
+	if ((gpio >= 0) && !gpios.insert(gpio).second) {
+		printf("duplicate use of gpio %d\n",gpio);
+		return 1;
+	}
+	return 0;
+}
+
+
 int verify_hw()
 {
 	int ret = 0;
 	set<int8_t> gpios;
 	int n = 0;
 	for (auto c: HwCfg.uart()) {
-		if (c.has_tx_gpio() && !gpios.insert(c.tx_gpio()).second) {
-			printf("duplicate use of gpio %d\n",c.tx_gpio());
+		if (c.has_tx_gpio() && check_gpio(c.tx_gpio(),gpios)) {
 			ret = 1;
 		}
-		if (c.has_rx_gpio() && !gpios.insert(c.rx_gpio()).second) {
-			printf("duplicate use of gpio %d\n",c.rx_gpio());
+		if (c.has_rx_gpio() && check_gpio(c.rx_gpio(),gpios)) {
 			ret = 1;
 		}
-		if (c.has_cts_gpio() && !gpios.insert(c.cts_gpio()).second) {
-			printf("duplicate use of gpio %d\n",c.cts_gpio());
+		if (c.has_cts_gpio() && check_gpio(c.cts_gpio(),gpios)) {
 			ret = 1;
 		}
-		if (c.has_rts_gpio() && !gpios.insert(c.rts_gpio()).second) {
-			printf("duplicate use of gpio %d\n",c.rts_gpio());
+		if (c.has_rts_gpio() && check_gpio(c.rts_gpio(),gpios)) {
 			ret = 1;
 		}
 	}
@@ -364,7 +372,7 @@ int verify_hw()
 		} else if (gpio == -1) {
 			printf("gpio config #%d has no gpio\n",n);
 			ret = 1;
-		} else if (!gpios.insert(gpio).second) {
+		} else if (check_gpio(gpio,gpios)) {
 			printf("gpio %d: duplicate use in relay #%d\n",gpio,n);
 			ret = 1;
 		}
@@ -381,7 +389,7 @@ int verify_hw()
 		} else if (gpio == -1) {
 			printf("relay #%d has no gpio\n",n);
 			ret = 1;
-		} else if (!gpios.insert(gpio).second) {
+		} else if (check_gpio(gpio,gpios)) {
 			printf("gpio %d: duplicate use in relay #%d\n",gpio,n);
 			ret = 1;
 		}
@@ -398,7 +406,7 @@ int verify_hw()
 		} else if (gpio == -1) {
 			printf("led config #%d has no gpio\n",n);
 			ret = 1;
-		} else if (!gpios.insert(gpio).second) {
+		} else if (check_gpio(gpio,gpios)) {
 			printf("gpio %d: duplicate use in led config #%d\n",gpio,n);
 			ret = 1;
 		}
@@ -417,8 +425,7 @@ int verify_hw()
 		if (gpio == -1) {
 			printf("button #%d has no gpio\n",n);
 			ret = 1;
-		} else if (!gpios.insert(gpio).second) {
-			printf("gpio %d: duplicate use in button #%d\n",gpio,n);
+		} else if (check_gpio(gpio,gpios)) {
 			ret = 1;
 		}
 		++n;
@@ -428,16 +435,13 @@ int verify_hw()
 		int8_t clk = c.clk();
 		int8_t dout = c.dout();
 		int8_t cs = c.cs();
-		if ((clk != -1) && !gpios.insert(clk).second) {
-			printf("gpio %d: duplicate use in max7129\n",clk);
+		if (check_gpio(clk,gpios)) {
 			ret = 1;
 		}
-		if ((cs != -1) && !gpios.insert(clk).second) {
-			printf("gpio %d: duplicate use in max7129\n",cs);
+		if (check_gpio(clk,gpios)) {
 			ret = 1;
 		}
-		if ((dout != -1) && !gpios.insert(clk).second) {
-			printf("gpio %d: duplicate use in max7129\n",dout);
+		if (check_gpio(clk,gpios)) {
 			ret = 1;
 		}
 		auto digits = c.digits();
@@ -456,20 +460,16 @@ int verify_hw()
 		int8_t sclk = c.sclk();
 		int8_t xlat = c.xlat();
 		int8_t blank = c.blank();
-		if ((sin != -1) && !gpios.insert(sin).second) {
-			printf("gpio %d: duplicate use in tlc5947\n",sin);
+		if (check_gpio(sin,gpios)) {
 			ret = 1;
 		}
-		if ((sclk != -1) && !gpios.insert(sclk).second) {
-			printf("gpio %d: duplicate use in tlc5947\n",sclk);
+		if (check_gpio(sclk,gpios)) {
 			ret = 1;
 		}
-		if ((xlat != -1) && !gpios.insert(xlat).second) {
-			printf("gpio %d: duplicate use in tlc5947\n",xlat);
+		if (check_gpio(xlat,gpios)) {
 			ret = 1;
 		}
-		if ((blank != -1) && !gpios.insert(blank).second) {
-			printf("gpio %d: duplicate use in tlc5947\n",blank);
+		if (check_gpio(blank,gpios)) {
 			ret = 1;
 		}
 		auto ntlc = c.ntlc();
@@ -485,8 +485,7 @@ int verify_hw()
 	if (HwCfg.has_ws2812b()) {
 		const Ws2812bConfig &c = HwCfg.ws2812b();
 		int8_t gpio = c.gpio();
-		if ((gpio != -1) && !gpios.insert(gpio).second) {
-			printf("gpio %d: duplicate use in ws2812b\n",gpio);
+		if (check_gpio(gpio,gpios)) {
 			ret = 1;
 		}
 		auto nleds = c.nleds();
@@ -501,13 +500,11 @@ int verify_hw()
 	}
 	for (const I2CConfig &c : HwCfg.i2c()) {
 		int8_t sda = c.sda();
-		if ((sda != -1) && !gpios.insert(sda).second) {
-			printf("gpio %d: duplicate use in i2c\n",sda);
+		if (check_gpio(sda,gpios)) {
 			ret = 1;
 		}
 		int8_t scl = c.sda();
-		if ((scl != -1) && !gpios.insert(scl).second) {
-			printf("gpio %d: duplicate use in i2c\n",scl);
+		if (check_gpio(scl,gpios)) {
 			ret = 1;
 		}
 		if ((sda != -1) && (scl != -1)) {
@@ -522,8 +519,7 @@ int verify_hw()
 	if (HwCfg.has_dht()) {
 		const DhtConfig &c = HwCfg.dht();
 		int8_t gpio = c.gpio();
-		if ((gpio != -1) && !gpios.insert(gpio).second) {
-			printf("gpio %d: duplicate use in dht\n",gpio);
+		if (check_gpio(gpio,gpios)) {
 			ret = 1;
 		}
 		dht_model_t m = c.model();
@@ -536,16 +532,22 @@ int verify_hw()
 			ret = 1;
 		}
 	}
-	if (HwCfg.has_hcsr04()) {
-		const HcSr04Config &c = HwCfg.hcsr04();
+	for (const auto &c : HwCfg.hcsr04()) {
 		int8_t trigger = c.trigger();
 		int8_t echo = c.echo();
-		if ((trigger != -1) && (echo != -1)) {
-			// config OK
+		if ((trigger != -1) && (echo != -1) && (echo != trigger)) {
+			if (check_gpio(trigger,gpios)) {
+				ret = 1;
+			} else if (check_gpio(echo,gpios)) {
+				ret = 1;
+			} else {
+				// config OK
+			}
 		} else if ((trigger == -1) && (echo == -1)) {
 			// config empty
+		} else {
+			printf("invalid hcsr04 config with echo %d and trigger %d",echo,trigger);
 		}
-
 	}
 	return ret;
 }
@@ -613,12 +615,12 @@ int to_sw(const char *arg)
 
 int show_config(const char *arg)
 {
-	estring s;
-	strstream ss(s);
+	stringstream ss;
 	if (Software)
 		NodeCfg.toASCII(ss);
 	else
 		HwCfg.toASCII(ss);
+	string s = ss.str();
 	write(STDOUT_FILENO,s.data(),s.size());
 	write(STDOUT_FILENO,"\n",1);
 	return 0;
@@ -627,12 +629,12 @@ int show_config(const char *arg)
 
 int json_config(const char *arg)
 {
-	estring s;
-	strstream ss(s);
+	stringstream ss;
 	if (Software)
 		NodeCfg.toJSON(ss);
 	else
 		HwCfg.toJSON(ss);
+	string s = ss.str();
 	write(STDOUT_FILENO,s.data(),s.size());
 	write(STDOUT_FILENO,"\n",1);
 	return 0;
@@ -675,7 +677,7 @@ int genpart(const char *pname)
 	const char header[] = "key,type,encoding,value\ncfg,namespace,,\n";
 	char *csvfile = 0, *swfile = 0, *hwfile = 0, *buf = 0, *cmd = 0;
 	int r = 1, hwfd, swfd, fd, n;
-	estring sws, hws;
+	string sws, hws;
 
 	if (0 == IdfPath) {
 		printf("error: IDF_PATH is not set\n");

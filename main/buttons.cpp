@@ -21,7 +21,7 @@
 #ifdef CONFIG_BUTTON
 
 #include "actions.h"
-#include "binformats.h"
+#include "hwcfg.h"
 #include "button.h"
 #include "event.h"
 #include "globals.h"
@@ -55,11 +55,19 @@ int button_setup()
 		log_warn(TAG,"already initialized");
 		return 1;
 	}
-	for (const auto &c : HWConf.button()) {
+	for (auto &c : *HWConf.mutable_button()) {
 		if (!c.has_name() || !c.has_gpio())
 			continue;
-		const char *n = c.name().c_str();
 		int8_t gpio = c.gpio();
+		if (gpio < 0)
+			continue;
+		const char *n = c.name().c_str();
+		if (*n == 0) {
+			char name[12];
+			sprintf(name,"button@%u",gpio);
+			c.set_name(name);
+			n = c.name().c_str();
+		}
 		bool al = c.presslvl();
 		gpio_pull_mode_t pullmode = GPIO_FLOATING;
 		if (c.pull_mode() == pull_up) 

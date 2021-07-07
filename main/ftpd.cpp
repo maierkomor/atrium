@@ -26,7 +26,6 @@
 #define USE_FOPEN
 #endif
 
-#include "binformats.h"
 #include "globals.h"
 #include "inetd.h"
 #include "log.h"
@@ -34,6 +33,7 @@
 #include "settings.h"
 #include "shell.h"
 #include "support.h"
+#include "swcfg.h"
 #include "tcp_terminal.h"
 #include "wifi.h"
 

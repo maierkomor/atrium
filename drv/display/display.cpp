@@ -21,7 +21,6 @@
 
 
 static const char TAG[] = "disp";
-SegmentDisplay *SegmentDisplay::Instance = 0;
 
 
 static const uint8_t Circle[] = {
@@ -66,7 +65,7 @@ static const uint16_t DecTable14[] = {
 	0b11100110,		// 4
 	0b11101101,		// 5
 	0b00011111101,		// 6
-	0b110000000001,		// 7
+	0b1010000000001,	// 7
 	0b11111111,		// 8
 	0b11101111,		// 9
 };
@@ -129,15 +128,31 @@ static const uint8_t Circle14[] = {
 };
 
 
+TextDisplay *TextDisplay::Instance = 0;
+
+
+void TextDisplay::initOK()
+{
+	if (Instance) {
+		TextDisplay *i = Instance;
+		while (i->m_next)
+			i = i->m_next;
+		i->m_next = this;
+	} else {
+		Instance = this;
+	}
+}
+
+
 SegmentDisplay::SegmentDisplay(LedCluster *l, addrmode_t m, uint8_t maxx, uint8_t maxy)
 : m_drv(l)
 , m_addrmode(m)
 , m_maxx(maxx)
 , m_maxy(maxy)
 {
-	m_next = Instance;
-	Instance = this;
 	l->setNumDigits((maxx+1)*(maxy+1));
+	initOK();
+	log_dbug(TAG,"segment display on %s",l->drvName());
 }
 
 
@@ -146,6 +161,10 @@ uint16_t SegmentDisplay::char2seg7(char c)
 	uint16_t v;
 	if ((c >= '0') && (c <= '9'))
 		v = HexTable7[c-'0'];
+	else if ((c >= 'a') && (c <= 'f'))
+		v = HexTable7[c-'a'+10];
+	else if ((c >= 'A') && (c <= 'F'))
+		v = HexTable7[c-'A'+10];
 	else if ((c > 0) && (c < 8))
 		v = (1 << c);
 	else switch (c) {
@@ -244,13 +263,35 @@ uint16_t SegmentDisplay::char2seg14(char c)
 }
 
 
+bool SegmentDisplay::hasChar(char c) const
+{
+	if (e_seg7) {
+		if (char2seg7(c))
+			return true;
+		if (c == ' ')
+			return true;
+		if (c == '.')
+			return true;
+	} else if (e_seg14) {
+		if (char2seg14(c))
+			return true;
+		if (c == ' ')
+			return true;
+		if (c == '.')
+			return true;
+	}
+	return false;
+}
+
+
 int SegmentDisplay::setPos(uint8_t x, uint8_t y)
 {
 	log_dbug(TAG,"setPos(%u,%u)",x,y);
-	if ((x >= m_maxx) || (y >= m_maxy))
-		return 1;
-	m_pos = y * m_maxx + x;
-	return m_drv->setOffset(m_pos);
+//	if ((x >= m_maxx) || (y >= m_maxy))
+//		return 1;
+//	m_pos = y * m_maxx + x;
+//	return m_drv->setOffset(m_pos);
+	return m_drv->setPos(x,y);
 }
 
 
@@ -276,11 +317,13 @@ int SegmentDisplay::writeHex(uint8_t v, bool comma)
 		if (m_drv->write(b&0xff))
 			return 1;
 		return m_drv->write(b>>8);
+	} else if (m_addrmode == e_seg7) {
+		uint8_t x = HexTable7[v];
+		if (comma)
+			x |= 0x80;
+		return m_drv->write(x);
 	}
-	uint8_t x = HexTable7[v];
-	if (comma)
-		x |= 0x80;
-	return m_drv->write(x);
+	return -1;
 }
 
 
@@ -294,6 +337,10 @@ int SegmentDisplay::writeChar(char c, bool comma)
 		++y;
 		if (y > m_maxy)
 			y = 0;
+		return setPos(0,y);
+	}
+	if (c == '\r') {
+		uint16_t y = m_pos / m_maxy;
 		return setPos(0,y);
 	}
 	if (m_addrmode == e_seg14) {
@@ -324,24 +371,27 @@ int SegmentDisplay::writeChar(char c, bool comma)
 				if (comma)
 					d |= 0x80;
 				return writeBin(d);
-			} else
+			} else {
+				log_dbug(TAG,"char '%c' not found",c);
 				return 1;
+			}
 		}
 		return 0;
 	}
 	return 1;
 }
 
-int SegmentDisplay::write(const char *s)
+int SegmentDisplay::write(const char *s, int n)
 {
 	log_dbug(TAG,"write('%s')",s);
-	while (*s) {
+	while (*s && (n != 0)) {
 		bool comma = s[1] == '.';
 		if (writeChar(*s,comma))
 			return 1;
 		if (comma)
 			++s;
 		++s;
+		--n;
 	}
 	return 0;
 }

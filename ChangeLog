@@ -1,3 +1,15 @@
+R2106:
+======
+- added support for SSD1306 OLEDs
+- added optimized fonts for paged OLEDs
+- auto naming for more devices
+- added HDC1000 support
+- added APDS-9930 support
+- added support for LCDs based on HD44780U with PCF8574 interface
+- support for multiple named HC-SR04 with env support
+- WFC files are now pre-generated (feature-enhanced, non-public WFC)
+- fix: crash on MQTT server resetting connection
+
 R2105:
 ======
 - added event accounting

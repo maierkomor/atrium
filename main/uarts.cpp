@@ -19,10 +19,11 @@
 
 #include <sdkconfig.h>
 
-#include "binformats.h"
 #include "globals.h"
+#include "hwcfg.h"
 #include "log.h"
 #include "shell.h"
+#include "swcfg.h"
 #include "uarts.h"
 #include "uart_terminal.h"
 
@@ -126,13 +127,12 @@ void uart_setup()
 		bzero(&uc,sizeof(uc));
 		uc.baud_rate = c.has_baudrate() ? c.baudrate() : 115200;
 		if (c.has_config()) {
-			uint16_t config = c.config();
-			uc.data_bits = (uart_word_length_t) (config & 3);
-			uc.stop_bits = (uart_stop_bits_t) ((config >> 2) & 3);
-			uc.parity = (uart_parity_t) ((config >> 6) & 0xf);
-			uc.flow_ctrl = (uart_hw_flowcontrol_t) ((config >> 4) & 3);
+			uc.data_bits = (uart_word_length_t) c.config_wl();
+			uc.stop_bits = (uart_stop_bits_t) c.config_sb();
+			uc.parity = (uart_parity_t) c.config_p();
+			uc.flow_ctrl = (uart_hw_flowcontrol_t) ((c.config_cts()<<1)|c.config_rts());
 #ifdef CONFIG_IDF_TARGET_ESP32
-			uc.use_ref_tick = (config >> 10) & 1;
+			uc.use_ref_tick = c.config_ref_tick();
 #endif
 		} else {
 			// default: 8N1

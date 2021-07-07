@@ -17,11 +17,12 @@
  */
 
 
-#include "binformats.h"
 #include "globals.h"
+#include "hwcfg.h"
 #include "ujson.h"
 #include "log.h"
 #include "profiling.h"
+#include "swcfg.h"
 
 #include <esp_system.h>
 #include <esp_timer.h>

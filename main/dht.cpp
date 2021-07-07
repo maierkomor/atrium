@@ -21,10 +21,10 @@
 #ifdef CONFIG_DHT
 
 #include "actions.h"
-#include "binformats.h"
 #include "dht.h"
 #include "dhtdrv.h"
 #include "globals.h"
+#include "hwcfg.h"
 #include "influx.h"
 #include "ujson.h"
 #include "log.h"

@@ -18,15 +18,13 @@
 
 #include <sdkconfig.h>
 
-#if defined CONFIG_I2C && defined CONFIG_LEDDISP
+#if defined CONFIG_HT16K33
 
 #include "ht16k33.h"
 #include "i2cdrv.h"
 #include "log.h"
 
-#include <freertos/FreeRTOS.h>
-#include <freertos/task.h>
-#include <strings.h>
+#include <string.h>
 
 
 #define CMD_SYSTEM	0x20
@@ -39,6 +37,7 @@
 #define CMD_DISP_2HZ	0x83
 #define CMD_DISP_1HZ	0x85
 #define CMD_DISP_05HZ	0x87
+#define CMD_RDINTR	0x60
 
 #define CMD_DIM		0xe0
 
@@ -55,10 +54,14 @@ unsigned HT16K33::create(uint8_t bus)
 {
 	unsigned r = 0;
 	for (uint8_t a = DEV_ADDR_MIN; a < DEV_ADDR_MAX; a += 2) {
+		// a BMP280 may be misrecognized as HT16K33 with this
+		// init code. Don't know how to fix this. This happens
+		// if the BMP280 is booted with SDA tied low. So the
+		// easy workaround is to tie SDA high.
 		uint8_t cmd[] = { a , CMD_SYS_ON };
 		if (i2c_write(bus,cmd,sizeof(cmd),true,true))
 			continue;
-		log_dbug(TAG,"found");
+		log_info(TAG,"found");
 		HT16K33 *dev = new HT16K33(bus,a);
 		dev->init();
 		++r;
@@ -85,47 +88,69 @@ const char *HT16K33::drvName() const
 int HT16K33::setOffset(unsigned pos)
 {
 	log_dbug(TAG,"setOff(%u)",pos);
-	if (pos > 15)
+	if (pos >= m_digits)
 		return 1;;
 	m_pos = pos;
 	return 0;
 }
 
 
-void HT16K33::clear()
+int HT16K33::clear()
 {
-	uint8_t data[18];
-	bzero(data,sizeof(data));
+	uint8_t data[18] = { 0 };
 	data[0] = m_addr;
 	i2c_write(m_bus,data,sizeof(data),true,true);
 	m_pos = 0;
-}
-
-
-int HT16K33::write(uint8_t v, int off)
-{
-	log_dbug(TAG,"write(%x,%d)",v,off);
-	if (off < 0)
-		off = m_pos;
-	uint8_t data[] = { m_addr , (uint8_t)(off&0xf), v };
-	if (i2c_write(m_bus,data,sizeof(data),true,true))
-		return -1;
-	m_pos = (off + 1) & 0xf;
+	bzero(m_data,sizeof(m_data));
 	return 0;
 }
 
 
-int HT16K33::write(uint8_t *v, unsigned n, int off)
+int HT16K33::setPos(uint8_t x, uint8_t y)
 {
-	log_dbug(TAG,"write(%x...,%d)",*v,off);
-	if (off < 0)
-		off = m_pos;
-	uint8_t data[] = { m_addr , (uint8_t)(off&0xf) };
-	if (i2c_write(m_bus,data,sizeof(data),false,true))
-		return -1;
-	if (i2c_write(m_bus,v,n,true,false))
-		return -1;
-	m_pos = (off + n) & 0xf;
+	m_pos = x;
+	if ((x >= m_digits) || (y != 0))
+		return 1;
+	return 0;
+}
+
+
+int HT16K33::write(uint8_t v)
+{
+	log_dbug(TAG,"write(%x)",v);
+	if (m_pos >= m_digits)
+		return 1;
+	uint8_t off = m_pos;
+	if (m_data[off] != v) {
+		uint8_t data[] = { m_addr, (uint8_t)off, v };
+		if (i2c_write(m_bus,data,sizeof(data),true,true))
+			return -1;
+		m_data[off] = v;
+	}
+	++off;
+	m_pos = off;
+	return 0;
+}
+
+
+int HT16K33::write(uint8_t *v, unsigned n)
+{
+	log_dbug(TAG,"write(%x...)",*v);
+	if (m_pos >= m_digits)
+		return 1;
+	uint8_t off = m_pos;
+	if (n + off >= m_digits)
+		n = m_digits - off;
+	if (0 != memcmp(m_data+off,v,n)) {
+		uint8_t data[] = { m_addr , (uint8_t)off };
+		if (i2c_write(m_bus,data,sizeof(data),false,true))
+			return -1;
+		if (i2c_write(m_bus,v,n,true,false))
+			return -1;
+		memcpy(m_data+off,v,n);
+	}
+	off += n;
+	m_pos = off;
 	return 0;
 }
 
@@ -144,29 +169,16 @@ int HT16K33::setBlink(uint8_t blink)
 }
 
 
-uint8_t HT16K33::getDim() const
-{
-	return m_dim;
-}
-
-
-int HT16K33::setDim(uint8_t dim)
-{
-	if (dim > 15)
-		return 1;
-	uint8_t cmd[] = { m_addr, (uint8_t)(CMD_DIM | dim) };
-	if (i2c_write(m_bus,cmd,sizeof(cmd),true,true))
-		return -1;
-	m_dim = dim;
-	return 0;
-}
-
-
 int HT16K33::setNumDigits(unsigned n)
 {
-	if (n > 16)
-		return -1;
-	return 0;
+	if (n <= sizeof(m_data)) {
+		uint8_t cmd[] = { m_addr, (uint8_t)(CMD_DIM | (n-1)) };
+		if (0 == i2c_write(m_bus,cmd,sizeof(cmd),true,true)) {
+			m_digits = n;
+			return 0;
+		}
+	}
+	return -1;
 }
 
 

@@ -1,0 +1,334 @@
+/*
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
+ *  Atrium Firmware Package for ESP
+ *
+ *  This program is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+option author="Thomas Maier-Komor";
+option copyright="2018-2021";
+
+option common {
+	id0=true;
+	wfclib=extern;
+}
+
+option pc : common {
+	toSink="";
+	toASCII=toASCII;
+	optimize=speed;
+	header="pcconfig.h";
+	header="support.h";
+	enumnames=true;
+	enummap=true;
+}
+
+option esp : common {
+	withEqual=true;
+	toString="";
+	toSink="";
+	toWire="";
+	toASCII=toASCII;
+	intsize=32;
+	varintbits=32;
+	header="estring.h";
+	header=<sdkconfig.h>;
+	header="stream.h";
+	header="support.h";
+	streamtype=stream;
+	stringtype=estring;
+	bytestype=estring;
+	enumnames=true;
+}
+
+option esp32 : esp {
+	optimize=speed;
+	endian=little;		// not for esp8266, does not allow unaligned access
+	withUnequal=true;
+}
+
+option esp8266 : esp {
+	ssize_t=_ssize_t;
+	optimize=size;
+	withUnequal=false;
+}
+
+enum rstrsn_t {
+	unknown = 0;
+	powerup = 1;
+	external = 2;
+	software = 3;
+	panic = 4;
+	internal_wdt = 5;
+	task_wdt = 6;
+	watchdog = 7;
+	deepsleep = 8;
+	brownout = 9;
+	sdio = 10;
+	option toString=strReset;
+}
+
+
+message WifiConfig
+{
+	string ssid = 1			[ unset = "" ];
+	string pass = 2			[ unset = "" ];
+	bytes mac = 3;
+	required bool activate = 4	[ unset = false ];
+	fixed32 addr4 = 5		[ to_ascii=ip4_to_ascii, to_json=ip4_to_ascii, parse_ascii=parse_ipv4 ];
+	fixed8 netmask4 = 6;
+	fixed32 gateway4 = 7		[ to_ascii=ip4_to_ascii, to_json=ip4_to_ascii, parse_ascii=parse_ipv4 ];
+}
+
+
+message MQTT
+{
+	string uri = 1			[ unset = "" ];
+	bool enable = 2			[ unset = false ];
+	string username = 3		[ unset = "" ];
+	string password = 4		[ unset = "" ];
+	repeated string subscribtions = 5;	// qos0 subscribptions
+}
+
+
+message Date
+{
+	fixed8 day = 1		[ unset = 0 ];
+	fixed8 month = 2	[ unset = 0 ];
+	fixed16 year = 3	[ unset = 0 ];
+	fixed8 endday = 4	[ unset = 0 ];
+	fixed8 endmonth = 5	[ unset = 0 ];
+	fixed8 endyear = 6	[ unset = 0 ];
+}
+
+
+enum WeekDay 
+{ 
+	Sunday = 0; 
+	Monday = 1; 
+	Tuesday = 2; 
+	Wednesday = 3; 
+	Thursday = 4;
+	Friday = 5;
+	Saturday = 6;
+	WorkDay = 7;
+	WeekEnd = 8;
+	EveryDay = 9;
+	Holiday = 10;
+}
+
+
+message AtAction
+{
+	optional WeekDay day = 1;
+	unsigned min_of_day = 2		[ to_json = min_of_day_to_ascii ];
+	string action = 3;
+	required bool enable = 4        [ default = true ];
+}
+
+
+message Influx
+{
+	string hostname = 1	[ unset = "" ];
+	fixed16 port = 2	[ unset = 0 ];
+	string measurement = 3	[ unset = "" ];
+	unsigned interval = 4	[ default = 60000, usage = obsolete ];
+	string database = 5	[ unset = "" ];		// not for UDP
+}
+
+enum uart_wl_t
+{
+	uart_wl_5 = 0;
+	uart_wl_6 = 1;
+	uart_wl_7 = 2;
+	uart_wl_8 = 3;
+}
+
+enum uart_sb_t
+{
+	uart_sb_none = 0;
+	uart_sb_1 = 1;
+	uart_sb_1_5 = 2;
+	uart_sb_2 = 3;
+}
+
+enum uart_p_t
+{
+	uart_p_n = 0;
+	uart_p_e = 2;
+	uart_p_o = 3;
+}
+
+
+bitset uartcfg_t
+{
+	uart_wl_t wl : 0..1;
+	uart_sb_t sb : 2..3;
+	bool rts : 4;
+	bool cts : 5;
+	uart_p_t p : 6..7;
+	// bit8,9: reserved for future uart_parity_t extension
+	bool ref_tick : 10;
+	// bit11-15: reserved
+}
+
+
+message UartSettings
+{
+	uint8 port = 1;
+	unsigned baudrate = 2;
+	uartcfg_t config = 3		[ encoding = fixed16 ];
+	fixed8 rx_thresh = 4		[ unset = 0 ];
+	unsigned tx_bufsize = 6;
+	unsigned rx_bufsize = 7;
+}
+
+
+message FtpHttpConfig
+{
+	fixed16 port = 1	[ default = 80 ];
+	bool start = 2		[ default = true ];
+	string root = 3		[ unset = "" ];
+	string uploaddir = 4	[ unset = "" ];
+}
+
+
+message TerminalConfig
+{
+	// set rx and tx to define a terminal for shell command 'con'
+	// set rx only to define a UART monitor that forwards to syslg
+	sint8 uart_rx = 1	[ unset = -1 ];
+	sint8 uart_tx = 2	[ unset = -1 ];
+	string name = 3;
+}
+
+
+message Trigger
+{
+	string event = 1;
+	repeated string action = 2;
+}
+
+
+message AppParam
+{
+	string key = 1;
+	unsigned uValue = 2;
+	string sValue = 3;
+	signed dValue = 4;
+	double fValue = 5;
+}
+
+
+message EventTimer
+{
+	string name = 1		[ unset = "" ];
+	unsigned time = 2;	// in msec
+	// bit0: repeat, bit1: autostart
+	unsigned config = 3	[ unset = 0 ];
+}
+
+
+message FunctionConfig
+{
+	string name = 1;
+	string func = 2;
+	repeated string params = 3;
+}
+
+
+enum sigtype_t
+{
+	st_invalid = 0;
+	st_int = 1;
+	st_float = 2;
+	st_string = 3;
+}
+
+
+message SignalConfig
+{
+	string name = 1		[ unset = "" ];
+	sigtype_t type = 2	[ unset = st_invalid ];
+	string iv = 3		[ unset = "" ];
+	// TODO
+	//bool persistent = 4	[ unset = false ];	// store every update to NVS
+}
+
+
+message OwDeviceConfig
+{
+	fixed64 id = 1		[ to_ascii = id64_to_ascii ];
+	string name = 2;
+}
+
+
+message NodeConfig
+{
+	fixed32 magic = 0;	// should always be set to 0xAE54EDC0
+	string nodename = 1		[ unset = "" ];
+	bytes pass_hash = 2;
+	unsigned cpu_freq = 3;
+	WifiConfig station = 4;
+	WifiConfig softap = 5;
+	string dns_server = 6		[ unset = "" ];
+	string syslog_host = 7		[ unset = "" ];
+	string sntp_server = 8		[ unset = "" ];
+	string timezone = 9		[ unset = "" ];
+	MQTT mqtt = 10			[ ifdef=CONFIG_MQTT ];
+	fixed16 dmesg_size = 11	[ default = 1024 ];
+	Influx influx = 12		[ ifdef=CONFIG_INFLUX ];
+	unsigned station2ap_time = 13;	// failover time from station to ap mode [s]
+	string domainname = 15		[ unset = "" ];
+
+	// action timers
+	repeated Date holidays = 16;
+	repeated AtAction at_actions = 17;
+	// bit0: enable, bit1: enable factory_reset
+	unsigned actions_enable = 18	[ default = 1 ];
+	repeated Trigger triggers = 19;
+
+	repeated UartSettings uart = 20;
+	repeated TerminalConfig terminal = 21;
+
+	// set udp_ctrl_port to 0 to disable this feature
+	fixed16 udp_ctrl_port = 22	[ default = 12719 ];
+
+	repeated string debugs = 23;
+
+	// TODO
+	FtpHttpConfig ftpd = 24			[ ifdef=CONFIG_FTP ];
+	FtpHttpConfig httpd = 25;
+
+	// event timer/timefuse
+	repeated EventTimer timefuses = 30;
+	repeated SignalConfig signals = 31	[ ifdef=CONFIG_SIGNAL_PROC ];
+	repeated FunctionConfig functions = 32	[ ifdef=CONFIG_SIGNAL_PROC ];
+
+	// relay control (e.g. s20)
+	unsigned max_on_time = 34	[ unset = 0, usage=deprecated ];	// in minutes
+
+	// application: light sensor controlled LED
+	unsigned threshold_off = 35;
+	unsigned threshold_on = 36;
+	unsigned dim_step = 37;		// ms per 1% step
+	bool lightctrl = 38;		// true=auto, false=manual
+	unsigned pwm_freq = 39;		// base PWM frequenzy in Hz - shared for all channels
+
+	repeated AppParam app_params = 40	[ ifdef=CONFIG_SIGNAL_PROC ];
+
+	repeated OwDeviceConfig owdevices = 50	[ ifdef=CONFIG_ONEWIRE ];
+}
+
+

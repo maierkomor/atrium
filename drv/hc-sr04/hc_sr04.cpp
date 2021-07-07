@@ -16,49 +16,69 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <sdkconfig.h>
+
+#ifdef CONFIG_HCSR04
+
 #include "hc_sr04.h"
 
 #include "log.h"
+#include "ujson.h"
 
 #include <esp_timer.h>
-#include <freertos/FreeRTOS.h>
-#include <freertos/queue.h>
-#include <freertos/semphr.h>
-#include <freertos/task.h>
 #include <rom/gpio.h>
 
 
 static const char TAG[] = "hc_sr04";
-static SemaphoreHandle_t Sem = 0;
 
+HC_SR04 *HC_SR04::First = 0;
 
-int HC_SR04::init(unsigned trigger,unsigned echo)
+HC_SR04::HC_SR04(gpio_num_t trigger, gpio_num_t echo)
+: m_dist(new JsonNumber("distance","mm"))
+, m_trigger(trigger)
+, m_echo(echo)
 {
-	if (trigger == echo)
-		return -1;
+	gpio_set_level(m_trigger,1);
+}
+
+
+HC_SR04 *HC_SR04::create(int8_t trigger,int8_t echo)
+{
+	if ((trigger == echo) || (trigger < 0) || (echo < 0))
+		return 0;
 	gpio_pad_select_gpio(trigger);
 	gpio_pad_select_gpio(echo);
 	if (esp_err_t e = gpio_set_direction((gpio_num_t)trigger,GPIO_MODE_OUTPUT)) {
-		log_error(TAG,"unable to set GPIO %u as output: %s",trigger,esp_err_to_name(e));
-		return -2;
+		log_warn(TAG,"GPIO %u output: %s",trigger,esp_err_to_name(e));
+		return 0;
 	}
 	if (esp_err_t e = gpio_set_direction((gpio_num_t)echo,GPIO_MODE_INPUT)) {
-		log_error(TAG,"unable to set GPIO %d as input: %s",trigger,esp_err_to_name(e));
-		return -3;
+		log_warn(TAG,"GPIO %d input: %s",trigger,esp_err_to_name(e));
+		return 0;
 	}
 	if (esp_err_t e = gpio_set_intr_type((gpio_num_t)echo,GPIO_INTR_ANYEDGE)) {
-		log_error(TAG,"error setting interrupt type to anyadge on gpio %d: %s",echo,esp_err_to_name(e));
-		return -4;
+		log_warn(TAG,"interrupt type on gpio %d: %s",echo,esp_err_to_name(e));
+		return 0;
 	}
-	if (esp_err_t e = gpio_isr_handler_add((gpio_num_t)echo,hc_sr04_isr,this)) {
-		log_error(TAG,"registering isr handler returned %s",esp_err_to_name(e));
-		return -5;
+	HC_SR04 *inst = new HC_SR04((gpio_num_t)trigger,(gpio_num_t)echo);
+	if (esp_err_t e = gpio_isr_handler_add((gpio_num_t)echo,hc_sr04_isr,inst)) {
+		log_warn(TAG,"isr handler %s",esp_err_to_name(e));
+		delete inst;
+		return 0;
 	}
-	if (Sem == 0)
-		Sem = xSemaphoreCreateBinary();
-	m_trigger = (gpio_num_t)trigger;
-	m_echo = (gpio_num_t)echo;
-	gpio_set_level(m_trigger,1);
+	inst->m_next = First;
+	First = inst;
+	return inst;
+}
+
+
+int HC_SR04::attach(JsonObject *root)
+{
+	char name[16];
+	sprintf(name,"hc-sr04@%u,%u",m_trigger,m_echo);
+	JsonObject *o = new JsonObject(name);
+	o->append(m_dist);
+	root->append(o);
 	return 0;
 }
 
@@ -71,36 +91,19 @@ void HC_SR04::hc_sr04_isr(void *arg)
 		o->m_start = now;
 	} else {
 		int64_t dt = now - o->m_start;
-		if (dt < 0) {
-			o->m_delta = 0;
-		} else if (dt > UINT32_MAX) {
-			o->m_delta = UINT32_MAX;
-		} else {
-			o->m_delta = dt;
-		}
-		BaseType_t task = pdFALSE;
-		xSemaphoreGiveFromISR(Sem,&task);
-		if (task == pdTRUE)
-			taskYIELD();
+		if (dt < 0)
+			o->m_dist->set(NAN);
+		else
+			o->m_dist->set((float)dt/58.2);
 	}
 }
 
 
-int HC_SR04::measure(unsigned *distance)
+void HC_SR04::trigger()
 {
 	gpio_set_level(m_trigger,0);
-	BaseType_t r = xSemaphoreTake(Sem,50/portTICK_PERIOD_MS);
 	gpio_set_level(m_trigger,1);
-	if (pdTRUE == r) {
-		if (m_delta == 0)
-			log_error(TAG,"negative time");
-		else if (m_delta == UINT32_MAX)
-			log_error(TAG,"saturated");
-		*distance = (unsigned) ((float)m_delta/58.2);
-		return 0;
-	}
-	log_warn(TAG,"timeout");
-	return -1;
 }
 
 
+#endif

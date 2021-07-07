@@ -34,14 +34,15 @@
 #include <driver/gpio.h>
 
 #include "actions.h"
-#include "binformats.h"
 #include "cyclic.h"
 #include "event.h"
 #include "globals.h"
 #include "dimmer.h"
+#include "hwcfg.h"
 #include "log.h"
 #include "shell.h"
 #include "support.h"
+#include "swcfg.h"
 #include "terminal.h"
 #include "ujson.h"
 

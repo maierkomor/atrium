@@ -82,6 +82,7 @@ struct SubTaskCmp
 
 static SubTask *SubTasks;
 static SemaphoreHandle_t Lock;
+static uint64_t TimeSpent = 0;
 
 
 int cyclic_add_task(const char *name, unsigned (*loop)(void*), void *arg, unsigned initdelay)
@@ -133,6 +134,7 @@ unsigned cyclic_execute()
 {
 	xSemaphoreTake(Lock,portMAX_DELAY);
 	int64_t start = esp_timer_get_time();
+	TimeSpent -= start;
 	unsigned delay = 100;
 	SubTask *t = SubTasks;
 	while (t) {
@@ -154,6 +156,8 @@ unsigned cyclic_execute()
 		}
 		t = t->next;
 	}
+	int64_t end = esp_timer_get_time();
+	TimeSpent += end;
 	xSemaphoreGive(Lock);
 	return delay;
 }
@@ -163,6 +167,16 @@ void cyclic_setup()
 {
 	Lock = xSemaphoreCreateMutex();
 	// cyclic_execute is called from the inted
+}
+
+
+uint64_t cyclic_time()
+{
+	uint64_t r;
+	xSemaphoreTake(Lock,portMAX_DELAY);
+	r = TimeSpent;
+	xSemaphoreGive(Lock);
+	return r;
 }
 
 

@@ -23,10 +23,10 @@
 #ifdef ESP8266
 #error no touchpad hardware on esp8266
 #endif
-#include "binformats.h"
 #include "dataflow.h"
 #include "event.h"
 #include "globals.h"
+#include "hwcfg.h"
 #include "log.h"
 #include "terminal.h"
 #include "touchpads.h"

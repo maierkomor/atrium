@@ -19,14 +19,15 @@
 #include <sdkconfig.h>
 
 #include "actions.h"
-#include "binformats.h"
 #include "console.h"
+#include "cyclic.h"
 #include "dataflow.h"
 #include "dht.h"
 #include "event.h"
 #include "fs.h"
 #include "func.h"
 #include "globals.h"
+#include "hwcfg.h"
 #include "log.h"
 #include "ota.h"
 #include "memfiles.h"
@@ -37,6 +38,7 @@
 #include "shell.h"
 #include "status.h"
 #include "support.h"
+#include "swcfg.h"
 #include "terminal.h"
 #include "timefuse.h"
 #include "ujson.h"
@@ -242,6 +244,12 @@ static void print_ip(Terminal &t, uint32_t ip, const char *pfx = "")
 }
 
 
+static void print_mac(Terminal &t, const char *i, uint8_t mac[])
+{
+	t.printf("%s mac:%02x:%02x:%02x:%02x:%02x:%02x\n",i,mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
+}
+
+
 static int get_ip(const char *str, uint8_t *ip)
 {
 	unsigned a[5];
@@ -301,10 +309,17 @@ static int event(Terminal &t, int argc, const char *args[])
 					time /= 1000;
 					++s;
 				}
-				t.printf("%s (%ux, %lu%cs) =>\n",name,event_occur(e),(long)time,*s);
+				t.printf("%s (%ux, %lu%cs) =>\n",name,event_occur(e),(unsigned long)time,*s);
 				for (auto a : event_callbacks(e)) 
 					t.printf("\t%s\n",a->name);
 			}
+			uint64_t ct = cyclic_time();
+			const char *p = "num kM";
+			while (ct > 30000) {
+				ct /= 1000;
+				++p;
+			}
+			t.printf("subtasks (%lu%cs)\n",(unsigned long)ct,*p);
 		} else {
 			return arg_invalid(t,args[1]);
 		}
@@ -801,9 +816,9 @@ int mac(Terminal &term, int argc, const char *args[])
 	} else if (argc == 2) {
 		if (!strcmp("-l",args[1])) {
 			if (ESP_OK == esp_wifi_get_mac(WIFI_IF_AP,mac))
-				term.printf("softap mac:   %02x:%02x:%02x:%02x:%02x:%02x\n",mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
+				print_mac(term,"softap",mac);
 			if (ESP_OK == esp_wifi_get_mac(WIFI_IF_STA,mac))
-				term.printf("station mac:  %02x:%02x:%02x:%02x:%02x:%02x\n",mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
+				print_mac(term,"station",mac);
 			return 0;
 		}
 	}
@@ -821,10 +836,8 @@ int mac(Terminal &term, int argc, const char *args[])
 		if (6 != sscanf(args[2],"%x:%x:%x:%x:%x:%x",inp+0,inp+1,inp+2,inp+3,inp+4,inp+5))
 			return arg_invalid(term,args[2]);
 		for (int i = 0; i < 6; ++i) {
-			if (inp[i] > 0xff) {
-				term.printf("mac element %d out of range\n",i);
-				return 1;
-			}
+			if (inp[i] > 0xff)
+				return arg_invalid(term,args[2]);
 			mac[i] = inp[i];
 		}
 		wifi_interface_t w;
@@ -1034,6 +1047,27 @@ static bool parse_bool(int argc, const char *args[], int a, bool d)
 }
 
 
+static const char *ms_to_timestr(char *buf, unsigned long ms)
+{
+	unsigned h,m,s;
+	h = ms / (60UL*60UL*1000UL);
+	ms -= h * (60UL*60UL*1000UL);
+	m = ms / (60*1000);
+	ms -= m * (60*1000);
+	s = ms / 1000;
+	ms -= s * 1000;
+	if (h)
+		sprintf(buf,"%u:%02u:%02u.%03lu h",h,m,s,ms);
+	else if (m)
+		sprintf(buf,"%u:%02u.%03lu m",m,s,ms);
+	else if (s)
+		sprintf(buf,"%u.%03lu s",s,ms);
+	else
+		sprintf(buf,"%lu ms",ms);
+	return buf;
+}
+
+
 static int timefuse(Terminal &term, int argc, const char *args[])
 {
 	if (argc == 1)
@@ -1044,10 +1078,11 @@ static int timefuse(Terminal &term, int argc, const char *args[])
 			// active timers cannot be queried for repeat!
 			term.printf("%-16s %9s active\n","name","interval");
 			while (t) {
+				char buf[20];
 				int on = timefuse_active(t);
-				term.printf("%-16s %9u %-7s\n"
+				term.printf("%-16s %-16s %-7s\n"
 						,timefuse_name(t)
-						,timefuse_interval_get(t)
+						,ms_to_timestr(buf,timefuse_interval_get(t))
 						,on==0?"false":on==1?"true":"unknown");
 				t = timefuse_next(t);
 			}
@@ -1108,16 +1143,31 @@ static int timefuse(Terminal &term, int argc, const char *args[])
 		return arg_invalid(term,args[2]);
 	}
 	char *e;
-	long l = strtol(args[3],&e,0);
-	if (*e != 0)
+	long ms = strtol(args[3],&e,10);
+	if ((e == args[3]) || (ms <= 0))
 		return arg_invalid(term,args[3]);
+	if (*e == ' ')
+		++e;
+	switch (*e) {
+	default:
+		return arg_invalid(term,args[3]);
+	case 'h':
+		ms *= 60;
+		// FALLTHRU!
+	case 'm':
+		ms *= 60;
+		// FALLTHRU!
+	case 's':
+		ms *= 1000;
+	case 0:;
+	}
 	if (!strcmp("-i",args[1]))
-		return timefuse_interval_set(args[2],l);
+		return timefuse_interval_set(args[2],ms);
 	if (strcmp("-c",args[1]))
 		return arg_invalid(term,args[1]);
 	EventTimer *t = Config.add_timefuses();
 	t->set_name(args[2]);
-	t->set_time(l);
+	t->set_time(ms);
 	unsigned config = 0;
 	if (argc >= 5)
 		config |= parse_bool(argc,args,4,false);
@@ -1125,7 +1175,7 @@ static int timefuse(Terminal &term, int argc, const char *args[])
 		config |= parse_bool(argc,args,5,false) << 1;
 	if (config)
 		t->set_config(config);
-	timefuse_t r = timefuse_create(t->name().c_str(),l,config&1);
+	timefuse_t r = timefuse_create(t->name().c_str(),ms,config&1);
 	if ((r != 0) && (config & 2))
 		timefuse_start(r);
 	return (r == 0);
@@ -2106,7 +2156,7 @@ ExeName ExeNames[] = {
 #ifdef CONFIG_FATFS
 	{"mv",1,shell_mv,"move/rename file",0},
 #endif
-	{"nodename",0,hostname,"get or set hostname of this device/node",0},
+	{"nodename",0,hostname,"get or set hostname",0},
 #ifdef CONFIG_NIGHTSKY
 	{"ns",0,nightsky,"nightsky operation",0},
 #endif
@@ -2122,7 +2172,7 @@ ExeName ExeNames[] = {
 	//{"process",1,process,"define and modify processing objects",0},
 	{"reboot",1,shell_reboot,"reboot system",0},
 #ifdef CONFIG_RELAY
-	{"relay",0,relay,"relay status and operation",relay_man},
+	{"relay",0,relay,"relay status/operation",relay_man},
 #endif
 #ifdef HAVE_FS
 	{"rm",1,shell_rm,"remove file",0},
@@ -2148,7 +2198,7 @@ ExeName ExeNames[] = {
 	{"status",1,status,"status LED",status_man},
 #endif
 	{"su",0,su,"set user privilege level",su_man},
-	{"subtasks",0,subtasks,"list statistics of cyclic subtasks",0},
+	{"subtasks",0,subtasks,"statistics of cyclic subtasks",0},
 	{"timer",1,timefuse,"create timer",timer_man},
 	{"timezone",1,timezone,"set time zone for NTP (offset to GMT or 'CET')",0},
 #ifdef HAVE_FS
@@ -2164,7 +2214,7 @@ ExeName ExeNames[] = {
 	{"update",1,update,"OTA download procedure",update_man},
 #endif
 	{"uptime",0,getuptime,"time system is up and running",0},
-	{"version",0,version,"version description",0},
+	{"version",0,version,"version information",0},
 	{"webdata",0,print_data,"data provided to webpages",0},
 	{"wifi",1,wifi,"wifi station/AP mode",wifi_man},
 #ifdef CONFIG_WPS
@@ -2240,7 +2290,7 @@ int shellexe(Terminal &term, const char *cmd)
 		}
 		++n;
 		if (n == sizeof(args)/sizeof(args[0])) {
-			term.printf("too many arguments\n");
+			term.println("too many arguments");
 			return 1;
 		}
 	} while (at && *at);
@@ -2273,9 +2323,9 @@ void shell(Terminal &term, bool prompt)
 		if ((r == 4) && !memcmp(com,"exit",4))
 			break;
 		if (shellexe(term,com))
-			term.printf("\nError.\n");
+			term.println("\nError.");
 		else
-			term.printf("\nOK.\n");
+			term.println("\nOK.");
 		if (prompt)
 			term.write("> ",2);
 		r = term.readInput(com,sizeof(com)-1,true);

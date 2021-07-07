@@ -17,6 +17,9 @@
  */
 
 #include "ledcluster.h"
+#include "log.h"
+
+static const char TAG[] = "ledc";
 
 LedCluster *LedCluster::Instance = 0;
 
@@ -27,15 +30,16 @@ LedCluster::LedCluster()
 }
 
 
-int LedCluster::write(uint8_t d, int off)
+int LedCluster::write(uint8_t d)
 {
 	return -1;
 }
 
-int LedCluster::write(uint8_t *d, unsigned n, int off)
+int LedCluster::write(uint8_t *d, unsigned n)
 {
-	if (off >= 0)
-		setOffset(off);
+	log_dbug(TAG,"write(*,%u)",n);
+//	if (off >= 0)
+//		setOffset(off);
 	while (n) {
 		if (write(*d))
 			return 1;

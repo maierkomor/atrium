@@ -19,15 +19,16 @@
 #include <sdkconfig.h>
 
 #include "actions.h"
-#include "binformats.h"
 #include "event.h"
 #include "globals.h"
+#include "hwcfg.h"
 #include "log.h"
 #include "mqtt.h"
 #include "netsvc.h"
 #include "settings.h"
 #include "status.h"
 #include "support.h"
+#include "swcfg.h"
 #include "wifi.h"
 
 #include <esp_err.h>

@@ -24,28 +24,23 @@
 class LedCluster
 {
 	public:
-	// off single LED offset
-//	virtual int write1(bool v, int off = -1) = 0;
-
-	// off = address of 8-bit segment
-	virtual int write(uint8_t v, int off = -1);
-	virtual int write(uint8_t *d, unsigned n, int off = -1);
+	virtual int write(uint8_t v);
+	virtual int write(uint8_t *d, unsigned n);
 	
-	// off = address of 16-bit segment
-//	virtual int write16(uint16_t v, int off = -1) = 0;
-
 	virtual uint8_t maxDim() const;
 	virtual uint8_t getDim() const
 	{ return 0; }
 	virtual int setOn(bool);
 	virtual int setDim(uint8_t)
 	{ return -1; }
-	virtual int setOffset(unsigned)
+	virtual int setPos(uint8_t x, uint8_t y)
 	{ return -1; }
-	virtual void clear()
-	{ }
+	virtual int clear()
+	{ return -1; }
 	virtual int setNumDigits(unsigned)
 	{ return -1; }
+	virtual const char *drvName() const
+	{ return ""; }
 
 	static LedCluster *getInstance()
 	{ return Instance; }

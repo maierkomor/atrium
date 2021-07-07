@@ -25,14 +25,14 @@
 class JsonNumber;
 
 
-struct BMP280 : public I2CSensor
+struct BMP280 : public I2CDevice
 {
 	BMP280(uint8_t port, uint8_t addr)
-	: I2CSensor(port,addr,drvName())
+	: I2CDevice(port,addr,drvName())
 	{ }
 
 	BMP280(uint8_t port, uint8_t addr, const char *n)
-	: I2CSensor(port,addr,n)
+	: I2CDevice(port,addr,n)
 	{ }
 
 	const char *drvName() const
@@ -87,10 +87,10 @@ struct BME280 : public BMP280
 };
 
 
-struct BME680 : public I2CSensor
+struct BME680 : public I2CDevice
 {
 	BME680(uint8_t port, uint8_t addr)
-	: I2CSensor(port,addr,drvName())
+	: I2CDevice(port,addr,drvName())
 	{ }
 
 	const char *drvName() const

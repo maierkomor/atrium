@@ -78,13 +78,13 @@ event_t event_register(const char *cat, const char *type)
 		name = concat(cat,type);
 	}
 	if (0 == strchr(name,'`'))
-		log_warn(TAG,"event name '%s' does not match convention",name);
+		log_warn(TAG,"event '%s' missing `",name);
 	Lock lock(Mtx);
 	size_t n = EventHandlers.size();
 	// event_t 0: name: empty string; invalid event, catched in this loop
 	for (size_t i = 0; i < n; ++i) {
 		if (!strcmp(name,EventHandlers[i].name)) {
-			log_warn(TAG,"event %s is already registered",name);
+			log_warn(TAG,"duplicate event %s",name);
 			if (name != cat)
 				free((void*)name);
 			return (event_t) i;
@@ -122,7 +122,7 @@ int event_callback(event_t e, Action *a)
 		return 0;
 	}
 	xSemaphoreGive(Mtx);
-	log_error(TAG,"cannot register callback on event %u: event out of range",e);
+	log_warn(TAG,"callback event %u: out of range",e);
 	return 1;
 }
 
@@ -130,13 +130,9 @@ int event_callback(event_t e, Action *a)
 int event_callback(const char *event, const char *action)
 {
 	event_t e = event_id(event);
-	if (e == 0) {
-		log_warn(TAG,"event_callback('%s',%s'): unknown event",event,action);
-		return 1;
-	}
 	Action *a = action_get(action);
-	if (a == 0) {
-		log_warn(TAG,"event_callback('%s',%s'): unknown action",event,action);
+	if ((a == 0) || (e == 0)) {
+		log_warn(TAG,"event_callback('%s',%s'): invalid arg",event,action);
 		return 2;
 	}
 	return event_callback(e,a);
@@ -164,7 +160,7 @@ int event_detach(event_t e, Action *a)
 			err = "action not found";
 		}
 	}
-	log_error(TAG,"cannot detach from event %u: %s",e,err);
+	log_error(TAG,"detach event %u: %s",e,err);
 	return 1;
 }
 
@@ -172,13 +168,9 @@ int event_detach(event_t e, Action *a)
 int event_detach(const char *event, const char *action)
 {
 	event_t e = event_id(event);
-	if (e == 0) {
-		log_warn(TAG,"event_detach('%s',%s'): unknown event",event,action);
-		return 1;
-	}
 	Action *a = action_get(action);
-	if (a == 0) {
-		log_warn(TAG,"event_detach('%s',%s'): unknown action",event,action);
+	if ((e == 0) || (a == 0)) {
+		log_warn(TAG,"event_detach('%s',%s'): invalid arg",event,action);
 		return 2;
 	}
 	return event_detach(e,a);
@@ -206,7 +198,7 @@ const char *event_name(event_t e)
 		if (e < EventHandlers.size())
 			return EventHandlers[e].name;
 	}
-	log_dbug(TAG,"invalid event id %d",e);
+	log_dbug(TAG,"invalid event %d",e);
 	return 0;
 }
 
@@ -214,11 +206,11 @@ const char *event_name(event_t e)
 void event_trigger(event_t id)
 {
 	if (id == 0) {
-		log_warn(TAG,"triggered null event");
+		log_warn(TAG,"trigger(0)");
 		return;
 	}
 	struct Event e = {id,0};
-	log_dbug(TAG,"trigger event %d",id);
+	log_dbug(TAG,"trigger %d",id);
 	BaseType_t r = xQueueSend(EventsQ,&e,1000);
 	if (r != pdTRUE)
 		++Lost;
@@ -237,11 +229,11 @@ void event_trigger_nd(event_t id)	// no-debug version for syslog only
 void event_trigger_arg(event_t id, void *arg)
 {
 	if (id == 0) {
-		log_warn(TAG,"triggered null event");
+		log_warn(TAG,"trigger_arg(0)");
 		return;
 	}
 	struct Event e = {id,arg};
-	log_dbug(TAG,"trigger event %d",id);
+	log_dbug(TAG,"trigger %d",id);
 	BaseType_t r = xQueueSend(EventsQ,&e,1000);
 	if (r != pdTRUE)
 		++Lost;
@@ -288,7 +280,7 @@ static void event_task(void *)
 			int64_t end = esp_timer_get_time();
 			h.time += end-start;
 		} else {
-			log_error(TAG,"invalid/unknown event_t %u",e);
+			log_error(TAG,"invalid event %u",e);
 		}
 	}
 }
@@ -301,7 +293,7 @@ int event_setup(void)
 	Mtx = xSemaphoreCreateMutex();
 	BaseType_t r = xTaskCreatePinnedToCore(&event_task, "events", 4096, (void*)0, 14, NULL, 1);
 	if (r != pdPASS) {
-		log_error(TAG,"task creation failed: freertos error %d",r);
+		log_error(TAG,"create task: %d",r);
 		return 1;
 	}
 	return 0;

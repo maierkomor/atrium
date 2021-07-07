@@ -18,13 +18,13 @@
 
 #include <sdkconfig.h>
 
-#ifdef CONFIG_CLOCK
+#ifdef CONFIG_DISPLAY
 
 #include "actions.h"
-#include "binformats.h"
 #include "cyclic.h"
 #include "display.h"
 #include "globals.h"
+#include "hwcfg.h"
 #include "log.h"
 #include "timefuse.h"
 #include "ujson.h"
@@ -38,6 +38,7 @@
 #include <time.h>
 
 typedef enum clockmode {
+	cm_version,
 	cm_time,
 	cm_date,
 	cm_stopwatch,
@@ -47,6 +48,8 @@ typedef enum clockmode {
 	cm_gasr,
 	cm_co2,
 	cm_tvoc,
+	cm_lux,
+	cm_prox,
 	cm_display_bin,	// display something - e.g. alarm set value, binary data
 	cm_display_dec,	// display something - e.g. alarm set value, decimal data
 	CLOCK_MODE_MAX,
@@ -55,7 +58,7 @@ typedef enum clockmode {
 
 struct Clock
 {
-	SegmentDisplay *disp;
+	TextDisplay *disp;
 	uint32_t sw_start = 0, sw_delta = 0, sw_pause = 0;
 	uint8_t digits, display[8];
 	uint32_t modestart = 0;
@@ -66,9 +69,10 @@ struct Clock
 	void display_date();
 	void display_data();
 	void display_sw();
-	void clearscr();
+	void display_version();
 };
 
+extern const char Version[];
 
 static const char TAG[] = "clock";
 static Clock *ctx = 0;
@@ -110,17 +114,24 @@ static void switch_mode(void *arg)
 {
 	Clock *ctx = (Clock *)arg;
 	ctx->mode = (clockmode_t)((int)ctx->mode + 1);
+	log_dbug(TAG,"set mode %d",ctx->mode);
 	if (ctx->mode == cm_temperature) {
 		if (0 == RTData->get("temperature"))
 			ctx->mode = (clockmode_t)((int)ctx->mode + 1);
+		else
+			log_dbug(TAG,"no temperature");
 	}
 	if (ctx->mode == cm_humidity) {
 		if (0 == RTData->get("humidity"))
 			ctx->mode = (clockmode_t)((int)ctx->mode + 1);
+		else
+			log_dbug(TAG,"no humidity");
 	}
 	if (ctx->mode == cm_pressure) {
 		if (0 == RTData->get("pressure"))
 			ctx->mode = (clockmode_t)((int)ctx->mode + 1);
+		else
+			log_dbug(TAG,"no pressure");
 	}
 	if (ctx->mode == cm_gasr) {
 		if (0 == RTData->get("gasresistance"))
@@ -134,8 +145,17 @@ static void switch_mode(void *arg)
 		if (0 == RTData->get("TVOC"))
 			ctx->mode = (clockmode_t)((int)ctx->mode + 1);
 	}
+	if (ctx->mode == cm_lux) {
+		if (0 == RTData->get("lux"))
+			ctx->mode = (clockmode_t)((int)ctx->mode + 1);
+	}
+	if (ctx->mode == cm_prox) {
+		if (0 == RTData->get("prox"))
+			ctx->mode = (clockmode_t)((int)ctx->mode + 1);
+	}
 	if (ctx->mode >= cm_display_bin)
 		ctx->mode = cm_time;
+	log_dbug(TAG,"use mode %d",ctx->mode);
 	ctx->modestart = uptime();
 	ctx->modech = true;
 }
@@ -157,9 +177,10 @@ static void time_mode(void *arg)
 }
 
 
+/*
 static void bright_dec(void *arg)
 {
-	SegmentDisplay *disp = (SegmentDisplay *)arg;
+	TextDisplay *disp = (TextDisplay *)arg;
 	uint8_t dim = disp->getDim();
 	if (dim != 0)
 		disp->setDim(dim-1);
@@ -168,11 +189,12 @@ static void bright_dec(void *arg)
 
 static void bright_inc(void *arg)
 {
-	SegmentDisplay *disp = (SegmentDisplay *)arg;
+	TextDisplay *disp = (TextDisplay *)arg;
 	uint8_t dim = disp->getDim();
 	if (dim != disp->maxDim())
 		disp->setDim(dim+1);
 }
+*/
 
 
 static void shutdown(void *arg)
@@ -193,21 +215,26 @@ void Clock::display_time()
 	uint8_t h=0,m=0,s=0;
 	unsigned y=0;
 	get_time_of_day(&h,&m,&s,0,0,0,&y);
-	disp->setPos(0,0);
+	bool colon = disp->hasChar(':');
 	if (y < 2000) {
-		disp->write("--.--.--");
+		if (colon)
+			disp->write("--:--:--");
+		else
+			disp->write("--.--.--");
 		return;
 	}
 	disp->writeHex(h/10);
-	disp->writeHex(h%10,true);
+	disp->writeHex(h%10,!colon);
+	if (colon)
+		disp->write(":");
 	disp->writeHex(m/10);
-	disp->writeHex(m%10,digits>=6?true:false);
-	if (digits >= 6) {
+	disp->writeHex(m%10,digits>=6?!colon:false);
+	if ((colon && (digits >= 8)) || (digits >= 6)) {
+		if (colon)
+			disp->write(":");
 		disp->writeHex(s/10);
 		disp->writeHex(s%10);
 	}
-	if (digits >= 8)
-		disp->write("  ");
 }
 
 
@@ -216,7 +243,6 @@ void Clock::display_date()
 	uint8_t wd=0,day=0,mon=0;
 	unsigned year=0;
 	get_time_of_day(0,0,0,&wd,&day,&mon,&year);
-	disp->setPos(0,0);
 	if (year < 2000) {
 		disp->write("--.--.----");
 		return;
@@ -237,8 +263,51 @@ void Clock::display_date()
 }
 
 
+void Clock::display_version()
+{
+	if (DotMatrix *dm = disp->toDotMatrix()) {
+		dm->drawRect(0,0,dm->maxX(),dm->maxY());
+		dm->setXY(3,1);
+		dm->setFont(10);
+		dm->write("Atrium");
+		dm->setFont(8);
+		dm->setXY(4,23);
+		const char *sp = strchr(Version,' ');
+		dm->write(Version,sp-Version);
+		if (dm->maxY() >= 48) {
+			dm->setXY(3,48);
+			dm->setFont(5);
+			dm->write("(C) 2021, T. Maier-Komor");
+		}
+		return;
+	}
+	const char *sp = strchr(Version,' ');
+	disp->setPos(0,0);
+	unsigned cpl = disp->charsPerLine();
+	unsigned nl = disp->numLines();
+	if (disp->hasAlpha() && (cpl > 6) && (nl > 1)) {
+		disp->write("Atrium ");
+		if (cpl < 12)
+			disp->setPos(0,1);
+		disp->write(Version,sp-Version);
+		if (cpl < 12)
+			return;
+		disp->setPos(0,1);
+		if (cpl >= 20)
+			disp->write("(C) 2021 Maier-Komor");
+		else
+			disp->write("(C) Maier-Komor");
+		if (nl > 2)
+			disp->write(sp+1);
+	} else {
+		disp->write(Version+1,sp-Version-1);
+	}
+}
+
+
 void Clock::display_sw()
 {
+	bool colon = disp->hasChar(':');
 	uint32_t dt;
 	if (sw_pause) {
 		dt = sw_pause;
@@ -260,9 +329,13 @@ void Clock::display_sw()
 	uint8_t s = dt;
 	if (digits >= 8) {
 		disp->writeHex(h/10);
-		disp->writeHex(h%10,true);
+		disp->writeHex(h%10,!colon);
+		if (colon)
+			disp->write(":");
 		disp->writeHex(m/10);
-		disp->writeHex(m%10,true);
+		disp->writeHex(m%10,!colon);
+		if (colon)
+			disp->write(":");
 		disp->writeHex(s/10);
 		disp->writeHex(s%10,true);
 		disp->writeHex(dsec);
@@ -310,55 +383,81 @@ void Clock::display_data()
 }
 
 
-void Clock::clearscr()
-{
-	disp->clear();
-}
-
-
 static unsigned clock_iter(void *arg)
 {
 	bool alpha = ctx->disp->hasAlpha();
 	Clock *ctx = (Clock *)arg;
 	if (ctx->modech) {
 		ctx->disp->clear();
-		ctx->disp->setPos(0,0);
 		ctx->modech = false;
 		if (alpha) {
+			const char *text = 0;
+			uint8_t nextFont = 2;
 			switch (ctx->mode) {
 			case cm_display_bin:
 			case cm_display_dec:
 				break;
 			case cm_time:
-				ctx->disp->write("time");
+				text = "time of day";
+				nextFont = 4;
 				break;
 			case cm_date:
-				ctx->disp->write("date");
+				text = "date";
+				break;
+			case cm_version:
+				ctx->display_version();
 				break;
 			case cm_temperature:
-				ctx->disp->write("temp");
+				text = "temperature";
 				break;
 			case cm_humidity:
-				ctx->disp->write("humid");
+				text = "humidity";
 				break;
 			case cm_pressure:
-				ctx->disp->write("pres");
+				text = "pressure";
 				break;
 			case cm_gasr:
-				ctx->disp->write("gas-R");
+				text = "gas-R";
 				break;
 			case cm_co2:
-				ctx->disp->write("CO2");
+				text = "CO2";
 				break;
 			case cm_tvoc:
-				ctx->disp->write("TVOC");
+				text = "TVOC";
+				break;
+			case cm_lux:
+				text = "lux";
+				break;
+			case cm_prox:
+				text = "proximity";
 				break;
 			case cm_stopwatch:
-				ctx->disp->write("stop");
+				text = "stop-watch";
+				nextFont = 4;
 				break;
 			default:
 				abort();
 			}
+			if (text) {
+				log_dbug(TAG,"mode %s",text);
+				DotMatrix *dm = ctx->disp->toDotMatrix();
+				if (dm) {
+					dm->setFont(5);
+					dm->setXY(3,3);
+				} else {
+					ctx->disp->setPos(0,0);
+				}
+				ctx->disp->write(text);
+				if (dm) {
+					dm->setFont(nextFont);
+					dm->setXY(3,12);
+				}
+			}
+			if (ctx->disp->numLines() > 1) {
+				ctx->disp->setPos(0,1);
+				ctx->modestart -= 1000;
+			}
+			ctx->disp->sync();
 			return 50;
 		}
 	}
@@ -366,7 +465,9 @@ static unsigned clock_iter(void *arg)
 	if (alpha && (now - ctx->modestart < 800))
 		return 50;
 	unsigned d = 100;
-	ctx->disp->setPos(0,0);
+//	ctx->disp->setPos(0,ctx->disp->numLines() > 1 ? 1 : 0);
+	ctx->disp->write("\r");
+	ctx->disp->clrEol();
 	double v;
 	const char *fmt = 0, *dim = 0;
 	switch (ctx->mode) {
@@ -384,6 +485,19 @@ static unsigned clock_iter(void *arg)
 	case cm_time:
 		ctx->display_time();
 		break;
+	case cm_version:
+		{
+			uint32_t ut = uptime();
+			time_t now;
+			time(&now);
+			if ((now > 3600*24*365*30) && (ut - ctx->modestart > 1000)) {
+				ctx->mode = cm_time;
+				ctx->modech = true;
+				return 20;
+			}
+			return 500;
+		}
+		break;
 	case cm_stopwatch:
 		if (ctx->sw_pause == 0)
 			ctx->display_sw();
@@ -392,7 +506,7 @@ static unsigned clock_iter(void *arg)
 	case cm_temperature:
 		v = RTData->get("temperature")->toNumber()->get();
 		fmt = "%4.1f";
-		dim = "#C";
+		dim = "\260C";
 		break;
 	case cm_humidity:
 		v = RTData->get("humidity")->toNumber()->get();
@@ -413,12 +527,22 @@ static unsigned clock_iter(void *arg)
 	case cm_co2:
 		v = RTData->get("CO2")->toNumber()->get();
 		fmt = "%3.0f";
-		dim = " ";
+		dim = "ppm";
 		break;
 	case cm_tvoc:
 		v = RTData->get("TVOC")->toNumber()->get();
 		fmt = "%4.0f";
-		dim = " ";
+		dim = "ppb";
+		break;
+	case cm_lux:
+		v = RTData->get("lux")->toNumber()->get();
+		fmt = "%4.0f";
+		dim = 0;
+		break;
+	case cm_prox:
+		v = RTData->get("prox")->toNumber()->get();
+		fmt = "%4.0f";
+		dim = 0;
 		break;
 	case cm_display_bin:
 	case cm_display_dec:
@@ -429,32 +553,43 @@ static unsigned clock_iter(void *arg)
 	}
 	if (fmt) {
 		if (isnan(v)) {
-			ctx->disp->write("---");
+			if (ctx->disp->hasAlpha())
+				ctx->disp->write("n/a");
+			else
+				ctx->disp->write("----");
 		} else {
 			char buf[8];
 			sprintf(buf,fmt,v);
 			ctx->disp->write(buf);
-			if (dim)
+			if (dim) {
+				if (ctx->disp->charsPerLine() > 6)
+					ctx->disp->write(" ");
 				ctx->disp->write(dim);
+			} else {
+				ctx->disp->clrEol();
+			}
 		}
 	}
+	ctx->disp->sync();
 	return d;
 }
 
 
 int clockapp_setup()
 {
-	SegmentDisplay *d = SegmentDisplay::getInstance();
+	TextDisplay *d = TextDisplay::getFirst();
 	if (d == 0)
 		return 0;
 	ctx = new Clock;
 	ctx->disp = d;
-	ctx->digits = d->maxX();
+	ctx->digits = d->charsPerLine();
+	d->setCursor(false);
+	d->setBlink(false);
 	action_add("clock!switch_mode",switch_mode,ctx,"switch to next clock mode");
 	action_add("clock!time_mode",time_mode,ctx,"switch to display time display");
 	action_add("clock!temp_mode",temp_mode,(void*)ctx,"switch to display temperature");
-	action_add("clock!bright_inc",bright_inc,(void*)d,"clock: increase brightness");
-	action_add("clock!bright_dec",bright_dec,(void*)d,"clock: decrease brightness");
+//	action_add("clock!bright_inc",bright_inc,(void*)d,"clock: increase brightness");
+//	action_add("clock!bright_dec",bright_dec,(void*)d,"clock: decrease brightness");
 	action_add("clock!off",shutdown,ctx,"clock: turn off");
 	action_add("clock!on",poweron,ctx,"clock: turn on");
 	action_add("sw!startstop",sw_startstop,ctx,"stopwatch start/stop");
@@ -462,11 +597,11 @@ int clockapp_setup()
 	action_add("sw!pause",sw_pause,ctx,"stopwatch pause/resume");
 	shutdown(ctx);
 	poweron(ctx);
-	ctx->disp->setDim(UINT8_MAX);
-	ctx->mode = cm_time;
+	d->setDim(d->maxDim());
+	ctx->mode = cm_version;
 	ctx->modech = true;
-	ctx->clearscr();
-	log_info(TAG,"got first time sample");
+	d->clear();
+	log_dbug(TAG,"start");
 	cyclic_add_task("clock", clock_iter, ctx);
 	return 0;
 }

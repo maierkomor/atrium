@@ -234,43 +234,43 @@ fi
 echo "IDF_ESP8266=$IDF_ESP8266" >> $settings
 
 
-## WFC - wire format compiler
-WFC=`which wfc`
-if [ "$?" != "0" ]; then
-	if [ -x "$installdir/wfc/bin/wfc" ]; then
-		WFC="$installdir/wfc/bin/wfc"
-	fi
-fi
-if [ "$WFC" == "" ]; then
-	if [ "1" == "$interactive" ]; then
-		echo OK to start download of WFC? Press CTRL-C to cancel.
-		read
-	else
-		echo starting download of WFC
-	fi
-	pushd $installdir
-	git clone https://github.com/maierkomor/wfc.git wfc || exit 1
-	cd wfc
-	./configure || exit 1
-	make || exit 1
-	WFC=`pwd`/bin/wfc
-	popd > /dev/null
-	echo "PATH=`basename wfc`:\$PATH" >> $settings
-fi
-if [ -x $WFC ]; then
-	WFCDIR=`dirname $WFC`/..
-	WFCDIR=`readlink -f $WFCDIR`
-else
-	echo failed to find or install WFC
-	exit 1
-fi
-	
-echo found WFC at $WFCDIR
-PATH=$PATH:$WFCDIR/bin
-
-echo "# WFC" >> $settings
-echo "WFCDIR=$WFCDIR" >> $settings
-echo "WFC=$WFC" >> $settings
+### WFC - wire format compiler
+#WFC=`which wfc`
+#if [ "$?" != "0" ]; then
+#	if [ -x "$installdir/wfc/bin/wfc" ]; then
+#		WFC="$installdir/wfc/bin/wfc"
+#	fi
+#fi
+#if [ "$WFC" == "" ]; then
+#	if [ "1" == "$interactive" ]; then
+#		echo OK to start download of WFC? Press CTRL-C to cancel.
+#		read
+#	else
+#		echo starting download of WFC
+#	fi
+#	pushd $installdir
+#	git clone https://github.com/maierkomor/wfc.git wfc || exit 1
+#	cd wfc
+#	./configure || exit 1
+#	make || exit 1
+#	WFC=`pwd`/bin/wfc
+#	popd > /dev/null
+#	echo "PATH=`basename wfc`:\$PATH" >> $settings
+#fi
+#if [ -x $WFC ]; then
+#	WFCDIR=`dirname $WFC`/..
+#	WFCDIR=`readlink -f $WFCDIR`
+#else
+#	echo failed to find or install WFC
+#	exit 1
+#fi
+#	
+#echo found WFC at $WFCDIR
+#PATH=$PATH:$WFCDIR/bin
+#
+#echo "# WFC" >> $settings
+#echo "WFCDIR=$WFCDIR" >> $settings
+#echo "WFC=$WFC" >> $settings
 
 echo "# PATH"
 echo PATH=$PATH >> $settings

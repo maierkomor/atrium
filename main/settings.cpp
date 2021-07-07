@@ -19,18 +19,19 @@
 #include <sdkconfig.h>
 
 #include "actions.h"
-#include "binformats.h"
 #include "dataflow.h"
 #include "event.h"
 #ifdef CONFIG_SIGNAL_PROC
 #include "func.h"
 #endif
 #include "globals.h"
+#include "hwcfg.h"
 #include "ujson.h"
 #include "log.h"
 #include "mqtt.h"
 #include "profiling.h"
 #include "settings.h"
+#include "swcfg.h"
 #include "syslog.h"
 #include "terminal.h"
 #include "timefuse.h"
@@ -174,16 +175,14 @@ static int set_threshold_on(Terminal &t, const char *v)
 {
 	if (v == 0) {
 		t.printf("%lu\n",Config.threshold_on());
-		return 0;
-	}
-	if (!strcmp(v,"-c")) {
+	} else if (!strcmp(v,"-c")) {
 		Config.clear_threshold_on();
-		return 0;
+	} else {
+		long l = strtol(v,0,0);
+		if ((l < 0) || (l > 1023))
+			return 1;
+		Config.set_threshold_on(l);
 	}
-	long l = strtol(v,0,0);
-	if ((l < 0) || (l > 1023))
-		return 1;
-	Config.set_threshold_on(l);
 	return 0;
 }
 
@@ -192,16 +191,14 @@ static int set_dim_step(Terminal &t, const char *v)
 {
 	if (v == 0) {
 		t.printf("%lu\n",Config.dim_step());
-		return 0;
-	}
-	if (!strcmp(v,"-c")) {
+	} else if (!strcmp(v,"-c")) {
 		Config.clear_dim_step();
-		return 0;
+	} else {
+		long l = strtol(v,0,0);
+		if ((l < 0) || (l > 1023))
+			return 1;
+		Config.set_dim_step(l);
 	}
-	long l = strtol(v,0,0);
-	if ((l < 0) || (l > 1023))
-		return 1;
-	Config.set_dim_step(l);
 	return 0;
 }
 #endif
@@ -407,7 +404,7 @@ int update_setting(Terminal &t, const char *name, const char *value)
 void list_settings(Terminal &t)
 {
 	for (size_t i = 0; SetFns[i].first; ++i)
-		t.printf("%s\n",SetFns[i].first);
+		t.println(SetFns[i].first);
 }
 
 
@@ -494,9 +491,7 @@ bool verifyPassword(const char *p)
 {
 //	TimeDelta td(__FUNCTION__);
 	if (Config.pass_hash().empty()) {
-		if (p[0] == 0)
-			return true;
-		return false;
+		return (p[0] == 0);
 	}
 	if (*p == 0)
 		return false;
@@ -548,7 +543,7 @@ static void initNodename()
 	if (ESP_OK != e)
 		e = esp_wifi_get_mac(WIFI_IF_AP,mac);
 	if (ESP_OK != e) {
-		log_warn(TAG,"unable to determine mac for setting up hostname, using random data");
+		log_warn(TAG,"no MAC address");
 		uint32_t r = esp_random();
 		mac[0] = r & 0xff;
 		mac[1] = (r >> 8) & 0xff;
@@ -562,7 +557,7 @@ static void initNodename()
 
 void cfg_init_defaults()
 {
-	log_info(TAG,"setting up default config");
+	log_info(TAG,"setting up defaults");
 	Config.clear();
 	Config.set_magic(0xae54edc0);
 	Config.set_actions_enable(true);
@@ -683,9 +678,9 @@ static int cfg_copy(const char *to, const char *from)
 	esp_err_t e = nvs_set_blob(NVS,to,buf,s);
 	free(buf);
 	if (e)
-		log_error(TAG,"cannot write %s (%u bytes): %s",to,s,esp_err_to_name(e));
+		log_error(TAG,"NVS write %s (%u bytes): %s",to,s,esp_err_to_name(e));
 	else if (esp_err_t e = nvs_commit(NVS))
-		log_error(TAG,"cannot commit %s: %s",to,esp_err_to_name(e));
+		log_error(TAG,"NVS commit %s: %s",to,esp_err_to_name(e));
 	else
 		return 0;
 	return 1;
@@ -1135,11 +1130,6 @@ void settings_setup()
 #endif
 	if (Config.actions_enable() & 0x2)
 		action_add("cfg!factory_reset",cfg_factory_reset,0,"perform a factory reset");
-#if defined HGID && defined HGREV
-	RTData->add("version",VERSION ", HgId " HGID ", Revision " HGREV);
-#else
-	RTData->add("version",VERSION);
-#endif
 	set_cfg_err(0);
 }
 

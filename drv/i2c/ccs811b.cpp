@@ -55,7 +55,7 @@ static const char TAG[] = "ccs811b";
 
 
 CCS811B::CCS811B(uint8_t bus, uint8_t addr)
-: I2CSensor(bus, addr, "ccs811b")
+: I2CDevice(bus, addr, "ccs811b")
 , m_state(st_idle)
 {
 
@@ -117,8 +117,10 @@ unsigned CCS811B::cyclic(void *arg)
 	case st_update:
 		return dev->updateHumidity();
 	case st_measure:
-		if ((dev->status() & STATUS_FLAG_READY) == 0)
-			return 20;
+		if ((dev->status() & STATUS_FLAG_READY) == 0) {
+			++dev->m_cnt;
+			return 5;
+		}
 		dev->m_state = st_read;
 		/* FALLTHRU */
 	case st_read:
@@ -137,48 +139,70 @@ unsigned CCS811B::cyclic(void *arg)
 
 unsigned CCS811B::updateHumidity()
 {
-	log_dbug(TAG,"update");
-	if (m_humid == 0)
-		if (JsonElement *e = m_root->get("humidity"))
-			m_humid = e->toNumber();
-	if (m_temp == 0)
-		if (JsonElement *e = m_root->get("termperature"))
-			m_temp = e->toNumber();
-	if ((m_humid != 0) && (m_temp != 0)) {
-		float t = m_temp->get();
-		float h = m_humid->get();
-		if (!isnan(t) && !isnan(h)) {
-			uint16_t hi = (uint16_t)rint(h * 512);
-			uint16_t ti = (uint16_t)rint((t+25) * 512);
+	float t = NAN, h = NAN;
+	if (JsonElement *he = m_root->find("humidity")) {
+		if (JsonNumber *humid = he->toNumber()) {
+			if (JsonElement *te = m_root->find("temperature")) {
+				if (JsonNumber *temp= te->toNumber()) {
+					t = temp->get();
+					if (isnan(t))
+						goto done;
+					h = humid->get();
+					if (isnan(h))
+						goto done;
+				} else {
+					goto done;
+				}
+			} else {
+				goto done;
+			}
+		} else {
+			goto done;
+		}
+	} else {
+		goto done;
+	}
+	{
+		uint16_t hi = (uint16_t)rint(h * 512);
+		uint16_t ti = (uint16_t)rint((t+25) * 512);
+		if ((hi != m_humid) || (ti != m_temp)) {
 			uint8_t cmd[] = { m_addr, REG_ENV_DATA, (uint8_t)(hi >> 8), (uint8_t)(hi & 0xff), (uint8_t)(ti >> 8), (uint8_t)(ti & 0xff) };
-			if (i2c_write(m_bus,cmd,sizeof(cmd),true,true))
+			if (i2c_write(m_bus,cmd,sizeof(cmd),true,true)) {
 				log_dbug(TAG,"error updating humidity");
-			else if (0 == error())
+			} else if ((status() & STATUS_FLAG_ERROR) == 0) {
 				log_dbug(TAG,"updated humidity");
+				m_humid = hi;
+				m_temp = ti;
+			} else  {
+				log_dbug(TAG,"humidity update error %x",error());
+			}
 		}
 	}
+done:
 	m_state = st_measure;
-	return 50;
+	return 30;
 }
 
 
 unsigned CCS811B::read()
 {
-	log_dbug(TAG,"read");
 	uint8_t data[6];
 	if (i2c_w1rd(m_bus,m_addr,REG_DATA,data,sizeof(data)))
 		return 0;
 	if ((data[4] & STATUS_FLAG_ERROR) != 0) {
 		log_dbug(TAG,"error 0x%x",data[5]);
 		return 0;
-	} if ((data[4] & STATUS_DATA_READY) == 0)
+	} if ((data[4] & STATUS_DATA_READY) == 0) {
+		++m_cnt;
 		return 10;
+	}
 	unsigned co2 = ((unsigned)data[0] << 8) | data[1];
 	unsigned tvoc = ((unsigned)data[2] << 8) | data[3];
 	m_co2->set(co2);
 	m_tvoc->set(tvoc);
-	log_dbug(TAG,"co2=%u, tvoc=%u",co2,tvoc);
+	log_dbug(TAG,"co2=%u, tvoc=%u, cnt=%u",co2,tvoc,m_cnt);
 	m_state = st_update;
+	m_cnt = 0;
 	return 950;
 }
 
@@ -192,7 +216,7 @@ uint8_t CCS811B::status()
 		if (i2c_w1rd(m_bus,m_addr,REG_ERROR,&m_err,sizeof(m_err)))
 			return 0xff;
 		log_dbug(TAG,"error %x",(unsigned)m_err);
-	} else if (s != 0x10)
+	} else if ((s & STATUS_FLAG_ERROR) == STATUS_FLAG_ERROR)
 		log_dbug(TAG,"status 0x%x",(unsigned)s);
 	return s;
 }

@@ -26,14 +26,14 @@
 class JsonNumber;
 
 
-struct SGP30 : public I2CSensor
+struct SGP30 : public I2CDevice
 {
 	explicit SGP30(uint8_t port)
-	: I2CSensor(port,SGP30_ADDR,drvName())
+	: I2CDevice(port,SGP30_ADDR,drvName())
 	{ }
 
 	SGP30(uint8_t port, uint8_t addr, const char *n)
-	: I2CSensor(port,addr,n)
+	: I2CDevice(port,addr,n)
 	{ }
 
 

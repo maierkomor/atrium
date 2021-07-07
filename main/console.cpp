@@ -29,10 +29,11 @@
 
 #include <string.h>
 
-#include "binformats.h"
 #include "globals.h"
+#include "hwcfg.h"
 #include "log.h"
 #include "shell.h"
+#include "swcfg.h"
 #include "uart_terminal.h"
 
 #if IDF_VERSION > 32 || defined CONFIG_IDF_TARGET_ESP32

@@ -24,7 +24,7 @@
 class JsonNumber;
 
 
-class CCS811B : public I2CSensor
+class CCS811B : public I2CDevice
 {
 	public:
 	CCS811B(uint8_t, uint8_t);
@@ -43,8 +43,9 @@ class CCS811B : public I2CSensor
 	unsigned read();
 
 	typedef enum { st_idle, st_sample, st_measure, st_update, st_read } state_t;
-	JsonNumber *m_tvoc = 0, *m_co2 = 0, *m_temp = 0, *m_humid = 0;
+	JsonNumber *m_tvoc = 0, *m_co2 = 0;
 	JsonObject *m_root = 0;
+	uint16_t m_temp = 0, m_humid = 0, m_cnt = 0;
 	state_t m_state;
 	uint8_t m_err = 0;
 

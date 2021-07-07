@@ -35,15 +35,19 @@ extern int bmx_scan(uint8_t);
 extern int sgp30_scan(uint8_t);
 extern int ht16k33_scan(uint8_t);
 extern int ccs811b_scan(uint8_t);
+extern int ti_scan(uint8_t);
+extern int apds9930_scan(uint8_t);
+extern int pcf8574_scan(uint8_t);
+extern int  ssd1306_scan(uint8_t);
 
-I2CSensor *I2CSensor::m_first = 0;
+I2CDevice *I2CDevice::m_first = 0;
 
 static const char TAG[] = "i2c";
 static uint8_t Ports = 0;
 static SemaphoreHandle_t Mtx = 0;
 
 
-I2CSensor::I2CSensor(uint8_t bus, uint8_t addr, const char *name)
+I2CDevice::I2CDevice(uint8_t bus, uint8_t addr, const char *name)
 : m_bus(bus), m_addr(addr)
 {
 	strcpy(m_name,name);
@@ -58,17 +62,17 @@ I2CSensor::I2CSensor(uint8_t bus, uint8_t addr, const char *name)
 }
 
 
-void I2CSensor::setName(const char *n)
+void I2CDevice::setName(const char *n)
 {
 	strncpy(m_name,n,sizeof(m_name)-1);
 	m_name[sizeof(m_name)-1] = 0;
 }
 
 
-bool I2CSensor::hasInstance(const char *d)
+bool I2CDevice::hasInstance(const char *d)
 {
 	size_t l = strlen(d);
-	I2CSensor *s = m_first;
+	I2CDevice *s = m_first;
 	while (s) {
 		if (0 == strncmp(s->m_name,d,l))
 			return true;
@@ -78,10 +82,10 @@ bool I2CSensor::hasInstance(const char *d)
 }
 
 
-void I2CSensor::updateNames(const char *dev)
+void I2CDevice::updateNames(const char *dev)
 {
 	// called from constructor: no virtual calls possible
-	I2CSensor *s = m_first;
+	I2CDevice *s = m_first;
 	while (s) {
 		if (0 == strcmp(dev,s->m_name))
 			s->updateName();
@@ -90,7 +94,7 @@ void I2CSensor::updateNames(const char *dev)
 }
 
 
-void I2CSensor::updateName()
+void I2CDevice::updateName()
 {
 	// called from constructor: no virtual calls possible
 	size_t off = strlen(m_name);
@@ -102,7 +106,7 @@ void I2CSensor::updateName()
 }
 
 
-void I2CSensor::attach(class JsonObject *)
+void I2CDevice::attach(class JsonObject *)
 {
 
 }
@@ -118,7 +122,7 @@ int i2c_read(uint8_t port, uint8_t addr, uint8_t *d, uint8_t n)
 {
 	Lock lock(Mtx);
 	i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-	int r;
+	int r = -2;
 	char p = 0;
 	r = i2c_master_start(cmd);
 	if (r) {
@@ -154,7 +158,7 @@ done:
 
 int i2c_w1rd(uint8_t port, uint8_t addr, uint8_t w, uint8_t *d, uint8_t n)
 {
-	int r;
+	int r = -2;
 	char p = 0;
 	Lock lock(Mtx);
 	i2c_cmd_handle_t cmd = i2c_cmd_link_create();
@@ -194,9 +198,9 @@ int i2c_w1rd(uint8_t port, uint8_t addr, uint8_t w, uint8_t *d, uint8_t n)
 		goto done;
 	}
 	r = i2c_master_cmd_begin((i2c_port_t)port, cmd, 1000 / portTICK_RATE_MS);
-	i2c_cmd_link_delete(cmd);
-	log_hex(TAG,d,n,"i2c_read(%u,...)=%d %c",port,r,p);
 done:
+	i2c_cmd_link_delete(cmd);
+	log_hex(TAG,d,n,"i2c_w1rd(%u,%02x,%02x,...,%u)=%d %c",port,addr>>1,w,n,r,p);
 	return r;
 }
 
@@ -211,7 +215,7 @@ int i2c_write1(uint8_t port, uint8_t addr, uint8_t r)
 	i2c_master_stop(cmd);
 	int ret = i2c_master_cmd_begin((i2c_port_t) port, cmd, 1000 / portTICK_RATE_MS);
 	i2c_cmd_link_delete(cmd);
-	log_dbug(TAG,"i2c_write1(%u,0x%x,0x%x)=%d",port,addr,r,ret);
+	log_dbug(TAG,"i2c_write1(%u,0x%x,0x%x)=%d",port,addr>>1,r,ret);
 	return ret;
 }
 
@@ -226,7 +230,7 @@ int i2c_write2(uint8_t port, uint8_t addr, uint8_t r, uint8_t v)
 	i2c_master_stop(cmd);
 	int ret = i2c_master_cmd_begin((i2c_port_t) port, cmd, 1000 / portTICK_RATE_MS);
 	i2c_cmd_link_delete(cmd);
-	log_dbug(TAG,"i2c_write2(%u,0x%x,0x%x,0x%x)=%d",port,addr,r,v,ret);
+	log_dbug(TAG,"i2c_write2(%u,0x%x,0x%x,0x%x)=%d",port,addr>>1,r,v,ret);
 	return ret;
 }
 
@@ -351,15 +355,28 @@ int i2c_init(uint8_t port, uint8_t sda, uint8_t scl, unsigned freq, uint8_t xpul
 	log_dbug(TAG,"i2c %u: sda=%u,scl=%u %s pull-up",port,sda,scl,xpullup?"extern":"intern");
 	Ports |= (1 << port);
 	// scan bus
-	int n = bmx_scan(port);
+	int n = 0;
+#ifdef CONFIG_BMX280
+	n += bmx_scan(port);
+#endif
 #ifdef CONFIG_SGP30
 	n += sgp30_scan(port);
 #endif
 #ifdef CONFIG_CCS811B
 	n += ccs811b_scan(port);
 #endif
-#ifdef CONFIG_LEDDISP
+#ifdef CONFIG_HT16K33
 	n += ht16k33_scan(port);
+#endif
+#ifdef CONFIG_APDS9930
+	n += apds9930_scan(port);
+#endif
+	n += ti_scan(port);
+#ifdef CONFIG_PCF8574
+	n += pcf8574_scan(port);
+#endif
+#ifdef CONFIG_SSD1306
+	n += ssd1306_scan(port);
 #endif
 	return n;
 }

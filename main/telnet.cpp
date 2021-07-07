@@ -22,7 +22,6 @@
 
 #define TELNET_PORT 23
 
-#include "binformats.h"
 #include "globals.h"
 #include "inetd.h"
 #include "log.h"
@@ -30,6 +29,7 @@
 #include "settings.h"
 #include "shell.h"
 #include "support.h"
+#include "swcfg.h"
 #include "terminal.h"
 
 #include <esp_err.h>

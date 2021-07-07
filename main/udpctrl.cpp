@@ -20,13 +20,13 @@
 
 #ifdef CONFIG_UDPCTRL
 
-#include "binformats.h"
 #include "globals.h"
 #include "inetd.h"
 #include "mem_term.h"
 #include "netsvc.h"
 #include "shell.h"
 #include "support.h"
+#include "swcfg.h"
 #include "wifi.h"
 
 #include <freertos/FreeRTOS.h>

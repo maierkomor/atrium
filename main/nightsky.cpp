@@ -21,7 +21,7 @@
 #ifdef CONFIG_NIGHTSKY
 
 #include "actions.h"
-#include "binformats.h"
+#include "hwcfg.h"
 #include "cyclic.h"
 #include "globals.h"
 #include "log.h"

@@ -19,31 +19,25 @@
 #ifndef HT16K33_H
 #define HT16K33_H
 
-#include "display.h"
+#include "ledcluster.h"
 
 class HT16K33 : public LedCluster
 {
 	public:
 	static unsigned create(uint8_t);
 
-	uint8_t getDim() const;
-	uint8_t maxDim() const
-	{ return 15; }
-	int setDim(uint8_t);
 	int setOn(bool);
 	int setOffset(unsigned);
 	int setNumDigits(unsigned);
-//	int write1(bool, int off = -1);
-	int write(uint8_t, int off = -1);
-	int write(uint8_t *d, unsigned n, int off = -1);
-//	int write16(uint16_t, int off = -1);
-	void clear();
+	int write(uint8_t) override;
+	int write(uint8_t *d, unsigned n) override;
+	int clear();
 
-	int setPos(unsigned x, unsigned y);
-	int write(char);
-	int write(const char *);
+	int setPos(uint8_t x, uint8_t y) override;
+//	int write(char);
+//	int write(const char *);
 	int init();
-	const char *drvName() const;
+	const char *drvName() const override;
 	int setBlink(uint8_t);
 
 	private:
@@ -56,9 +50,9 @@ class HT16K33 : public LedCluster
 
 	uint8_t m_bus;
 	uint8_t m_addr;
-//	uint8_t m_data[16];
+	uint8_t m_data[16];
 	uint8_t m_pos = 0;
-	uint8_t m_dim = 0;
+	uint8_t m_digits = 0;
 };
 
 

@@ -18,7 +18,7 @@
 
 #include <sdkconfig.h>
 
-#ifdef CONFIG_I2C
+#ifdef CONFIG_BMX280
 
 // This drivers operates the BME280 in I2C mode.
 // Connect CSB to 3.3V to enable I2C mode.
@@ -543,7 +543,7 @@ void BME680::attach(JsonObject *root)
 
 static int create_device(uint8_t bus, uint8_t addr, uint8_t id)
 {
-	I2CSensor *s = 0;
+	I2CDevice *s = 0;
 	switch (id) {
 	case 0x58:
 		s = new BMP280(bus,addr);

@@ -21,7 +21,7 @@
 #ifdef CONFIG_HTTP
 
 #include "actions.h"
-#include "binformats.h"
+#include "swcfg.h"
 #include "globals.h"
 #include "HttpServer.h"
 #include "HttpReq.h"

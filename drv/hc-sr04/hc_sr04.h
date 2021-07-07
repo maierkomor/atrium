@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020, Thomas Maier-Komor
+ *  Copyright (C) 2020-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -19,35 +19,42 @@
 #ifndef HC_SR04_H
 #define HC_SR04_H
 
-#ifdef __cplusplus
 #include <stdint.h>
 #include <driver/gpio.h>
 
 class HC_SR04
 {
 	public:
-	HC_SR04();
+	static HC_SR04 *create(int8_t trigger, int8_t echo); 
+	int attach(class JsonObject *o);
+	void trigger();
 
-	int init(unsigned trigger, unsigned echo); 
-	int measure(unsigned *);
+	void setName(const char *name)
+	{ m_name = name; }
+
+	const char *getName() const
+	{ return m_name; }
+
+	static HC_SR04 *getFirst()
+	{ return First; }
+
+	HC_SR04 *getNext()
+	{ return m_next; }
 
 	private:
+	HC_SR04(gpio_num_t trigger, gpio_num_t echo);
+
 	static void hc_sr04_isr(void *);
 
-	int64_t m_start;
-	unsigned m_delta;
+	static HC_SR04 *First;
+
+	int64_t m_start = 0;
+	HC_SR04 *m_next = 0;
+	class JsonNumber *m_dist = 0;
+	const char *m_name = 0;
+	unsigned m_delta = 0;
 	gpio_num_t m_trigger, m_echo;
 };
 
-inline HC_SR04::HC_SR04()
-: m_trigger(GPIO_NUM_MAX)
-, m_echo(GPIO_NUM_MAX)
-{
-
-}
-
-extern "C"
-#endif
-int hc_sr04(int argc, char *args[]);
 
 #endif

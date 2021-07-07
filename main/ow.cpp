@@ -20,12 +20,13 @@
 
 #ifdef CONFIG_ONEWIRE
 
-#include "binformats.h"
 #include "globals.h"
+#include "hwcfg.h"
 #include "log.h"
 #include "onewire.h"
 #include "owdevice.h"
 #include "shell.h"
+#include "swcfg.h"
 #include "terminal.h"
 
 

@@ -18,13 +18,14 @@
 
 #include <sdkconfig.h>
 
-#include "binformats.h"
 #include "fs.h"
 #include "globals.h"
+#include "hwcfg.h"
 #include "log.h"
 #include "terminal.h"
 #include "settings.h"
 #include "shell.h"
+#include "swcfg.h"
 
 #include <stdlib.h>
 

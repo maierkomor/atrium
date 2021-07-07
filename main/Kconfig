@@ -192,11 +192,31 @@ config TOUCHPAD
 	help
 		multi-channel touchpad support
 
-config CLOCK
-	bool	"7-segment LED clock"
+config DISPLAY
+	depends on !ESPTOOLPY_FLASHSIZE_1MB
+	bool	"multi-purpose display support"
 	default false
 	help
-		4-6 digit 7-segment LED driven by MAX7219
+		Support for displaying of time/date, and sensor data
+
+config MAX7219
+	depends on DISPLAY
+	bool "MAX7219 driver"
+	default true
+	help
+		"4-6 digit 7-segment display"
+
+config HT16K33
+	depends on DISPLAY && I2C
+	bool "HT16K33 driver"
+	help
+		"4-8 digit for 7/14-segment displays"
+
+config SSD1306
+	depends on DISPLAY && I2C
+	bool "SSD1306 driver"
+	help
+		"OLED displays based on SSD1306"
 
 config DHT
 	bool "DHT-xx sensor"
@@ -210,12 +230,33 @@ config I2C
 	help
 		I2C bus with BMP280 (temperature, pressure) and BME280 (temperature, humidity, pressure)
 
-config BME680
+config BMX280
 	depends on I2C
+	bool "BMx280"
+	default false
+	help
+		I2C driver for BME280 and BMP280 air sensor (temperature, humidity, pressure)
+
+config BME680
+	depends on BMX280
 	bool "BME680"
 	default false
 	help
 		I2C driver for BME680 air sensor (temperature, humidity, pressure, electric resistance)
+
+config HDC1000
+	depends on I2C
+	bool "HDC1000"
+	default true
+	help
+		I2C driver for HDC1000 sensor (temperature,humidity)
+
+config APDS9930
+	depends on I2C
+	bool "APDS9930"
+	default true
+	help
+		I2C driver for APDS-9930 sensor (lux,proximity)
 
 config SGP30
 	depends on I2C
@@ -231,8 +272,15 @@ config CCS811B
 	help
 		I2C driver for CCS811B sensor (TVOC,CO2)
 
-config DIST
-	bool "distance measurement"
+config PCF8574
+	depends on I2C && DISPLAY
+	bool "pcf8574"
+	default true
+	help
+		I2C driver for PCF8574 (GPIO expander), used as bridge for HD44780U
+
+config HCSR04
+	bool "HC-SR04"
 	default false
 	help
 		distance measurement with HC-SR04
@@ -242,13 +290,6 @@ config DIMMER
 	default false
 	help
 		multi-channel PWM dimmer (esp32: hardware, esp8266: software)
-
-config LEDDISP
-	depends on !ESPTOOLPY_FLASHSIZE_1MB
-	bool	"LED strip support"
-	default true
-	help
-		LED based displays (7/14-segments)
 
 config LEDSTRIP
 	depends on SIGNAL_PROC

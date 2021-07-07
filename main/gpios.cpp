@@ -20,10 +20,10 @@
 #include <sdkconfig.h>
 
 #include "actions.h"
-#include "binformats.h"
 #include "dataflow.h"
 #include "event.h"
 #include "globals.h"
+#include "hwcfg.h"
 #include "log.h"
 #include "shell.h"
 #include "terminal.h"

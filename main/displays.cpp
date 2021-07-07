@@ -18,13 +18,16 @@
 
 #include <sdkconfig.h>
 
-#if defined CONFIG_LEDDISP
+#if defined CONFIG_DISPLAY
 
-#include "binformats.h"
 #include "display.h"
 #include "globals.h"
+#include "hwcfg.h"
 #include "log.h"
 #include "MAX7219.h"
+#include "pcf8574.h"
+#include "hd44780u.h"
+#include "ssd1306.h"
 
 static const char TAG[] = "disp";
 
@@ -41,9 +44,35 @@ int display_setup()
 		}
 	}
 	if (HWConf.has_display()) {
+		const DisplayConfig &c = HWConf.display();
+		if (!c.has_type() || !c.has_maxx()) {
+			log_warn(TAG,"incomplete config");
+			return 1;
+		}
+		disp_t t = c.type();
+		uint8_t maxx = c.maxx();
+		uint8_t maxy = c.maxy();
 		if (LedCluster *l = LedCluster::getInstance()) {
-			const DisplayConfig &c = HWConf.display();
-			new SegmentDisplay(l,(SegmentDisplay::addrmode_t)c.mode(),c.maxx(),c.maxy());
+			new SegmentDisplay(l,(SegmentDisplay::addrmode_t)t,maxx,maxy);
+#ifdef CONFIG_PCF8574
+		} else if (t == dt_pcf8574_hd44780u) {
+			PCF8574 *dev = PCF8574::getInstance();
+			if (dev == 0) {
+				log_warn(TAG,"no pcf8574 found");
+				return 1;
+			}
+			HD44780U *hd = new HD44780U(dev,maxx,maxy);
+			hd->init();
+#endif
+#ifdef CONFIG_SSD1306
+		} else if (t == dt_ssd1306) {
+			SSD1306 *dev = SSD1306::getInstance();
+			if (dev == 0) {
+				log_warn(TAG,"no ssd1306 found");
+				return 1;
+			}
+			dev->init(maxx,maxy,c.options());
+#endif
 		} else {
 			log_warn(TAG,"display configured, but no LED cluster available");
 		}

@@ -20,12 +20,12 @@
 
 #ifdef CONFIG_LEDSTRIP
 
-#include "binformats.h"
 #include "dataflow.h"
 #ifdef CONFIG_SIGNAL_PROC
 #include "func.h"
 #endif
 #include "globals.h"
+#include "hwcfg.h"
 #include "log.h"
 #include "ws2812b.h"
 

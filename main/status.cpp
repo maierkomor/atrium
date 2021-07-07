@@ -22,11 +22,11 @@
 
 #include "actions.h"
 #include "alarms.h"
-#include "binformats.h"
 #include "button.h"
 #include "cyclic.h"
 #include "event.h"
 #include "globals.h"
+#include "hwcfg.h"
 #include "log.h"
 #include "shell.h"
 #include "status.h"
