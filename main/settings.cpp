@@ -489,7 +489,7 @@ int setPassword(const char *p)
 
 bool verifyPassword(const char *p)
 {
-//	TimeDelta td(__FUNCTION__);
+//	PROFILE_FUNCTION();
 	if (Config.pass_hash().empty()) {
 		return (p[0] == 0);
 	}
@@ -646,6 +646,7 @@ int readNVconfig(const char *name, uint8_t **buf, size_t *len)
 
 int cfg_read_nodecfg()
 {
+	PROFILE_FUNCTION();
 	const char *name = "node.cfg";
 	size_t s = 0;
 	uint8_t *buf = 0;
@@ -702,6 +703,7 @@ int cfg_backup_restore()
 
 int cfg_read_hwcfg()
 {
+	PROFILE_FUNCTION();
 	size_t s = 0;
 	uint8_t *buf = 0;
 	if (int e = readNVconfig("hw.cfg",&buf,&s)) {
@@ -805,6 +807,7 @@ void sntp_start()
 
 void cfg_activate()
 {
+	PROFILE_FUNCTION();
 	log_info(TAG,"activating config");
 
 	if (!Config.has_nodename()) 
@@ -914,6 +917,7 @@ void cfg_activate_actions()
 
 void cfg_activate_triggers()
 {
+	PROFILE_FUNCTION();
 	for (const auto &t : Config.triggers()) {
 		const char *en = t.event().c_str();
 		event_t e = event_id(en);
@@ -962,6 +966,7 @@ AppParam *cfg_add_param(const char *name)
 #ifdef CONFIG_APP_PARAMS 
 static int cfg_set_param(const char *name, const char *value)
 {
+	PROFILE_FUNCTION();
 	AppParam *p = cfg_get_param(name);
 	if (p == 0)
 		return 1;
@@ -1059,6 +1064,7 @@ void cfg_set_fvalue(const char *name, double f)
 
 void nvs_setup()
 {
+	PROFILE_FUNCTION();
 	if (esp_err_t err = nvs_flash_init()) {
 		log_error(TAG,"NVS init failed - erasing NVS");
 		err = nvs_flash_erase();

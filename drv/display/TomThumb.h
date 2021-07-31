@@ -467,5 +467,5 @@ const GFXglyph TomThumbGlyphs[] = {
 #endif                     /* (TOMTHUMB_USE_EXTENDED) */
 };
 
-const GFXfont TomThumb = {(uint8_t *)TomThumbBitmaps,
-                                  (GFXglyph *)TomThumbGlyphs, 0x20, 0x7E, 6};
+//const Font TomThumb = {(uint8_t *)TomThumbBitmaps,
+//                                  (GFXglyph *)TomThumbGlyphs, 0x20, 0x7E, 6};

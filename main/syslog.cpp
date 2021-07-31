@@ -402,9 +402,9 @@ void dmesg_resize()
 
 int syslog_setup(void)
 {
-	action_add("syslog!start",syslog_start,0,"start syslog");
+	action_add("syslog!start",syslog_start,0,0);	// do not advertise - not needed to call manually
 	event_callback("wifi`station_up","syslog!start");
-	Action *a = action_add("syslog!send",sendall,0,"start syslog");
+	Action *a = action_add("syslog!send",sendall,0,"trigger sendind dmesg to syslog");
 	event_t e = event_register("syslog`msg");
 	event_callback(e,a);
 	if (Ctx)

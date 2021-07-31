@@ -1,0 +1,66 @@
+<!doctype html>
+<html>
+<style>
+	input[type=range] { width: 100%; }
+	input[type=checkbox] { width: 44px; height: 44px; }
+</style>
+<head>
+	<!--
+	Copyright 2021, Thomas Maier-Komor
+	Atrium Firmware Package for ESP Devices.
+	Use is subject to license terms.
+	-->
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<meta charset="utf-8"/>
+</head>
+<title>Atrium Home Automation</title>
+<body>
+<h1>Available Actions</h1>
+<table><tbody align="left" id="actions">
+</tbody></table>
+<script>
+function trigger(action)
+{
+	var exe = new XMLHttpRequest();
+	exe.onreadystatechange = function() { 
+		if (exe.readyState == 4 && req.status == 200)
+			;
+	}
+	exe.open('POST','run_exe',true);
+	var cmd = "action " + action;
+	exe.setRequestHeader("command",cmd);
+	exe.setRequestHeader("Content-type","application/x-www-form-urlencoded");
+	exe.setRequestHeader("dummy","superfluous text with no semantics and totally without value, just payload to make package larger");
+	exe.send(null);
+}
+
+function on_data(text)
+{
+	var obj = JSON.parse(text);
+	var table = document.getElementById("actions");
+	for (var i = 0; i < obj.actions.length; ++i) {
+		var r = table.insertRow();
+		var b = document.createElement("input");
+		b.setAttribute("onclick","trigger('" + obj.actions[i].name + "');");
+		b.type = "button";
+		b.value = obj.actions[i].name;
+		var c0 = r.insertCell(0);
+		c0.appendChild(b);
+		var c1 = r.insertCell(1);
+		c1.innerHTML = obj.actions[i].text;
+	}
+}
+
+var req = new XMLHttpRequest();
+req.onreadystatechange = function() { 
+	if (req.readyState == 4 && req.status == 200)
+		on_data(req.responseText);
+}
+req.overrideMimeType("application/json");
+req.open('GET','actions.json',false);
+req.send(null);
+
+
+</script>
+</body>
+</html>

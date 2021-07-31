@@ -3,18 +3,23 @@
 
 #include "font.h"
 
-extern const GFXfont
-	FreeSans9pt7b_SSD1306,
-	FreeSans12pt7b_SSD1306,
-	FreeMono9pt7b_SSD1306,
-	FreeMono12pt7b_SSD1306,
-	FreeMono18pt7b_SSD1306,
-	FreeMono24pt7b_SSD1306,
-	TomThumb_SSD1306,
-	Org_01_SSD1306 ,
-	OpenSansLight10_SSD1306, 
-	OpenSansLight12_SSD1306,
-	OpenSansLight14_SSD1306,
-	OpenSansLight16_SSD1306
-	;
+typedef enum {
+	font_nativedbl = -2,
+	font_native = -1,
+	font_mono9 = 0,
+	font_mono12,
+	font_mono18,
+	font_mono24,
+	font_tomthumb,
+	font_sans9,
+	font_sans12,
+	font_sanslight10,
+	font_sanslight12,
+	font_sanslight14,
+	font_sanslight16,
+	font_org01,
+	font_numfonts
+} fontid_t;
+
+extern const Font Fonts[];
 #endif

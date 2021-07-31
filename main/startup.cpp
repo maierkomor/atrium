@@ -267,7 +267,7 @@ void app_main()
 #ifdef CONFIG_TOUCHPAD
 	touchpads_setup();
 #endif
-#ifdef CONFIG_DIST
+#ifdef CONFIG_HCSR04
 	distance_setup();
 #endif
 #ifdef CONFIG_ONEWIRE

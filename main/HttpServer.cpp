@@ -116,10 +116,58 @@ bool HttpServer::runDirectory(HttpRequest *req)
 }
 
 
+#ifdef CONFIG_ROMFS
+static bool send_romfs(int r, HttpRequest *req)
+{
+	HttpResponse ans;
+	int con = req->getConnection();
+	const char *uri = req->getURI() + 1;
+	if (strstr(uri,".gz"))
+		ans.addHeader("Content-Encoding:gzip");
+	ans.setResult(HTTP_OK);
+	if (0 == strstr(uri,".html"))
+		ans.setContentType(CT_TEXT_PLAIN);
+	ssize_t s = romfs_size_fd(r);
+	ans.setContentLength(s);
+	ans.senddata(con);
+	int off = 0;
+#ifdef CONFIG_ENABLE_FLASH_MMAP
+	void *addr = romfs_mmap(r);
+	if (-1 == send(con,addr,s,0)) {
+		log_warn(TAG,"error sending: %s",strerror(errno));
+		return false;
+	}
+#else
+	char tmp[512];
+	do {
+		unsigned n = s > sizeof(tmp) ? sizeof(tmp) : s;
+		romfs_read_at(r,tmp,n,off);
+		off += n;
+		if (-1 == send(con,tmp,n,0)) {
+			log_warn(TAG,"error sending: %s",strerror(errno));
+			return false;
+		}
+		s -= n;
+	} while (s > 0);
+#endif // CONFIG_ENABLE_FLASH_MMAP
+	return true;
+}
+#endif // CONFIG_ROMFS
+
+
 bool HttpServer::runFile(HttpRequest *req)
 {
-#ifdef HAVE_FS
 	const char *uri = req->getURI();
+#ifdef CONFIG_ROMFS
+	if (*uri == '/') {
+		int r = romfs_open(uri+1);
+		if (r >= 0) {
+			log_dbug(TAG,"found %s in romfs",uri);
+			return send_romfs(r,req);
+		}
+	}
+#endif // CONFIG_ROMFS
+#ifdef HAVE_FS
 	auto i = m_files.find(uri);
 	if (i == m_files.end())
 		return false;
@@ -150,45 +198,6 @@ bool HttpServer::runFile(HttpRequest *req)
 	}
 	return true;
 #else // HAVE_FS
-	const char *uri = req->getURI();
-	if (*uri == '/')
-		++uri;
-	int r = romfs_open(uri);
-	if (r < 0) {
-		//log_dbug(TAG,"%s is not in romfs",uri);
-		return false;
-	}
-	ssize_t s = romfs_size_fd(r);
-	log_dbug(TAG,"found %s in romfs, size %u",uri,s);
-	HttpResponse ans;
-	int con = req->getConnection();
-	if (strstr(uri,".gz"))
-		ans.addHeader("Content-Encoding:gzip");
-	ans.setResult(HTTP_OK);
-	if (0 == strstr(uri,".html"))
-		ans.setContentType(CT_TEXT_PLAIN);
-	ans.setContentLength(s);
-	ans.senddata(con);
-	int off = 0;
-#ifdef CONFIG_ENABLE_FLASH_MMAP
-	void *addr = romfs_mmap(r);
-	if (-1 == send(con,addr,s,0)) {
-		log_warn(TAG,"error sending: %s",strerror(errno));
-		return false;
-	}
-#else
-	char tmp[512];
-	do {
-		unsigned n = s > sizeof(tmp) ? sizeof(tmp) : s;
-		romfs_read_at(r,tmp,n,off);
-		off += n;
-		if (-1 == send(con,tmp,n,0)) {
-			log_warn(TAG,"error sending: %s",strerror(errno));
-			return false;
-		}
-		s -= n;
-	} while (s > 0);
-#endif // CONFIG_ENABLE_FLASH_MMAP
 	return true;
 #endif // HAVE_FS
 }
@@ -299,8 +308,10 @@ void HttpServer::performPUT(HttpRequest *req)
 void HttpServer::handleConnection(int con)
 {
 	char *buf = (char *) malloc(HTTP_REQ_SIZE);
-	if (buf == 0)
+	if (buf == 0) {
+		log_warn(TAG,"out of memory");
 		return;
+	}
 	unsigned count = 0;
 	log_dbug(TAG,"new incoming connection");
 	HttpRequest *req = HttpRequest::parseRequest(con,buf,HTTP_REQ_SIZE);

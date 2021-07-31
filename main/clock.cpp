@@ -23,6 +23,7 @@
 #include "actions.h"
 #include "cyclic.h"
 #include "display.h"
+#include "fonts_ssd1306.h"
 #include "globals.h"
 #include "hwcfg.h"
 #include "log.h"
@@ -118,20 +119,14 @@ static void switch_mode(void *arg)
 	if (ctx->mode == cm_temperature) {
 		if (0 == RTData->get("temperature"))
 			ctx->mode = (clockmode_t)((int)ctx->mode + 1);
-		else
-			log_dbug(TAG,"no temperature");
 	}
 	if (ctx->mode == cm_humidity) {
 		if (0 == RTData->get("humidity"))
 			ctx->mode = (clockmode_t)((int)ctx->mode + 1);
-		else
-			log_dbug(TAG,"no humidity");
 	}
 	if (ctx->mode == cm_pressure) {
 		if (0 == RTData->get("pressure"))
 			ctx->mode = (clockmode_t)((int)ctx->mode + 1);
-		else
-			log_dbug(TAG,"no pressure");
 	}
 	if (ctx->mode == cm_gasr) {
 		if (0 == RTData->get("gasresistance"))
@@ -267,16 +262,16 @@ void Clock::display_version()
 {
 	if (DotMatrix *dm = disp->toDotMatrix()) {
 		dm->drawRect(0,0,dm->maxX(),dm->maxY());
-		dm->setXY(3,1);
-		dm->setFont(10);
+		dm->setXY(10,1);
+		dm->setFont(font_sanslight16);
 		dm->write("Atrium");
-		dm->setFont(8);
-		dm->setXY(4,23);
+		dm->setFont(font_sanslight12);
+		dm->setXY(10,23);
 		const char *sp = strchr(Version,' ');
 		dm->write(Version,sp-Version);
 		if (dm->maxY() >= 48) {
-			dm->setXY(3,48);
-			dm->setFont(5);
+			dm->setXY(10,48);
+			dm->setFont(font_tomthumb);
 			dm->write("(C) 2021, T. Maier-Komor");
 		}
 		return;
@@ -392,14 +387,14 @@ static unsigned clock_iter(void *arg)
 		ctx->modech = false;
 		if (alpha) {
 			const char *text = 0;
-			uint8_t nextFont = 2;
+			uint8_t nextFont = font_sans12;
 			switch (ctx->mode) {
 			case cm_display_bin:
 			case cm_display_dec:
 				break;
 			case cm_time:
 				text = "time of day";
-				nextFont = 4;
+//				nextFont = 4;
 				break;
 			case cm_date:
 				text = "date";
@@ -433,7 +428,7 @@ static unsigned clock_iter(void *arg)
 				break;
 			case cm_stopwatch:
 				text = "stop-watch";
-				nextFont = 4;
+				nextFont = font_mono9;
 				break;
 			default:
 				abort();
@@ -442,8 +437,8 @@ static unsigned clock_iter(void *arg)
 				log_dbug(TAG,"mode %s",text);
 				DotMatrix *dm = ctx->disp->toDotMatrix();
 				if (dm) {
-					dm->setFont(5);
-					dm->setXY(3,3);
+					dm->setFont(font_sanslight10);
+					dm->setXY(3,4);
 				} else {
 					ctx->disp->setPos(0,0);
 				}
@@ -472,12 +467,12 @@ static unsigned clock_iter(void *arg)
 	const char *fmt = 0, *dim = 0;
 	switch (ctx->mode) {
 	case cm_date:
-		if ((uptime() - ctx->modestart) < 4000) {
+		if ((uptime() - ctx->modestart) < 5000) {
 			ctx->display_date();
 			d = 500;
 			break;
 		}
-		log_dbug(TAG,"switch back");
+		log_dbug(TAG,"auto date->clock");
 		ctx->mode = cm_time;
 		ctx->modech = true;
 		d = 20;

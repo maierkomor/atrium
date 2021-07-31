@@ -260,30 +260,11 @@ int SSD1306::clear()
 uint8_t SSD1306::fontHeight() const
 {
 	switch (m_font) {
-	case 0:
-		return 8;
-	case 1:
-		return 16;
-	case 2:
-		return FreeSans12pt7b_SSD1306.yAdvance;
-	case 3:
-		return FreeSans9pt7b_SSD1306.yAdvance;
-	case 4:
-		return FreeMono9pt7b_SSD1306.yAdvance;
-	case 5:
-		return TomThumb_SSD1306.yAdvance;
-	case 6:
-		return Org_01_SSD1306.yAdvance;
-	case 7:
-		return OpenSansLight10_SSD1306.yAdvance;
-	case 8:
-		return OpenSansLight12_SSD1306.yAdvance;
-	case 9:
-		return OpenSansLight14_SSD1306.yAdvance;
-	case 10:
-		return OpenSansLight16_SSD1306.yAdvance;
+	case -1: return 8;
+	case -2: return 16;
+	default:
+		return Fonts[m_font].yAdvance;
 	}
-	return 0;
 }
 
 
@@ -296,7 +277,9 @@ int SSD1306::clrEol()
 
 uint8_t SSD1306::charsPerLine() const
 {
-	return m_maxx/(CHAR_WIDTH<<m_font);
+	if (m_font == font_nativedbl)
+		return m_maxx/CHAR_WIDTH<<1;
+	return m_maxx/CHAR_WIDTH;
 }
 
 
@@ -506,7 +489,7 @@ int SSD1306::drawChar(char c)
 		break;
 	}
 	uint8_t x = m_posx;
-	if (m_font == 0) {
+	if (m_font == -1) {
 		if (c < 32)
 			return 1;
 		uint16_t idx = (c - 32)*6;
@@ -516,7 +499,7 @@ int SSD1306::drawChar(char c)
 			drawByte(x++, m_posy, Font6x8[idx+c]);
 		m_posx = x;
 		return 0;
-	} else if (m_font == 1) {
+	} else if (m_font == -2) {
 		if (c < 32)
 			return 1;
 		uint16_t idx = (c - 32)*6;
@@ -534,31 +517,15 @@ int SSD1306::drawChar(char c)
 		m_posx = x;
 		return 0;
 	}
-	const GFXfont *font;
-	if (m_font == 2) {
-		font = &FreeSans12pt7b_SSD1306;
-	} else if (m_font == 3) {
-		font = &FreeSans9pt7b_SSD1306;
-	} else if (m_font == 4) {
-		font = &FreeMono9pt7b_SSD1306;
-	} else if (m_font == 5) {
-		font = &TomThumb_SSD1306;
-	} else if (m_font == 6) {
-		font = &Org_01_SSD1306;
-	} else if (m_font == 7) {
-		font = &OpenSansLight10_SSD1306;
-	} else if (m_font == 8) {
-		font = &OpenSansLight12_SSD1306;
-	} else if (m_font == 9) {
-		font = &OpenSansLight14_SSD1306;
-	} else if (m_font == 10) {
-		font = &OpenSansLight16_SSD1306;
-	} else
+	const Font *font = Fonts+(int)m_font;
+	if ((font < Fonts) || (font >= Fonts+(int)font_numfonts)) {
+		log_dbug(TAG,"invalid font");
 		return 1;
+	}
 	if ((c < font->first) || (c > font->last))
 		return 1;
 	uint8_t ch = c - font->first;
-	uint8_t *off = font->bitmap + font->glyph[ch].bitmapOffset;
+	const uint8_t *off = font->bitmap + font->glyph[ch].bitmapOffset;
 	uint8_t w = font->glyph[ch].width;
 	uint8_t h = font->glyph[ch].height;
 	int8_t dx = font->glyph[ch].xOffset;
@@ -790,12 +757,14 @@ int SSD1306::writeHex(uint8_t h, bool comma)
 
 int SSD1306::setPos(uint8_t x, uint8_t y)
 {
+	log_info(TAG,"setPos(%u/%u)",x,y);
 	x *= CHAR_WIDTH;
 	y *= fontHeight();
 	if ((x >= m_maxx-(CHAR_WIDTH)) || (y > m_maxy-fontHeight())) {
 		log_dbug(TAG,"invalid pos %u/%u",x,y);
 		return 1;
 	}
+	log_info(TAG,"setPos %u/%u",x,y);
 	m_posx = x;
 	m_posy = y;
 	return 0;

@@ -1,10 +1,6 @@
 #include <stdint.h>
 #include "font.h"
 
-
-#define PROGMEM
-
-
 #include "FreeSans9pt7b.h"
 #include "FreeSans12pt7b.h"
 #include "FreeMono9pt7b.h"
@@ -19,7 +15,8 @@
 #include "opensanslight-16.h"
 
 
-const uint8_t FreeSans9pt7b_ssd1306[] = {
+
+static const uint8_t FreeSans9pt7b_ssd1306[] = {
 
 	// ' ' (0x20) 0x0, offset 0-0, at +0/+1
 	// in regular row-major format
@@ -688,14 +685,7 @@ const uint8_t FreeSans9pt7b_ssd1306[] = {
 //	0xc0,
 };
 
-const GFXfont FreeSans9pt7b_SSD1306 = {
-	(uint8_t *)FreeSans9pt7b_ssd1306,
-	(GFXglyph *)FreeSans9pt7bGlyphs,
-	0x20, 0x7e, 22
-};
-
-
-const uint8_t FreeSans12pt7b_ssd1306[] = {
+static const uint8_t FreeSans12pt7b_ssd1306[] = {
 
 	// ' ' (0x20) 0x0, offset 0-0, at +0/+1
 	// in regular row-major format
@@ -1556,14 +1546,7 @@ const uint8_t FreeSans12pt7b_ssd1306[] = {
 //	0x31, 0x8c, 0x63, 0x18,  0xc6, 0x73, 0x00,
 };
 
-const GFXfont FreeSans12pt7b_SSD1306 = {
-	(uint8_t *)FreeSans12pt7b_ssd1306,
-	(GFXglyph *)FreeSans12pt7bGlyphs,
-	0x20, 0x7e, 29
-};
-
-
-const uint8_t FreeMono9pt7b_ssd1306[] = {
+static const uint8_t FreeMono9pt7b_ssd1306[] = {
 
 	// ' ' (0x20) 0x0, offset 0-0, at +0/+1
 	// in regular row-major format
@@ -2160,14 +2143,7 @@ const uint8_t FreeMono9pt7b_ssd1306[] = {
 //	0x89, 0x24, 0x8a, 0x49,  0x2c,
 };
 
-const GFXfont FreeMono9pt7b_SSD1306 = {
-	(uint8_t *)FreeMono9pt7b_ssd1306,
-	(GFXglyph *)FreeMono9pt7bGlyphs,
-	0x20, 0x7e, 18
-};
-
-
-const uint8_t FreeMono12pt7b_ssd1306[] = {
+static const uint8_t FreeMono12pt7b_ssd1306[] = {
 
 	// ' ' (0x20) 0x0, offset 0-0, at +0/+1
 	// in regular row-major format
@@ -2908,14 +2884,7 @@ const uint8_t FreeMono12pt7b_ssd1306[] = {
 //	0x10, 0x84, 0x26, 0x00,
 };
 
-const GFXfont FreeMono12pt7b_SSD1306 = {
-	(uint8_t *)FreeMono12pt7b_ssd1306,
-	(GFXglyph *)FreeMono12pt7bGlyphs,
-	0x20, 0x7e, 24
-};
-
-
-const uint8_t FreeMono18pt7b_ssd1306[] = {
+static const uint8_t FreeMono18pt7b_ssd1306[] = {
 
 	// ' ' (0x20) 0x0, offset 0-0, at +0/+1
 	// in regular row-major format
@@ -4042,14 +4011,7 @@ const uint8_t FreeMono18pt7b_ssd1306[] = {
 //	0xe0,
 };
 
-const GFXfont FreeMono18pt7b_SSD1306 = {
-	(uint8_t *)FreeMono18pt7b_ssd1306,
-	(GFXglyph *)FreeMono18pt7bGlyphs,
-	0x20, 0x7e, 35
-};
-
-
-const uint8_t FreeMono24pt7b_ssd1306[] = {
+static const uint8_t FreeMono24pt7b_ssd1306[] = {
 
 	// ' ' (0x20) 0x0, offset 0-0, at +0/+1
 	// in regular row-major format
@@ -5820,14 +5782,7 @@ const uint8_t FreeMono24pt7b_ssd1306[] = {
 //	0x18, 0x03, 0x00, 0xc0,  0xf8, 0x1c, 0x00,
 };
 
-const GFXfont FreeMono24pt7b_SSD1306 = {
-	(uint8_t *)FreeMono24pt7b_ssd1306,
-	(GFXglyph *)FreeMono24pt7bGlyphs,
-	0x20, 0x7e, 47
-};
-
-
-const uint8_t TomThumb_ssd1306[] = {
+static const uint8_t TomThumb_ssd1306[] = {
 
 	// ' ' (0x20) 8x1, offset 0-1, at +0/-5
 	0x00,
@@ -6300,14 +6255,7 @@ const uint8_t TomThumb_ssd1306[] = {
 //	0xc0, 0x40, 0x20, 0x40,  0xc0,
 };
 
-const GFXfont TomThumb_SSD1306 = {
-	(uint8_t *)TomThumb_ssd1306,
-	(GFXglyph *)TomThumbGlyphs,
-	0x20, 0x7e, 6
-};
-
-
-const uint8_t Org_01_ssd1306[] = {
+static const uint8_t Org_01_ssd1306[] = {
 
 	// ' ' (0x20) 0x0, offset 0-0, at +0/+1
 	// in regular row-major format
@@ -6778,14 +6726,7 @@ const uint8_t Org_01_ssd1306[] = {
 //	0x89, 0xa8,
 };
 
-const GFXfont Org_01_SSD1306 = {
-	(uint8_t *)Org_01_ssd1306,
-	(GFXglyph *)Org_01Glyphs,
-	0x20, 0x7e, 7
-};
-
-
-const uint8_t OpenSansLight10_ssd1306[] = {
+static const uint8_t OpenSansLight10_ssd1306[] = {
 
 	// ' ' (0x20) 1x1, offset 0-1, at +0/+0
 	0x00,
@@ -7255,14 +7196,7 @@ const uint8_t OpenSansLight10_ssd1306[] = {
 //	0xaa, 0xaa, 0x80,
 };
 
-const GFXfont OpenSansLight10_SSD1306 = {
-	(uint8_t *)OpenSansLight10_ssd1306,
-	(GFXglyph *)OpenSansLight10Glyphs,
-	0x20, 0x7d, 14
-};
-
-
-const uint8_t OpenSansLight12_ssd1306[] = {
+static const uint8_t OpenSansLight12_ssd1306[] = {
 
 	// ' ' (0x20) 1x1, offset 0-1, at +0/+0
 	0x00,
@@ -7762,14 +7696,7 @@ const uint8_t OpenSansLight12_ssd1306[] = {
 //	0xaa, 0xaa, 0xaa,
 };
 
-const GFXfont OpenSansLight12_SSD1306 = {
-	(uint8_t *)OpenSansLight12_ssd1306,
-	(GFXglyph *)OpenSansLight12Glyphs,
-	0x20, 0x7d, 17
-};
-
-
-const uint8_t OpenSansLight14_ssd1306[] = {
+static const uint8_t OpenSansLight14_ssd1306[] = {
 
 	// ' ' (0x20) 1x1, offset 0-1, at +0/+0
 	0x00,
@@ -8339,14 +8266,7 @@ const uint8_t OpenSansLight14_ssd1306[] = {
 //	0x92, 0x49, 0x24, 0x92,  0x49, 0x00,
 };
 
-const GFXfont OpenSansLight14_SSD1306 = {
-	(uint8_t *)OpenSansLight14_ssd1306,
-	(GFXglyph *)OpenSansLight14Glyphs,
-	0x20, 0x7d, 20
-};
-
-
-const uint8_t OpenSansLight16_ssd1306[] = {
+static const uint8_t OpenSansLight16_ssd1306[] = {
 
 	// ' ' (0x20) 1x1, offset 0-1, at +0/+0
 	0x00,
@@ -8958,10 +8878,80 @@ const uint8_t OpenSansLight16_ssd1306[] = {
 //	0xaa, 0xaa, 0xaa, 0xaa,  0x80,
 };
 
-const GFXfont OpenSansLight16_SSD1306 = {
-	(uint8_t *)OpenSansLight16_ssd1306,
-	(GFXglyph *)OpenSansLight16Glyphs,
-	0x20, 0x7d, 23
+
+const Font Fonts[] =  {
+	{
+		"Mono9",
+		(uint8_t *)FreeMono9pt7b_ssd1306,
+		(GFXglyph *)FreeMono9pt7bGlyphs,
+		0x20, 0x7e, 18
+	},
+	{
+		"Mono12",
+		(uint8_t *)FreeMono12pt7b_ssd1306,
+		(GFXglyph *)FreeMono12pt7bGlyphs,
+		0x20, 0x7e, 24
+	},
+	{
+		"Mono18",
+		(uint8_t *)FreeMono18pt7b_ssd1306,
+		(GFXglyph *)FreeMono18pt7bGlyphs,
+		0x20, 0x7e, 35
+	},
+	{
+		"Mono24",
+		(uint8_t *)FreeMono24pt7b_ssd1306,
+		(GFXglyph *)FreeMono24pt7bGlyphs,
+		0x20, 0x7e, 47
+	},
+	{
+		"TomThumb",
+		(uint8_t *)TomThumb_ssd1306,
+		(GFXglyph *)TomThumbGlyphs,
+		0x20, 0x7e, 6
+	},
+	{
+		"Sans9",
+		(uint8_t *)FreeSans9pt7b_ssd1306,
+		(GFXglyph *)FreeSans9pt7bGlyphs,
+		0x20, 0x7e, 22
+	},
+	{
+		"Sans12",
+		(uint8_t *)FreeSans12pt7b_ssd1306,
+		(GFXglyph *)FreeSans12pt7bGlyphs,
+		0x20, 0x7e, 22
+	},
+	{
+		"SansLight10",
+		(uint8_t *)OpenSansLight10_ssd1306,
+		(GFXglyph *)OpenSansLight10Glyphs,
+		0x20, 0x7d, 14
+	},
+	{
+		"SansLight12",
+		(uint8_t *)OpenSansLight12_ssd1306,
+		(GFXglyph *)OpenSansLight12Glyphs,
+		0x20, 0x7d, 17
+	},
+	{
+		"SansLight14",
+		(uint8_t *)OpenSansLight14_ssd1306,
+		(GFXglyph *)OpenSansLight14Glyphs,
+		0x20, 0x7d, 20
+	},
+	{
+		"SansLight16",
+		(uint8_t *)OpenSansLight16_ssd1306,
+		(GFXglyph *)OpenSansLight16Glyphs,
+		0x20, 0x7d, 23
+	},
+	{
+		"Org01",
+		(uint8_t *)Org_01_ssd1306,
+		(GFXglyph *)Org_01Glyphs,
+		0x20, 0x7e, 7
+	},
 };
 
 

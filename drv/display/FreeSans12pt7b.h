@@ -264,12 +264,12 @@ const GFXglyph FreeSans12pt7bGlyphs[] = {
     {1947, 5, 23, 8, 2, -17},   // 0x7D '}'
     {1962, 10, 5, 12, 1, -10}}; // 0x7E '~'
 
-const GFXfont FreeSans12pt7b = {(uint8_t *)FreeSans12pt7bBitmaps,
-                                        (GFXglyph *)FreeSans12pt7bGlyphs, 0x20,
-                                        0x7E, 29};
+//const Font FreeSans12pt7b = {(uint8_t *)FreeSans12pt7bBitmaps,
+//                                        (GFXglyph *)FreeSans12pt7bGlyphs, 0x20,
+//                                        0x7E, 20};
 /*
 extern uint8_t FreeSans12pt7b_SSD1306[];
-const GFXfont FreeSans12pt7b_ssd1306 = {(uint8_t *)FreeSans12pt7b_SSD1306
+const Font FreeSans12pt7b_ssd1306 = {(uint8_t *)FreeSans12pt7b_SSD1306
                                         (GFXglyph *)FreeSans12pt7bGlyphs, 0x20,
                                         0x7E, 29};
 */

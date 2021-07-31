@@ -29,7 +29,7 @@
 class Relay
 {
 	public:
-	Relay(const char *, gpio_num_t gpio, uint16_t config, uint32_t minitv);
+	Relay(const char *, gpio_num_t gpio, uint32_t minitv, bool onlvl);
 
 	void set(bool);
 	void turn_on();
@@ -45,9 +45,6 @@ class Relay
 
 	gpio_num_t gpio() const
 	{ return m_gpio; }
-
-	uint16_t config() const
-	{ return m_config; }
 
 	static Relay *first()
 	{ return Relays; }
@@ -65,6 +62,13 @@ class Relay
 
 	void setInterlock(Relay *r)
 	{ m_interlock = r; }
+	
+	void setPersistent(bool p)
+	{ m_persistent = p; }
+
+	bool getPersistent() const
+	{ return m_persistent; }
+
 
 	private:
 	static void timerCallback(void *);
@@ -78,8 +82,7 @@ class Relay
 		, m_minitv = 0;		// minimum toggle interval
 	gpio_num_t m_gpio;
 	event_t m_onev = 0, m_offev = 0, m_changedev = 0;
-	uint16_t m_config;
-	bool m_state = false, m_set = false;
+	bool m_state = false, m_set = false, m_persistent = false, m_onlvl;
 	void (*m_cb)(Relay *);
 };
 

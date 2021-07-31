@@ -1,3 +1,13 @@
+R2107:
+======
+- provide available actions via http as /actions.json
+- added webpage for direct action triggering
+- mkromfs: sort entries by name
+- added generic romfs for d1_lite
+- display env variables in default index.html
+- fix: ROMFS is invisible if SPIFFS is compiled in
+- fix: HC-SR04 is not initializing
+
 R2106:
 ======
 - added support for SSD1306 OLEDs

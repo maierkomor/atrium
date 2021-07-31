@@ -96,7 +96,7 @@ static char *parsePercent(char *at, estring &value)
 
 void HttpRequest::parseField(char *at, char *end)
 {
-	TimeDelta td(__FUNCTION__);
+	PROFILE_FUNCTION();
 	char fn[128], *f = fn;
 	char c = *at;
 	// parse field name
@@ -179,7 +179,7 @@ void HttpRequest::parseField(char *at, char *end)
 
 char *HttpRequest::parseHeader(char *at, size_t s)
 {
-	TimeDelta td(__FUNCTION__);
+	PROFILE_FUNCTION();
 	char *cr = (char*)memchr(at,'\r',s);
 	if (cr[1] != '\n') {
 		m_error = "stray carriage-return";
@@ -261,7 +261,7 @@ const estring &HttpRequest::argName(size_t i) const
 
 void HttpRequest::parseArgs(const char *str)
 {
-	//TimeDelta td(__FUNCTION__);
+	//PROFILE_FUNCTION();
 	while (str) {
 		const char *e = strchr(str,'=');
 		const char *a = e ? strchr(e+1,'&') : 0;
@@ -292,7 +292,7 @@ char *HttpRequest::getContent()
 
 void HttpRequest::fillContent()
 {
-//	TimeDelta td(__FUNCTION__);
+	PROFILE_FUNCTION();
 	m_content = (char *)realloc(m_content,m_contlen+1);
 	m_content[m_contlen] = 0;
 	if (m_content == 0) {
@@ -334,12 +334,19 @@ void HttpRequest::discardContent()
 
 HttpRequest *HttpRequest::parseRequest(int con, char *buf, size_t bs)
 {
+	/*
+	int n, retry = 3;
+	do {
+		n = recv(con,buf,bs-1,0);
+		log_dbug(TAG,"recv: %d, retry=%d",n,retry);
+	} while ((n < 0) && --retry);
+	*/
 	int n = recv(con,buf,bs-1,0);
-	TimeDelta td(__FUNCTION__);
 	if (n < 0) {
-		log_warn(TAG,"failed to receive data: %s",strneterr(con));
+		log_warn(TAG,"receive: %s",strneterr(con));
 		return 0;
 	}
+	PROFILE_FUNCTION();
 	if (n == 0) {
 		log_dbug(TAG,"empty request");	// this is normal for certain types of requests
 		n = recv(con,buf,bs-1,0);
@@ -350,7 +357,7 @@ HttpRequest *HttpRequest::parseRequest(int con, char *buf, size_t bs)
 	}
 	buf[n] = 0;
 //	log_info(TAG,"request has %u bytes",n);
-//	log_dbug(TAG,"http-req:");
+	log_dbug(TAG,"http-req: %*s",n,buf);
 //	con_write(buf,n);
 	char *cr = strchr(buf,'\r');
 	if (cr == 0) {

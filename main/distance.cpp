@@ -18,9 +18,10 @@
 
 #include <sdkconfig.h>
 
-#ifdef CONFIG_DIST
+#ifdef CONFIG_HCSR04
 
 #include "actions.h"
+#include "event.h"
 #include "globals.h"
 #include "hc_sr04.h"
 #include "hwcfg.h"
@@ -30,15 +31,6 @@
 #include <stdlib.h>
 
 static const char TAG[] = "hcsr04";
-static HC_SR04 *Driver = 0;
-
-
-int measure(unsigned *v)
-{
-	if (Driver == 0)
-		return -1;
-	return Driver->measure(v);
-}
 
 
 static void hcsr04_sample(void *arg)
@@ -52,7 +44,7 @@ int distance_setup()
 {
 	for (const auto &c : HWConf.hcsr04()) {
 		if (!c.has_trigger() || !c.has_echo()) {
-			log_dbug(TAG,"incomplete config");
+			log_warn(TAG,"incomplete config");
 			continue;
 		}
 		if (HC_SR04 *drv = HC_SR04::create(c.trigger(),c.echo())) {

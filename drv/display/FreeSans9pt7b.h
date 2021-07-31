@@ -193,8 +193,8 @@ const GFXglyph FreeSans9pt7bGlyphs[] = {
     {1138, 4, 17, 6, 1, -12},  // 0x7D '}'
     {1147, 7, 3, 9, 1, -7}};   // 0x7E '~'
 
-const GFXfont FreeSans9pt7b = {(uint8_t *)FreeSans9pt7bBitmaps,
-                                       (GFXglyph *)FreeSans9pt7bGlyphs, 0x20,
-                                       0x7E, 22};
+//const Font FreeSans9pt7b = {(uint8_t *)FreeSans9pt7bBitmaps,
+//                                       (GFXglyph *)FreeSans9pt7bGlyphs, 0x20,
+//                                       0x7E, 22};
 
 // Approx. 1822 bytes

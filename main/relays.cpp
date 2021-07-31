@@ -40,10 +40,9 @@ static const char TAG[] = "relays";
 
 static void relay_callback(Relay *r)
 {
-	TimeDelta dt(__FUNCTION__);
+	PROFILE_FUNCTION();
 
-	uint16_t c = r->config();
-	if (c & rc_persistent)
+	if (r->getPersistent())
 		store_nvs_u8(r->name(),r->is_on());
 	rtd_lock();
 	JsonObject *o = static_cast<JsonObject *>(RTData->get(r->name()));
@@ -129,21 +128,19 @@ int relay_setup()
 			c.set_name(name);
 			n = c.name().c_str();
 		}
-		uint8_t cfg = (uint8_t)c.config();
 #ifdef CONFIG_MQTT
-		if (cfg & rc_mqtt) {
+		if (c.config_mqtt()) {
 			char topic[c.name().size()+5] = "set_";
 			strcpy(topic+4,n);
 			mqtt_sub(topic,mqtt_callback);
 		}
 #endif
-		Relay *r = new Relay(n,(gpio_num_t)gpio,cfg,itv);
+		Relay *r = new Relay(n,(gpio_num_t)gpio,itv,c.config_active_high());
 		r->setCallback(relay_callback);
-		bool iv;
-		if (cfg & rc_persistent) {
-			iv = (read_nvs_u8(n,(cfg&rc_init_on) != 0));
-		} else {
-			iv = ((cfg&rc_init_on) != 0);
+		bool iv = c.config_init_on();
+		if (c.config_persistent()) {
+			r->setPersistent(true);
+			iv = read_nvs_u8(n,iv);
 		}
 		JsonObject *o = RTData->add(n);
 		o->add("on",iv?1.0:-1.0);

@@ -20,6 +20,7 @@
 #define SSD1306_H
 
 #include "display.h"
+#include "fonts_ssd1306.h"
 #include "i2cdrv.h"
 
 class SSD1306 : public DotMatrix, public I2CDevice
@@ -62,9 +63,9 @@ class SSD1306 : public DotMatrix, public I2CDevice
 		return 0;
 	}
 
-	int setFont(unsigned f) override
+	int setFont(int f) override
 	{
-		m_font = f;
+		m_font = (fontid_t) f;
 		return 0;
 	}
 
@@ -104,7 +105,7 @@ class SSD1306 : public DotMatrix, public I2CDevice
 	static SSD1306 *Instance;
 	uint8_t *m_disp = 0;
 	uint8_t m_maxx = 0, m_maxy = 0, m_posx = 0, m_posy = 0, m_dirty = 0xff;
-	uint8_t m_font = 0;
+	fontid_t m_font = font_native;
 };
 
 

@@ -30,7 +30,7 @@
 #include <unistd.h>
 #include <stdint.h>
 
-#include <set>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -425,7 +425,7 @@ int main(int argc, char *argv[])
 	}
 	size_t total = 12;	// 8 bytes magic + 4 bytes separator between header entries and data
 	int n = FileNames.size();
-	set<string> entries;
+	map<string,string> entries;
 	for (int i = 0; i < n; ++i) {
 		const char *fname = FileNames[i].c_str();
 		const char *ename = strrchr(fname,'/');
@@ -433,11 +433,16 @@ int main(int argc, char *argv[])
 			++ename;
 		else
 			ename = fname;
-		if (!entries.insert(ename).second) {
+		if (!entries.insert(make_pair(ename,fname)).second) {
 			printf("warning: ignoring duplicate entry name '%s' (file %s)\n",ename,fname);
 			continue;
 		}
 		check_exit(strlen(ename)>=12,"filename '%s' is too long\n",ename);
+	}
+	unsigned idx = 0;
+	for (auto x : entries) {
+		const char *ename = x.first.c_str();
+		const char *fname = x.second.c_str();
 		int fd = open(fname,O_RDONLY);
 		check_exit(fd<0,"error opening %s: %s\n",fname,strerror(errno));
 		struct stat st;
@@ -470,7 +475,7 @@ int main(int argc, char *argv[])
 		size_t s = M32 ? sizeof(Entry32) : sizeof(Entry16);
 		memcpy(at,Entries[i].data(),s);
 		at += s;
-		printf("%s: %u@%x\n",Entries[i].name(),Entries[i].size(),Entries[i].offset());
+		printf("%5u@%04x: %s\n",Entries[i].size(),Entries[i].offset(),Entries[i].name());
 	}
 	*at++ = 0;
 	*at++ = 0;

@@ -116,7 +116,7 @@ void rtd_update()
 
 void runtimedata_to_json(stream &json)
 {
-	TimeDelta dt(__FUNCTION__);
+	PROFILE_FUNCTION();
 	rtd_lock();
 	rtd_update();
 	RTData->toStream(json);

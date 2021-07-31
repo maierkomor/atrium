@@ -95,7 +95,7 @@ struct TextDisplay
 	virtual int clrPixel(uint16_t x, uint16_t y)
 	{ return -1; }
 
-	virtual int setFont(unsigned)
+	virtual int setFont(int)
 	{ return -1; }
 
 	void initOK();

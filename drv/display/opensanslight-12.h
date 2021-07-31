@@ -1,6 +1,6 @@
 // Created by http://oleddisplay.squix.ch/ Consider a donation
 // In case of problems make sure that you are using the font file with the correct version!
-const uint8_t OpenSansLight12Bitmaps[] PROGMEM = {
+const uint8_t OpenSansLight12Bitmaps[] = {
 
 	// Bitmap Data:
 	0x00, // ' '
@@ -98,7 +98,7 @@ const uint8_t OpenSansLight12Bitmaps[] PROGMEM = {
 	0xAA,0xAA,0xAA, // '|'
 	0xC1,0x08,0x42,0x10,0x84,0x21,0x30 // '}'
 };
-const GFXglyph OpenSansLight12Glyphs[] PROGMEM = {
+const GFXglyph OpenSansLight12Glyphs[] = {
 // bitmapOffset, width, height, xAdvance, xOffset, yOffset
 	  {     0,   1,   1,   4,    0,    0 }, // ' '
 	  {     1,   2,   9,   4,    1,   -9 }, // '!'
@@ -195,5 +195,5 @@ const GFXglyph OpenSansLight12Glyphs[] PROGMEM = {
 	  {   585,   2,  12,   8,    3,   -9 }, // '|'
 	  {   588,   5,  11,   5,    0,   -9 } // '}'
 };
-const GFXfont OpenSansLight12 PROGMEM = {
-(uint8_t  *)OpenSansLight12Bitmaps,(GFXglyph *)OpenSansLight12Glyphs,0x20, 0x7d, 17};
+//const Font OpenSansLight12 = {
+//(uint8_t  *)OpenSansLight12Bitmaps,(GFXglyph *)OpenSansLight12Glyphs,0x20, 0x7d, 17};

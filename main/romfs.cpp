@@ -228,9 +228,10 @@ void romfs_setup()
 #else
 	uint32_t flashrom = RomfsBaseAddr;
 	char magic[8];
-	spi_flash_read(flashrom,magic,sizeof(magic));
+	if (esp_err_t e = spi_flash_read(flashrom,magic,sizeof(magic)))
+		log_warn(TAG,"flash read %u@0x%x: %s",sizeof(magic),flashrom,esp_err_to_name(e));
 	if (strcmp(magic,ROMFS_MAGIC)) {
-		log_info(TAG,"no " ROMFS_MAGIC " at 0x%x",flashrom);
+		log_info(TAG,"no " ROMFS_MAGIC " at 0x%x: %02x %02x %02x %02x",flashrom, magic[0], magic[1], magic[2], magic[3]);
 		return;
 	}
 	flashrom += 8;

@@ -520,8 +520,10 @@ static err_t handle_connect(void *arg, struct tcp_pcb *pcb, err_t x)
 		*b++ = 0;	// password length MSB
 		*b++ = ps;	// password length LSB
 		memcpy(b,mqtt.password().data(),ps);
-		//b += ps;
+		b += ps;
 	}
+	if (b-tmp != sizeof(tmp))
+		log_warn(TAG,"connect fill %d!=%d",b-tmp,sizeof(tmp));
 	log_dbug(TAG,"connect write %d",sizeof(tmp));
 	err_t e = tcp_write(pcb,tmp,sizeof(tmp),TCP_WRITE_FLAG_COPY);
 	if (e) {
@@ -703,19 +705,21 @@ void mqtt_stop(void *arg)
 		return;
 	log_dbug(TAG,"stop");
 	xSemaphoreTake(Client->mtx,portMAX_DELAY);
-	char request[] { DISCONNECT, 0 };
-	LOCK_TCPIP_CORE();
-	err_t e = tcp_write(Client->pcb,request,sizeof(request),TCP_WRITE_FLAG_COPY);
-	if (e)
-		log_warn(TAG,"write DISCONNECT %d",e);
-	else
-		tcp_output(Client->pcb);
-	e = tcp_close(Client->pcb);
-	Client->pcb = 0;
-	UNLOCK_TCPIP_CORE();
-	if (e)
-		log_warn(TAG,"stop: close error %d",e);
-	mqtt_term();
+	if (Client->pcb != 0) {
+		char request[] { DISCONNECT, 0 };
+		LOCK_TCPIP_CORE();
+		err_t e = tcp_write(Client->pcb,request,sizeof(request),TCP_WRITE_FLAG_COPY);
+		if (e)
+			log_warn(TAG,"write DISCONNECT %d",e);
+		else
+			tcp_output(Client->pcb);
+		e = tcp_close(Client->pcb);
+		Client->pcb = 0;
+		UNLOCK_TCPIP_CORE();
+		if (e)
+			log_warn(TAG,"stop: close error %d",e);
+	}
+	Client->state = offline;
 	xSemaphoreGive(Client->mtx);
 }
 

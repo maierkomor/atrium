@@ -58,12 +58,12 @@ static void relay_toggle(void *R)
 }
 
 
-Relay::Relay(const char *name, gpio_num_t gpio, uint16_t config, uint32_t minitv)
+Relay::Relay(const char *name, gpio_num_t gpio, uint32_t minitv, bool onlvl)
 : m_name(name)
 , m_tlt(0)
 , m_minitv(minitv + 1) // must not be 0, interval should be at least minitv - so+1
 , m_gpio(gpio)
-, m_config(config)
+, m_onlvl(onlvl)
 , m_cb(0)
 {
 	if (0 == Mtx)
@@ -151,8 +151,7 @@ void Relay::sync()
 			// state=off, onlvl=high, !(s^o) = 0
 			// state=on, onlvl=low, !(s^o) = 0
 			// state=off, onlvl=low, !(s^o) = 1
-		bool onlvl = m_config & 1;
-		gpio_set_level(m_gpio,!(m_state^onlvl));
+		gpio_set_level(m_gpio,!(m_state^m_onlvl));
 		m_cb(this);
 		m_tlt = esp_timer_get_time() / 1000;
 		event_trigger(m_state ? m_onev : m_offev);

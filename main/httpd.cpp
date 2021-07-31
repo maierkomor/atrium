@@ -102,9 +102,49 @@ static void publish_config(stream &json)
 }
 
 
+struct PubAction
+{
+	PubAction(stream &str)
+	: out(str)
+	{ }
+
+	stream &out;
+	bool comma = false;
+};
+
+
+static void pub_action_iterator(void *arg, const Action *a)
+{
+	if (a) {
+		PubAction *p = (PubAction *)arg;
+		if (p->comma)
+			p->out << ',';
+		else
+			p->comma = true;
+
+		p->out << "\n{\"name\":\"" << a->name << "\",\"text\":\"" << a->text << "\"}";
+	}
+}
+
+
+static void publish_actions(stream &json)
+{
+	PubAction a(json);
+	json << "{\"actions\":[\n";
+	action_iterate(pub_action_iterator,(void*)&a);
+	json << "\n]}\n";
+}
+
+
 static void config_json(HttpRequest *req)
 {
 	send_json(req,publish_config);
+}
+
+
+static void actions_json(HttpRequest *req)
+{
+	send_json(req,publish_actions);
 }
 
 
@@ -202,7 +242,7 @@ static int extractLine(const char *cont, const char *start, char *param, size_t 
 
 static void exeShell(HttpRequest *req)
 {
-	TimeDelta dt(__FUNCTION__);
+	PROFILE_FUNCTION();
 	HttpResponse ans;
 	char com[72];
 	char pass[24];
@@ -473,7 +513,7 @@ static void postConfig(HttpRequest *r)
 
 static void httpd_session(void *arg)
 {
-	TimeDelta dt(__FUNCTION__);
+	PROFILE_FUNCTION();
 	int con = (int)arg;
 	struct timeval tv;
 	tv.tv_sec = 3;
@@ -495,7 +535,15 @@ static void httpd_session(void *arg)
 
 int httpd_setup()
 {
+	bool index_html = false;
 	const char *root = "/";
+#ifdef CONFIG_ROMFS
+	if (-1 != romfs_open("index.html")) {
+		WWW = new HttpServer(root,"/index.html");
+		WWW->addDirectory(root);
+		index_html = true;
+	}
+#endif
 #ifdef HAVE_FS
 	if (Config.httpd().has_root())
 		root = Config.httpd().root().c_str();
@@ -503,36 +551,32 @@ int httpd_setup()
 	strcpy(index,root);
 	strcat(index,"/index.html");
 	struct stat st;
-	if (stat(index,&st) == -1) {
-		log_info(TAG,"no index.html");
-		return 1;
-	}
-	WWW = new HttpServer(root,"/index.html");
-	WWW->addDirectory(root);
-	const char *upload = "/";
-	if (Config.httpd().has_uploaddir())
-		upload = Config.httpd().uploaddir().c_str();
-	if (upload && upload[0]) {
-		if (stat(upload,&st) == -1) {
-			log_dbug(TAG,"creating upload directory");
-			if (-1 == mkdir(upload,0777)) {
-				log_warn(TAG,"unable to create directory %s: %s",upload,strerror(errno));
+	if (stat(index,&st) != -1) {
+		WWW = new HttpServer(root,"/index.html");
+		WWW->addDirectory(root);
+		const char *upload = "/";
+		if (Config.httpd().has_uploaddir())
+			upload = Config.httpd().uploaddir().c_str();
+		if (upload && upload[0]) {
+			if (stat(upload,&st) == -1) {
+				log_dbug(TAG,"creating upload directory");
+				if (-1 == mkdir(upload,0777)) {
+					log_warn(TAG,"unable to create directory %s: %s",upload,strerror(errno));
+				} else {
+					WWW->setUploadDir(upload);
+				}
 			} else {
 				WWW->setUploadDir(upload);
 			}
-		} else {
-			WWW->setUploadDir(upload);
 		}
+		index_html = true;
 	}
-#else
-	if (-1 == romfs_open("index.html")) {
-		log_warn(TAG,"no index.html");
-		return 1;
-	}
-	WWW = new HttpServer(root,"/index.html");
-	WWW->addDirectory(root);
 #endif
 
+	if (!index_html) {
+		log_info(TAG,"no index.html found");
+		return 1;
+	}
 	WWW->addFile("/alarms.html");
 	WWW->addFile("/config.html");
 	WWW->addFile("/index.html");
@@ -543,6 +587,7 @@ int httpd_setup()
 	WWW->addFunction("/do_update",updateFirmware);
 #endif
 	WWW->addFunction("/config.json",config_json);	// reveals passwords
+	WWW->addFunction("/actions.json",actions_json);	// reveals passwords
 #ifdef CONFIG_HTTP_REVEAL_CONFIG
 	WWW->addFunction("/config.bin",config_bin);	// reveals passwords
 #endif

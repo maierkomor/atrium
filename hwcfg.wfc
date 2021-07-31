@@ -115,7 +115,7 @@ message TouchChannelConfig
 }
 
 
-enum pull_mode_t
+enum pull_mode_e
 {
 	option allow_alias = true;
 	pull_none = 0;
@@ -123,6 +123,13 @@ enum pull_mode_t
 	pull_dir = 2;
 	pull_down = 1;
 	pull_up = 3;
+}
+
+
+bitset pull_mode_t
+{
+	bool enable : 0;
+	bool up : 1;
 }
 
 
@@ -135,14 +142,13 @@ message ButtonConfig
 }
 
 
-enum relay_cfg_t
+bitset relay_cfg_t
 {
-	rc_active_low = 0;
-	rc_active_high = 1;
-	rc_init_on = 2;
-	rc_persistent = 4;	// store state in NVS and restore state on boot
-	rc_open_drain = 8;
-	rc_mqtt = 16;
+	bool active_high : 0;
+	bool init_on : 1;
+	bool persistent : 2;
+	bool opendrain : 3;
+	bool mqtt : 4;
 }
 
 
@@ -150,7 +156,7 @@ message RelayConfig
 {
 	string name = 1		[ unset = "" ];
 	sint8 gpio = 2		[ unset = -1 ];
-	relay_cfg_t config = 3	[ unset = rc_active_low ];
+	relay_cfg_t config = 3	[ unset = 0 ];
 	unsigned min_itv = 4	[ default = 0 ];	// minimum interval
 	sint8 interlock = 5	[ unset = -1 ];		// index of relay to interlock with
 }
@@ -285,6 +291,17 @@ message AdcConfig
 }
 
 
+bitset gpiocfg_t
+{
+	uint8 mode : 0..1;
+	uint8 intrtype : 2..4;
+	bool setinit : 5;
+	bool initlvl : 6;
+	bool pullup : 7;
+	bool pulldown : 8;
+}
+
+
 message GpioConfig
 {
 	string name = 1;
@@ -297,7 +314,7 @@ message GpioConfig
 	// bit 6: init level
 	// bit 7: pull-up enable
 	// bit 8: pull-down enable
-	unsigned config = 3;
+	gpiocfg_t config = 3;
 }
 
 
@@ -371,8 +388,8 @@ message HardwareConfig
 //	repeated SpiDevice spidev = 9;
 
 	// direct gpio drivers
-	repeated ButtonConfig button = 16;
-	repeated RelayConfig relay = 17;
+	repeated ButtonConfig button = 16	[ ifdef=CONFIG_BUTTON ];
+	repeated RelayConfig relay = 17		[ ifdef=CONFIG_RELAY ];
 	repeated LedConfig led = 18;
 
 	// high level applicaton drivers

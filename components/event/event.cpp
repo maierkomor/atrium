@@ -20,6 +20,7 @@
 #include "cyclic.h"
 #include "event.h"
 #include "log.h"
+//#include "profiling.h"
 
 #include <assert.h>
 #include <string.h>
@@ -179,6 +180,7 @@ int event_detach(const char *event, const char *action)
 
 event_t event_id(const char *n)
 {
+//	PROFILE_FUNCTION();
 	{
 		Lock lock(Mtx);
 		for (unsigned i = 1; i < EventHandlers.size(); ++i)

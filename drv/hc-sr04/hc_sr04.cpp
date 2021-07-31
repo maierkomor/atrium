@@ -20,16 +20,17 @@
 
 #ifdef CONFIG_HCSR04
 
+#include "actions.h"
 #include "hc_sr04.h"
-
 #include "log.h"
+#include "stream.h"
 #include "ujson.h"
 
 #include <esp_timer.h>
 #include <rom/gpio.h>
 
 
-static const char TAG[] = "hc_sr04";
+static const char TAG[] = "hcsr04";
 
 HC_SR04 *HC_SR04::First = 0;
 
@@ -39,10 +40,13 @@ HC_SR04::HC_SR04(gpio_num_t trigger, gpio_num_t echo)
 , m_echo(echo)
 {
 	gpio_set_level(m_trigger,1);
+	char name[16];
+	sprintf(name,"hcsr04@%d,%d",(int)trigger,(int)echo);
+	m_name = strdup(name);
 }
 
 
-HC_SR04 *HC_SR04::create(int8_t trigger,int8_t echo)
+HC_SR04 *HC_SR04::create(int8_t trigger, int8_t echo)
 {
 	if ((trigger == echo) || (trigger < 0) || (echo < 0))
 		return 0;
@@ -66,6 +70,7 @@ HC_SR04 *HC_SR04::create(int8_t trigger,int8_t echo)
 		delete inst;
 		return 0;
 	}
+	log_info(TAG,"device at %d/%d",(int)trigger,(int)echo);
 	inst->m_next = First;
 	First = inst;
 	return inst;
@@ -74,9 +79,9 @@ HC_SR04 *HC_SR04::create(int8_t trigger,int8_t echo)
 
 int HC_SR04::attach(JsonObject *root)
 {
-	char name[16];
-	sprintf(name,"hc-sr04@%u,%u",m_trigger,m_echo);
-	JsonObject *o = new JsonObject(name);
+	m_ev = event_register(m_name,"`update");
+	event_callback(m_ev,action_add(concat(m_name,"!update"),HC_SR04::update,this,0));
+	JsonObject *o = new JsonObject(m_name);
 	o->append(m_dist);
 	root->append(o);
 	return 0;
@@ -90,14 +95,31 @@ void HC_SR04::hc_sr04_isr(void *arg)
 	if (gpio_get_level(o->m_echo)) {
 		o->m_start = now;
 	} else {
-		int64_t dt = now - o->m_start;
-		if (dt < 0)
-			o->m_dist->set(NAN);
-		else
-			o->m_dist->set((float)dt/58.2);
+		o->m_dt = now - o->m_start;
+		event_isr_trigger(o->m_ev);
 	}
 }
 
+
+void HC_SR04::update(void *arg)
+{
+	HC_SR04 *o = (HC_SR04 *)arg;
+	char buf[16];
+	float_to_str(buf,(float)o->m_dt/58.2);
+	log_dbug(TAG,"%s (%u)",buf,(unsigned)o->m_dt);
+	if (o->m_dt < 0)
+		o->m_dist->set(NAN);
+	else
+		o->m_dist->set((float)o->m_dt/58.2);
+}
+
+
+void HC_SR04::setName(const char *name)
+{
+	if (m_name)
+		free(m_name);
+	m_name = strdup(name);
+}
 
 void HC_SR04::trigger()
 {

@@ -50,6 +50,7 @@ option esp : common {
 	stringtype=estring;
 	bytestype=estring;
 	enumnames=true;
+	enummap="!CONFIG_ESPTOOLPY_FLASHSIZE_1MB";
 }
 
 option esp32 : esp {
@@ -144,7 +145,7 @@ message Influx
 	fixed16 port = 2	[ unset = 0 ];
 	string measurement = 3	[ unset = "" ];
 	unsigned interval = 4	[ default = 60000, usage = obsolete ];
-	string database = 5	[ unset = "" ];		// not for UDP
+	string database = 5	[ unset = "" ];		// implies TCP
 }
 
 enum uart_wl_t
@@ -230,13 +231,18 @@ message AppParam
 	double fValue = 5;
 }
 
+bitset eventcfg_t
+{
+	bool restart : 0;
+	bool autostart : 1;
+}
 
 message EventTimer
 {
 	string name = 1		[ unset = "" ];
 	unsigned time = 2;	// in msec
 	// bit0: repeat, bit1: autostart
-	unsigned config = 3	[ unset = 0 ];
+	eventcfg_t config = 3	[ unset = 0 ];
 }
 
 

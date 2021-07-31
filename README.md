@@ -16,16 +16,18 @@ Software services:
 - SNTP timed actions with day-of-week and holiday settings
 - over-the-air (OTA) updates via http upload and download
 - OTA aware, persistent system configuration
-- MQTT integration (LWIP library only - buggy on ESP8266)
-- data transmission to InfluxDB via UDP
+- MQTT integration (directly integrated with async LWIP)
+- data transmission to InfluxDB via UDP and TCP
+  (directly integrated with async LWIP)
 - tool to send commands to all devices on the network
 - http server with system configuration support
   (this is not the one from Espressif SDK)
 - timezone support for CET with daylight-saving convention
 - ftp server for access to spiffs/fatfs
 - name-service lookup support
-- telnet server and console shell with many commands
-- inet server
+- telnet server and console shell with many commands for remote
+  operation and configuration (hardware and software)
+- inet server for RAM optimized connection handling
 - syslog support for sending log messages to a syslog server
 - serial monitor to forward uart to syslog
 - WPS support
@@ -41,7 +43,12 @@ Filesystem support:
 Hardware drivers:
 - button support with debouncing
 - relay control support
-- BME280 temperature/humidity/pressure sensor support
+- displays: SSD1360 (OLED), HD44780U (LCD), 7-/14-segmend LEDs
+- BMP280 and HDC1000 temperature/pressure sensor
+- BME280 temperature/humidity/pressure sensor
+- BME680 temperature/humidity/pressure/electircal-air-resistance sensor
+- SGP30 and CCS811B TVOC and CO2 sensor
+- APDS9930 proximity and light sensor
 - DHTxx temperature/humidity sensor support
 - DS18B20 temperature sensor support
 - alive status LED support with different blinking schemes
@@ -601,20 +608,34 @@ send the answer back. Like this you can perform changes of settings
 quickly for all devices.
 
 
+Displays:
+=========
+Atrium supports out of the box some displays including 7- and
+14-segment LED displays, multi-line text LCDs, and OLEDs. All displays
+are integrated in the clock application if configured appropriately. The
+clock application has the ability to display all kinds of information
+gathered by the attached sensors.
+
+To configure a display use hwconf (online) or atriumcfg (offline) to set
+the display type in the display config. Additionally, you should set the
+maximum X and Y resolution of the diplays (digits for LED and text LCDs,
+and dots for OLEDs). OLEDs based on SSD1306 may also need appropriate
+options for the individual hardware configuration as specified in the
+ssd1306.h file. Documentation for this is on the TODO list right now.
+
+
 Known Issues:
 =============
 - The documentation is incomplete and not completely up-to-date
-- PWM dimmer of ESP8266 may cause flickering output
-- S20/ESP8266 OTA scheme with 1MB ROM works with release/v3.2 but fails
-  with release/v3.3
 - CMake based builds do not support OTA image generation
-- LED-strip/WS2812b driver relies on RMT infrastructure, which
+- LED-strip/WS2812b driver relies on RMT infrastructure on ESP32, which
   has timing issues under certain condition. Avoid using channel 0.
 
 
 Developer hints:
 ================
 - MDNS requires IPv6 to work. The combined footprint is ~50k. If you don't need IPv6 for anything else, disabling MDNS and IPv6 will save you this amount of ROM. This is probably only a point to consider for devices with limited ROM, such as ESP8285 based systems without external flash.  
+
 
 Bugs:
 =====

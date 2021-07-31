@@ -197,7 +197,7 @@ static void action_print(void *p, const Action *a)
 	if (a == 0)
 		return;
 	Terminal *t = (Terminal*)p;
-	if (a->name[0] != '*')
+	if (a->text)
 		t->printf("\t%-24s  %s\n",a->name,a->text);
 }
 
@@ -482,6 +482,18 @@ static int shell_mv(Terminal &term, int argc, const char *args[])
 
 static int shell_ls(Terminal &term, int argc, const char *args[])
 {
+#if defined CONFIG_ROMFS
+	if (unsigned n = romfs_num_entries()) {
+		for (int i = 0; i < n; ++i) {
+			const char *n = romfs_name(i);
+			assert(n);
+			size_t s,o;
+			romfs_getentry(n,&s,&o);
+			term.printf("\t%5u %-12s\n",s,n);
+		}
+		return 0;
+	}
+#endif
 #ifdef HAVE_FS
 	if (argc == 1) {
 		estring pwd = PWD;
@@ -540,21 +552,8 @@ static int shell_ls(Terminal &term, int argc, const char *args[])
 		closedir(d);
 	}
 	return ret;
-#elif defined CONFIG_ROMFS
-#ifndef ROMFS_PARTITION
-#define ROMFS_PARTITION 0
-#endif
-	unsigned n = romfs_num_entries();
-	for (int i = 0; i < n; ++i) {
-		const char *n = romfs_name(i);
-		assert(n);
-		size_t s,o;
-		romfs_getentry(n,&s,&o);
-		term.printf("\t%5u %-12s\n",s,n);
-	}
-	return 0;
 #else
-	term.printf("not implemented\n");
+	term.printf("no filesystem\n");
 	return 1;
 #endif
 }
@@ -562,6 +561,26 @@ static int shell_ls(Terminal &term, int argc, const char *args[])
 
 static int shell_cat1(Terminal &term, const char *arg)
 {
+#ifdef CONFIG_ROMFS
+	const char *fn = arg;
+	if (fn[0] == '/')
+		++fn;
+	int r = romfs_open(fn);
+	if (r >= 0) {
+		size_t s = romfs_size_fd(r);
+		size_t a = 512 < s ? 512 : s;
+		char tmp[a];
+		size_t num = 0, off = 0;
+		while (num < s) {
+			size_t bs = s-off < a ? s-off : a;
+			romfs_read_at(r,tmp,bs,off);
+			off += bs;
+			num += bs;
+			term.print(tmp,bs);
+		}
+		return 0;
+	}
+#endif
 #ifdef HAVE_FS
 	char *filename;
 	if (arg[0] == '/') {
@@ -597,25 +616,6 @@ static int shell_cat1(Terminal &term, const char *arg)
 		term.print(buf,n);
 	} while (t < st.st_size);
 	close(fd);
-	return 0;
-#elif defined CONFIG_ROMFS
-	const char *filename = arg;
-	if (filename[0] == '/')
-		++filename;
-	int r = romfs_open(filename);
-	if (r < 0)
-		return 1;
-	size_t s = romfs_size_fd(r);
-	size_t a = 512 < s ? 512 : s;
-	char tmp[a];
-	size_t num = 0, off = 0;
-	while (num < s) {
-		size_t bs = s-off < a ? s-off : a;
-		romfs_read_at(r,tmp,bs,off);
-		off += bs;
-		num += bs;
-		term.print(tmp,bs);
-	}
 	return 0;
 #else
 	return 1;
@@ -1076,7 +1076,7 @@ static int timefuse(Terminal &term, int argc, const char *args[])
 		if (!strcmp("-l",args[1])) {
 			timefuse_t t = timefuse_iterator();
 			// active timers cannot be queried for repeat!
-			term.printf("%-16s %9s active\n","name","interval");
+			term.printf("%-16s %-16s active\n","name","interval");
 			while (t) {
 				char buf[20];
 				int on = timefuse_active(t);
@@ -2052,6 +2052,7 @@ extern int inetadm(Terminal &term, int argc, const char *args[]);
 extern int influx(Terminal &term, int argc, const char *args[]);
 extern int lightctrl(Terminal &term, int argc, const char *args[]);
 extern int nightsky(Terminal &term, int argc, const char *args[]);
+extern int prof(Terminal &term, int argc, const char *args[]);
 extern int process(Terminal &term, int argc, const char *args[]);
 extern int relay(Terminal &term, int argc, const char *args[]);
 extern int shell_format(Terminal &term, int argc, const char *args[]);
@@ -2169,6 +2170,9 @@ ExeName ExeNames[] = {
 #if configUSE_TRACE_FACILITY == 1
 	{"ps",0,ps,"task statistics",0},
 #endif
+#ifdef CONFIG_FUNCTION_TIMING
+	{"prof",0,prof,"profiling information",0},
+#endif
 	//{"process",1,process,"define and modify processing objects",0},
 	{"reboot",1,shell_reboot,"reboot system",0},
 #ifdef CONFIG_RELAY
@@ -2273,7 +2277,7 @@ static int help(Terminal &term, int argc, const char *args[])
 
 int shellexe(Terminal &term, const char *cmd)
 {
-	TimeDelta td(__FUNCTION__);
+	PROFILE_FUNCTION();
 	log_info("shell","execute '%s'",cmd);	// log_*() must not be used due to associated Mutexes
 	char *args[8];
 	size_t l = strlen(cmd);
