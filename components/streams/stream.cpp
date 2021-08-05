@@ -357,7 +357,7 @@ stream &stream::operator << (double d)
 {
 	char buf[64];
 #ifdef CONFIG_NEWLIB_LIBRARY_LEVEL_FLOAT_NANO
-	int n = snprintf(buf,sizeof(buf),"%4.1G",d);
+	int n = snprintf(buf,sizeof(buf),"%4.1f",d);
 	write(buf,n);
 #else
 	char *e = float_to_str(buf,d);
