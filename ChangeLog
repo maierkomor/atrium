@@ -1,3 +1,11 @@
+R2108:
+======
+- profiing update and fixes
+- HC-SR04 display integration
+- fix: float formatting fix
+- fix: IPv6 related build issues
+- fix: Windows is unable to checkout Atrium due to con.man
+
 R2107:
 ======
 - provide available actions via http as /actions.json

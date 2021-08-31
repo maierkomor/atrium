@@ -320,7 +320,7 @@ int HD44780U::writeData(uint8_t d)
 		return 1;
 	}
 	int r = 0;
-//	log_dbug(TAG,"m_data[%d]=0x%x <= 0x%x ",(int)at,(unsigned)m_data[at],(unsigned)d);
+	log_dbug(TAG,"m_data[%d]=0x%x <= 0x%x ",(int)at,(unsigned)m_data[at],(unsigned)d);
 	if (m_data[at] != d) {
 		if (m_posinv) {
 			log_dbug(TAG,"re-pos %u,%u=%d",m_posx,m_posy,(int)at);
@@ -352,8 +352,9 @@ int HD44780U::writeData(uint8_t d)
 		log_dbug(TAG,"disp[%d]=0x%x",(int)at,(unsigned)d);
 	} else {
 		m_posinv = true;
-//		log_dbug(TAG,"data[%d] OK",(int)at);
+		log_dbug(TAG,"data[%d] OK",(int)at);
 	}
+	++m_posx;
 	/*
 	if (++m_posx == m_maxx) {
 		m_posx = 0;
@@ -396,10 +397,13 @@ uint8_t HD44780U::readBusy()
 
 int HD44780U::clrEol()
 {
-	uint8_t y = m_posy;
+	uint8_t x = m_posx;
+	log_dbug(TAG,"clrEol() y=%u",(unsigned)m_posy);
 	do
 		writeData(' ');
-	while (m_posy == y);
+	while (m_posx < m_maxx);
+	m_posx = x;
+	log_dbug(TAG,"clrEol(): done");
 	return 0;
 }
 

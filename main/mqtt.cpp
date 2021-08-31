@@ -763,7 +763,7 @@ void mqtt_start(void *arg)
 			log_warn(TAG,"invalid port");
 		}
 	}
-#ifdef CONFIG_IDF_TARGET_ESP32
+#if defined CONFIG_LWIP_IPV6 || defined CONFIG_IDF_TARGET_ESP32
 	ip_addr_t ip;
 	ip.type = IPADDR_TYPE_V4;
 	ip.u_addr.ip4.addr = resolve_hostname(host);

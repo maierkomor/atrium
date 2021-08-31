@@ -218,12 +218,14 @@ static void syslog_start(void*)
 	}
 	udp_pcb *pcb = udp_new();
 	ip_addr_t ip;
-#ifdef CONFIG_IDF_TARGET_ESP32
+#if defined CONFIG_LWIP_IPV6 || defined CONFIG_IDF_TARGET_ESP32
 	ip.type = IPADDR_TYPE_V4;
+	ip.u_addr.ip4.addr = ip4;
 #else
 	ip.addr = ip4;
 #endif
 	if (err_t e = udp_connect(pcb,&ip,SYSLOG_PORT)) {
+		udp_remove(pcb);
 		log_warn(TAG,"udp_connect %d",e);
 		return;
 	}

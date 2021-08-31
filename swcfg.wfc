@@ -332,7 +332,7 @@ message NodeConfig
 	bool lightctrl = 38;		// true=auto, false=manual
 	unsigned pwm_freq = 39;		// base PWM frequenzy in Hz - shared for all channels
 
-	repeated AppParam app_params = 40	[ ifdef=CONFIG_SIGNAL_PROC ];
+	repeated AppParam app_params = 40	[ ifdef=CONFIG_APP_PARAMS ];
 
 	repeated OwDeviceConfig owdevices = 50	[ ifdef=CONFIG_ONEWIRE ];
 }

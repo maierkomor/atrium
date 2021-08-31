@@ -108,6 +108,7 @@ config INFLUX
 		Support for sending measurements as UDP packets to Influx DB 
 
 config MDNS
+	select ENABLE_MDNS
 	bool "mdns"
 	default true
 	help
@@ -147,6 +148,7 @@ config SPIFFS
 	help
 		SPI Flash File-System
 config FATFS
+	depends on IDF_TARGET_ESP32
 	bool "fatfs"
 	default false
 	help
@@ -292,7 +294,7 @@ config DIMMER
 		multi-channel PWM dimmer (esp32: hardware, esp8266: software)
 
 config LEDSTRIP
-	depends on SIGNAL_PROC
+	#depends on SIGNAL_PROC		(TODO)
 	bool	"LED strip support"
 	default false
 	help

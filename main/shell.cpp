@@ -2090,7 +2090,7 @@ ExeName ExeNames[] = {
 	{"cd",0,shell_cd,"change directory",0},
 #endif
 #ifdef CONFIG_TERMSERV
-	{"con",0,uart_termcon,"switch to UART console",con_man},
+	{"console",0,uart_termcon,"switch to UART console",console_man},
 #endif
 	{"config",1,config,"system configuration",config_man},
 	{"cpu",1,cpu,"CPU speed",0},

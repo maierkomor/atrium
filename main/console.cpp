@@ -44,10 +44,10 @@
 
 using namespace std;
 
+static const char TAG[] = "con";
+
 
 #ifdef CONFIG_UART_CONSOLE
-
-static const char TAG[] = "con";
 
 static void console_task(void *con)
 {

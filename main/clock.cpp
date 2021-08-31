@@ -51,6 +51,7 @@ typedef enum clockmode {
 	cm_tvoc,
 	cm_lux,
 	cm_prox,
+	cm_dist,
 	cm_display_bin,	// display something - e.g. alarm set value, binary data
 	cm_display_dec,	// display something - e.g. alarm set value, decimal data
 	CLOCK_MODE_MAX,
@@ -146,6 +147,10 @@ static void switch_mode(void *arg)
 	}
 	if (ctx->mode == cm_prox) {
 		if (0 == RTData->get("prox"))
+			ctx->mode = (clockmode_t)((int)ctx->mode + 1);
+	}
+	if (ctx->mode == cm_dist) {
+		if (0 == RTData->get("distance"))
 			ctx->mode = (clockmode_t)((int)ctx->mode + 1);
 	}
 	if (ctx->mode >= cm_display_bin)
@@ -294,6 +299,7 @@ void Clock::display_version()
 			disp->write("(C) Maier-Komor");
 		if (nl > 2)
 			disp->write(sp+1);
+		disp->setPos(0,nl+1);
 	} else {
 		disp->write(Version+1,sp-Version-1);
 	}
@@ -426,6 +432,9 @@ static unsigned clock_iter(void *arg)
 			case cm_prox:
 				text = "proximity";
 				break;
+			case cm_dist:
+				text = "distance";
+				break;
 			case cm_stopwatch:
 				text = "stop-watch";
 				nextFont = font_mono9;
@@ -538,6 +547,11 @@ static unsigned clock_iter(void *arg)
 		v = RTData->get("prox")->toNumber()->get();
 		fmt = "%4.0f";
 		dim = 0;
+		break;
+	case cm_dist:
+		v = RTData->get("distance")->toNumber()->get();
+		fmt = "%4.0f";
+		dim = "mm";
 		break;
 	case cm_display_bin:
 	case cm_display_dec:

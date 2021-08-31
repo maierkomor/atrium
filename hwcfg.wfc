@@ -209,6 +209,19 @@ message DhtConfig
 }
 
 
+enum i2cdrv_t {
+	i2cdrv_invalid = 0;
+	i2cdrv_pcf8574 = 1;
+}
+
+bitset i2cdev_t
+{
+	uint8 addr : 0..6;
+	bool scanaddr : 7;
+	i2cdrv_t drv : 8..15;
+}
+
+
 message I2CConfig
 {
 	uint8 port = 1		[ default = 0 ];
@@ -216,6 +229,7 @@ message I2CConfig
 	sint8 scl = 3		[ unset = -1 ];
 	unsigned freq = 4	[ default = 100000 ];
 	bool xpullup = 5;	// have external pull-ups
+	repeated i2cdev_t devices = 6	[ packed = true ];
 }
 
 

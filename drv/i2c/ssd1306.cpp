@@ -22,6 +22,7 @@
 
 #include "ssd1306.h"
 #include "log.h"
+#include "profiling.h"
 
 #include "fonts_ssd1306.h"
 #include <stdlib.h>
@@ -293,6 +294,7 @@ int SSD1306::sync()
 {
 	if (m_dirty == 0)
 		return 0;
+	PROFILE_FUNCTION();
 	uint8_t cmd[] = { m_addr, 0x00, 0xb0, 0x21, 0x00, (uint8_t)(m_maxx-1) };
 	uint8_t pfx[] = { m_addr, 0x40 };
 	uint8_t numpg = m_maxy / 8 + ((m_maxy & 7) != 0);
@@ -453,6 +455,7 @@ int SSD1306::drawByte(uint8_t x, uint8_t y, uint8_t b)
 
 int SSD1306::drawChar(char c)
 {
+	PROFILE_FUNCTION();
 	switch ((unsigned char) c) {
 	case '\r':
 		m_posx = 0;

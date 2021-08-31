@@ -157,6 +157,7 @@ static void ledstrip_task(void *arg)
 }
 #endif
 
+#ifdef CONFIG_SIGNAL_PROC 
 class FnLedstripSet : public Function
 {
 	public:
@@ -232,6 +233,8 @@ void FnLedstripSet::operator() (DataSignal *s)
 		LED_Strip->set_led(m_led-1,v);
 	LED_Strip->update(true);
 }
+
+#endif // CONFIG_SIGNAL_PROC
 
 
 int ledstrip_setup()

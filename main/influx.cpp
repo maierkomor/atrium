@@ -232,11 +232,11 @@ static int influx_init()
 	Header[hl] = 0;
 	HL = hl;
 	ip_addr_t addr;
-#ifdef CONFIG_IDF_TARGET_ESP8266
-	addr.addr = ip;
-#else
+#if defined CONFIG_LWIP_IPV6 || defined CONFIG_IDF_TARGET_ESP32
 	addr.type = IPADDR_TYPE_V4;
 	addr.u_addr.ip4.addr = ip;
+#else
+	addr.addr = ip;
 #endif
 	LOCK_TCPIP_CORE();
 	if (influx.database().empty()) {
