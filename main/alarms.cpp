@@ -36,8 +36,6 @@
 #include <string.h>
 #include <sys/time.h>
 
-#include <freertos/FreeRTOS.h>
-#include <freertos/task.h>
 #include <driver/gpio.h>
 
 #ifdef CONFIG_IDF_TARGET_ESP32
@@ -46,11 +44,14 @@
 
 #include <vector>
 
+// TODO: expand holiday concept to arbitrary categories, for adding
+// "abscent" scenario.
+
 using namespace std;
 
 const char *Weekdays_en[] = { "Su", "Mo", "Tu", "We", "Th", "Fr", "Sa", "wd", "we", "ed", "hd" };
 const char *Weekdays_de[] = { "So", "Mo", "Di", "Mi", "Do", "Fr", "Sa", "wt", "we", "jt", "ft" };
-static const char TAG[] = "alarms";
+#define TAG MODULE_ALARMS
 static JsonBool *Enabled = 0;
 JsonString *Localtime = 0;
 
@@ -141,30 +142,26 @@ static unsigned alarms_loop(void *)
 
 static void alarms_set(void *a)
 {
-	if (Enabled)
-		Enabled->set((bool)a);
+	Enabled->set((bool)a);
 }
 
 
 static void alarms_toggle(void *)
 {
-	if (Enabled)
-		Enabled->set(!Enabled->get());
+	Enabled->set(!Enabled->get());
 }
 
 
 bool alarms_enabled()
 {
-	return Enabled && Enabled->get();
+	return Enabled->get();
 }
 
 
 int alarms_setup()
 {
-	Enabled = new JsonBool("timers_enabled",Config.actions_enable());
-	RTData->append(Enabled);
-	Localtime = new JsonString("ltime","");
-	RTData->append(Localtime);
+	Enabled = RTData->add("timers_enabled",(bool)Config.actions_enable());
+	Localtime = RTData->add("ltime","");
 	action_add("timer!enable",alarms_set,(void*)1,"enable timer based triggers");
 	action_add("timer!disable",alarms_set,0,"disable timer based triggers");
 	action_add("timer!toggle",alarms_toggle,0,"toggle timer based triggers");
@@ -179,10 +176,8 @@ int holiday(Terminal &t, int argc, const char *args[])
 		return arg_invnum(t);
 	if ((argc == 3) && (!strcmp(args[1],"-D"))) {
 		long l = strtol(args[2],0,10);
-		if ((l < 0) || (l >= (long)Config.holidays_size())) {
-			t.printf("value out of range\n");
-			return 1;
-		}
+		if ((l < 0) || (l >= (long)Config.holidays_size()))
+			return arg_range(t,args[2]);
 		if (!strcmp(args[2],"all"))
 			Config.clear_holidays();
 		else
@@ -227,11 +222,11 @@ int holiday(Terminal &t, int argc, const char *args[])
 		}
 	}
 	if ((m <= 0) || (m > 12)) {
-		t.printf("invalid month\n");
+		t.println("invalid month");
 		return 1;
 	}
 	if ((d <= 0) || (d > 31)) {
-		t.printf("invalid day\n");
+		t.println("invalid day");
 		return 1;
 	}
 	Date h;
@@ -246,17 +241,17 @@ int holiday(Terminal &t, int argc, const char *args[])
 			if (n < 3) {
 				n = sscanf(args[2],"%d-%d-%d",&y,&m,&d);
 				if (n < 2) {
-					t.printf("invalid input format\n");
+					t.println("invalid input format");
 					return 1;
 				}
 			}
 		}
 		if ((m <= 0) || (m > 12)) {
-			t.printf("invalid month\n");
+			t.println("invalid month");
 			return 1;
 		}
 		if ((d <= 0) || (d > 31)) {
-			t.printf("invalid day\n");
+			t.println("invalid day");
 			return 1;
 		}
 		h.set_endday(d);
@@ -295,11 +290,11 @@ int at(Terminal &t, int argc, const char *args[])
 		} else if (!strcmp(args[1],"-0")) {
 			Config.set_actions_enable(Config.actions_enable()&~1);
 			Enabled->set(false);
-			t.printf("timers disabled\n");
+			t.println("timers disabled");
 		} else if (!strcmp(args[1],"-1")) {
 			Config.set_actions_enable(Config.actions_enable()|1);
 			Enabled->set(true);
-			t.printf("timers enabled\n");
+			t.println("timers enabled");
 		} else if (!strcmp(args[1],"-s")) {
 			cfg_store_nodecfg();
 		} else if (!strcmp(args[1],"-j")) {
@@ -337,7 +332,6 @@ int at(Terminal &t, int argc, const char *args[])
 			else
 				Config.mutable_at_actions()->erase(Config.mutable_at_actions()->begin()+id);
 		} else {
-			t.printf("invalid argument\n");
 			return arg_invalid(t,args[1]);
 		}
 		return 0;

@@ -24,7 +24,7 @@
 #include <rom/gpio.h>
 
 
-static char TAG[] = "TLC5947";
+#define TAG MODULE_TLC5947
 
 
 int TLC5947::init(gpio_num_t sin, gpio_num_t sclk, gpio_num_t xlat, gpio_num_t blank, unsigned num)

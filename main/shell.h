@@ -19,15 +19,14 @@
 #ifndef SHELL_H
 #define SHELL_H
 
+#define EXEFLAG_ADMIN		1
+#define EXEFLAG_INTERACTIVE	2
 
 #ifdef __cplusplus
 class Terminal;
-int shellexe(Terminal &, const char *cmd);
+int exe_flags(char *cmd);
+int shellexe(Terminal &, char *cmd);
 void shell(Terminal &term, bool prompt = true);
-int arg_missing(Terminal &t);
-int arg_invalid(Terminal &t, const char *a);
-int arg_invnum(Terminal &t);
-int arg_priv(Terminal &t);
 int help_cmd(Terminal &term, const char *arg);
 
 extern "C"

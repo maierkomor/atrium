@@ -37,7 +37,7 @@
 #define MAX_BRIGHT (1 << 11)
 
 
-static const char TAG[] = "nightsky";
+#define TAG MODULE_NIGHTSKY
 
 static TLC5947 Drv;
 static uint16_t NumLed, *Values;

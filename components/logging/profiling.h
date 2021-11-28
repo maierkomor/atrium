@@ -53,11 +53,7 @@ struct TimeStats
 
 struct FProf
 {
-#ifdef CONFIG_IDF_TARGET_ESP8266
-	typedef uint32_t hrtime_t;
-#else
 	typedef int64_t hrtime_t;
-#endif
 
 	FProf(TimeStats &s)
 	: stats(s)
@@ -70,13 +66,8 @@ struct FProf
 	~FProf()
 	{
 		if (0 == --stats.level) {
-#ifdef CONFIG_IDF_TARGET_ESP8266
-			uint32_t end = esp_timer_get_time();
-			uint32_t dt = end-start;
-#else
-			int64_t end = esp_timer_get_time();
-			int64_t dt = end-start;
-#endif
+			hrtime_t end = esp_timer_get_time();
+			hrtime_t dt = end-start;
 			stats.total += dt;
 			if (dt < stats.low)
 				stats.low = dt;

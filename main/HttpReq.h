@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -26,6 +26,8 @@
 
 #include "estring.h"
 
+class LwTcp;
+
 typedef enum
 {
 	hq_none = 0,
@@ -47,7 +49,7 @@ typedef enum
 class HttpRequest
 {
 	public:
-	static HttpRequest *parseRequest(int,char*,size_t);
+	static HttpRequest *parseRequest(LwTcp *,char*,size_t);
 	~HttpRequest();
 
 	size_t getContentLength() const
@@ -69,7 +71,7 @@ class HttpRequest
 	const char *getURI() const
 	{ return m_URI; }
 
-	int getConnection() const
+	LwTcp *getConnection() const
 	{ return m_con; }
 
 	bool keepAlive() const
@@ -86,14 +88,14 @@ class HttpRequest
 	void setURI(const char *);
 
 	private:
-	explicit HttpRequest(int);
+	explicit HttpRequest(LwTcp *);
 	HttpRequest(const HttpRequest &);
 	HttpRequest &operator = (const HttpRequest &);
 	char *parseHeader(char *,size_t);
 	void parseField(char *at, char *end);
 	void parseArgs(const char *);
 
-	int m_con;
+	LwTcp *m_con;
 	httpreq_t m_httpreq;
 	httpver_t m_httpver;
 	char *m_URI;

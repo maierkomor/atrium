@@ -16,6 +16,24 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#define CONFIG_BUTTON
+#define CONFIG_DHT
+#define CONFIG_DISPLAY
+#define CONFIG_HCSR04
+#define CONFIG_I2C
+#define CONFIG_LEDSTRIP
+#define CONFIG_MAX7219
+#define CONFIG_NIGHTSKY
+#define CONFIG_ONEWIRE
+#define CONFIG_RELAY
+
+#define CONFIG_APP_PARAMS
+#define CONFIG_FTP
+#define CONFIG_HTTP
+#define CONFIG_INFLUX
+#define CONFIG_MQTT
+#define CONFIG_SIGNAL_PROC
+
 #include "hwcfg.h"
 #include "swcfg.h"
 //#include "strstream.h"

@@ -29,7 +29,7 @@
 #define DEV_ADDR_MIN	(0x20 << 1)
 #define DEV_ADDR_MAX	(0x28 << 1)	// out of range
 
-static const char TAG[] = "pcf8574";
+#define TAG MODULE_PCF8574
 
 PCF8574 *PCF8574::Instance = 0;
 

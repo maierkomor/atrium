@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -42,8 +42,10 @@ int Terminal::readInput(char *buf, size_t l, bool echo)
 			continue;
 		}
 		if (c == '\r') {
-			if (echo)
+			if (echo) {
 				write(&c,1);
+				sync();
+			}
 			return eoi-buf;
 		}
 		const char *estr = 0;
@@ -123,4 +125,46 @@ int Terminal::readInput(char *buf, size_t l, bool echo)
 	if (n < 0)
 		return -1;
 	return eoi-buf;
+}
+
+
+int arg_invnum(Terminal &t)
+{
+	t.println("invalid number of arguments");
+	return 1;
+}
+
+
+int arg_invalid(Terminal &t, const char *a)
+{
+	t.printf("invalid argument '%s'\n",a);
+	return 1;
+}
+
+
+int arg_range(Terminal &t, const char *a)
+{
+	t.printf("value '%s' out of range\n",a);
+	return 1;
+}
+
+
+int arg_missing(Terminal &t)
+{
+	t.println("missing argument");
+	return 1;
+}
+
+
+int arg_priv(Terminal &t)
+{
+	t.println("Access denied. Use 'su' to get access.");
+	return 1;
+}
+
+
+int err_oom(Terminal &t)
+{
+	t.println("Out of memory.");
+	return -2;
 }

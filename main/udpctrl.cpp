@@ -22,6 +22,7 @@
 
 #include "globals.h"
 #include "inetd.h"
+#include "log.h"
 #include "mem_term.h"
 #include "netsvc.h"
 #include "shell.h"
@@ -31,13 +32,11 @@
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
-#include <freertos/event_groups.h>
 
+#include <lwip/inet.h>
+#include <lwip/sockets.h>
 #include <lwip/udp.h>
-#include <sys/socket.h>
 
-#include <esp_system.h>
-#include "log.h"
 #include <esp_err.h>
 
 #include <string.h>
@@ -48,53 +47,74 @@
 #define stacksize 2048
 #endif
 
-static char TAG[] = "udpctrl";
-static unsigned Cmds = 0, Exes = 0, Errors = 0;
-
-
-static void execute_packet(int sock, struct sockaddr_in *a, char *buf, size_t n)
+struct UdpCtrl
 {
-	log_dbug(TAG,"packet with %d bytes from %s:%u",n,inet_ntoa(a->sin_addr.s_addr),ntohs(a->sin_port));
-	++Cmds;
-	MemTerminal term(buf,n);
+	udp_pcb *PCB;
+	unsigned Cmds = 0;
+	uint16_t Port;
+};
+
+
+struct UdpCmd
+{
+	struct pbuf *pbuf;
+	ip_addr_t ip;
+	uint16_t port;
+
+	UdpCmd(struct pbuf *b, ip_addr_t i, uint16_t p)
+	: pbuf(b)
+	, ip(i)
+	, port(p)
+	{ }
+};
+
+
+#define TAG MODULE_UDPCTRL
+static UdpCtrl *Ctx = 0;
+
+
+static void udpctrl_session(void *arg)
+{
+	UdpCmd *c = (UdpCmd *) arg;
+	log_dbug(TAG,"%d bytes from %s:%u", c->pbuf->len, inet_ntoa(c->ip), (unsigned)c->port);
+	MemTerminal term((const char *)c->pbuf->payload,c->pbuf->len);
 	shell(term,false);
-	log_dbug(TAG,"response: '%s'",term.getBuffer());
-	if (-1 == sendto(sock,term.getBuffer(),term.getSize(),0,(struct sockaddr*)a,sizeof(struct sockaddr_in)))
-		log_warn(TAG,"sendto failed: %s",strneterr(sock));
+	size_t s = term.getSize();
+	log_dbug(TAG,"response (%d): '%s'",s,term.getBuffer());
+	LWIP_LOCK();
+	struct pbuf *r = pbuf_alloc(PBUF_TRANSPORT,s,PBUF_RAM);
+	pbuf_take(r,term.getBuffer(),s);
+	int e = udp_sendto(Ctx->PCB,r,&c->ip,Ctx->Port);
+	pbuf_free(r);
+	pbuf_free(c->pbuf);
+	LWIP_UNLOCK();
+	if (e)
+		log_warn(TAG,"send=%d",e);
+	delete c;
+	vTaskDelete(0);
+}
+
+
+static void recv_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *ip, u16_t port)
+{
+	UdpCmd *c = new UdpCmd(p,*ip,port);
+	char name[12];
+	++Ctx->Cmds;
+	sprintf(name,"udpctrl%u",Ctx->Cmds);
+	BaseType_t r = xTaskCreatePinnedToCore(udpctrl_session,name,2048,(void*)c,8,NULL,APP_CPU_NUM);
+	if (r != pdPASS)  {
+		log_warn(TAG,"unable create task %s: %d",name,r);
+		pbuf_free(p);
+	}
 }
 
 
 int udpc_stats(Terminal &term, int argc, const char *args[])
 {
-	term.printf("udpctrl: %u commands, %u execs, %u errors\n",Cmds,Exes,Errors);
+	term.printf("udpctrl: %u packets\n",Ctx->Cmds);
 	return 0;
 }
 
-
-static void proc_packet(void *arg)
-{
-	char buf[256];
-	int ls = (int) arg;
-	struct sockaddr_in addr;
-	memset(&addr,0,sizeof(addr));
-	socklen_t as = sizeof(addr);
-	int r = recvfrom(ls,buf,sizeof(buf)-1,0,(sockaddr*)&addr,&as);
-	if (r > 0) {
-		buf[r] = 0;
-		log_dbug(TAG,"received '%s' from %d.%d.%d.%d:%d"
-				,buf
-				,addr.sin_addr.s_addr & 0xff
-				,addr.sin_addr.s_addr>>8 & 0xff
-				,addr.sin_addr.s_addr>>16 & 0xff
-				,addr.sin_addr.s_addr>>24 & 0xff
-				,addr.sin_port);
-		int ts = socket(AF_INET,SOCK_DGRAM,IPPROTO_UDP);
-		addr.sin_port = htons(12719);
-		execute_packet(ts,&addr,buf,r);
-		close(ts);
-	}
-	vTaskDelete(0);
-}
 
 
 int udpctrl_setup(void)
@@ -104,7 +124,14 @@ int udpctrl_setup(void)
 		log_info(TAG,"disabled");
 		return 0;
 	}
-	listen_port(p,m_bcast,proc_packet,"udpctrl","udpctrl",8,2048);
+	Ctx = new UdpCtrl;
+	LWIP_LOCK();
+	Ctx->PCB = udp_new();
+	Ctx->Port = p;
+	udp_recv(Ctx->PCB,recv_callback,0);
+	udp_bind(Ctx->PCB,IP_ANY_TYPE,p);
+	ip_set_option(Ctx->PCB,SO_BROADCAST);
+	LWIP_UNLOCK();
 	return 0;
 }
 

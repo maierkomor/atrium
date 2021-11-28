@@ -48,8 +48,8 @@ struct BMP280 : public I2CDevice
 	void init_calib(uint8_t *);
 	static void trigger(void *);
 	bool status();
-	virtual bool sample();
-	virtual bool read();
+	virtual int sample();
+	virtual int read();
 	virtual void handle_error();
 
 	JsonNumber *m_temp = 0, *m_press = 0;
@@ -76,8 +76,8 @@ struct BME280 : public BMP280
 
 	protected:
 	float calc_humid(int32_t adc_H, int32_t t_fine);
-	bool sample();
-	bool read();
+	int sample();
+	int read();
 	void handle_error();
 
 	JsonNumber *m_humid = 0;

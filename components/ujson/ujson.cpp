@@ -25,6 +25,11 @@
 
 using namespace std;
 
+JsonElement::~JsonElement()
+{
+	free(m_name);
+}
+
 
 void JsonElement::toStream(stream &o) const
 {
@@ -45,7 +50,7 @@ void JsonElement::toStream(stream &o) const
 
 void JsonElement::writeValue(stream &o) const
 {
-
+	abort();
 }
 
 
@@ -77,8 +82,8 @@ void JsonNumber::writeValue(stream &o) const
 }
 
 
-JsonString::JsonString(const char *name, const char *v)
-: JsonElement(name)
+JsonString::JsonString(const char *name, const char *v, const char *dim)
+: JsonElement(name,dim)
 , m_value(strdup(v))
 {
 }
@@ -107,10 +112,18 @@ void JsonString::writeValue(stream &o) const
 void JsonString::set(const char *v)
 {
 	size_t l = strlen(v);
-	char *x = (char*)realloc(m_value,l+1);
+	set(v,l+1);
+}
+
+
+void JsonString::set(const char *v, size_t l)
+{
+	char *x = (char*)realloc(m_value,l + (v[l-1] != 0));
 	assert(x);
 	m_value = x;
-	memcpy(x,v,l+1);
+	memcpy(x,v,l);
+	if (v[l-1])
+		x[l] = 0;
 }
 
 
@@ -180,25 +193,25 @@ JsonObject *JsonObject::add(const char *n)
 }
 
 
-JsonBool *JsonObject::add(const char *n, bool v)
+JsonBool *JsonObject::add(const char *n, bool v, const char *dim)
 {
-	JsonBool *r = new JsonBool(n,v);
+	JsonBool *r = new JsonBool(n,v,dim);
 	append(r);
 	return r;
 }
 
 
-JsonNumber *JsonObject::add(const char *n, double v)
+JsonNumber *JsonObject::add(const char *n, double v, const char *dim)
 {
-	JsonNumber *r = new JsonNumber(n,v);
+	JsonNumber *r = new JsonNumber(n,v,dim);
 	append(r);
 	return r;
 }
 
 
-JsonString *JsonObject::add(const char *n, const char *v)
+JsonString *JsonObject::add(const char *n, const char *v, const char *dim)
 {
-	JsonString *r = new JsonString(n,v);
+	JsonString *r = new JsonString(n,v,dim);
 	append(r);
 	return r;
 }

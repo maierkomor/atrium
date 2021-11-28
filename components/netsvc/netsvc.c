@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -18,8 +18,10 @@
 
 #include <sdkconfig.h>
 
+#define NETSVC_IMPL
 #include "netsvc.h"
 #include "log.h"
+#include "udns.h"
 #ifndef IDF_VERSION
 #include "versions.h"
 #endif
@@ -42,17 +44,39 @@
 #include <mdns.h>
 #endif
 
+#define TAG MODULE_NS
+static SemaphoreHandle_t NscSem = 0;
+
+char *Hostname = 0, *Domainname = 0;
+uint8_t HostnameLen = 0, DomainnameLen = 0;
+
+#if LWIP_TCPIP_CORE_LOCKING != 1
+SemaphoreHandle_t LwipMtx = 0;
+#endif
+#if LWIP_IPV6
+ip6_addr_t IP6G,IP6LL;
+#endif
+
+
+#ifdef CONFIG_UDNS
+#else
 typedef struct nsc_entry
 {
 	char *hn;
-	ip4_addr_t ip4;
+	ip_addr_t ip;
 } nsc_entry_t;
 
 static nsc_entry_t NsCache[8];
-static char TAG[] = "ns";
-static SemaphoreHandle_t NscSem = 0;
+#endif
 
 
+#ifdef CONFIG_UDNS
+static void found_hostname_udns(const char *hn, const ip_addr_t *addr, void *arg)
+{
+	xSemaphoreGive(NscSem);
+}
+
+#else
 static void found_hostname(const char *hn, const ip_addr_t *addr, void *arg)
 {
 	static uint8_t overwrite = 0;
@@ -66,29 +90,13 @@ static void found_hostname(const char *hn, const ip_addr_t *addr, void *arg)
 		xSemaphoreGive(NscSem);
 		return;
 	}
-#if defined CONFIG_LWIP_IPV6 || defined CONFIG_IDF_TARGET_ESP32
-	if (addr->type != IPADDR_TYPE_V4) {
-		log_dbug(TAG,"got unspported address type %d for %s",addr->type,hn);
-		xSemaphoreGive(NscSem);
-		return;
-	}
-	uint32_t a = addr->u_addr.ip4.addr;
-#else
-	uint32_t a = addr->addr;
-#endif
-	log_dbug(TAG,"%s @ %d.%d.%d.%d"
-			, hn
-			, a & 0xff
-			, (a >> 8) & 0xff
-			, (a >> 16) & 0xff
-			, (a >> 24) & 0xff
-		);
+	log_dbug(TAG,"%s @ %s",inet_ntoa(*addr));
 
 	// update existing
 	for (size_t i = 0; i < sizeof(NsCache)/sizeof(NsCache[0]); ++i) {
 		if (NsCache[i].hn && (0 == strcmp(NsCache[i].hn,hn))) {
 			log_dbug(TAG,"updated ns-cache for %s",hn);
-			NsCache[i].ip4.addr = a;
+			NsCache[i].ip = *addr;
 			xSemaphoreGive(NscSem);
 			return;
 		}
@@ -99,7 +107,7 @@ static void found_hostname(const char *hn, const ip_addr_t *addr, void *arg)
 		if (NsCache[i].hn == 0) {
 			log_dbug(TAG,"adding ns-cache for %s",hn);
 			NsCache[i].hn = strdup(hn);
-			NsCache[i].ip4.addr = a;
+			NsCache[i].ip = *addr;
 			xSemaphoreGive(NscSem);
 			return;
 		}
@@ -109,7 +117,7 @@ static void found_hostname(const char *hn, const ip_addr_t *addr, void *arg)
 	log_dbug(TAG,"overwriting ns-cache %d for %s",overwrite,hn);
 	free(NsCache[overwrite].hn);
 	NsCache[overwrite].hn = strdup(hn);
-	NsCache[overwrite].ip4.addr = a;
+	NsCache[overwrite].ip = *addr;
 	
 	++overwrite;
 	if (overwrite == sizeof(NsCache)/sizeof(NsCache[0]))
@@ -118,67 +126,133 @@ static void found_hostname(const char *hn, const ip_addr_t *addr, void *arg)
 }
 
 
-static uint32_t ns_cache_lookup(const char *h)
+static ip_addr_t *ns_cache_lookup(const char *h)
 {
 	for (int i = 0; i < sizeof(NsCache)/sizeof(NsCache[0]); ++i) {
 		if (NsCache[i].hn && (0 == strcmp(NsCache[i].hn,h))) {
-			uint32_t ip = NsCache[i].ip4.addr;
-			log_dbug(TAG,"cache hit %s: %d.%d.%d.%d"
-					,h
-					,ip&0xff,(ip>>8)&0xff,(ip>>16)&0xff,(ip>>24)&0xff);
-			return ip;
+			log_dbug(TAG,"cache hit %s: %s",h,inet_ntoa(NsCache[i].ip));
+			return &NsCache[i].ip;
 		}
 	}
 	log_dbug(TAG,"cache miss");
-	return IPADDR_NONE;
+	return 0;
+}
+#endif
+
+
+int query_host(const char *h, ip_addr_t *ip, void (*cb)(const char *hn, const ip_addr_t *addr, void *arg), void *arg)
+{
+	if ((h == 0) || (h[0] == 0))
+		return -1;
+	log_dbug(TAG,"query host %s",h);
+	if ((h[0] >= '0') && (h[0] <= '9')) {
+		ip_addr_t a;
+		if (ipaddr_aton(h,&a)) {
+			if (ip)
+				*ip = a;
+			if (cb) {
+				LWIP_LOCK();
+				cb(h,&a,arg);
+				LWIP_UNLOCK();
+			}
+			return 0;
+		}
+	}
+#ifdef CONFIG_UDNS
+	size_t hl = strlen(h);
+	if (0 != memchr(h,'.',hl))
+		return udns_query(h,ip,cb,arg);
+	if (DomainnameLen == 0) {
+		log_warn(TAG,"no domainname set");
+		return udns_query(h,ip,cb,arg);
+	}
+	char hostname[hl+DomainnameLen+2];
+	memcpy(hostname,h,hl);
+	memcpy(hostname+hl,Domainname-1,DomainnameLen+2);
+	return udns_query(hostname,ip,cb,arg);
+#else
+	return dns_gethostbyname(h,ip,cb,arg);
+#endif
 }
 
 
-uint32_t resolve_fqhn(const char *h)
+int resolve_fqhn(const char *h, ip_addr_t *ip)
 {
 	if ((h[0] >= '0') && (h[0] <= '9')) {
-		uint32_t i4 = ipaddr_addr(h);
-		if (i4 != IPADDR_NONE)
-			return i4;
+		if (ipaddr_aton(h,ip))
+			return 0;
 	}
+#ifdef CONFIG_UDNS
+	if (NscSem == 0)
+		NscSem = xSemaphoreCreateCounting(1,0);
+	if (0 == udns_query(h,ip,found_hostname_udns,0))
+		return 0;
+	log_dbug(TAG,"query sent");
+#else
 	if (NscSem == 0) {
 		memset(NsCache,0,sizeof(NsCache));
 		NscSem = xSemaphoreCreateCounting(1,0);
 	}
-	uint32_t a = ns_cache_lookup(h);
-	if (a != IPADDR_NONE)
-		return a;
-	ip_addr_t ip;
-	esp_err_t e = dns_gethostbyname(h,&ip,found_hostname,0);
+	ip_addr_t *a = ns_cache_lookup(h);
+	if (a) {
+		*ip = *a;
+		return 0;
+	}
+	esp_err_t e = dns_gethostbyname(h,ip,found_hostname,0);
 	if (e == 0) {
 		log_dbug(TAG,"hostname %s from dns",h);
-#if defined CONFIG_LWIP_IPV6 || defined CONFIG_IDF_TARGET_ESP32
-		return ip.u_addr.ip4.addr;
-#else
-		return ip.addr;
-#endif
+		return 0;
 	}
+	log_dbug(TAG,"query sent");
+#endif
 	if (xSemaphoreTake(NscSem, 2000 / portTICK_PERIOD_MS)) {
+#ifdef CONFIG_UDNS
+		esp_err_t e = udns_query(h,ip,0,0);
+		if (e == 0) {
+			log_dbug(TAG,"hostname %s from dns: %s",h,inet_ntoa(ip));
+			return 0;
+		}
+#else
 		a = ns_cache_lookup(h);
-		if (a != IPADDR_NONE)
-			return a;
-	}
-	log_dbug(TAG,"timeout");
-#ifdef CONFIG_MDNS
-	ip4_addr_t ip4;
-	e = mdns_query_a(h,1,&ip4);
-	if (e == 0) {
-		log_dbug(TAG,"mdns resolve hostname %s",h);
-		return ip4.addr;
-	}
+		if (a != 0) {
+			*ip = *a;
+			return 0;
+		}
 #endif
+	} else {
+		log_dbug(TAG,"timeout");
+#ifdef CONFIG_UDNS
+		//	q->timedout = 1;
+#endif
+	}
+#ifndef CONFIG_UDNS
 	struct hostent *he = gethostbyname(h);
 	if (he != 0) {
 		log_dbug(TAG,"hostname %s from gethostbyname",h);
 		return inet_addr(he->h_addr);
 	}
 	log_dbug(TAG,"host %s: not found",h);
+#endif
 	return 0;
+}
+
+
+int resolve_hostname(const char *h, ip_addr_t *ip)
+{
+	if ((h[0] >= '0') && (h[0] <= '9')) {
+		if (inet_aton(h,ip))
+			return 0;
+	}
+	if (0 != strchr(h,'.'))
+		return resolve_fqhn(h,ip);
+	size_t hl = strlen(h);
+	char buf[strlen(h)+DomainnameLen+7];
+	memcpy(buf,h,hl);
+	if (DomainnameLen)
+		memcpy(buf+hl,Domainname-1,DomainnameLen+2);
+	else
+		memcpy(buf+hl,".local",7);
+	return resolve_fqhn(buf,ip);
 }
 
 
@@ -191,6 +265,115 @@ const char *strneterr(int socket)
 		return "error while retriving error string";
 	const char *errstr = strerror(errcode);
 	return errstr ? errstr : "unknown error";
+}
+
+
+int setdomainname(const char *dn, size_t l)
+{
+	if (l == 0) {
+		l = strlen(dn);
+		if (l == 0)
+			return -EINVAL;
+	}
+	const char *dot = strchr(dn,'.');
+	// no hyphen at beginning or end of domainname
+	if ((dot == 0) || (dn[0] == '-') || (dn[l-1] == '-'))
+		return -EINVAL;
+	const char *x = dn, *e = dn + l;
+	char c;
+	do {
+		c = *x;
+		if ((c >= 'a') && (c <= 'z'));
+		else if ((c >= '0') && (c <= '9'));
+		else if ((c >= 'A') && (c <= 'Z'));
+		else if ((c == '-') || (c == '.'));
+		else
+			return -EINVAL;
+		++x;
+	} while (x != e);
+	char *nh = (char *) malloc(HostnameLen+l+2);	// separating '.' + terminating \0
+	memcpy(nh,Hostname,HostnameLen);
+	nh[HostnameLen] = '.';
+	memcpy(nh+HostnameLen+1,dn,l+1);
+	Domainname = nh+HostnameLen+1;
+	DomainnameLen = l;
+	if (Hostname)
+		free(Hostname);
+	Hostname = nh;
+	log_info(TAG,"domainname %s",Domainname);
+	return 0;
+}
+
+
+int sethostname(const char *h, size_t l)
+{
+	if (l == 0) {
+		l = strlen(h);
+		if (l == 0)
+			return -EINVAL;
+	}
+	if ((l < 3) || (l > 63))
+		return -EINVAL;
+	const char *x = h, *e = h + l;
+	// no hyphen at beginning or end of hostname
+	if ((*x == '-') || (h[l-1] == '-'))
+		return -EINVAL;
+	char c;
+	do {
+		c = *x;
+		if ((c >= 'a') && (c <= 'z'));
+		else if ((c >= '0') && (c <= '9'));
+		else if ((c >= 'A') && (c <= 'Z'));
+		else if (c == '-');
+		else
+			return -EINVAL;
+		++x;
+	} while (x != e);
+	if (DomainnameLen == 0)
+		DomainnameLen = 5;
+	char *nh = malloc(l+DomainnameLen+2);
+	assert(nh);
+	memcpy(nh,h,l);
+	HostnameLen = l;
+	memcpy(nh+l, Domainname ? Domainname-1 : ".local", DomainnameLen+2);
+	if (Hostname)
+		free(Hostname);
+	Hostname = nh;
+	Domainname = nh+l+1;
+	log_info(TAG,"hostname %.*s",(int)HostnameLen,Hostname);
+#ifdef CONFIG_UDNS
+	udns_update_hostname();
+#endif
+	return 0;
+}
+
+
+static const char *LwipErrStr[] = {
+	"no error",
+	"out of memory",
+	"buffer error",
+	"timeout",
+	"routing error",
+	"operation in progress",
+	"illegal value",
+	"would block",
+	"address in use",
+	"already connected",
+	"already established",
+	"not connected",
+	"interface error",
+	"aborted",
+	"connection reset",
+	"connection closed",
+	"illegal argument",
+};
+
+
+const char *strlwiperr(int e)
+{
+	if ((e > 0) || (-e > sizeof(LwipErrStr)/sizeof(LwipErrStr[0])))
+		return "unknown error";
+	return LwipErrStr[-e];
 }
 
 

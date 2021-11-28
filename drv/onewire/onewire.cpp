@@ -62,7 +62,7 @@ using namespace std;
 #define OW_LAST_DEVICE		0x00
 
 
-static char TAG[] = "owb";
+#define TAG MODULE_OWB
 
 
 OneWire *OneWire::Instance = 0;

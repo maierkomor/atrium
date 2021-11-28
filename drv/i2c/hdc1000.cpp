@@ -35,7 +35,7 @@
 #define REG_SER23	0xfc
 #define REG_SER45	0xfd
 
-static const char TAG[] = "hdc1000";
+#define TAG MODULE_HDC1000
 
 
 HDC1000 *HDC1000::create(uint8_t bus)
@@ -56,8 +56,6 @@ HDC1000 *HDC1000::create(uint8_t bus)
 
 int HDC1000::init()
 {
-	m_temp = new JsonNumber("temperature","\u00b0C");
-	m_humid = new JsonNumber("humidity","%");
 	return setSingle(true);
 }
 
@@ -151,8 +149,10 @@ unsigned HDC1000::cyclic()
 		}
 		log_dbug(TAG,"error");
 		m_state = state_t::st_idle;
-		m_temp->set(NAN);
-		m_humid->set(NAN);
+		if (m_temp)
+			m_temp->set(NAN);
+		if (m_humid)
+			m_humid->set(NAN);
 		return 1000;
 	}
 }
@@ -172,7 +172,8 @@ void HDC1000::setTemp(uint8_t data[])
 	uint16_t temp_raw = (data[0] << 8) | data[1];
 	float t = (float)temp_raw / (1<<16) * 165 - 40;
 	log_dbug(TAG,"temp %G",t);
-	m_temp->set(t);
+	if (m_temp)
+		m_temp->set(t);
 }
 
 
@@ -206,8 +207,8 @@ void HDC1000::trigger_humid(void *arg)
 
 void HDC1000::attach(JsonObject *root)
 {
-	root->append(m_temp);
-	root->append(m_humid);
+	m_temp = root->add("temperature",NAN,"\u00b0C");
+	m_humid = root->add("humidity",NAN,"%");
 	cyclic_add_task(m_name,hdc1000_cyclic,this,0);
 	action_add(concat(m_name,"!sample"),HDC1000::trigger,(void*)this,"HDC1000 sample data");
 	action_add(concat(m_name,"!temp"),HDC1000::trigger_temp,(void*)this,"HDC1000 sample temperature");

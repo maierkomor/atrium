@@ -20,7 +20,6 @@
 
 #ifdef CONFIG_RELAY
 
-#include "cyclic.h"
 #include "globals.h"
 #include "hwcfg.h"
 #include "ujson.h"
@@ -35,7 +34,7 @@
 
 using namespace std;
 
-static const char TAG[] = "relays";
+#define TAG MODULE_RELAY
 
 
 static void relay_callback(Relay *r)
@@ -59,7 +58,7 @@ static void relay_callback(Relay *r)
 	l->set(Localtime->get());
 	rtd_unlock();
 #ifdef CONFIG_MQTT
-	mqtt_pub(r->name(),on?"on":"off",on?2:3,1,1);
+	mqtt_pub_nl(r->name(),on?"on":"off",on?2:3,1,1);
 #endif
 }
 
@@ -83,7 +82,7 @@ static void mqtt_callback(const char *topic, const void *data, size_t len)
 		log_warn(TAG,"unknown topic %s",topic);
 		return;
 	}
-	log_info(TAG,"mqtt_cb: set %s",sl+5);
+	log_info(TAG,"mqtt_cb: %s %.*s",sl+5,len,(const char *)data);
 	const char *text = (const char *)data;
 	if (len == 1) {
 		if ('0' == text[0])
@@ -128,12 +127,17 @@ int relay_setup()
 			c.set_name(name);
 			n = c.name().c_str();
 		}
+		log_dbug(TAG,n);
 #ifdef CONFIG_MQTT
 		if (c.config_mqtt()) {
 			char topic[c.name().size()+5] = "set_";
 			strcpy(topic+4,n);
+			log_dbug(TAG,"subscribe %s",topic);
 			mqtt_sub(topic,mqtt_callback);
-		}
+		} else
+			log_info(TAG,"no subscribe");
+#else
+		log_info(TAG,"no mqtt");
 #endif
 		Relay *r = new Relay(n,(gpio_num_t)gpio,itv,c.config_active_high());
 		r->setCallback(relay_callback);

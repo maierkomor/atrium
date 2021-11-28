@@ -17,6 +17,7 @@
  */
 
 #include "actions.h"
+#include "event.h"
 #include "log.h"
 
 #include <assert.h>
@@ -38,12 +39,16 @@
 
 using namespace std;
 
-static char TAG[] = "action";
+#define TAG MODULE_ACTION
 
 bool operator < (const Action &l, const Action &r)
 { return strcmp(l.name,r.name) < 0; }
 
+bool operator < (const Action &l, const char *r)
+{ return strcmp(l.name,r) < 0; }
+
 static set<Action,less<Action>> Actions;
+static event_t ActionTriggerEvt = 0;
 
 
 Action::Action(const char *n, void (*f)(void*),void *a, const char *t)
@@ -58,7 +63,7 @@ Action::Action(const char *n, void (*f)(void*),void *a, const char *t)
 
 void Action::activate(void *a)
 {
-	if (a == 0)
+	if (arg != 0)
 		a = arg;
 	uint64_t st = esp_timer_get_time();
 	func(a);
@@ -115,6 +120,26 @@ int action_activate(const char *name)
 }
 
 
+int action_dispatch(const char *n, size_t l)
+{
+	if (l == 0)
+		l = strlen(n);
+	char name[l+1];
+	name[l] = 0;
+	memcpy(name,n,l);
+	Action x(name);
+	set<Action,less<Action>>::iterator i = Actions.find(name);
+	if (i == Actions.end()) {
+		log_warn(TAG,"unable to dispatch unknown action '%s'",name);
+		return 1;
+	}
+	Action *a = const_cast<Action*>(&(*i));
+	log_dbug(TAG,"dispatch action %s (%p)",name,a);
+	event_trigger_arg(ActionTriggerEvt,a);
+	return 0;
+}
+
+
 void action_iterate(void (*f)(void*,const Action *),void *p)
 {
 	for (const Action &a : Actions)
@@ -123,3 +148,19 @@ void action_iterate(void (*f)(void*,const Action *),void *p)
 }
 
 
+static void action_event_cb(void *arg)
+{
+	Action *a = (Action *)arg;
+	log_dbug(TAG,"execute action %p",a);
+	log_dbug(TAG,"execute action %s",a->name);
+	a->activate();
+}
+
+
+int action_setup()
+{
+	ActionTriggerEvt = event_register("action`trigger");
+	Action *a = action_add("action!execute",action_event_cb,0,0);
+	event_callback(ActionTriggerEvt,a);
+	return 0;
+}

@@ -69,7 +69,7 @@ class TouchPad
 };
 
 
-static const char TAG[] = "tp";
+#define TAG MODULE_TP
 
 static TouchPad **Channels = 0;
 static uint8_t NumCh;

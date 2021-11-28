@@ -40,7 +40,6 @@
 #include "dimmer.h"
 #include "hwcfg.h"
 #include "log.h"
-#include "shell.h"
 #include "support.h"
 #include "swcfg.h"
 #include "terminal.h"
@@ -65,7 +64,7 @@ typedef uint32_t duty_t;
 #endif
 
 
-static const char TAG[] = "dim";
+#define TAG MODULE_DIM
 
 struct Dimmer
 {

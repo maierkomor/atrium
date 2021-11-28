@@ -198,7 +198,7 @@ message UartSettings
 
 message FtpHttpConfig
 {
-	fixed16 port = 1	[ default = 80 ];
+	fixed16 port = 1	[ unset = 0 ];
 	bool start = 2		[ default = true ];
 	string root = 3		[ unset = "" ];
 	string uploaddir = 4	[ unset = "" ];
@@ -288,12 +288,12 @@ message NodeConfig
 	unsigned cpu_freq = 3;
 	WifiConfig station = 4;
 	WifiConfig softap = 5;
-	string dns_server = 6		[ unset = "" ];
+	repeated string dns_server = 6	[ unset = "" ];
 	string syslog_host = 7		[ unset = "" ];
 	string sntp_server = 8		[ unset = "" ];
 	string timezone = 9		[ unset = "" ];
 	MQTT mqtt = 10			[ ifdef=CONFIG_MQTT ];
-	fixed16 dmesg_size = 11	[ default = 1024 ];
+	fixed16 dmesg_size = 11		[ default = 2048 ];
 	Influx influx = 12		[ ifdef=CONFIG_INFLUX ];
 	unsigned station2ap_time = 13;	// failover time from station to ap mode [s]
 	string domainname = 15		[ unset = "" ];
@@ -315,7 +315,7 @@ message NodeConfig
 
 	// TODO
 	FtpHttpConfig ftpd = 24			[ ifdef=CONFIG_FTP ];
-	FtpHttpConfig httpd = 25;
+	FtpHttpConfig httpd = 25		[ ifdef=CONFIG_HTTP ];
 
 	// event timer/timefuse
 	repeated EventTimer timefuses = 30;

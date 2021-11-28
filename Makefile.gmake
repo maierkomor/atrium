@@ -65,7 +65,6 @@ ROMFS_FILES	=$(shell cat $(ROMFS_LST) 2>/dev/null)
 ROMFS_ADDR	=$(CONFIG_ROMFS_ADDR)
 IDF_VER		:=$(shell cd $(IDF_PATH); git describe --tags 2>/dev/null | sed 's/\.//;s/v//;s/-.*//;s/\..*//')
 CPPFLAGS	=-DIDF_VERSION=$(IDF_VER) -I$(BUILD_DIR_BASE)/config
-PATH		+=:$(XTOOLS_ESP32)/bin:$(XTOOLS_ESP8266)/bin
 BUILD_DIR_BASE	=$(PWD)/build.$(PROJECT)
 PROJECT_ROOT	=$(PWD)
 WFCINC		=$(WFCDIR)/include
@@ -74,6 +73,9 @@ MEMFILES	=$(shell cd data; ls -1 man/*.man)
 ROMFS_PARTITION	=storage
 #CFG_CXX		=tools/atriumcfg.cpp components/streams/strstream.cpp components/streams/estring.cpp tools/hwcfg.cpp tools/swcfg.cpp tools/wfccore.cpp
 CFG_CXX		=tools/atriumcfg.cpp tools/hwcfg.cpp tools/swcfg.cpp tools/wfccore.cpp
+PATH		:=$(PATH_$(CHIP)):$(PATH)
+#PATH		+=:$(PATH_$(CHIP))
+IDF_PYTHON_ENV_PATH	=$(IDF_PYTHON_ENV_PATH_$(CHIP))
 
 ifneq ($(ROMFS_FILES),)
 ESPTOOL_ALL_FLASH_ARGS=$(ROMFS_ADDR) build.$(PROJECT)/romfs.bin

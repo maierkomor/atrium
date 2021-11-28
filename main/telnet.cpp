@@ -25,29 +25,18 @@
 #include "globals.h"
 #include "inetd.h"
 #include "log.h"
+#include "lwtcp.h"
 #include "netsvc.h"
 #include "settings.h"
 #include "shell.h"
-#include "support.h"
 #include "swcfg.h"
 #include "terminal.h"
 
 #include <esp_err.h>
-#include <lwip/tcp.h>
 
 #include <string.h>
 #include <strings.h>
-#include <lwip/tcp.h>
-#include <sys/socket.h>
-#include <unistd.h>
 
-#ifdef write
-#undef write
-#endif
-
-#ifdef read
-#undef read
-#endif
 
 /************* RFC854 - telnet: *************************************
       NAME               CODE              MEANING
@@ -111,9 +100,10 @@
 
 #define ESC		0x1b
 
+#define TAG MODULE_TELNET
+
 using namespace std;
 
-static const char TAG[] = "telnetd";
 static const char ConSetup[] = {
 	RFC854_IAC,RFC854_WILL,1,	// echo
 	RFC854_IAC,RFC854_DONT,1,	// echo
@@ -124,7 +114,7 @@ static const char NOP[] = {RFC854_IAC,RFC854_NOP};
 class Telnet : public Terminal
 {
 	public:
-	explicit Telnet(int c)
+	explicit Telnet(LwTcp *c)
 	: Terminal(true)
 	, m_con(c)
 	, m_lastsent(uptime())
@@ -134,26 +124,28 @@ class Telnet : public Terminal
 	, m_cin(m_cmd)
 	, m_error(0)
 	{
+		c->setSync(false);
 		write(ConSetup,sizeof(ConSetup));
 	}
 
 	~Telnet()
 	{
-		close(m_con);
+		m_con->close();
 	}
 
 	int process_input(char in);
 
 	// inherited from Terminal
-	int write(const char *, size_t);
-	int read(char *, size_t n, bool = true);
+	int write(const char *, size_t) override;
+	int read(char *, size_t n, bool = true) override;
+	void sync(bool) override;
 	int get_ch(char *);
 
 	private:
 	Telnet(const Telnet &);
 	Telnet& operator = (const Telnet &);
 
-	int m_con;
+	LwTcp *m_con;
 	uint32_t m_lastsent;
 	bool m_doecho, m_newline;
 	typedef enum { XMDATA=0, XMIAC, XMDO, XMDONT, XMWILL, XMWONT, XMSN } xfer_state_t;
@@ -165,30 +157,39 @@ class Telnet : public Terminal
 
 int Telnet::write(const char *b, size_t l)
 {
-	int n = send(m_con,b,l,0);
-	if (n < 0)
-		m_error = strneterr(m_con);
-	m_lastsent = uptime();
+	int n = 0;
+	if (l) {
+		n = m_con->write(b,l,true);
+		m_lastsent = uptime();
+	}
 	return n;
+}
+
+
+void Telnet::sync(bool b)
+{
+	m_con->sync(b);
 }
 
 
 int Telnet::read(char *buf, size_t s, bool block)
 {
-	int n = recv(m_con,buf,s, block ? 0 : MSG_DONTWAIT);
+	int n = m_con->read(buf,s,block);
 	if (n >= 0)
 		return n;
-	m_error = strneterr(m_con);
 	return -1;
 }
-
 
 
 int Telnet::get_ch(char *oc)
 {
 	//log_info(TAG,"char %d",c);
 	while (1) {
-		int n = recv(m_con,oc,1,0);
+		int n = m_con->read(oc,1,0);
+		if (n == 0) {
+			m_con->sync(false);
+			n = m_con->read(oc,1);
+		}
 		char c = *oc;
 		if (n < 0)
 			return -1;
@@ -289,16 +290,15 @@ int Telnet::get_ch(char *oc)
 }
 
 
-static void telnet_session(void *arg)
+static void telnet_session(LwTcp *con)
 {
-	int con = (int)arg;
-	log_info(TAG,"starting session");
+	log_info(TAG,"new session");
 	Telnet session(con);
 	if (!Config.has_pass_hash())
 		session.setPrivLevel(1);
 	shell(session);
-	close(con);
-	log_info(TAG,"session terminated");
+	delete con;
+	log_info(TAG,"session done");
 	vTaskDelete(0);
 }
 
@@ -309,9 +309,10 @@ static void telnet_session(void *arg)
 #define stack_size 2560
 #endif
 
+
 int telnet_setup()
 {
-	return listen_port(TELNET_PORT,m_tcp,telnet_session,"telnetd","_telnet",8,stack_size);
+	return listen_port(TELNET_PORT,m_tcp,telnet_session,"telnet","telnet",5,4096);
 }
 
 

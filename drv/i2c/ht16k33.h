@@ -20,8 +20,9 @@
 #define HT16K33_H
 
 #include "ledcluster.h"
+#include "i2cdrv.h"
 
-class HT16K33 : public LedCluster
+class HT16K33 : public LedCluster, public I2CDevice
 {
 	public:
 	static unsigned create(uint8_t);
@@ -42,14 +43,12 @@ class HT16K33 : public LedCluster
 
 	private:
 	HT16K33(uint8_t bus, uint8_t addr)
-	: m_bus(bus)
-	, m_addr(addr)
+	: LedCluster()
+	, I2CDevice(bus,addr,"ht16k33")
 	{ }
 
 	~HT16K33() = default;
 
-	uint8_t m_bus;
-	uint8_t m_addr;
 	uint8_t m_data[16];
 	uint8_t m_pos = 0;
 	uint8_t m_digits = 0;

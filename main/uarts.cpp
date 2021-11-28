@@ -22,7 +22,6 @@
 #include "globals.h"
 #include "hwcfg.h"
 #include "log.h"
-#include "shell.h"
 #include "swcfg.h"
 #include "uarts.h"
 #include "uart_terminal.h"
@@ -39,6 +38,12 @@
 
 #ifdef CONFIG_IDF_TARGET_ESP32
 #include <soc/io_mux_reg.h>
+#endif
+
+#if CONFIG_UART_CONSOLE_NONE != 1
+#ifndef CONFIG_CONSOLE_UART_NUM
+#define CONFIG_CONSOLE_UART_NUM 0
+#endif
 #endif
 
 // CONFIG_IDF_TARGET_ESP8266
@@ -68,8 +73,10 @@ struct Term
 };
 
 
-static const char TAG[] = "uart", MON[] = "mon";
+#define TAG MODULE_UART
+#ifdef CONFIG_TERMSERV
 static Term *Terminals = 0;
+#endif
 
 
 #ifdef CONFIG_UART_MONITOR
@@ -84,7 +91,7 @@ static void monitor(void *uart)
 		char *in = buf + fill;
 		int n = uart_read_bytes((uart_port_t)rx_uart, (uint8_t*)in, sizeof(buf)-1-fill, portMAX_DELAY);
 		if (n < 0) {
-			log_error(MON,"read error %d",n);
+			log_error(TAG,"read error %d",n);
 			vTaskDelete(0);
 		}
 		fill += n;
@@ -92,7 +99,7 @@ static void monitor(void *uart)
 		char *at = buf, *nl = strchr(in,'\n');
 		while (nl) {
 			if (nl-at > 0)
-				log_syslog(ll_info,MON,at,nl-at);
+				log_syslog(ll_info,MODULE_UART,at,nl-at,0);
 			at = nl+1;
 			if (*at == '\r')
 				++at;
@@ -104,7 +111,7 @@ static void monitor(void *uart)
 				memmove(buf,at,fill);
 		} else if (fill == sizeof(buf)-1) {
 			assert(buf == at);
-			log_syslog(ll_info,MON,at,nl-at);
+			log_syslog(ll_info,MODULE_UART,at,nl-at,0);
 			in = buf;
 			fill = 0;
 		}
@@ -115,8 +122,6 @@ static void monitor(void *uart)
 
 void uart_setup()
 {
-	log_info(TAG,"%u ports",Config.uart_size());
-	int8_t diag = HWConf.system().diag_uart();
 	for (const UartSettings &c : Config.uart()) {
 		if (!c.has_port()) {
 			continue;
@@ -144,11 +149,11 @@ void uart_setup()
 			uc.use_ref_tick = false;
 #endif
 		}
-		unsigned rx_buf = c.has_rx_bufsize() ? c.rx_bufsize() : 256;
-		unsigned tx_buf = c.has_tx_bufsize() ? c.tx_bufsize() : 256;
-		if (port == diag) {
+		unsigned rx_buf = c.has_rx_bufsize() ? c.rx_bufsize() : 128;
+		unsigned tx_buf = c.has_tx_bufsize() ? c.tx_bufsize() : (256+128);
+		if (port == (uart_port_t) CONFIG_CONSOLE_UART_NUM) {
 			// already handled
-			log_info(TAG,"diag on uart%d",port);
+			log_info(TAG,"system console on uart%d",port);
 		} else if (esp_err_t e = uart_param_config(port,&uc)) {
 			log_error(TAG,"uart%d config: %s",port,esp_err_to_name(e));
 		} else if (esp_err_t e = uart_driver_install(port,rx_buf,tx_buf,0,DRIVER_ARG)) {
@@ -164,6 +169,11 @@ void uart_setup()
 		rx_used = 1<<crx;
 	if (ctx != -1)
 		tx_used = 1<<ctx;
+	if (HWConf.system().has_diag_uart()) {
+		uint8_t diag = HWConf.system().diag_uart();
+		log_set_uart(diag);
+		log_info(TAG,"diag on uart %u",diag);
+	}
 	for (auto &c : Config.terminal()) {
 		int8_t rx = c.uart_rx();
 		int8_t tx = c.uart_tx();
@@ -178,7 +188,7 @@ void uart_setup()
 #ifdef CONFIG_UART_MONITOR
 		if ((tx == -1) && (rx != -1)) {
 			// this is a monitor
-			BaseType_t r = xTaskCreatePinnedToCore(monitor, MON, 2048, (void*)(int)rx, 19, 0, PRO_CPU_NUM);
+			BaseType_t r = xTaskCreatePinnedToCore(monitor, "mon", 2048, (void*)(int)rx, 19, 0, PRO_CPU_NUM);
 			if (r == pdPASS) {
 				rx_used |= (1 << rx);
 				log_info(TAG,"monitor uart%d",rx);
@@ -281,9 +291,8 @@ int uart_termcon(Terminal &term, int argc, const char *args[])
 #define CON_BUF_SIZE 196
 	uint8_t *buf = (uint8_t *) malloc(CON_BUF_SIZE);
 	if (buf == 0) {
-		term.printf("out of memory");
 		t->connected = false;
-		return 1;
+		return err_oom(term);
 	}
 	bool crnl = term.get_crnl();
 	term.set_crnl(false);
@@ -314,7 +323,7 @@ int uart_termcon(Terminal &term, int argc, const char *args[])
 		} else if ((i == -1) && term.error()) {
 			r = 1;
 			const char *e = term.error();
-			log_info(TAG,"terminal read error: %s; closing console session", e ? e : "<null>");
+			log_info(TAG,"read error: %s; closing session", e ? e : "<null>");
 			break;
 		}
 		if ((a == 0) && (i <= 0))

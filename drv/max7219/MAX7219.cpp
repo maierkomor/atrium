@@ -25,7 +25,7 @@
 
 #include <string.h>
 
-static char TAG[] = "MAX7219";
+#define TAG MODULE_MAX7219
 
 
 MAX7219Drv::MAX7219Drv(gpio_num_t clk, gpio_num_t dout, gpio_num_t cs)

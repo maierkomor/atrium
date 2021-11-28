@@ -41,7 +41,7 @@ class Action
 
 	private:
 	void (*func)(void *);
-	void *arg = 0;
+	void *arg = 0;		// if argument is 0, then the argument of the event is taken
 };
 
 extern "C" {
@@ -53,6 +53,7 @@ const char *action_get_text(size_t);
 const char *action_text(const char *name);
 Action *action_get(const char *name);
 int action_activate(const char *name);
+int action_dispatch(const char *name, size_t l);	// execute action via event queue
 int action_exists(const char *name);
 void action_iterate(void (*)(void*,const Action *),void *);
 void actions_setup();

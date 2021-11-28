@@ -53,9 +53,9 @@ struct Event {
 
 
 static QueueHandle_t EventsQ = 0;
-static SemaphoreHandle_t Mtx = 0;
+static SemaphoreHandle_t EventMtx = 0;
 static vector<EventHandler> EventHandlers;
-static char TAG[] = "event";
+#define TAG MODULE_EVENT
 static uint8_t Lost = 0;
 
 
@@ -80,7 +80,8 @@ event_t event_register(const char *cat, const char *type)
 	}
 	if (0 == strchr(name,'`'))
 		log_warn(TAG,"event '%s' missing `",name);
-	Lock lock(Mtx);
+	log_dbug(TAG,"register %s",name);
+	Lock lock(EventMtx,__FUNCTION__);
 	size_t n = EventHandlers.size();
 	// event_t 0: name: empty string; invalid event, catched in this loop
 	for (size_t i = 0; i < n; ++i) {
@@ -114,15 +115,20 @@ uint64_t event_time(event_t e)
 
 int event_callback(event_t e, Action *a)
 {
-	assert(Mtx);
-	xSemaphoreTake(Mtx,portMAX_DELAY);
+	if (e == 0) {
+		log_warn(TAG,"cannot attach action %s to null event",a->name);
+		return -1;
+	}
+	assert(EventMtx);
+	if (pdFALSE == xSemaphoreTake(EventMtx,MUTEX_ABORT_TIMEOUT))
+		abort_on_mutex(EventMtx,__FUNCTION__);
 	if (e < EventHandlers.size()) {
 		EventHandlers[e].callbacks.push_back(a);
-		xSemaphoreGive(Mtx);
-		log_dbug(TAG,"event %s -> action %s",EventHandlers[e].name,a->name);
+		xSemaphoreGive(EventMtx);
+		log_dbug(TAG,"callback %s -> action %s",EventHandlers[e].name,a->name);
 		return 0;
 	}
-	xSemaphoreGive(Mtx);
+	xSemaphoreGive(EventMtx);
 	log_warn(TAG,"callback event %u: out of range",e);
 	return 1;
 }
@@ -130,13 +136,17 @@ int event_callback(event_t e, Action *a)
 
 int event_callback(const char *event, const char *action)
 {
-	event_t e = event_id(event);
-	Action *a = action_get(action);
-	if ((a == 0) || (e == 0)) {
-		log_warn(TAG,"event_callback('%s',%s'): invalid arg",event,action);
-		return 2;
+	const char *x = 0;
+	if (event_t e = event_id(event)) {
+		if (Action *a = action_get(action))
+			return event_callback(e,a);
+		else
+			x = "action";
+	} else {
+		x = "event";
 	}
-	return event_callback(e,a);
+	log_warn(TAG,"event_callback('%s','%s'): invalid %s",event,action,x);
+	return -1;
 }
 
 
@@ -150,7 +160,7 @@ int event_detach(event_t e, Action *a)
 {
 	const char *err = "invalid event";
 	if (e != 0) {
-		Lock lock(Mtx);
+		Lock lock(EventMtx,__FUNCTION__);
 		if (e < EventHandlers.size()) {
 			for (auto i = EventHandlers[e].callbacks.begin(), j = EventHandlers[e].callbacks.end(); i != j; ++i) {
 				if (*i == a) {
@@ -181,14 +191,15 @@ int event_detach(const char *event, const char *action)
 event_t event_id(const char *n)
 {
 //	PROFILE_FUNCTION();
-	{
-		Lock lock(Mtx);
-		for (unsigned i = 1; i < EventHandlers.size(); ++i)
-			if (!strcmp(n,EventHandlers[i].name))
-				return (event_t) i;
+	Lock lock(EventMtx,__FUNCTION__);
+	event_t r = 0;
+	for (unsigned i = 1; i < EventHandlers.size(); ++i) {
+		if (!strcmp(n,EventHandlers[i].name)) {
+			r = (event_t) i;
+			break;
+		}
 	}
-	log_dbug(TAG,"unknown event %s",n);
-	return 0;
+	return r;
 }
 
 
@@ -196,7 +207,7 @@ event_t event_id(const char *n)
 const char *event_name(event_t e)
 {
 	if (e != 0) {
-		Lock lock(Mtx);
+		Lock lock(EventMtx,__FUNCTION__);
 		if (e < EventHandlers.size())
 			return EventHandlers[e].name;
 	}
@@ -212,10 +223,12 @@ void event_trigger(event_t id)
 		return;
 	}
 	struct Event e = {id,0};
-	log_dbug(TAG,"trigger %d",id);
 	BaseType_t r = xQueueSend(EventsQ,&e,1000);
-	if (r != pdTRUE)
+	if (r != pdTRUE) {
+		log_dbug(TAG,"lost event %d",id);
 		++Lost;
+	} else
+		log_dbug(TAG,"trigger %s",EventHandlers[id].name);
 }
 
 
@@ -235,7 +248,7 @@ void event_trigger_arg(event_t id, void *arg)
 		return;
 	}
 	struct Event e = {id,arg};
-	log_dbug(TAG,"trigger %d",id);
+	log_dbug(TAG,"trigger %d %p",id,arg);
 	BaseType_t r = xQueueSend(EventsQ,&e,1000);
 	if (r != pdTRUE)
 		++Lost;
@@ -259,6 +272,7 @@ static void event_task(void *)
 	unsigned d = 1;
 	for (;;) {
 		Event e;
+		e.id = 0;
 		BaseType_t r = xQueueReceive(EventsQ,&e,d * portTICK_PERIOD_MS);
 		if (Lost) {
 			log_warn(TAG,"lost %u events",(unsigned)Lost);
@@ -267,20 +281,24 @@ static void event_task(void *)
 		if (r == pdFALSE) {
 			// timeout: process cyclic
 			d = cyclic_execute();
-			continue;
+			if (e.id == 0)
+				continue;
 		}
-		Lock lock(Mtx);
+//		con_printf("event %d\n",e.id);
+		Lock lock(EventMtx,__FUNCTION__);
+		int64_t start = esp_timer_get_time();
 		if (e.id < EventHandlers.size()) {
 			EventHandler &h = EventHandlers[e.id];
-			log_dbug(TAG,"execute callbacks of %s",h.name);
+			log_local(TAG,"execute callbacks of %s, arg %p",h.name,e.arg);
 			++h.occur;
-			int64_t start = esp_timer_get_time();
 			for (auto a : h.callbacks) {
-				log_dbug(TAG,"\tfunction %s",a->name);
+				log_local(TAG,"\tfunction %s",a->name);
 				a->activate(e.arg);
 			}
 			int64_t end = esp_timer_get_time();
+			log_local(TAG,"callbacks of %s in %lu",h.name,end-start);
 			h.time += end-start;
+			start = end;
 		} else {
 			log_error(TAG,"invalid event %u",e);
 		}
@@ -288,12 +306,19 @@ static void event_task(void *)
 }
 
 
-int event_setup(void)
+void event_init(void)
 {
+	EventMtx = xSemaphoreCreateMutex();
 	EventHandlers.emplace_back("<null>");	// (event_t)0 is an invalid event
-	EventsQ = xQueueCreate(32,sizeof(event_t));
-	Mtx = xSemaphoreCreateMutex();
-	BaseType_t r = xTaskCreatePinnedToCore(&event_task, "events", 4096, (void*)0, 14, NULL, 1);
+	EventHandlers.emplace_back("wifi`station_up");
+	EventHandlers.emplace_back("wifi`station_down");
+	EventsQ = xQueueCreate(32,sizeof(Event));
+}
+
+
+int event_start(void)
+{
+	BaseType_t r = xTaskCreatePinnedToCore(&event_task, "events", 4096, (void*)0, 9, NULL, 1);
 	if (r != pdPASS) {
 		log_error(TAG,"create task: %d",r);
 		return 1;

@@ -24,12 +24,11 @@
 #include "globals.h"
 #include "hwcfg.h"
 #include "log.h"
-#include "shell.h"
 #include "terminal.h"
 
 #include <driver/adc.h>
 
-static const char TAG[] = "adc";
+#define TAG MODULE_ADC
 
 #if defined CONFIG_IDF_TARGET_ESP32
 struct AdcSignal : public IntSignal

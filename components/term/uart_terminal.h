@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -30,8 +30,9 @@ class UartTerminal : public Terminal
 
 	void init(uint8_t uart);
 	void init(uint8_t rx, uint8_t tx);
-	int read(char *, size_t, bool = true);
-	int write(const char *b, size_t);
+	int read(char *, size_t, bool = true) override;
+	int write(const char *b, size_t) override;
+	void sync(bool) override;
 	void set_baudrate(unsigned);
 
 	private:

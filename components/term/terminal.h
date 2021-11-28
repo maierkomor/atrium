@@ -57,11 +57,15 @@ class Terminal : public stream
 	const char *error() const
 	{ return m_error; }
 
+	virtual bool isInteractive() const
+	{ return true; }
+
 	protected:
-	const char *m_error;
+	const char *m_error, *m_pwd;
 
 	private:
 	uint8_t	m_plvl;
+	bool m_synced = true;
 };
 
 
@@ -87,5 +91,11 @@ class NullTerminal : public Terminal
 	{ return 0; }
 };
 
+int arg_missing(Terminal &t);
+int arg_invalid(Terminal &t, const char *a);
+int arg_invnum(Terminal &t);
+int arg_range(Terminal &t, const char *a);
+int arg_priv(Terminal &t);
+int err_oom(Terminal &t);
 
 #endif

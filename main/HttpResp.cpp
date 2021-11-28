@@ -19,23 +19,29 @@
 #include "HttpResp.h"
 
 #include "log.h"
+#include "lwtcp.h"
 #include "netsvc.h"
 #include "profiling.h"
 #include "support.h"
 
+#include <errno.h>
 #include <fcntl.h>
 #include <stdarg.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include <sys/socket.h>
-#include <unistd.h>
 
 #define BUFSIZE 1024
 
+#ifdef read
+#undef read
+#endif
+
+#ifdef write
+#undef write
+#endif
+
 using namespace std;
 
-static const char TAG[] = "httpa";
+#define TAG MODULE_HTTP
 static const char CRNL[] = "\r\n";
 
 const char HTTP_OK[] =           "200 OK";
@@ -71,9 +77,8 @@ HttpResponse::HttpResponse(const char *r)
 , m_header()
 , m_content()
 , m_fd(-1)
-, m_con(-1)
-, m_reslen(0)
 {
+	log_dbug(TAG,"HttpResponse('%s')",r);
 
 }
 
@@ -143,11 +148,11 @@ void HttpResponse::addContent(const char *h, size_t l)
 	log_dbug(TAG,"addContent: %u bytes",l);
 	if (l == 0)
 		l = strlen(h);
-	if (m_con != -1) {
-		if (-1 == send(m_con,h,l,0)) {
-			log_warn(TAG,"error sending: %s",strneterr(m_con));
-			close(m_con);
-			m_con = -1;
+	if (m_con != 0) {
+		if (-1 == m_con->write(h,l)) {
+			log_warn(TAG,"error sending: %s",m_con->error());
+			delete m_con;
+			m_con = 0;
 		}
 	} else {
 		m_content.append(h,l);
@@ -162,29 +167,30 @@ void HttpResponse::writeContent(const char *fmt, ...)
 	va_start(val,fmt);
 	int n = vsnprintf(buf,sizeof(buf)-1,fmt,val);
 	if (n < sizeof(buf)) {
-		if (m_con == -1) {
+		if (m_con == 0) {
 			m_content.append(buf,n);
-		} else if (-1 == send(m_con,buf,n,0)) {
-			log_error(TAG,"error sending content: %s",strneterr(errno));
+		} else if (-1 == m_con->write(buf,n)) {
+			log_error(TAG,"error sending content: %s",m_con->error());
 		}
 	} else {
-		if (m_con != -1)
+		if (m_con != 0)
 			m_content.clear();
 		size_t s = m_content.size();
 		m_content.resize(s + n, 0);
 		vsprintf((char*)m_content.data()+s,fmt,val);
-		if ((m_con != -1) && (-1 == send(m_con,m_content.data(),s+n,0)))
-			log_warn(TAG,"error sending content: %s",strneterr(errno));
+		if ((m_con != 0) && (-1 == m_con->write(m_content.data(),s+n)))
+			log_warn(TAG,"error sending content: %s",m_con->error());
 	}
 	va_end(val);
 }
 
 
-bool HttpResponse::senddata(int con, int fd)
+bool HttpResponse::senddata(LwTcp *con, int fd)
 {
 	//TimeDelta td(__FUNCTION__);
 	m_con = con;
 	size_t cs = m_content.size();
+#if defined CONFIG_FATFS || defined CONFIG_SPIFFS
 	assert((fd == -1) || (cs == 0));
 	if (fd != -1) {
 		struct stat st;
@@ -195,6 +201,7 @@ bool HttpResponse::senddata(int con, int fd)
 			cs = st.st_size;
 		}
 	}
+#endif
 	assert(m_result != 0);
 	char msg[128];
 	int n;
@@ -208,18 +215,19 @@ bool HttpResponse::senddata(int con, int fd)
 		return false;
 	}
 	log_dbug(TAG,"sending:>>\n%s\n<<",msg);
-	int r = send(con,msg,n,0);
+	int r = con->write(msg,n);
 	if (-1 == r) {
 //		log_error(TAG,"error sending: %s",strerror(errno));
 		return false;
 	}
 	if (!m_header.empty()) {
 		m_header += CRNL;
-		if (-1 == send(con,m_header.data(),m_header.size(),0)) {
-			log_error(TAG,"error sending: %s",strerror(errno));
+		if (-1 == con->write(m_header.data(),m_header.size())) {
+			log_error(TAG,"error sending: %s",con->error());
 			return false;
 		}
 	}
+#if defined CONFIG_FATFS || defined CONFIG_SPIFFS
 	if (fd != -1) {
 		char *buf = (char*)malloc(BUFSIZE);
 		while (cs > 0) {
@@ -228,16 +236,18 @@ bool HttpResponse::senddata(int con, int fd)
 			cs -= bs;
 			if (n == -1) 
 				memset(buf,0,bs);
-			if (-1 == send(con,buf,bs,0)) {
+			if (-1 == con->write(buf,bs)) {
 				free(buf);
-				log_error(TAG,"error sending content: %s",strneterr(con));
+				log_error(TAG,"error sending content: %s",con->error());
 				return false;
 			}
 		}
 		free(buf);
-	} else if (!m_content.empty()) {
-		if (-1 == send(con,m_content.data(),m_content.size(),0)) {
-			log_error(TAG,"error sending: %s",strerror(errno));
+	} else
+#endif		
+		if (!m_content.empty()) {
+		if (-1 == m_con->write(m_content.data(),m_content.size())) {
+			log_error(TAG,"error sending: %s",m_con->error());
 			return false;
 		}
 	}

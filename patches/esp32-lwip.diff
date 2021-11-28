@@ -1,0 +1,66 @@
+diff --git a/src/core/dns.c b/src/core/dns.c
+index abacb0e2..8872e1a4 100644
+--- a/src/core/dns.c
++++ b/src/core/dns.c
+@@ -314,6 +314,7 @@ const ip_addr_t dns_mquery_v6group = DNS_MQUERY_IPV6_GROUP_INIT;
+  * Initialize the resolver: set up the UDP pcb and configure the default server
+  * (if DNS_SERVER_ADDRESS is set).
+  */
++#ifndef CONFIG_UDNS
+ void
+ dns_init(void)
+ {
+@@ -364,6 +365,7 @@ dns_init(void)
+   dns_init_local();
+ #endif
+ }
++#endif
+ 
+ /**
+  * @ingroup dns
+@@ -372,6 +374,7 @@ dns_init(void)
+  * @param numdns the index of the DNS server to set must be < DNS_MAX_SERVERS
+  * @param dnsserver IP address of the DNS server to set
+  */
++#ifndef CONFIG_UDNS
+ void
+ dns_setserver(u8_t numdns, const ip_addr_t *dnsserver)
+ {
+@@ -383,6 +386,7 @@ dns_setserver(u8_t numdns, const ip_addr_t *dnsserver)
+     }
+   }
+ }
++#endif
+ 
+ #if ESP_DNS
+ void 
+@@ -423,12 +427,14 @@ dns_getserver(u8_t numdns)
+  * The DNS resolver client timer - handle retries and timeouts and should
+  * be called every DNS_TMR_INTERVAL milliseconds (every second by default).
+  */
++#ifndef CONFIG_UDNS
+ void
+ dns_tmr(void)
+ {
+   LWIP_DEBUGF(DNS_DEBUG, ("dns_tmr: dns_check_entries\n"));
+   dns_check_entries();
+ }
++#endif
+ 
+ #if DNS_LOCAL_HOSTLIST
+ static void
+@@ -1503,12 +1509,14 @@ dns_enqueue(const char *name, size_t hostnamelen, dns_found_callback found,
+  * @param callback_arg argument to pass to the callback function
+  * @return a err_t return code.
+  */
++#ifndef CONFIG_UDNS
+ err_t
+ dns_gethostbyname(const char *hostname, ip_addr_t *addr, dns_found_callback found,
+                   void *callback_arg)
+ {
+   return dns_gethostbyname_addrtype(hostname, addr, found, callback_arg, LWIP_DNS_ADDRTYPE_DEFAULT);
+ }
++#endif
+ 
+ #if ESP_LWIP
+ static bool dns_server_is_set (void)

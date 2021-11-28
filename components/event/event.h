@@ -36,6 +36,8 @@ extern "C" {
 
 int event_callback(const char *e, const char *a);
 int event_detach(const char *e, const char *a);
+int event_start(void);
+void event_init(void);
 void event_trigger(event_t e);
 void event_trigger_nd(event_t id);	// no-debug version for syslog only
 void event_trigger_arg(event_t e, void *);

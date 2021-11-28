@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2017-2020, Thomas Maier-Komor
+ *  Copyright (C) 2017-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -62,11 +62,12 @@ void startWPS();
 void cfg_init_defaults();
 int cfg_store_hwcfg();
 int cfg_store_nodecfg();
-void sntp_start();
 void cfg_factory_reset(void * = 0);
 int cfg_set_hostname(const char *hn);
 void cfg_clear_nodecfg();
 int cfg_erase_nvs();
+void cfg_sntp();
+void sntp_setup();
 void nvs_setup();
 int set_cpu_freq(unsigned mhz);
 int set_timezone(const char *v);

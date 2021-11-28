@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -71,6 +71,8 @@ extern const char HTTP_INV_VERSION[];
 extern const char HTTP_INSUF_SPACE[];
 extern const char HTTP_NETAUTH_REQ[];
 
+class LwTcp;
+
 
 class HttpResponse
 {
@@ -87,7 +89,7 @@ class HttpResponse
 	void addContent(const char *, size_t l = 0);
 	void writeContent(const char *,  ...);
 
-	bool senddata(int, int fd = -1);
+	bool senddata(LwTcp *, int fd = -1);
 
 	estring &contentString()
 	{ return m_content; }
@@ -99,7 +101,8 @@ class HttpResponse
 	const char *m_result;
 	estring m_header;
 	estring m_content;
-	int m_fd, m_con, m_reslen;
+	int m_fd = -1;
+	LwTcp *m_con = 0;
 };
 
 #endif

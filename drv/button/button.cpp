@@ -37,7 +37,7 @@
 #endif
 
 
-static char TAG[] = "btn";
+#define TAG MODULE_BUTTON
 
 
 Button::Button(const char *name, gpio_num_t gpio, gpio_pull_mode_t mode, bool active_high, Button *n)

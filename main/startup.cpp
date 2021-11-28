@@ -39,9 +39,11 @@
 #include <sdkconfig.h>
 
 #include "cyclic.h"
+#include "event.h"
 #include "fs.h"
 #include "globals.h"
 #include "log.h"
+#include "netsvc.h"
 #include "ota.h"
 #include "settings.h"
 #include "status.h"
@@ -49,6 +51,7 @@
 #include "syslog.h"
 #include "uart_terminal.h"
 #include "uarts.h"
+#include "udns.h"
 #include "ujson.h"
 #include "wifi.h"
 
@@ -74,20 +77,9 @@
 
 using namespace std;
 
-static const char TAG[] = "init";
-static const char BootStr[] = "Starting Atrium Firmware...\r\n";
+#define TAG MODULE_INIT
 
-/*
-static void init_detached(int (*fn)(),const char *name,void *arg)
-{
-	BaseType_t r = xTaskCreatePinnedToCore(fn,name,4096,arg,8,NULL,APP_CPU_NUM);
-	if (r != pdPASS) {
-		log_error(TAG,"task creation for module '%s' failed: %s",i->name,esp_err_to_name(r));
-	}
-}
-*/
-
-
+int action_setup();
 int adc_setup();
 int alarms_setup();
 int button_setup();
@@ -98,7 +90,6 @@ int dht_setup();
 int dimmer_setup();
 int display_setup();
 int distance_setup();
-int event_setup();
 int ftpd_setup();
 int gpio_setup();
 int hall_setup();
@@ -113,9 +104,9 @@ int nightsky_setup();
 int ow_setup();
 int relay_setup();
 int status_setup();
-int syslog_setup();
 int telnet_setup();
 int touchpads_setup();
+void udns_setup();
 int udpctrl_setup();
 int webcam_setup();
 
@@ -188,16 +179,17 @@ static int has_dups(JsonObject *o)
 
 static void env_setup()
 {
-	set<const char *,CStrLess> vars;
 	if (has_dups(RTData))
 		return;
 	unsigned i = 0;
 	while (JsonElement *x = RTData->getChild(i)) {
+		++i;
+		if (0 == strcmp(x->name(),"mqtt"))
+			continue;
 		if (JsonObject *c = x->toObject()) {
 			for (JsonElement *m : c->getChilds())
 				RTData->add(m);
 		}
-		++i;
 	}
 }
 
@@ -205,29 +197,26 @@ static void env_setup()
 extern "C"
 void app_main()
 {
-	log_setup();
+	log_setup();		// init CONFIG_CONSOLE_UART_NUM, logging mutex, etc
+	event_init();		// event mutex, etc
 #ifdef CONFIG_SYSLOG
-	dmesg_setup();
+	dmesg_setup();		// syslog buffer, using syslog`msg event
 #endif
+	globals_setup();	// init HWConf, Config, RTData with defaults
+	nvs_setup();		// read HWConf
+	uart_setup();		// init configured uarts, set diag uart
+
 	log_info(TAG,"Atrium Firmware for ESP based systems");
 	log_info(TAG,"Copyright 2019-2021, Thomas Maier-Komor, License: GPLv3");
 	log_info(TAG,"Version %s",Version);
 	log_info(TAG,"IDF: %s",esp_get_idf_version());
-	globals_setup();
-	nvs_setup();
-	diag_setup();
 
-#ifdef CONFIG_IDF_TARGET_ESP8266
-	gpio_install_isr_service(0);
-#else
-	gpio_install_isr_service(ESP_INTR_FLAG_LEVEL1 | ESP_INTR_FLAG_IRAM);
-#endif
+	action_setup();
 	settings_setup();
+	cyclic_setup();
 
 	system_info();
 
-	cyclic_setup();	// before event_setup
-	event_setup();	// needed for most drivers and wifi including gpio
 	gpio_setup();
 	adc_setup();
 #ifdef CONFIG_IDF_TARGET_ESP32
@@ -242,13 +231,11 @@ void app_main()
 #ifdef CONFIG_UART_CONSOLE
 	console_setup();
 #endif
-#ifdef CONFIG_MQTT
-	mqtt_setup();	// before any subscription occurs
-#endif
 
 #ifdef CONFIG_AT_ACTIONS
 	alarms_setup();
 #endif
+	event_start();
 #ifdef CONFIG_RELAY
 	relay_setup();
 #endif
@@ -274,10 +261,22 @@ void app_main()
 	ow_setup();
 #endif
 
+#ifdef CONFIG_UDNS
+	udns_setup();
+#endif
 	wifi_setup();
 	cfg_activate();
-	uart_setup();
+#ifdef CONFIG_UDNS
+	mdns_setup();
+#endif
+#ifdef CONFIG_MQTT
+	mqtt_setup();	// in case of no subscriptions
+#endif
+#ifdef CONFIG_INFLUX
+	influx_setup();
+#endif
 	env_setup();
+	sntp_setup();
 
 #ifdef CONFIG_SYSLOG
 	syslog_setup();
@@ -296,11 +295,6 @@ void app_main()
 	webcam_setup();
 #endif
 
-	// client network services
-#ifdef CONFIG_INFLUX
-	influx_setup();
-#endif
-	
 #ifdef CONFIG_DISPLAY
 	display_setup();
 	clockapp_setup();
@@ -313,13 +307,13 @@ void app_main()
 #ifdef CONFIG_SIGNAL_PROC
 	cfg_init_functions();
 #endif
+	// here all actions and events must be initialized
 	cfg_activate_triggers();
 
+	// network listening services
 #ifdef CONFIG_UDPCTRL
 	udpctrl_setup();
 #endif
-
-	// inetd bound services must be setup before inetd itself
 #ifdef CONFIG_TELNET
 	telnet_setup();
 #endif
@@ -329,9 +323,9 @@ void app_main()
 #ifdef CONFIG_FTP
 	ftpd_setup();
 #endif
-	inetd_setup();
 
 #ifdef CONFIG_IDF_TARGET_ESP32
+	inetd_setup();
 	esp_ota_mark_app_valid_cancel_rollback();
 #endif
 	log_info(TAG,"Atrium Version %s",Version);

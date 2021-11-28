@@ -29,6 +29,7 @@
 #include "inetd.h"
 #include "ujson.h"
 #include "log.h"
+#include "lwtcp.h"
 #include "mem_term.h"
 #include "netsvc.h"
 #include "romfs.h"
@@ -45,11 +46,14 @@
 #include <freertos/semphr.h>
 
 #include <esp_ota_ops.h>
-#include <sys/socket.h>
 
 #include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>
+
+#ifdef CONFIG_IDF_TARGET_ESP32
+#include <lwip/sockets.h>
+#endif
 
 #ifndef WWW_ROOT
 #define WWW_ROOT "/"
@@ -66,7 +70,7 @@
 using namespace std;
 
 
-static const char TAG[] = "httpd";
+#define TAG MODULE_WWW
 
 static HttpServer *WWW = 0;
 static SemaphoreHandle_t Sem = 0;
@@ -115,13 +119,12 @@ struct PubAction
 
 static void pub_action_iterator(void *arg, const Action *a)
 {
-	if (a) {
+	if (a && a->text) {
 		PubAction *p = (PubAction *)arg;
 		if (p->comma)
 			p->out << ',';
 		else
 			p->comma = true;
-
 		p->out << "\n{\"name\":\"" << a->name << "\",\"text\":\"" << a->text << "\"}";
 	}
 }
@@ -296,7 +299,7 @@ static void exeShell(HttpRequest *req)
 static void updateFirmware(HttpRequest *r)
 {
 	log_dbug(TAG,"updateFirmware()");
-	int c = r->getConnection();
+	LwTcp *c = r->getConnection();
 	HttpResponse ans;
 	const char *pass = r->getHeader("password").c_str();
 	if (!verifyPassword(pass)) {
@@ -367,7 +370,7 @@ static void updateFirmware(HttpRequest *r)
 		}
 		memcpy(tmp,r->getContent(),s0);
 		if (s0 != s) {
-			int n = read(c,(uint8_t*)tmp+s0,s - s0);
+			int n = c->read((char*)tmp+s0,s - s0);
 			if (n < 0)
 				log_error(TAG,"error receiving data: %s",strerror(errno));
 			s0 += n;
@@ -424,9 +427,9 @@ static void updateFirmware(HttpRequest *r)
 		sprintf(st,"updating at 0x%x, %d to go",addr,s);
 		UpdateState->set(st);
 		log_dbug(TAG,st);
-		int n = read(c,buf,s > FLASHBUFSIZE ? FLASHBUFSIZE : s);
+		int n = c->read(buf,s > FLASHBUFSIZE ? FLASHBUFSIZE : s);
 		if (0 > n) {
-			snprintf(st,sizeof(st),"receive failed: %s",strneterr(c));
+			snprintf(st,sizeof(st),"receive failed: %s",c->error());
 			UpdateState->set(st);
 			free(buf);
 			if (ota)
@@ -440,7 +443,7 @@ static void updateFirmware(HttpRequest *r)
 		else
 			e = spi_flash_write(addr,buf,n);
 		if (e) {
-			snprintf(st,sizeof(st),"write failed: %s",esp_err_to_name(e));
+			snprintf(st,sizeof(st),"write failed: %d",e);
 			UpdateState->set(st);
 			log_warn(TAG,st);
 			free(buf);
@@ -511,15 +514,18 @@ static void postConfig(HttpRequest *r)
 }
 
 
-static void httpd_session(void *arg)
+static void httpd_session(LwTcp *con)
 {
 	PROFILE_FUNCTION();
-	int con = (int)arg;
+#ifdef CONFIG_IDF_TARGET_ESP32
+	/*
 	struct timeval tv;
 	tv.tv_sec = 3;
 	tv.tv_usec = 0;
 	if (0 > setsockopt(con,SOL_SOCKET,SO_RCVTIMEO,&tv,sizeof(tv)))
 		log_warn(TAG,"error setting receive timeout: %s",strneterr(con));
+		*/
+#endif
 	if (pdTRUE == xSemaphoreTake(Sem,100/portTICK_PERIOD_MS)) {
 		if (WWW)
 			WWW->handleConnection(con);
@@ -528,7 +534,8 @@ static void httpd_session(void *arg)
 	} else {
 		log_warn(TAG,"too many connections");
 	}
-	close(con);
+	con->close();
+	xSemaphoreGive(Sem);
 	vTaskDelete(0);
 }
 
@@ -536,7 +543,7 @@ static void httpd_session(void *arg)
 int httpd_setup()
 {
 	bool index_html = false;
-	const char *root = "/";
+	const char *root = "/flash";
 #ifdef CONFIG_ROMFS
 	if (-1 != romfs_open("index.html")) {
 		WWW = new HttpServer(root,"/index.html");
@@ -554,14 +561,14 @@ int httpd_setup()
 	if (stat(index,&st) != -1) {
 		WWW = new HttpServer(root,"/index.html");
 		WWW->addDirectory(root);
-		const char *upload = "/";
+		const char *upload = "/flash/upload";
 		if (Config.httpd().has_uploaddir())
 			upload = Config.httpd().uploaddir().c_str();
 		if (upload && upload[0]) {
 			if (stat(upload,&st) == -1) {
 				log_dbug(TAG,"creating upload directory");
 				if (-1 == mkdir(upload,0777)) {
-					log_warn(TAG,"unable to create directory %s: %s",upload,strerror(errno));
+					log_warn(TAG,"create upload directory %s: %s",upload,strerror(errno));
 				} else {
 					WWW->setUploadDir(upload);
 				}
@@ -598,8 +605,8 @@ int httpd_setup()
 #ifdef CONFIG_CAMERA
 	WWW->addFunction("/webcam.jpeg",webcam_sendframe);
 #endif
-	Sem = xSemaphoreCreateCounting(2,2);
-	return listen_port(HTTP_PORT,m_tcp,httpd_session,"httpd","_http",7,2048);
+	Sem = xSemaphoreCreateCounting(4,4);
+	return listen_port(HTTP_PORT,m_tcp,httpd_session,"httpd","_http",7,4096);
 }
 
 #endif	// CONFIG_HTTP

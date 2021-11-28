@@ -43,18 +43,14 @@ class JsonNumber;
 class JsonInt;
 class JsonString;
 
+
 class JsonElement
 {
 	public:
-	explicit JsonElement(const char *n, const char *dim = 0)
-	: m_name(n)
-	, m_dim(dim)
-	{ }
-
 	// pure virtual functions causes problems on ESP8266/xtensa toolchain
 	// cxx_demangle is linked to iram0, which overflows the segment!
 	//virtual ~JsonElement() = 0;
-	virtual ~JsonElement() = default;
+	virtual ~JsonElement();
 
 	virtual void toStream(stream &) const;
 	virtual void writeValue(stream &) const;
@@ -81,7 +77,12 @@ class JsonElement
 	{ return m_dim; }
 
 	protected:
-	const char *m_name;
+	explicit JsonElement(const char *n, const char *dim = 0)
+	: m_name(n ? strdup(n) : 0)
+	, m_dim(dim)
+	{ }
+
+	char *m_name;
 	const char *m_dim;
 
 	private:
@@ -93,8 +94,8 @@ class JsonElement
 class JsonBool : public JsonElement
 {
 	public:
-	JsonBool(const char *name, bool v)
-	: JsonElement(name)
+	JsonBool(const char *name, bool v, const char *dim = 0)
+	: JsonElement(name,dim)
 	, m_value(v)
 	{ }
 
@@ -122,8 +123,8 @@ class JsonNumber : public JsonElement
 	, m_value(NAN)
 	{ }
 
-	JsonNumber(const char *name, double v)
-	: JsonElement(name)
+	JsonNumber(const char *name, double v, const char *dim = 0)
+	: JsonElement(name,dim)
 	, m_value(v)
 	{ }
 
@@ -134,7 +135,7 @@ class JsonNumber : public JsonElement
 
 	void writeValue(stream &) const;
 
-	void set(float v)
+	void set(double v)
 	{ m_value = v; }
 
 	double get() const
@@ -149,7 +150,7 @@ class JsonNumber : public JsonElement
 class JsonString : public JsonElement
 {
 	public:
-	JsonString(const char *name, const char *v);
+	JsonString(const char *name, const char *v, const char *dim = 0);
 
 	JsonString *toString()
 	{ return this; }
@@ -157,6 +158,7 @@ class JsonString : public JsonElement
 	void toStream(stream &) const;
 	void writeValue(stream &) const;
 	void set(const char *v);
+	void set(const char *v, size_t l);
 
 	const char *get() const
 	{ return m_value; }
@@ -172,16 +174,16 @@ class JsonString : public JsonElement
 class JsonObject : public JsonElement
 {
 	public:
-	JsonObject(const char *n)
+	explicit JsonObject(const char *n)
 	: JsonElement(n)
 	{ }
 
 	JsonObject *toObject()
 	{ return this; }
 
-	JsonBool *add(const char *name, bool value);
-	JsonNumber *add(const char *name, double value);
-	JsonString *add(const char *name, const char *value);
+	JsonBool *add(const char *name, bool value, const char *dim = 0);
+	JsonNumber *add(const char *name, double value, const char *dim = 0);
+	JsonString *add(const char *name, const char *value, const char *dim = 0);
 	JsonObject *add(const char *name);
 	void add(JsonElement *e)
 	{ m_childs.push_back(e); }
@@ -198,10 +200,11 @@ class JsonObject : public JsonElement
 	std::vector<JsonElement *> &getChilds()
 	{ return m_childs; }
 
-	void append(JsonElement *);
 	void toStream(stream &) const;
 
 	private:
+	void append(JsonElement *);
+
 	JsonObject *m_parent = 0;
 	std::vector<JsonElement *> m_childs;
 };

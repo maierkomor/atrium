@@ -3,6 +3,7 @@ Without argument influx prints the current configuration.
 Command 'init' initializes influx with current configuration.
 Command 'send' sends an arbitrary argument to the influx server.
 Command 'clear' clears the configuration or specified field.
+Command 'stop' stops the influx service.
 Valid <arg> are:
 host  : to set the influx database server host
 port  : to set the port on which influx is listening

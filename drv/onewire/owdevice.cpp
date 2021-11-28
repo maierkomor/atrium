@@ -27,7 +27,7 @@
 #include <string.h>
 
 
-static char TAG[] = "owb";
+#define TAG MODULE_OWB
 OwDevice *OwDevice::First = 0;
 
 

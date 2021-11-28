@@ -42,7 +42,7 @@
 #define REG_SET_HUMID	0x61
 
 
-static const char TAG[] = "sgp30";
+#define TAG MODULE_SGP30
 
 
 uint8_t crc8_0x31(uint8_t *data, unsigned len, uint8_t crc = 0xff)
@@ -112,8 +112,8 @@ void SGP30::attach(JsonObject *r)
 {
 	log_dbug(TAG,"attach");
 	m_root = r;
-	r->append(m_tvoc);
-	r->append(m_co2);
+	m_tvoc = r->add("TVOC",NAN,"ppb");
+	m_co2 = r->add("CO2",NAN,"ppm");
 }
 
 
@@ -139,17 +139,13 @@ SGP30 *SGP30::create(uint8_t bus)
 		//delete d;
 		return 0;
 	}
-	d->m_tvoc = new JsonNumber("TVOC");
-	d->m_tvoc->setDimension("ppb");
-	d->m_co2 = new JsonNumber("CO2");
-	d->m_co2->setDimension("ppm");
 	return d;
 }
 
 
 const char *SGP30::drvName() const
 {
-	return TAG;
+	return "sgp30";
 }
 
 
@@ -198,7 +194,7 @@ int SGP30::init()
 		m_state = selftest;
 	else
 		m_state = error;
-	cyclic_add_task(TAG,SGP30::cyclic,this,220);
+	cyclic_add_task("sgp30",SGP30::cyclic,this,220);
 	return 0;
 }
 
@@ -294,8 +290,10 @@ int SGP30::read()
 	uint8_t data[6];
 	if (i2c_read(m_bus,SGP30_ADDR,data,sizeof(data))) {
 		log_warn(TAG,"read req failed");
-		m_co2->set(NAN);
-		m_tvoc->set(NAN);
+		if (m_co2)
+			m_co2->set(NAN);
+		if (m_tvoc)
+			m_tvoc->set(NAN);
 		return 1;
 	}
 //	log_hex(TAG,data,sizeof(data),"airq");
@@ -309,10 +307,12 @@ int SGP30::read()
 	}
 	if (crc8_0x31(data+3,2) == data[5]) {
 		uint16_t tvoc = data[3] << 8 | data[4];
-		m_tvoc->set(tvoc);
+		if (m_tvoc)
+			m_tvoc->set(tvoc);
 		log_dbug(TAG,"tvoc=%u",tvoc);
 	} else {
-		m_tvoc->set(NAN);
+		if (m_tvoc)
+			m_tvoc->set(NAN);
 		log_warn(TAG,"tcov CRC error");
 	}
 	return 0;

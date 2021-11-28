@@ -41,7 +41,7 @@
 
 #define CMD_NOP		0xe3
 
-static const char TAG[] = "ssd1306";
+#define TAG MODULE_SSD1306
 
 
 

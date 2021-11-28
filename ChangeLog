@@ -1,3 +1,22 @@
+R2111:
+======
+- complete new integration with LWIP stack
+- new DNS and SNTP implementation
+- Telnet optimizations
+- further reduced RAM consumption
+- enhanced Influx transmission
+- new LWIP based OTA transmission
+- added direct action triggering support in MQTT
+- several minor improvements and bugfixes
+- added IPv6 support (disabled on 1MB devices per default)
+- added support for multiple DNS servers
+- porting work for ESP32-IDF V4.x (incomplete)
+- updated setenv.sh to work with IDF tools concept
+- ROMFS32 fixes
+- enhanced module concept for debug messages
+- added command for triggering events from shell
+- HT16K33 should register as I2C device
+
 R2108:
 ======
 - profiing update and fixes

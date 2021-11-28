@@ -109,7 +109,7 @@
 #define PDRIVE PDRIVE_100
 
 
-static const char TAG[] = "apds";
+#define TAG MODULE_APDS
 
 
 APDS9930::APDS9930(uint8_t port)
@@ -143,10 +143,8 @@ int APDS9930::init()
 void APDS9930::attach(JsonObject *root)
 {
 	log_dbug(TAG,"attach");
-	m_lux = new JsonNumber("lux","");
-	m_prox = new JsonNumber("prox","");
-	root->append(m_lux);
-	root->append(m_prox);
+	m_lux = root->add("lux",NAN,"");
+	m_prox = root->add("prox",NAN,"");
 	cyclic_add_task(m_name,cycle,this,0);
 	action_add(concat(m_name,"!sample"),trigger,(void*)this,"ADPS9930 sample data");
 	action_add(concat(m_name,"!poweroff"),trigger,(void*)this,"ADPS9930 sample data");

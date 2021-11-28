@@ -1,0 +1,35 @@
+Startup procedure:
+==================
+
+This file describes the dependencies in the startup process. It may not
+be fully up-to-date and should only give an insight of what is
+happening.
+
+- The primary initialization is done by IDF code
+- The Atrium startup procedure begins with entering app_main()
+- log core infratstructure is initialized (mutex, uart driver)
+- event infrastructure is setup (mutex,queue,basic events)
+- message log buffer is initialized (mutex, message events)
+- global variables (config,env) are initialized with defaults
+- NVS is initialized and the hardware config is read
+- remaining UARTs are initialized
+- Atrium reports its version
+- action infrastructure
+- init software configuration
+- start cyclic tasks infrastructure
+- core driver init (GPIO,ADC,Hall,Status LED)
+- mount file-system
+- start console
+- start event processing
+- setup at-service (calender/time based actions)
+- setup near hardware drivers (relays,buttons,dimmer,DHT)
+- scan I2C bus
+- touchpad init
+- 1-wire init and scan 
+- WiFi startup station/soft-AP
+- activate configuratoin
+- core network services start (uDNS,SNTP,Syslog,MQTT,Influx)
+- init remaining drivers
+- start display driver and application
+- activate user-configured actions (depends on all defined actions)
+- start remaining network services (Telnet,HTTP,FTP,UDP remote-control port)

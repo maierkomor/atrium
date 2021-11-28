@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -22,19 +22,21 @@
 #include "terminal.h"
 #include <stdint.h>
 
+class LwTcp;
 
 class TcpTerminal : public Terminal
 {
 	public:
-	explicit TcpTerminal(int,bool = false);
+	explicit TcpTerminal(LwTcp *,bool = false);
 	~TcpTerminal();
 
 	int read(char *, size_t, bool = true);
 	int write(const char *b, size_t);
 	int disconnect();
+	void sync(bool = true) override;
 
 	private:
-	int m_con;
+	LwTcp *m_con;
 };
 
 

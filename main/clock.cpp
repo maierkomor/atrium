@@ -27,13 +27,7 @@
 #include "globals.h"
 #include "hwcfg.h"
 #include "log.h"
-#include "timefuse.h"
 #include "ujson.h"
-
-#include <freertos/FreeRTOS.h>
-#include <freertos/task.h>
-
-#include <driver/gpio.h>
 
 #include <sys/time.h>
 #include <time.h>
@@ -61,9 +55,9 @@ typedef enum clockmode {
 struct Clock
 {
 	TextDisplay *disp;
-	uint32_t sw_start = 0, sw_delta = 0, sw_pause = 0;
-	uint8_t digits, display[8];
-	uint32_t modestart = 0;
+	uint32_t sw_start = 0, sw_delta = 0, sw_pause = 0, modestart = 0;
+	uint8_t display[8];
+	uint8_t digits;
 	clockmode_t mode = cm_time;
 	bool modech = false;
 
@@ -76,7 +70,7 @@ struct Clock
 
 extern const char Version[];
 
-static const char TAG[] = "clock";
+#define TAG MODULE_CLOCK
 static Clock *ctx = 0;
 
 static void sw_startstop(void *arg)

@@ -20,7 +20,7 @@
 #include "log.h"
 
 
-static const char TAG[] = "disp";
+#define TAG MODULE_DISP
 
 
 static const uint8_t Circle[] = {
@@ -265,14 +265,14 @@ uint16_t SegmentDisplay::char2seg14(char c)
 
 bool SegmentDisplay::hasChar(char c) const
 {
-	if (e_seg7) {
+	if (m_addrmode == e_seg7) {
 		if (char2seg7(c))
 			return true;
 		if (c == ' ')
 			return true;
 		if (c == '.')
 			return true;
-	} else if (e_seg14) {
+	} else if (m_addrmode == e_seg14) {
 		if (char2seg14(c))
 			return true;
 		if (c == ' ')

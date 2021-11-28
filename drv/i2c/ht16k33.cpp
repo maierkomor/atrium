@@ -41,10 +41,10 @@
 
 #define CMD_DIM		0xe0
 
-#define DEV_ADDR_MIN	(0x70 << 1)
-#define DEV_ADDR_MAX	(0x77 << 1)
+#define DEV_ADDR_MIN	0x70
+#define DEV_ADDR_MAX	0x77
 
-static const char TAG[] = "ht16k33";
+#define TAG MODULE_HT16K33
 
 
 typedef enum { disp_off, disp_on, blink_05hz, blink_1hz, blink_2hz } disp_t;
@@ -53,16 +53,29 @@ typedef enum { disp_off, disp_on, blink_05hz, blink_1hz, blink_2hz } disp_t;
 unsigned HT16K33::create(uint8_t bus)
 {
 	unsigned r = 0;
-	for (uint8_t a = DEV_ADDR_MIN; a < DEV_ADDR_MAX; a += 2) {
+	for (uint8_t a = DEV_ADDR_MIN; a < DEV_ADDR_MAX; ++a) {
+		bool idUsed = false;
+		I2CDevice *d = I2CDevice::getFirst();
+		while (d) {
+			if ((d->getBus() == bus) && (d->getAddr() == a)) {
+				idUsed = true;
+				break;
+			}
+			d = d->getNext();
+		}
+		if (idUsed) {
+			log_dbug(TAG,"ignoring id 0x%x",a);
+			continue;
+		}
 		// a BMP280 may be misrecognized as HT16K33 with this
-		// init code. Don't know how to fix this. This happens
-		// if the BMP280 is booted with SDA tied low. So the
-		// easy workaround is to tie SDA high.
-		uint8_t cmd[] = { a , CMD_SYS_ON };
+		// init code. This happens if the BMx280 is booted with
+		// SDA tied low. So the easy workaround is to tie SDA
+		// high. The workaround above ignores already taken IDs.
+		uint8_t cmd[] = { (uint8_t)(a<<1) , CMD_SYS_ON };
 		if (i2c_write(bus,cmd,sizeof(cmd),true,true))
 			continue;
-		log_info(TAG,"found");
-		HT16K33 *dev = new HT16K33(bus,a);
+		log_info(TAG,"found at 0x%x",(unsigned)a);
+		HT16K33 *dev = new HT16K33(bus,a<<1);
 		dev->init();
 		++r;
 	}

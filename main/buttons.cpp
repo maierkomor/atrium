@@ -21,21 +21,14 @@
 #ifdef CONFIG_BUTTON
 
 #include "actions.h"
-#include "hwcfg.h"
 #include "button.h"
 #include "event.h"
 #include "globals.h"
+#include "hwcfg.h"
 #include "log.h"
-#include "relay.h"
 #include "settings.h"
-#include "wifi.h"
 
 #include <driver/gpio.h>
-#include <esp_system.h>
-#include <esp_wifi.h>
-
-#include <freertos/FreeRTOS.h>
-#include <freertos/timers.h>
 
 #include <string.h>
 
@@ -45,7 +38,8 @@ using namespace std;
 #error gpio value for button out of range
 #endif
 
-static const char TAG[] = "buttons";
+#define TAG MODULE_BUTTON
+
 static Button *Buttons = 0;
 
 

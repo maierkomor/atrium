@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -30,8 +30,8 @@ class MemTerminal : public Terminal
 	explicit MemTerminal(bool = false);
 	~MemTerminal();
 
-	int read(char *, size_t, bool = true);
-	int write(const char *b, size_t);
+	int read(char *, size_t, bool = true) override;
+	int write(const char *b, size_t) override;
 
 	const char *getBuffer() const
 	{
@@ -42,6 +42,9 @@ class MemTerminal : public Terminal
 
 	size_t getSize() const
 	{ return m_len; }
+
+	bool isInteractive() const override
+	{ return false; }
 
 	private:
 	MemTerminal(const MemTerminal &);

@@ -115,7 +115,7 @@ long gettime()
 // define to get calibration data
 //#define CALIBRATION
 
-static char TAG[] = "dht";
+#define TAG MODULE_DHT
 
 #ifdef CALIBRATION
 uint16_t Edges[48], *Edge = Edges;
@@ -132,14 +132,11 @@ DHT::DHT()
 void DHT::attach(JsonObject *root)
 {
 	log_info(TAG,"attaching DHT%u at gpio %u",m_model,m_pin);
-	m_temp = new JsonNumber("temperature","\u00b0C");
-	m_humid = new JsonNumber("humidity","%");
-	char name[8];
+	char name[16];
 	sprintf(name,"dht%u@%u",m_model,m_pin);
-	JsonObject *o = new JsonObject(name);
-	o->append(m_temp);
-	o->append(m_humid);
-	root->append(o);
+	JsonObject *o = root->add(name);
+	m_temp = o->add("temperature",NAN,"\u00b0C");
+	m_humid = o->add("humidity",NAN,"%");
 }
 
 

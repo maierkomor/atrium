@@ -20,17 +20,14 @@
 
 #ifdef CONFIG_I2C
 
-#include "actions.h"
-#include "event.h"
 #include "globals.h"
 #include "hwcfg.h"
 #include "i2cdrv.h"
 #include "log.h"
-#include "shell.h"
 #include "terminal.h"
 #include "ujson.h"
 
-static const char TAG[] = "IIC";
+#define TAG MODULE_I2C
 
 
 int i2c_setup(void)
@@ -48,9 +45,7 @@ int i2c_setup(void)
 	}
 	I2CDevice *d = I2CDevice::getFirst();
 	while (d) {
-		JsonObject *r = RTData;
-		JsonObject *o = new JsonObject(d->getName());
-		r->append(o);
+		JsonObject *o = RTData->add(d->getName());
 		d->attach(o);
 		d = d->getNext();
 	}

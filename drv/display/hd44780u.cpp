@@ -69,7 +69,7 @@
 #define CMD_SET_DD	0x80
 
 
-static const char TAG[] = "hd44780u";
+#define TAG MODULE_HD44780U
 
 extern const char Version[];
 

@@ -1,0 +1,90 @@
+diff --git a/components/lwip/component.mk b/components/lwip/component.mk
+index 9bcab5d710..2396dfbf7d 100644
+--- a/components/lwip/component.mk
++++ b/components/lwip/component.mk
+@@ -5,7 +5,6 @@ COMPONENT_SUBMODULES += lwip
+ 
+ COMPONENT_ADD_INCLUDEDIRS := \
+ 	include/apps \
+-	include/apps/sntp \
+ 	lwip/src/include \
+ 	port/esp32/include \
+ 	port/esp32/include/arch \
+@@ -14,9 +13,7 @@ COMPONENT_ADD_INCLUDEDIRS := \
+ COMPONENT_SRCDIRS := \
+ 	apps/dhcpserver \
+ 	apps/ping \
+-	apps/sntp \
+ 	lwip/src/api \
+-	lwip/src/apps/sntp \
+ 	lwip/src/apps/netbiosns \
+ 	lwip/src/core \
+ 	lwip/src/core/ipv4 \
+diff --git a/components/lwip/port/esp32/freertos/sys_arch.c b/components/lwip/port/esp32/freertos/sys_arch.c
+index 9319fa9f2b..865b7c9d88 100644
+--- a/components/lwip/port/esp32/freertos/sys_arch.c
++++ b/components/lwip/port/esp32/freertos/sys_arch.c
+@@ -76,10 +76,13 @@ sys_mutex_new(sys_mutex_t *pxMutex)
+  *
+  * @param pxMutex pointer of mutex to lock
+  */
++extern void abort_on_mutex(sys_mutex_t, const char *);
+ void
+ sys_mutex_lock(sys_mutex_t *pxMutex)
+ {
+-  BaseType_t ret = xSemaphoreTake(*pxMutex, portMAX_DELAY);
++  BaseType_t ret = xSemaphoreTake(*pxMutex, 30000);
++  if (ret == pdFALSE)
++	  abort_on_mutex(*pxMutex,"<system>");
+ 
+   LWIP_ASSERT("failed to take the mutex", ret == pdTRUE);
+ }
+diff --git a/components/lwip/port/esp32/include/lwipopts.h b/components/lwip/port/esp32/include/lwipopts.h
+index e9558dbb51..5ff93b386d 100644
+--- a/components/lwip/port/esp32/include/lwipopts.h
++++ b/components/lwip/port/esp32/include/lwipopts.h
+@@ -567,7 +567,7 @@ u32_t lwip_hook_tcp_isn(const struct ip_addr *local_ip, u16_t local_port,
+  * LWIP_TCPIP_CORE_LOCKING: (EXPERIMENTAL!)
+  * Don't use it if you're not an active lwIP project member
+  */
+-#define LWIP_TCPIP_CORE_LOCKING         0
++#define LWIP_TCPIP_CORE_LOCKING         1
+ 
+ /*
+    ------------------------------------
+diff --git a/components/wpa_supplicant/src/ap/ap_config.c b/components/wpa_supplicant/src/ap/ap_config.c
+index 14f73547ed..77f3e43080 100644
+--- a/components/wpa_supplicant/src/ap/ap_config.c
++++ b/components/wpa_supplicant/src/ap/ap_config.c
+@@ -12,6 +12,7 @@
+ #include "crypto/sha1.h"
+ #include "common/ieee802_11_defs.h"
+ #include "common/eapol_common.h"
++#include "wps/wps.h"
+ #include "ap/wpa_auth.h"
+ #include "ap/ap_config.h"
+ #include "utils/wpa_debug.h"
+diff --git a/components/wpa_supplicant/src/ap/ap_config.h b/components/wpa_supplicant/src/ap/ap_config.h
+index ca695851fa..ec0a9b38df 100644
+--- a/components/wpa_supplicant/src/ap/ap_config.h
++++ b/components/wpa_supplicant/src/ap/ap_config.h
+@@ -11,6 +11,7 @@
+ 
+ #include "common/defs.h"
+ #include "common/wpa_common.h"
++#include "wps/wps.h"
+ 
+ #define MAX_STA_COUNT 4
+ #define MAX_VLAN_ID 4094
+diff --git a/components/wpa_supplicant/src/ap/hostapd.h b/components/wpa_supplicant/src/ap/hostapd.h
+index 5bedf09d0a..cfb71807f9 100644
+--- a/components/wpa_supplicant/src/ap/hostapd.h
++++ b/components/wpa_supplicant/src/ap/hostapd.h
+@@ -9,6 +9,7 @@
+ #ifndef HOSTAPD_H
+ #define HOSTAPD_H
+ 
++#include "wps/wps.h"
+ #include "common/defs.h"
+ #include "ap/ap_config.h"
+ 

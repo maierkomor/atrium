@@ -25,12 +25,11 @@
 #include "log.h"
 #include "onewire.h"
 #include "owdevice.h"
-#include "shell.h"
 #include "swcfg.h"
 #include "terminal.h"
 
 
-static const char TAG[] = "owb";
+#define TAG MODULE_OWB
 
 
 static int ow_scan()
@@ -89,7 +88,7 @@ int onewire(Terminal &term, int argc, const char *args[])
 {
 	OneWire *ow = OneWire::getInstance();
 	if (ow == 0) {
-		term.printf("not configured\n");
+		term.println("not configured");
 		return 1;
 	}
 	if (argc != 2)

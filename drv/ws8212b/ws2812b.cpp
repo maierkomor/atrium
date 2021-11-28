@@ -37,7 +37,7 @@
 #include <esp_err.h>
 #include <esp_timer.h>
 
-static char TAG[] = "ws2812";
+#define TAG MODULE_WS2812
 
 
 #if defined CONFIG_IDF_TARGET_ESP32

@@ -24,7 +24,6 @@
 #include "log.h"
 #include "terminal.h"
 #include "settings.h"
-#include "shell.h"
 #include "swcfg.h"
 
 #include <stdlib.h>
@@ -32,7 +31,7 @@
 #define MOUNT_POINT "/flash"
 #define DATA_PARTITION "storage"
 
-static const char TAG[] = "FS";
+#define TAG MODULE_FS
 
 #if CONFIG_SPIFFS
 #if defined ESP8266 && IDF_VERSION < 32
@@ -40,7 +39,9 @@ static const char TAG[] = "FS";
 #endif
 
 #include <esp_spi_flash.h>
+#ifdef CONFIG_SPIFFS
 #include <esp_spiffs.h>
+#endif
 
 
 static void init_spiffs()

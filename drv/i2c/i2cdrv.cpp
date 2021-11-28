@@ -42,7 +42,7 @@ extern int  ssd1306_scan(uint8_t);
 
 I2CDevice *I2CDevice::m_first = 0;
 
-static const char TAG[] = "i2c";
+#define TAG MODULE_I2C
 static uint8_t Ports = 0;
 static SemaphoreHandle_t Mtx = 0;
 
@@ -52,7 +52,7 @@ I2CDevice::I2CDevice(uint8_t bus, uint8_t addr, const char *name)
 {
 	strcpy(m_name,name);
 	bool x = hasInstance(name);
-	log_info(TAG,"found %s",name);
+	log_info(TAG,"%s on bus %d, id 0x%x",name,bus,addr);
 	xSemaphoreTake(Mtx,portMAX_DELAY);
 	m_next = m_first;
 	m_first = this;
@@ -365,9 +365,6 @@ int i2c_init(uint8_t port, uint8_t sda, uint8_t scl, unsigned freq, uint8_t xpul
 #ifdef CONFIG_CCS811B
 	n += ccs811b_scan(port);
 #endif
-#ifdef CONFIG_HT16K33
-	n += ht16k33_scan(port);
-#endif
 #ifdef CONFIG_APDS9930
 	n += apds9930_scan(port);
 #endif
@@ -377,6 +374,9 @@ int i2c_init(uint8_t port, uint8_t sda, uint8_t scl, unsigned freq, uint8_t xpul
 #endif
 #ifdef CONFIG_SSD1306
 	n += ssd1306_scan(port);
+#endif
+#ifdef CONFIG_HT16K33
+	n += ht16k33_scan(port);
 #endif
 	return n;
 }

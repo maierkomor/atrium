@@ -33,6 +33,7 @@ config UART_CONSOLE
 
 config UART_MONITOR
 	bool "serial monitor"
+	depends on SYSLOG
 	default true
 	help
 		serial monitor that forwards input data to syslog"
@@ -49,6 +50,12 @@ config HWCONF_DYNAMIC
 	default	true
 	help
 		support for configuring and modifying driver online
+
+config UDNS
+	bool "uDNS"
+	default false
+	help
+		integrated micro DNS and MDNS implementation (requires patch for ESP-IDF)
 
 config MQTT
 	bool "MQTT"
@@ -75,6 +82,7 @@ config HTTP
 		http server
 
 config FTP
+	depends on SPIFFS || FATFS
 	bool "ftp"
 	help
 		ftp server
@@ -89,12 +97,6 @@ config TERMSERV
 	help
 		UART terminal server function
 
-config SNTP
-	bool "sntp"
-	default true
-	help
-		sntp client
-
 config SYSLOG
 	bool "syslog"
 	default false
@@ -106,13 +108,6 @@ config INFLUX
 	default false
 	help
 		Support for sending measurements as UDP packets to Influx DB 
-
-config MDNS
-	select ENABLE_MDNS
-	bool "mdns"
-	default true
-	help
-		mdns service
 
 config OTA
 	bool "ota"
@@ -144,6 +139,7 @@ menu "filesystem support"
 
 config SPIFFS
 	bool "SPIFFS"
+	depends on USING_SPIFFS
 	default false
 	help
 		SPI Flash File-System

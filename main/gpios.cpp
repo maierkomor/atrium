@@ -25,7 +25,6 @@
 #include "globals.h"
 #include "hwcfg.h"
 #include "log.h"
-#include "shell.h"
 #include "terminal.h"
 
 #include <freertos/FreeRTOS.h>
@@ -38,7 +37,7 @@
 #endif
 
 
-static const char TAG[] = "gpio";
+#define TAG MODULE_GPIO
 
 #ifdef CONFIG_IDF_TARGET_ESP32
 static const char *GpioIntrTypeStr[] = {
@@ -206,8 +205,6 @@ void Gpio::init(unsigned config)
 	gpio_mode_t mode = (gpio_mode_t)(config & 0x3);
 	if (esp_err_t e = gpio_set_direction(m_gpio,mode))
 		log_error(TAG,"set direction on gpio%d: %s",m_gpio,esp_err_to_name(e));
-	else
-		log_dbug(TAG,"gpio%d set direction ok",m_gpio);
 	if (config & (1<<5)) {
 		unsigned lvl = (config>>6)&0x1;
 		log_dbug(TAG,"set level %d",lvl);
@@ -279,7 +276,7 @@ int gpio(Terminal &term, int argc, const char *args[])
 	} else if ((argc == 2) && (args[1][0] >= '0') && (args[1][0] <= '9')) {
 		long pin = strtol(args[1],0,0);
 		if (!GPIO_IS_VALID_GPIO(pin)) {
-			term.printf("gpio %ld out of range\n",pin);
+			term.printf("no gpio %ld\n",pin);
 			return 1;
 		}
 		uint32_t iomux = read_iomux_conf(pin);
@@ -403,6 +400,11 @@ int gpio(Terminal &term, int argc, const char *args[])
 
 int gpio_setup()
 {
+#ifdef CONFIG_IDF_TARGET_ESP8266
+	gpio_install_isr_service(0);
+#else
+	gpio_install_isr_service(ESP_INTR_FLAG_LEVEL1 | ESP_INTR_FLAG_IRAM);
+#endif
 	for (const auto &c : HWConf.gpio()) {
 		const char *n = c.name().c_str();
 		int8_t gpio = c.gpio();

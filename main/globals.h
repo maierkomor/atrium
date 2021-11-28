@@ -34,7 +34,6 @@ class JsonNumber;
 
 extern NodeConfig Config;
 extern HardwareConfig HWConf;
-extern bool StationUp;
 extern JsonObject *RTData;
 extern JsonNumber *Uptime;
 extern JsonString *UpdateState, *Localtime;

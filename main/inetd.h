@@ -25,8 +25,9 @@ extern "C" {
 #endif
 
 typedef enum { m_sock = 0, m_tcp = 1, m_udp = 2, m_bcast = 3 } inet_mode_t;
+struct LwTcp;
 
-int listen_port(int port, inet_mode_t mode, void (*session)(void*), const char *basename, const char *service, unsigned prio, unsigned stack);
+int listen_port(int port, inet_mode_t mode, void (*session)(LwTcp *), const char *basename, const char *service, unsigned prio, unsigned stack);
 
 #ifdef __cplusplus
 }

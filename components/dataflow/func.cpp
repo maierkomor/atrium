@@ -31,7 +31,7 @@
 
 using namespace std;
 
-static char TAG[] = "func";
+#define TAG MODULE_FUNC
 Function *Function::First = 0;
 
 FunctionFactory *FunctionFactory::Factories = 0;

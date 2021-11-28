@@ -28,14 +28,15 @@
 #include "hwcfg.h"
 #include "ujson.h"
 #include "log.h"
-#include "mqtt.h"
+#include "netsvc.h"
 #include "profiling.h"
 #include "settings.h"
+#include "sntp.h"
 #include "swcfg.h"
 #include "syslog.h"
 #include "terminal.h"
 #include "timefuse.h"
-#include "versions.h"
+#include "udns.h"
 
 #include <esp_ota_ops.h>
 #include <esp_system.h>
@@ -59,29 +60,11 @@ void esp_yield(void);
 }
 #endif
 
-#ifdef CONFIG_IDF_TARGET_ESP8266
-#if IDF_VERSION >= 34
-#include <lwip/apps/sntp.h>
-#else
-#include <apps/sntp/sntp.h>
-#endif
-#if IDF_VERSION > 32
-#include <driver/rtc.h>	// post v3.2
-#endif
-#else	// ESP32
-#if IDF_VERSION >= 32
-#include <lwip/apps/sntp.h>	// >= v3.2
-#else
-#include <apps/sntp/sntp.h>	// <= v3.1
-#endif
-#endif
 
-#ifdef CONFIG_MDNS
-#include <mdns.h>	// requires IPv6 to be enabled on CONFIG_IDF_TARGET_ESP8266
-#endif
 #include <nvs.h>
 #include <nvs_flash.h>
 #include <tcpip_adapter.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "settings.h"
@@ -92,8 +75,8 @@ void esp_yield(void);
 
 using namespace std;
 
-extern "C" const char Version[] = VERSION;
-static const char TAG[] = "cfg", cfg_err[] = "cfg_err";
+#define TAG MODULE_CFG
+static const char cfg_err[] = "cfg_err";
 
 #ifdef CONFIG_APP_PARAMS
 static int cfg_set_param(const char *name, const char *value);
@@ -204,6 +187,19 @@ static int set_dim_step(Terminal &t, const char *v)
 #endif
 
 
+template <typename S>
+int set_string_option(Terminal &t, S *s, const char *v)
+{
+	if (v == 0)
+		t.println(s->c_str());
+	else if (!strcmp(v,"-c"))
+		s->clear();
+	else
+		*s = v;
+	return 0;
+}
+
+
 #if 0
 static int set_station2ap_time(Terminal &t, const char *v)
 {
@@ -219,19 +215,6 @@ static int set_station2ap_time(Terminal &t, const char *v)
 	if (l < 0)
 		return 1;
 	Config.set_station2ap_time(l);
-	return 0;
-}
-
-
-template <typename S>
-int set_string_option(Terminal &t, S *s, const char *v)
-{
-	if (v == 0)
-		t.println(s->c_str());
-	else if (!strcmp(v,"-c"))
-		s->clear();
-	else
-		*s = v;
 	return 0;
 }
 
@@ -310,23 +293,9 @@ static int set_syslog(Terminal &t, const char *value)
 }
 
 
-int set_timezone(Terminal &t, const char *value)
-{
-	int r = set_string_option(t,Config.mutable_timezone(),value);
-	setenv("TZ",Config.timezone().c_str(),1);
-	return r;
-}
-
-
 static int set_sntp_server(Terminal &t, const char *value)
 {
 	return set_string_option(t,Config.mutable_sntp_server(),value);
-}
-
-
-static int set_domainname(Terminal &t, const char *value)
-{
-	return set_string_option(t,Config.mutable_domainname(),value);
 }
 
 
@@ -346,7 +315,22 @@ static int set_mqtt_enable(Terminal &t, const char *value)
 {
 	return set_bool_option(t,Config.mutable_mqtt()->mutable_enable(),value,false);
 }
+
+
+int set_timezone(Terminal &t, const char *value)
+{
+	int r = set_string_option(t,Config.mutable_timezone(),value);
+	setenv("TZ",Config.timezone().c_str(),1);
+	return r;
+}
 #endif
+
+
+static int set_domainname(Terminal &t, const char *value)
+{
+	setdomainname(value,0);
+	return set_string_option(t,Config.mutable_domainname(),value);
+}
 
 
 static int set_password(Terminal &t, const char *p)
@@ -357,10 +341,10 @@ static int set_password(Terminal &t, const char *p)
 
 pair<const char *, int (*)(Terminal &t, const char *)> SetFns[] = {
 	{"password", set_password},
-#if 0
-	{"cpu_freq", set_cpu_freq},
-	{"timezone", set_timezone},
 	{"domainname", set_domainname},
+#if 0
+	{"timezone", set_timezone},
+	{"cpu_freq", set_cpu_freq},
 	{"ap_activate", set_ap_activate},
 	{"ap_pass", set_ap_pass},
 	{"ap_ssid", set_ap_ssid},
@@ -410,12 +394,10 @@ void list_settings(Terminal &t)
 
 int cfg_set_hostname(const char *hn)
 {
-	static JsonString *nodename = 0;
 	log_info(TAG,"setting hostname to %s",hn);
-	if (nodename == 0)
-		nodename = RTData->add("node",hn);
-	else
-		nodename->set(hn);
+	JsonElement *e = RTData->get("node");
+	assert(e);
+	e->toString()->set(hn);
 #ifdef CONFIG_MDNS
 	static bool MDNS_up = false;
 	if (MDNS_up)
@@ -434,6 +416,7 @@ int cfg_set_hostname(const char *hn)
 	}
 	MDNS_up = true;
 #endif
+	sethostname(hn,0);
 	return 0;
 }
 
@@ -454,6 +437,7 @@ const char *cfg_get_domainname()
 		return 0;
 	return dn;
 }
+
 
 char *format_hash(char *buf, const uint8_t *hash)
 {
@@ -550,8 +534,9 @@ static void initNodename()
 		mac[2] = (r >> 16) & 0xff;
 	}
 	char hostname[16];
-	snprintf(hostname,sizeof(hostname),"node%02x%02x%02x",mac[2],mac[1],mac[0]);
+	int n = snprintf(hostname,sizeof(hostname),"node%02x%02x%02x",mac[2],mac[1],mac[0]);
 	Config.set_nodename(hostname);
+	sethostname(hostname,n);
 }
 
 
@@ -658,12 +643,21 @@ int cfg_read_nodecfg()
 	int r = Config.fromMemory(buf,s);
 	free(buf);
 	if (r < 0) {
-		log_error(TAG,"error parsing %s: %d",name,r);
+		log_error(TAG,"%s: error %d",name,r);
 		return r;
 	}
-	for (int i = 0; i < Config.debugs_size(); ++i)
-		log_module_enable(Config.debugs(i).c_str());
-	log_info(TAG,"%s: parsed %u bytes",name,s);
+	log_info(TAG,"%s: %u bytes",name,s);
+	if (!Config.has_nodename())
+		initNodename();
+	const auto &nn = Config.nodename();
+	RTData->add("node",nn.c_str());
+	sethostname(nn.data(),nn.size());
+#ifdef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
+	for (const auto &m : Config.debugs())
+		log_module_enable(m.c_str());
+#else
+	log_module_enable(Config.debugs());
+#endif
 	return 0;
 }
 
@@ -746,62 +740,42 @@ int set_cpu_freq(unsigned mhz)
 
 void initDns()
 {
-	ip_addr_t a;
-	const char *dns = Config.dns_server().c_str();
-#if defined CONFIG_LWIP_IPV6 || defined CONFIG_IDF_TARGET_ESP32
-	a.u_addr.ip4.addr = inet_addr(dns);
-	a.type = IPADDR_TYPE_V4;
-	if (a.u_addr.ip4.addr != INADDR_NONE)
+#ifdef CONFIG_UDNS
+	for (const auto &dns : Config.dns_server())
+		udns_add_nameserver(dns.c_str());
 #else
-		a.addr = inet_addr(dns);
-	log_info(TAG,"dns server %d.%d.%d.%d"
-			, (a.addr) & 0xff
-			, (a.addr >> 8) & 0xff
-			, (a.addr >> 16) & 0xff
-			, (a.addr >> 24) & 0xff
-			);
-	if (a.addr != INADDR_NONE)
+	unsigned x = 0;
+	for (const auto &dns : Config.dns_server()) {
+		ip_addr_t a;
+		if (inet_aton(dns.c_str(),&a)) {
+			log_info(TAG,"DNS %s",dns.c_str());
+			dns_setserver(x++,&a);
+		} else
+			log_error(TAG,"invalid dns server '%s'",dns);
+	}
 #endif
-		dns_setserver(0,&a);
-	else
-		log_error(TAG,"invalid dns server '%s'",dns);
-
 }
 
 
-void sntp_start()
+static void sntp_start()
 {
-#ifdef CONFIG_SNTP
-	if (!Config.has_sntp_server())
-		return;
-	if (Config.has_timezone())
-		setenv("TZ",Config.timezone().c_str(),1);
-	sntp_stop();
-	const char *server = Config.sntp_server().c_str();
-	if (const char *cur = sntp_getservername(0)) {
-		if ((cur != 0) && (cur != server)) {
-			free((void*)cur);
-			sntp_setservername(0,0);
-		}
-	}
-	bool set = false;
-	if (strchr(server,'.')) {
-		const char *s = Config.sntp_server().c_str();
-		sntp_setservername(0,(char*)s);
-		log_info(TAG,"sntp server %s",s);
-		set = true;
-	} else if (Config.has_domainname()) {
-		char *fqhn;
-		asprintf(&fqhn,"%s.%s",server,Config.domainname().c_str());
-		if (fqhn) {
-			log_info(TAG,"sntp server %s",fqhn);
-			set = true;
-			sntp_setservername(0,fqhn);
-		}
-	}
-	if (set)
-		sntp_init();
+	if (Config.has_sntp_server())
+		sntp_set_server(Config.sntp_server().c_str());
+	sntp_bc_init();
+#ifdef CONFIG_LWIP_IGMP
+	sntp_mc_init();
 #endif
+}
+
+
+void sntp_setup()
+{
+//	if (Config.has_timezone())
+//		setenv("TZ",Config.timezone().c_str(),1);
+	Action *u = action_add("sntp!init",(void(*)(void*))sntp_start,0,0);
+	event_callback(event_id("wifi`station_up"),u);
+//	Action *d = action_add("sntp!stop",(void(*)(void*))sntp_stop,0,0);
+//	event_callback(event_id("wifi`station_down"),d);
 }
 
 
@@ -812,8 +786,10 @@ void cfg_activate()
 
 	if (!Config.has_nodename()) 
 		initNodename();
-	cfg_set_hostname(Config.nodename().c_str());
-
+	if (Config.has_domainname()) {
+		const auto dn = Config.domainname();
+		setdomainname(dn.c_str(),dn.size());
+	}
 	bool softap = false;
 	if (Config.has_softap() && Config.softap().has_ssid() && Config.softap().activate()) {
 		wifi_start_softap(Config.softap().ssid().c_str(),Config.softap().has_pass() ? Config.softap().pass().c_str() : "");
@@ -836,16 +812,10 @@ void cfg_activate()
 		wifi_start_softap(Config.nodename().c_str(),"");
 	}
 
-	sntp_start();
+	if (wifi_station_isup() && Config.has_sntp_server())
+		sntp_set_server(Config.sntp_server().c_str());
 	if (Config.has_cpu_freq())
 		set_cpu_freq(Config.cpu_freq());
-#if 0
-	if (int n = Config.dns_servers_size())
-		dns_setserver(n,(ip_addr_t*)Config.mutable_dns_servers()->data());
-#else
-	if (Config.has_dns_server())
-		initDns();
-#endif
 }
 
 
@@ -921,17 +891,15 @@ void cfg_activate_triggers()
 	for (const auto &t : Config.triggers()) {
 		const char *en = t.event().c_str();
 		event_t e = event_id(en);
-		if (e == 0) {
-			log_warn(TAG,"unknown event %s",en);
+		if (e == 0)
 			continue;
-		}
 		for (const auto &action : t.action()) {
 			const char *an = action.c_str();
 			if (Action *a = action_get(an)) {
 				log_dbug(TAG,"event %s triggers action %s",en,an);
 				event_callback(e,a);
 			} else {
-				log_warn(TAG,"unknown action '%s'",an);
+				log_warn(TAG,"unknown action %s",an);
 			}
 		}
 	}
@@ -1074,7 +1042,7 @@ void nvs_setup()
 		if (err)
 			log_error(TAG,"nvs init %s",esp_err_to_name(err));
 	}
-	if (esp_err_t err = nvs_open(TAG,NVS_READWRITE,&NVS))
+	if (esp_err_t err = nvs_open("cfg",NVS_READWRITE,&NVS))
 		log_error(TAG,"NVS open failed: %s",esp_err_to_name(err));
 	else 
 		cfg_read_hwcfg();
@@ -1104,20 +1072,15 @@ void store_nvs_u8(const char *id, uint8_t v)
 void settings_setup()
 {
 	uint8_t setup = 0;
-	log_info(TAG,"setup");
-	if (ESP_OK == nvs_open(TAG,NVS_READWRITE,&NVS)) {
-		uint8_t u8;
-		if (0 == nvs_get_u8(NVS,cfg_err,&u8)) {
-			if (u8)
-				log_warn(TAG,"%s: %u: ignoring configuration",cfg_err,u8);
-			else
-				// settings available
-				log_info(TAG,"%s: %u",cfg_err,u8);
-			setup = u8;
-		}
-		set_cfg_err(1);
+	if (0 == nvs_get_u8(NVS,cfg_err,&setup)) {
+		if (setup)
+			log_warn(TAG,"%s: %u: ignoring configuration",cfg_err,setup);
+		else
+			log_dbug(TAG,"%s ok",cfg_err);
+	} else {
+		// variable was not set before - i.e. no setup problem
 	}
-
+	set_cfg_err(1);
 	if (setup == 0) {
 		if (cfg_read_nodecfg()) {
 			cfg_init_defaults();
@@ -1128,8 +1091,7 @@ void settings_setup()
 		set_cfg_err(2);
 	}
 #ifdef CONFIG_SYSLOG
-	if (Config.has_dmesg_size())
-		dmesg_resize();		// update dmesg buffer size
+	dmesg_resize(Config.dmesg_size());		// update dmesg buffer size
 #endif
 #ifdef CONFIG_WPS
 	action_add("wps!start",wifi_wps_start,0,"start WPS configuration");
@@ -1138,5 +1100,4 @@ void settings_setup()
 		action_add("cfg!factory_reset",cfg_factory_reset,0,"perform a factory reset");
 	set_cfg_err(0);
 }
-
 

@@ -14,6 +14,7 @@ Features:
 Software services:
 - fully costomizable with timers, events, and actions
 - SNTP timed actions with day-of-week and holiday settings
+- mDNS for resolving `<nodename>.local` queries
 - over-the-air (OTA) updates via http upload and download
 - OTA aware, persistent system configuration
 - MQTT integration (directly integrated with async LWIP)
@@ -24,14 +25,14 @@ Software services:
   (this is not the one from Espressif SDK)
 - timezone support for CET with daylight-saving convention
 - ftp server for access to spiffs/fatfs
-- name-service lookup support
+- name-service lookup support via DNS and mDNS
 - telnet server and console shell with many commands for remote
   operation and configuration (hardware and software)
-- inet server for RAM optimized connection handling
+- asynchronous integration with LWIP for most protocols
 - syslog support for sending log messages to a syslog server
 - serial monitor to forward uart to syslog
-- WPS support
-- SmartConfig support (compatible hardware required)
+- WPS support (unstable, untested)
+- SmartConfig support (compatible hardware required, untested)
 
 Filesystem support:
 - fatfs on ESP32
@@ -43,7 +44,7 @@ Filesystem support:
 Hardware drivers:
 - button support with debouncing
 - relay control support
-- displays: SSD1360 (OLED), HD44780U (LCD), 7-/14-segmend LEDs
+- displays: SSD1360 (OLED), HD44780U (LCD), 7-/14-segmend LEDs (e.g. HT16K33, MAX7219)
 - BMP280 and HDC1000 temperature/pressure sensor
 - BME280 temperature/humidity/pressure sensor
 - BME680 temperature/humidity/pressure/electircal-air-resistance sensor
@@ -52,32 +53,36 @@ Hardware drivers:
 - DHTxx temperature/humidity sensor support
 - DS18B20 temperature sensor support
 - alive status LED support with different blinking schemes
-- 7 segment LED support via MAX7219
 - TLC5947 and TLC5916 constant current LED driver support
 - color LED strip support for WS2812b based strips
-- webcams supported in https://github.com/espressif/esp32-camera
 - 1-wire support (currently only DS18B20)
+- webcams supported in https://github.com/espressif/esp32-camera
 
 
 Getting started:
 ================
 To get started, you need to perform following steps:
-1) Erase the device's flash memory: `esptool erase_flash`
+1) choose the subdirectory of the binary distribution according to the
+device and available flash (esp8285 for an ESP8266 with 1MB flash)
 2) Flash bootloader, partition table, app-image, and
-optionally a romfs-image accoring to the partition table's configured
-addresses:
+optionally a romfs-image accoring to the addresses given in the names of
+the binary files. E.g.:
 ```
-esptool write_flash 0x0000 bootloader.bin
-esptool write_flash 0x8000 esp8285-ptable.bin
-esptool write_flash 0x10000 atrium.app1
-esptool write_flash 0xf0000 romfs.bin
+esptool write_flash 0x0000 boot-esp8285@0x0000.bin
+esptool write_flash 0x8000 ptable-esp8285@0x8000.bin
+esptool write_flash 0x9000 nvs@0x8000.bin
+esptool write_flash 0x10000 atrium-app1@0x10000.bin
+esptool write_flash 0xf0000 s20@0xf0000.bin
 ```
-For ESP32 you need to flash `atrium.bin` instead of `atrium.app1`.
+For ESP32 app images no address is given, as they can be flashed to any
+partition. The default ESP32 partition layout has partition `ota_0` at
+0x100000. Boot is always at 0x0000, and the ptable always at 0x8000.
 
 3) Configure the device via the offline tool bin/atriumcfg or via the
 serial console (hardware only if supported by the app-image)
 4) Write the configuration to the NVS of the device (either directly on
-the device's serial console or using bin/atriumcfg)
+the device's serial console or using bin/atriumcfg). 1MB devices can use
+the xxd method descirbed below to update their hardware config remotely.
 
 
 Device Configuration:
@@ -138,7 +143,7 @@ To prepare the build environment, run "./setupenv.sh", which will:
 - check some prerequisites that need to be installed manually
 - download the xtools for lx106 (esp8266) and for esp32
 - download and compile wire-format-compiler
-- patch the IDF trees to include the LWIP-MQTT library
+- patch the IDF trees
 - satisfy Python requirements of IDF using pip
 
 To build a project, run:
@@ -171,12 +176,29 @@ Required Tools:
 
 Building a flash image:
 =======================
+To build you need a properly patched IDF. You can either manually apply
+the appropriate patch from the patches directory to the relevant IDF or
+let it be done automatically with the setup script.
+
 To build the flash image of a specific project run:
 ```
 make PROJECT=<project>
 ```
 
 Select _components_, then select _application_. Here you can configure software and hardware feature and specify which type of file-system should be used.
+
+
+WFC dependency:
+===============
+WFC - wire format compiler - is used to generate code for serializing
+and parsing config data. The version used is a non-public version with
+advanced features. Therefore, the generated files are included in the
+distribution and the generation is not performed during the build
+process.
+
+If you want to expand the configuration and therefore need to generated
+the associated .cpp and .h files, please get in touch with the author
+(e-mail: thomas at maier-komor dot de).
 
 
 Offline configuration:
@@ -286,9 +308,7 @@ Additionally, you might want to set up MQTT and InfluxDB. Enter `help` to get a 
 > influx <servername>:8089/<database>
 ```
 
-Rebooting is necessary for certain settings to work properly. E.g. sntp
-has problems when changed during runtime. Other services like MQTT do
-not suffer such limitations.
+Rebooting may be necessary for some settings to be picked up.
 
 
 Eval Board Configurations:
@@ -370,8 +390,10 @@ Security Recommendations:
 
 Security Considerations:
 ========================
-- password based access via telnet and http are prone to eavesdropping
-- Atrium has no flash or update protection right now
+- Atrium is expected to be used in a close home network with WiFi
+  security and high level of trust within the network.
+- Password based access via telnet and http are prone to eavesdropping.
+- Atrium has no flash or update protection right now.
 
 
 RAM considerations:
@@ -452,7 +474,7 @@ To update via telnet you need to perform the following steps:
 
 Never switch boot partition if updating returned an error.  If your system doesn't boot anymore, you will need to flash via serial boot loader.
 
-If your system reports out of memory while flashing, try to turn of some services (e.g. MQTT by `mqtt disable` via telnet or serial console). This should free enough RAM to make the update possible.
+If your system reports out of memory while flashing, try to turn of some services (e.g. use `dmesg 0`, `mqtt disable`, and `influx stop` via telnet or serial console). This should free enough RAM to make the update possible.
 
 
 Interfaces:
@@ -475,6 +497,10 @@ Actions:
 Actions can be triggered by events or executed manually via a shell.
 Execute 'action -l' for a list and description of available actions.
 
+To trigger actions remotely, MQTT can be used. Therefore, send the name
+of the action to be triggered as value to the topic `<nodename>/action`.
+
+
 Interface Stability:
 --------------------
 - Currently the interfaces are evolving.
@@ -482,11 +508,16 @@ Interface Stability:
   with a long term support.
 - Interfaces that show a certain level of stability ared documented here
   or in accompaned documentation.
+- Configuration binary format is designed for forward and backward
+  compatibility, and has been kept compatible and evolving since the
+  start of the project.
+- Shell commands are aligned to UNIX commands and have been evolving
+  over time - especially concerning their options.
 
 
 Remarks on terminal server:
 ===========================
-As the ESP8266 has only one UART/rx port, but two UART/tx ports. Therfore, the terminal server will only run, if the UART console is disabled via `hwconf set system.console\_rx -1` and `hwconf set system.console\_tx -1`. Nevertheless, logging to UART0/tx will work (`system.diag`). In consequence access to the UART terminal is only possible via telnet.
+As the ESP8266 has only one UART/rx port, but two UART/tx ports. Therfore, the terminal server will only run, if the UART console is disabled via `hwconf set system.console_rx -1` and `hwconf set system.console_tx -1`. Nevertheless, logging to UART0/tx will work (`system.diag`). In consequence access to the UART terminal is only possible via telnet.
 
 The ESP32 does not suffer the same restriction. I.e. dedicated UARTs can be allocated for the terminal server and the console, so that these features won't interfere with eachother.
 
@@ -498,7 +529,7 @@ the console for this UART, and define a terminal without a TX port.
 I.e.:
 
 ```
-hwconf set system.console\_rx -1
+hwconf set system.console_rx -1
 config add terminal
 config set tmerinal[0].uart_rx 0
 hwconf write
@@ -630,11 +661,6 @@ Known Issues:
 - CMake based builds do not support OTA image generation
 - LED-strip/WS2812b driver relies on RMT infrastructure on ESP32, which
   has timing issues under certain condition. Avoid using channel 0.
-
-
-Developer hints:
-================
-- MDNS requires IPv6 to work. The combined footprint is ~50k. If you don't need IPv6 for anything else, disabling MDNS and IPv6 will save you this amount of ROM. This is probably only a point to consider for devices with limited ROM, such as ESP8285 based systems without external flash.  
 
 
 Bugs:

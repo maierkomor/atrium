@@ -53,7 +53,7 @@
 #define CYAN	0x002020
 #define PURPLE	0x100010
 
-static const char TAG[] = "ledstrip";
+#define TAG MODULE_LEDSTRIP
 
 static WS2812BDrv *LED_Strip = 0;
 
@@ -258,7 +258,7 @@ int ledstrip_setup()
 #endif
 	LED_Strip->set_leds(0xffffff);
 #if 1
-	BaseType_t r = xTaskCreatePinnedToCore(&ledstrip_task, TAG, 4096, (void*)(unsigned)c.nleds(), 15, NULL, APP_CPU_NUM);
+	BaseType_t r = xTaskCreatePinnedToCore(&ledstrip_task, "ledstrip", 4096, (void*)(unsigned)c.nleds(), 15, NULL, APP_CPU_NUM);
 	if (r != pdPASS) {
 		log_error(TAG,"task creation failed: %s",esp_err_to_name(r));
 		return 1;

@@ -30,7 +30,7 @@
 #include <rom/gpio.h>
 
 
-static const char TAG[] = "hcsr04";
+#define TAG MODULE_HCSR04
 
 HC_SR04 *HC_SR04::First = 0;
 
@@ -81,9 +81,7 @@ int HC_SR04::attach(JsonObject *root)
 {
 	m_ev = event_register(m_name,"`update");
 	event_callback(m_ev,action_add(concat(m_name,"!update"),HC_SR04::update,this,0));
-	JsonObject *o = new JsonObject(m_name);
-	o->append(m_dist);
-	root->append(o);
+	m_dist = root->add(m_name,NAN);
 	return 0;
 }
 

@@ -29,13 +29,12 @@
 #include "ujson.h"
 #include "log.h"
 #include "mqtt.h"
-#include "shell.h"
 #include "support.h"
 #include "terminal.h"
 
 #include <driver/gpio.h>
 
-static const char TAG[] = "DHT";
+#define TAG MODULE_DHT
 static DHT *Dht = 0;
 
 

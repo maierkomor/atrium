@@ -37,7 +37,7 @@
 
 Relay *Relay::Relays = 0;
 static SemaphoreHandle_t Mtx = 0;
-static char TAG[] = "relay";
+#define TAG MODULE_RELAY
 
 
 static void relay_turn_on(void *R)

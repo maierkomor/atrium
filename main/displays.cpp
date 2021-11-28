@@ -29,7 +29,7 @@
 #include "hd44780u.h"
 #include "ssd1306.h"
 
-static const char TAG[] = "disp";
+#define TAG MODULE_DISP
 
 
 int display_setup()

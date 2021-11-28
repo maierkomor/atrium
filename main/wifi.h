@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -24,24 +24,15 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/event_groups.h>
 
-#define WIFI_UP 1
-#define STATION_UP 2
-#define SOFTAP_UP 4
-#define WPS_TERM 8
-#define WIFI_FAIL 16
-
 extern EventGroupHandle_t WifiEvents;
 typedef enum { station_stopped, station_starting, station_connected, station_disconnected } sta_mode_t;
 extern sta_mode_t StationMode;
-extern event_t StationUpEv;
+extern event_t StationDownEv, StationUpEv;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 int wifi_setup();
-uint32_t resolve_hostname(const char *h);
-void wifi_wait();
-void wifi_wait_station();
 bool wifi_start_station(const char *ssid, const char *pass);
 bool wifi_stop_station();
 bool wifi_start_softap(const char *ssid, const char *pass);

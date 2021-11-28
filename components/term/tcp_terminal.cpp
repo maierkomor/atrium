@@ -19,6 +19,7 @@
 #include <sdkconfig.h>
 
 #include "tcp_terminal.h"
+#include "lwtcp.h"
 #include "netsvc.h"
 #include "log.h"
 
@@ -44,7 +45,7 @@
 #endif
 
 
-TcpTerminal::TcpTerminal(int con, bool crnl)
+TcpTerminal::TcpTerminal(LwTcp *con, bool crnl)
 : Terminal(crnl)
 , m_con(con)
 {
@@ -54,9 +55,9 @@ TcpTerminal::TcpTerminal(int con, bool crnl)
 
 int TcpTerminal::write(const char *buf, size_t s)
 {
-	int n = send(m_con,buf,s,0);
+	int n = m_con->write(buf,s);
 	if (n < 0)
-		m_error = strneterr(m_con);
+		m_error = m_con->error();
 	else
 		m_error = 0;
 	return n;
@@ -65,22 +66,10 @@ int TcpTerminal::write(const char *buf, size_t s)
 
 int TcpTerminal::read(char *buf, size_t s, bool block)
 {
-	int n = recv(m_con, buf, s, block ? 0 : MSG_DONTWAIT);
-	log_info("tcpterm","recv: %d",n);
+	int n = m_con->read(buf, s, block ? portMAX_DELAY : 0);
+//	log_info("tcpterm","recv: %d",n);
 	if (n < 0) {
-		int errcode = 0;
-		uint32_t optlen = sizeof(errcode);
-		int err = getsockopt(m_con, SOL_SOCKET, SO_ERROR, &errcode, &optlen);
-		log_info("tcpterm","errcode: %d",errcode);
-		if (err == -1) {
-			m_error = "error while retriving error string";
-		} else if (errcode == EWOULDBLOCK) {
-				n = 0;
-		} else  {
-			m_error = strerror(errcode);
-			if (m_error == 0)
-				m_error = "unknown error";
-		}
+		m_error = "unknown error";
 	} else {
 		m_error = 0;
 	}
@@ -90,5 +79,11 @@ int TcpTerminal::read(char *buf, size_t s, bool block)
 
 int TcpTerminal::disconnect()
 {
-	return lwip_close(m_con);
+	return m_con->close();
+}
+
+
+void TcpTerminal::sync(bool block)
+{
+	m_con->sync(block);
 }

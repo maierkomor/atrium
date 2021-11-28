@@ -1,4 +1,5 @@
 debug <option> [<arg>]
+-a         : list available modules
 -e <module>: enable logging of <module>
 -d <module>: disable logging of <module>
 -l         : list enabled modules

@@ -27,6 +27,7 @@
 
 class HttpRequest;
 class HttpResponse;
+class LwTcp;
 
 
 class HttpServer
@@ -45,7 +46,7 @@ class HttpServer
 	virtual bool authorized(const char *, const char *)
 	{ return false; }
 
-	void handleConnection(int);
+	void handleConnection(LwTcp *);
 
 	private:
 	HttpServer(const HttpServer &);

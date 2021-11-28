@@ -59,17 +59,17 @@ followed by 4 bytes of 0x00
 struct Entry16
 {
 	public:
-	uint16_t offset;
-	uint16_t size;
-	char name[12];
+	uint16_t offset = 0;
+	uint16_t size = 0;
+	char name[12] = {0};
 };
 
 
 struct Entry32
 {
-	uint32_t offset;
-	uint32_t size;
-	char name[24];
+	uint32_t offset = 0;
+	uint32_t size = 0;
+	char name[24] = {0};
 };
 
 
@@ -197,13 +197,13 @@ void list_image(const char *fn)
 	if (0 == memcmp(buf,"ROMFS16",8)) {
 		Entry16 *e = (Entry16 *) (buf+8);
 		while ((e->size != 0) || (e->offset != 0)) {
-			printf("%5u@%04x %s\n",e->size,e->offset,e->name);
+			printf("%5u@%04x %-12s\n",e->size,e->offset,e->name);
 			++e;
 		}
 	} else if (0 == memcmp(buf,"ROMFS32",8)) {
 		Entry32 *e = (Entry32 *) (buf+8);
 		while ((e->size != 0) || (e->offset != 0)) {
-			printf("%5u@%04x %s\n",e->size,e->offset,e->name);
+			printf("%5u@%04x %-24s\n",e->size,e->offset,e->name);
 			++e;
 		}
 	} else {
@@ -423,8 +423,10 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
-	size_t total = 12;	// 8 bytes magic + 4 bytes separator between header entries and data
+	size_t total = M32 ? 16 : 12;	// 8 bytes magic + 4 or 8 bytes separator between header entries and data
 	int n = FileNames.size();
+	if (n == 0)
+		return 0;
 	map<string,string> entries;
 	for (int i = 0; i < n; ++i) {
 		const char *fname = FileNames[i].c_str();
@@ -437,7 +439,7 @@ int main(int argc, char *argv[])
 			printf("warning: ignoring duplicate entry name '%s' (file %s)\n",ename,fname);
 			continue;
 		}
-		check_exit(strlen(ename)>=12,"filename '%s' is too long\n",ename);
+		check_exit(strlen(ename)>(M32 ? 15 : 11),"filename '%s' is too long\n",ename);
 	}
 	unsigned idx = 0;
 	for (auto x : entries) {
@@ -465,7 +467,7 @@ int main(int argc, char *argv[])
 	}
 	if (pwd[0])
 		chdir(pwd);
-	size_t header = 16 * n;
+	size_t header = (M32 ? 32 : 16) * n;
 	size_t off = header;
 	char *rom = (char *)malloc(header+total);
 	memcpy(rom,M32 ? "ROMFS32" : "ROMFS16",8);
@@ -477,10 +479,8 @@ int main(int argc, char *argv[])
 		at += s;
 		printf("%5u@%04x: %s\n",Entries[i].size(),Entries[i].offset(),Entries[i].name());
 	}
-	*at++ = 0;
-	*at++ = 0;
-	*at++ = 0;
-	*at++ = 0;
+	bzero(at,M32?8:4);
+	at += M32 ? 8 : 4;
 	for (int i = 0; i < n; ++i) {
 		size_t s = FileData[i].size();
 		assert((s & 3) == 0);

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -29,6 +29,7 @@
 #include "globals.h"
 #include "inetd.h"
 #include "log.h"
+#include "lwtcp.h"
 #include "netsvc.h"
 #include "settings.h"
 #include "shell.h"
@@ -37,15 +38,21 @@
 #include "tcp_terminal.h"
 #include "wifi.h"
 
+#include <lwip/ip_addr.h>
 #include <lwip/tcp.h>
+
+extern "C" {
 #include <dirent.h>
+}
+#include <errno.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <string.h>
-#include <sys/socket.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #define BUFSIZE (16*1024)
+#define FTPD_PORT 21
 
 
 typedef struct ftpctx
@@ -53,8 +60,7 @@ typedef struct ftpctx
 	const char *root;
 	char *wd;
 	char *rnfr;
-	int con;
-	int dcon;
+	LwTcp *con, *dcon;
 	uint8_t login;	// 2 = ftp, 4 = root, 1 = unlocked
 } ftpctx_t;
 
@@ -66,7 +72,7 @@ typedef struct ftpcom
 } ftpcom_t;
 
 
-static const char TAG[] = "ftpd";
+#define TAG MODULE_FTPD
 
 
 static char *arg2fn(ftpctx_t *ctx, const char *arg)
@@ -87,22 +93,20 @@ static char *arg2fn(ftpctx_t *ctx, const char *arg)
 
 static void answer(ftpctx_t *ctx, const char *fmt, ...)
 {
-	char buf[80], *b = buf;
+	char buf[96], *b = buf;
 	va_list val;
 	va_start(val,fmt);
 	int n = vsnprintf(buf,sizeof(buf),fmt,val);
 	va_end(val);
-	if (n >= sizeof(buf)) {
-		va_start(val,fmt);
-		n = vasprintf(&b,fmt,val);
-		va_end(val);
-	}
+	assert(n+2 <= sizeof(buf));
+	buf[n++] = '\r';
+	buf[n++] = '\n';
 	log_dbug(TAG,"answer %s",b);
-	if (-1 == send(ctx->con,b,n,0)) {
+	if (-1 == ctx->con->write(b,n)) {
 		if (b != buf)
 			free(b);
-		log_error(TAG,"failed to send answer '%s': %s",b,strneterr(ctx->con));
-		close(ctx->con);
+		log_error(TAG,"failed to send answer '%s': %s",b,ctx->con->error());
+		ctx->con->close();
 		vTaskDelete(0);
 	}
 	if (b != buf)
@@ -142,7 +146,7 @@ static void fold_path(char *path)
 
 static void pwd(ftpctx_t *ctx, const char *arg)
 {
-	answer(ctx,"200: %s\r\n",ctx->wd);
+	answer(ctx,"200: %s",ctx->wd);
 }
 
 
@@ -150,11 +154,11 @@ static void rnfr(ftpctx_t *ctx, const char *arg)
 {
 	if (arg == 0) {
 		// 501: syntax/argument error
-		answer(ctx,"501 missing argument\r\n");
+		answer(ctx,"501 missing argument");
 		return;
 	}
 	if (ctx->rnfr) {
-		answer(ctx,"503 rename from already set\r\n");
+		answer(ctx,"503 rename from already set");
 		return;
 	}
 	char *fn = arg2fn(ctx,arg);
@@ -162,7 +166,7 @@ static void rnfr(ftpctx_t *ctx, const char *arg)
 	FILE *f = fopen(fn,"r");
 	if (f == 0) {
 		free(fn);
-		answer(ctx,"550 unable to stat file: %s\r\n",strerror(errno));
+		answer(ctx,"550 unable to stat file: %s",strerror(errno));
 		return;
 	}
 	fclose(f);
@@ -170,12 +174,12 @@ static void rnfr(ftpctx_t *ctx, const char *arg)
 	struct stat st;
 	if (-1 == stat(fn,&st)) {
 		free(fn);
-		answer(ctx,"550 unable to stat file: %s\r\n",strerror(errno));
+		answer(ctx,"550 unable to stat file: %s",strerror(errno));
 		return;
 	}
 #endif
 	ctx->rnfr = fn;
-	answer(ctx,"350 ready to rename\r\n");
+	answer(ctx,"350 ready to rename");
 }
 
 
@@ -183,11 +187,11 @@ static void rnto(ftpctx_t *ctx, const char *arg)
 {
 	if (arg == 0) {
 		// 501: syntax/argument error
-		answer(ctx,"501 missing argument\r\n");
+		answer(ctx,"501 missing argument");
 		return;
 	}
 	if (ctx->rnfr == 0) {
-		answer(ctx,"503 rename from not set\r\n");
+		answer(ctx,"503 rename from not set");
 		return;
 	}
 	char *fn = arg2fn(ctx,arg);
@@ -196,9 +200,9 @@ static void rnto(ftpctx_t *ctx, const char *arg)
 	free(ctx->rnfr);
 	ctx->rnfr = 0;
 	if (r == 0)
-		answer(ctx,"250 file renamed to %s\r\n",arg);
+		answer(ctx,"250 file renamed to %s",arg);
 	else
-		answer(ctx,"550 file rename failed:%s\r\n",strerror(errno));
+		answer(ctx,"550 file rename failed:%s",strerror(errno));
 }
 
 
@@ -206,7 +210,7 @@ static void mkd(ftpctx_t *ctx, const char *arg)
 {
 	if (arg == 0) {
 		// 501: syntax/argument error
-		answer(ctx,"501 missing argument\r\n");
+		answer(ctx,"501 missing argument");
 		return;
 	}
 	char buf[256];
@@ -215,22 +219,22 @@ static void mkd(ftpctx_t *ctx, const char *arg)
 	strcat(buf,arg);
 	fold_path(buf);
 #ifdef ESP8266
-	answer(ctx,"452 operation not supported\r\n");
+	answer(ctx,"452 operation not supported");
 #else
 	log_dbug(TAG,"mkdir %s",buf);
 	if (-1 == mkdir(buf,0777)) {
 		log_warn(TAG,"failed to create %s: %s",arg,strerror(errno));
-		answer(ctx,"552 failed to create %s: %s\r\n",arg,strerror(errno));
+		answer(ctx,"552 failed to create %s: %s",arg,strerror(errno));
 		return;
 	}
-	answer(ctx,"200 OK\r\n");
+	answer(ctx,"200 OK");
 #endif
 }
 
 
 static void noop(ftpctx_t *ctx, const char *arg)
 {
-	answer(ctx,"200 OK\r\n");
+	answer(ctx,"200 OK");
 }
 
 
@@ -238,7 +242,7 @@ static void rmd(ftpctx_t *ctx, const char *arg)
 {
 	if (arg == 0) {
 		// 501: syntax/argument error
-		answer(ctx,"501 missing argument\r\n");
+		answer(ctx,"501 missing argument");
 		return;
 	}
 	char buf[256];
@@ -247,15 +251,15 @@ static void rmd(ftpctx_t *ctx, const char *arg)
 	strcat(buf,arg);
 	fold_path(buf);
 #ifdef ESP8266
-	answer(ctx,"452 operation not supported\r\n");
+	answer(ctx,"452 operation not supported");
 #else
 	log_dbug(TAG,"rmdir %s",buf);
 	if (-1 == rmdir(buf)) {
 		log_warn(TAG,"failed to rmdir %s: %s",arg,strerror(errno));
-		answer(ctx,"552 failed to rmdir %s: %s\r\n",arg,strerror(errno));
+		answer(ctx,"552 failed to rmdir %s: %s",arg,strerror(errno));
 		return;
 	}
-	answer(ctx,"200 OK\r\n");
+	answer(ctx,"200 OK");
 #endif
 }
 
@@ -263,12 +267,12 @@ static void rmd(ftpctx_t *ctx, const char *arg)
 static void retrive(ftpctx_t *ctx, const char *arg)
 {
 	if (arg == 0) {
-		answer(ctx,"501 missing argument\r\n");
+		answer(ctx,"501 missing argument");
 		return;
 	}
-	if (ctx->dcon == -1) {
-		answer(ctx,"501 PORT missing\r\n");
-		log_warn(TAG,"store request without port");
+	if (ctx->dcon == 0) {
+		answer(ctx,"501 PORT missing");
+		log_warn(TAG,"retrive request without port");
 		return;
 	}
 	char fn[256];
@@ -278,86 +282,86 @@ static void retrive(ftpctx_t *ctx, const char *arg)
 #ifdef USE_FOPEN
 	FILE *f = fopen(fn,"r");
 	if (f == 0) {
-		answer(ctx,"552 unable to open %s: %s\r\n",arg,strerror(errno));
+		answer(ctx,"552 unable to open %s: %s",arg,strerror(errno));
 		log_warn(TAG,"unable to open %s: %s",fn,strerror(errno));
 		return;
 	}
 	char *buf = (char*)malloc(BUFSIZE);
 	if (buf == 0) {
-		answer(ctx,"552 unable to allocate mem for reading\r\n");
-		log_warn(TAG,"unable to allocate mem for reading\r\n");
+		answer(ctx,"552 unable to allocate mem for reading");
+		log_warn(TAG,"unable to allocate mem for reading");
 		return;
 	}
-	answer(ctx,"150 opened %s\r\n",arg);
+	answer(ctx,"150 opened %s",arg);
 	int r, total = 0;
 	do {
 		r = fread(buf,1,BUFSIZE,f);
 		if (r > 0) {
-			int n = send(ctx->dcon,buf,r,0);
+			int n = ctx->dcon->write(buf,r);
 			if (-1 == n) {
 				// 552: action aborted
-				answer(ctx,"552 error sending: %s\r\n",strneterr(ctx->dcon));
-				log_warn(TAG,"unable to retrive %s: %s",arg,strneterr(ctx->dcon));
+				answer(ctx,"552 error sending: %s",ctx->dcon->error());
+				log_warn(TAG,"unable to retrive %s: %s",arg,ctx->dcon->error());
 				goto cleanup;
 			}
 			total += n;
 		} else if (r < 0) {
 			// 552: action aborted
-			answer(ctx,"552 unable to read from %s: %s\r\n",arg,strerror(errno));
+			answer(ctx,"552 unable to read from %s: %s",arg,strerror(errno));
 			log_warn(TAG,"unable to read from %s: %s",arg,strerror(errno));
 			goto cleanup;
 		}
 		log_dbug(TAG,"sent %d bytes",r);
 	} while (r > 0);
 	log_dbug(TAG,"sent %d bytes",total);
-	answer(ctx,"200\r\n");
+	answer(ctx,"200");
 cleanup:
-	close(ctx->dcon);
-	ctx->dcon = -1;
+	delete ctx->dcon;
+	ctx->dcon = 0;
 	free(buf);
 	fclose(f);
 #else
 	int fd = open(fn,O_RDONLY,0);
 	if (fd == -1) {
-		answer(ctx,"552 unable to open %s: %s\r\n",arg,strerror(errno));
+		answer(ctx,"552 unable to open %s: %s",arg,strerror(errno));
 		log_warn(TAG,"unable to open %s: %s",fn,strerror(errno));
 		return;
 	}
 	struct stat st;
 	if (-1 == fstat(fd,&st)) {
 		close(fd);
-		answer(ctx,"552 unable to stat %s: %s\r\n",arg,strerror(errno));
+		answer(ctx,"552 unable to stat %s: %s",arg,strerror(errno));
 		log_warn(TAG,"unable to open %s: %s",fn,strerror(errno));
 		return;
 	}
 	char *buf = (char*)malloc(BUFSIZE);
 	assert(buf);
-	answer(ctx,"150 opened %s\r\n",arg);
+	answer(ctx,"150 opened %s",arg);
 	int r, total = 0;
 	do {
 		r = read(fd,buf,BUFSIZE);
 		if (r > 0) {
-			int n = send(ctx->dcon,buf,r,0);
+			int n = ctx->dcon->write(buf,r);
 			if (-1 == n) {
 				// 552: action aborted
-				answer(ctx,"552 error sending: %s\r\n",strneterr(ctx->dcon));
-				log_warn(TAG,"unable to retrive %s: %s",arg,strneterr(ctx->dcon));
+				answer(ctx,"552 error sending: %s",ctx->dcon->error());
+				log_warn(TAG,"unable to retrive %s: %s",arg,ctx->dcon->error());
 				goto cleanup;
 			}
 			total += n;
 		} else if (r < 0) {
 			// 552: action aborted
-			answer(ctx,"552 unable to read from %s: %s\r\n",arg,strerror(errno));
+			answer(ctx,"552 unable to read from %s: %s",arg,strerror(errno));
 			log_warn(TAG,"unable to read from %s: %s",arg,strerror(errno));
 			goto cleanup;
 		}
 		log_dbug(TAG,"sent %d bytes",r);
 	} while (r > 0);
 	log_dbug(TAG,"sent %d bytes",total);
-	answer(ctx,"200\r\n");
+	answer(ctx,"200");
 cleanup:
-	close(ctx->dcon);
-	ctx->dcon = -1;
+	delete ctx->dcon;
+	ctx->dcon = 0;
 	free(buf);
 	close(fd);
 #endif
@@ -368,11 +372,11 @@ static void store(ftpctx_t *ctx, const char *arg)
 {
 	if (arg == 0) {
 		log_warn(TAG,"store request without argument");
-		answer(ctx,"501 missing argument\r\n");
+		answer(ctx,"501 missing argument");
 		return;
 	}
-	if (ctx->dcon == -1) {
-		answer(ctx,"501 PORT missing\r\n");
+	if (ctx->dcon == 0) {
+		answer(ctx,"501 PORT missing");
 		log_warn(TAG,"store request without port");
 		return;
 	}
@@ -388,73 +392,73 @@ static void store(ftpctx_t *ctx, const char *arg)
 #ifdef USE_FOPEN
 	FILE *f = fopen(fn,"w");
 	if (f == 0) {
-		answer(ctx,"552 unable to create %s: %s\r\n",arg,strerror(errno));
+		answer(ctx,"552 unable to create %s: %s",arg,strerror(errno));
 		log_warn(TAG,"unable to open %s for storing: %s",fn,strerror(errno));
 		return;
 	}
-	answer(ctx,"150 created %s\r\n",arg);
+	answer(ctx,"150 created %s",arg);
 	char *buf = (char*)malloc(BUFSIZE);
 	assert(buf);
 	int n, total = 0;
 	do {
-		n = recv(ctx->dcon,buf,BUFSIZE,0);
+		n = ctx->dcon->read(buf,BUFSIZE);
 		if (n > 0) {
 			int w = fwrite(buf,n,1,f);
 			if (-1 == w) {
-				answer(ctx,"552 error writing: %s\r\n",strerror(errno));
+				answer(ctx,"552 error writing: %s",strerror(errno));
 				log_warn(TAG,"unable to write to %s for storing: %s",arg,strerror(errno));
 				goto cleanup;
 			}
 			total += w;
 		} else if (n < 0) {
 			// 552: action aborted
-			answer(ctx,"552 unable to write to %s: %s\r\n",arg,strerror(errno));
-			log_warn(TAG,"unable to write to %s for storing: %s",arg,strerror(errno));
+			answer(ctx,"552 error receiving for %s: %s",arg,ctx->dcon->error());
+			log_warn(TAG,"error receiving data for %s: %s",arg,ctx->dcon->error());
 			goto cleanup;
 		}
 		log_dbug(TAG,"received and wrote %d bytes",n);
 	} while (n > 0);
 	log_dbug(TAG,"wrote %d bytes to %s",total,arg);
-	answer(ctx,"200\r\n");
+	answer(ctx,"200");
 cleanup:
-	close(ctx->dcon);
-	ctx->dcon = -1;
+	delete ctx->dcon;
+	ctx->dcon = 0;
 	free(buf);
 	fclose(f);
 #else
 	int fd = open(fn,O_CREAT|O_WRONLY,0666);
 	if (fd == -1) {
-		answer(ctx,"552 unable to create %s: %s\r\n",arg,strerror(errno));
+		answer(ctx,"552 unable to create %s: %s",arg,strerror(errno));
 		log_warn(TAG,"unable to open %s for storing: %s",fn,strerror(errno));
 		return;
 	}
-	answer(ctx,"150 created %s\r\n",arg);
+	answer(ctx,"150 created %s",arg);
 	char *buf = (char*)malloc(BUFSIZE);
 	assert(buf);
 	int n, total = 0;
 	do {
-		n = recv(ctx->dcon,buf,BUFSIZE,0);
+		n = ctx->dcon->read(buf,BUFSIZE);
 		if (n > 0) {
 			int w = write(fd,buf,n);
 			if (-1 == w) {
-				answer(ctx,"552 error writing: %s\r\n",strerror(errno));
+				answer(ctx,"552 error writing: %s",strerror(errno));
 				log_warn(TAG,"unable to write to %s for storing: %s",arg,strerror(errno));
 				goto cleanup;
 			}
 			total += w;
 		} else if (n < 0) {
 			// 552: action aborted
-			answer(ctx,"552 unable to write to %s: %s\r\n",arg,strerror(errno));
-			log_warn(TAG,"unable to write to %s for storing: %s",arg,strerror(errno));
+			answer(ctx,"552 receive error for %s: %s",arg,ctx->dcon->error());
+			log_warn(TAG,"error receiving data for %s: %s",arg,ctx->dcon->error());
 			goto cleanup;
 		}
 		log_dbug(TAG,"received and wrote %d bytes",n);
 	} while (n > 0);
 	log_dbug(TAG,"wrote %d bytes to %s",total,arg);
-	answer(ctx,"200\r\n");
+	answer(ctx,"200");
 cleanup:
-	close(ctx->dcon);
-	ctx->dcon = -1;
+	delete ctx->dcon;
+	ctx->dcon = 0;
 	free(buf);
 	close(fd);
 #endif
@@ -465,7 +469,7 @@ static void cwd(ftpctx_t *ctx, const char *arg)
 {
 	log_dbug(TAG,"CWD %s",arg);
 	if (arg == 0) {
-		answer(ctx,"501 missing argument\r\n",4,0);
+		answer(ctx,"501 missing argument",4,0);
 		return;
 	}
 	if (arg[0] == '/') {
@@ -479,7 +483,7 @@ static void cwd(ftpctx_t *ctx, const char *arg)
 			strcat(ctx->wd,"/");
 	}
 	fold_path(ctx->wd);
-	answer(ctx,"200 %s\r\n",ctx->wd);
+	answer(ctx,"200 %s",ctx->wd);
 	log_dbug(TAG,"cwd %s",ctx->wd);
 }
 
@@ -489,14 +493,14 @@ static void cdup(ftpctx_t *ctx, const char *arg)
 	log_dbug(TAG,"cdup %s",ctx->wd);
 	char *sl = strrchr(ctx->wd,'/');
 	if (sl == ctx->wd) {
-		answer(ctx,"200 %s\r\n",ctx->wd);
+		answer(ctx,"200 %s",ctx->wd);
 		log_dbug(TAG,"cwd %s",ctx->wd);
 		return;
 	}
 	assert(sl[1] == 0);
 	sl = up_slash(ctx->wd,sl-1);
 	sl[1] = 0;
-	answer(ctx,"200 %s\r\n",ctx->wd);
+	answer(ctx,"200 %s",ctx->wd);
 	log_dbug(TAG,"cwd %s",ctx->wd);
 }
 
@@ -504,7 +508,7 @@ static void cdup(ftpctx_t *ctx, const char *arg)
 static void dele(ftpctx_t *ctx, const char *arg)
 {
 	if (arg == 0) {
-		answer(ctx,"501 missing argument\r\n",4,0);
+		answer(ctx,"501 missing argument",4,0);
 		return;
 	}
 	char fn[200];
@@ -514,15 +518,15 @@ static void dele(ftpctx_t *ctx, const char *arg)
 #if 1 //def ESP32
 	int r = unlink(fn);
 	if (r == 0) {
-		answer(ctx,"200 OK\r\n",4,0);
+		answer(ctx,"200 OK",4,0);
 		return;
 	}
 	// 550: file not found or so
 	log_warn(TAG,"error removing %s: %s",fn,strerror(errno));
-	answer(ctx,"550 error deleting: %s\r\n",strerror(errno));
+	answer(ctx,"550 error deleting: %s",strerror(errno));
 #else
 	log_warn(TAG,"error removing %s: not implemented",fn);
-	answer(ctx,"550 error deleting: not implemented\r\n");
+	answer(ctx,"550 error deleting: not implemented");
 #endif
 }
 
@@ -530,8 +534,8 @@ static void dele(ftpctx_t *ctx, const char *arg)
 static void list(ftpctx_t *ctx, const char *arg)
 {
 	log_dbug(TAG,"LIST %s",arg ? arg : ctx->wd);
-	if (ctx->dcon == -1) {
-		answer(ctx,"550 use port before list\r\n");
+	if (ctx->dcon == 0) {
+		answer(ctx,"550 use port before list");
 		return;
 	}
 	TcpTerminal term(ctx->dcon,true);
@@ -543,20 +547,20 @@ static void list(ftpctx_t *ctx, const char *arg)
 		strcat(cmd,arg);
 	} else
 		strcat(cmd,ctx->wd);
-	answer(ctx,"150 ready for output\r\n");
+	answer(ctx,"150 ready for output");
 	log_dbug(TAG,"list exe %s",cmd);
 	shellexe(term,cmd);
-	answer(ctx,"226 tranfer completed\r\n");
-	close(ctx->dcon);
-	ctx->dcon = -1;
+	answer(ctx,"226 tranfer completed");
+	delete ctx->dcon;
+	ctx->dcon = 0;
 }
 
 
 static void nlst(ftpctx_t *ctx, const char *arg)
 {
 	log_dbug(TAG,"LIST %s",arg ? arg : ctx->wd);
-	if (ctx->dcon == -1) {
-		answer(ctx,"550 use port before list\r\n");
+	if (ctx->dcon == 0) {
+		answer(ctx,"550 use port before list");
 		return;
 	}
 	TcpTerminal term(ctx->dcon,true);
@@ -568,85 +572,75 @@ static void nlst(ftpctx_t *ctx, const char *arg)
 		strcat(cmd,arg);
 	} else
 		strcat(cmd,ctx->wd);
-	answer(ctx,"150 ready for output\r\n");
+	answer(ctx,"150 ready for output");
 	log_dbug(TAG,"nlst exe %s",cmd);
 	shellexe(term,cmd);
-	answer(ctx,"226 tranfer completed\r\n");
-	close(ctx->dcon);
-	ctx->dcon = -1;
+	answer(ctx,"226 tranfer completed");
+	delete ctx->dcon;
+	ctx->dcon = 0;
 }
 
 
 static void port(ftpctx_t *ctx, const char *arg)
 {
 	if (arg == 0) {
-		answer(ctx,"501 missing argumetn\r\n");
+		answer(ctx,"501 missing argumetn");
 		return;
 	}
 	unsigned a0,a1,a2,a3,p0,p1;
 	if (6 != sscanf(arg,"%u,%u,%u,%u,%u,%u",&a0,&a1,&a2,&a3,&p0,&p1)) {
 		log_error(TAG,"PORT expected 6 arguments, got '%s'",arg);
 		// 501: syntax/argument error
-		answer(ctx,"501 invalid argument %s\r\n",arg);
+		answer(ctx,"501 invalid argument %s",arg);
 		return;
 	}
-	log_dbug(TAG,"port %u.%u.%u.%u:%u",a0,a1,a2,a3,p0<<8|p1);
-	int sock = socket(AF_INET, SOCK_STREAM, 0);
-	if (sock < 0) {
-		// 425: cannot open connection
-		answer(ctx,"425\r\n");
-		log_error(TAG,"error creating ftp PORT: %s",strneterr(sock));
-		return;
-	}
-	uint32_t a = a0 << 24 | a1 << 16 | a2 << 8 | a3;
+	ip_addr_t ip = IPADDR4_INIT_BYTES(a0,a1,a2,a3);
+	log_dbug(TAG,"port %s:%u",ipaddr_ntoa(&ip),p0<<8|p1);
 	uint16_t p = p0 << 8 | p1;
-	struct sockaddr_in port_addr;
-	port_addr.sin_family = AF_INET;
-	port_addr.sin_port = htons(p);
-	port_addr.sin_addr.s_addr = htonl(a);
-	if (connect(sock, (struct sockaddr *)&port_addr, sizeof(port_addr)) < 0) {
-		answer(ctx,"425 error bind port: %s\r\n",strneterr(sock));
-		log_error(TAG,"error binding ftp PORT: %s",strneterr(sock));
-		return;
+	if (ctx->dcon != 0)
+		delete ctx->dcon;
+	ctx->dcon = new LwTcp;
+	if (err_t e = ctx->dcon->connect(&ip,p)) {
+		log_dbug(TAG,"PORT socket error %d",e);
+		answer(ctx,"550 PORT failed");
+	} else {
+		log_dbug(TAG,"PORT created socket");
+		answer(ctx,"200 PORT OK");
+
 	}
-	if (ctx->dcon != -1)
-		close(ctx->dcon);
-	ctx->dcon = sock;
-	log_dbug(TAG,"PORT created socket %d",sock);
-	answer(ctx,"200 PORT OK\r\n");
 }
 
 
 static void size(ftpctx_t *ctx, const char *arg)
 {
 	if (arg == 0) {
-		answer(ctx,"501 missing argumetn\r\n");
+		answer(ctx,"501 missing argumetn");
 		return;
 	}
 	char *fn = arg2fn(ctx,arg);
 #ifdef USE_FOPEN
 	FILE *f = fopen(fn,"r");
 	if (f == 0) {
-		answer(ctx,"550 error accessing %s: %s\r\n",fn,strerror(errno));
+		answer(ctx,"550 error accessing %s: %s",fn,strerror(errno));
 		free(fn);
 		return;
 	}
 	if (-1 == fseek(f,0,SEEK_END)) {
-		answer(ctx,"550 error seeking%s: %s\r\n",fn,strerror(errno));
+		answer(ctx,"550 error seeking%s: %s",fn,strerror(errno));
 		free(fn);
 		return;
 	}
 	free(fn);
-	answer(ctx,"213 %u\r\n",ftell(f));
+	answer(ctx,"213 %u",ftell(f));
 	fclose(f);
 #else
 	struct stat st;
 	int r = stat(fn,&st);
 	free(fn);
 	if (r == 0)
-		answer(ctx,"213 %u\r\n",st.st_size);
+		answer(ctx,"213 %u",st.st_size);
 	else
-		answer(ctx,"550 error stating: %s\r\n",strerror(errno));
+		answer(ctx,"550 error stating: %s",strerror(errno));
 #endif
 }
 
@@ -655,7 +649,7 @@ static void passive(ftpctx_t *ctx, const char *arg)
 {
 	// TODO
 	// 202: not implemented
-	answer(ctx,"202 not implemented\r\n");
+	answer(ctx,"202 not implemented");
 }
 
 
@@ -664,13 +658,13 @@ static void user(ftpctx_t *ctx, const char *arg)
 	ctx->login = 0;
 	if (0 == strcmp(arg,"ftp")) {
 		if (Config.has_pass_hash() && !verifyPassword("")) {
-			answer(ctx,"530 user ftp not allowed\r\n");
+			answer(ctx,"530 user ftp not allowed");
 		} else {
-			answer(ctx,"230 login ok\r\n");
+			answer(ctx,"230 login ok");
 			ctx->login = 3;
 		}
 	} else if (0 == strcmp(arg,"root")){
-		answer(ctx,"331 password required\r\n");
+		answer(ctx,"331 password required");
 		ctx->login = 4;
 	}
 }
@@ -680,24 +674,25 @@ static void pass(ftpctx_t *ctx, const char *arg)
 {
 	if ((ctx->login == 4) && verifyPassword(arg)) {
 		ctx->login = 5;
-		answer(ctx,"230 pass ok\r\n");
+		answer(ctx,"230 pass ok");
 	} else {
-		answer(ctx,"530 invalid password\r\n");
+		answer(ctx,"530 invalid password");
 	}
 }
 
 
 static void syst(ftpctx_t *ctx, const char *arg)
 {
-	answer(ctx,"200 Type: esp32\r\n");
+	answer(ctx,"200 Type: esp32");
 }
 
 
 static void quit(ftpctx_t *ctx, const char *arg)
 {
-	answer(ctx,"221\r\n");
-	close(ctx->con);
-	ctx->con = -1;
+	answer(ctx,"221");
+	ctx->con->close();
+	delete ctx->con;
+	ctx->con = 0;
 	free(ctx->wd);
 	vTaskDelete(0);
 }
@@ -747,7 +742,7 @@ static int execute_buffer(ftpctx_t *ctx, char *buf, int fill)
 			else if (0 == strcmp(buf,"PASS"))
 				pass(ctx,sp ? sp+1 : 0);
 			else
-				answer(ctx,"530 user not logged in\r\n");
+				answer(ctx,"530 user not logged in");
 			found = true;
 		} else for (int i = 0; i < sizeof(Commands)/sizeof(Commands[0]); ++i) {
 			if (0 == strcmp(Commands[i].cmd,buf)) {
@@ -758,7 +753,7 @@ static int execute_buffer(ftpctx_t *ctx, char *buf, int fill)
 		}
 		if (!found) {
 			log_warn(TAG,"unsupported command %s",buf);
-			answer(ctx,"502 unknown command %s\r\n",buf);
+			answer(ctx,"502 unknown command %s",buf);
 		}
 		fill -= eol-buf;
 		memmove(buf,eol,fill);
@@ -768,24 +763,23 @@ static int execute_buffer(ftpctx_t *ctx, char *buf, int fill)
 }
 
 
-void ftpd_session(void *arg)
+void ftpd_session(LwTcp *con)
 {
-	int con = (int)arg;
 	ftpctx_t ctxt;
 	ctxt.con = con;
-	ctxt.dcon = -1;
+	ctxt.dcon = 0;
 	ctxt.wd = strdup("/");
 	ctxt.root = Config.ftpd().root().c_str();
 	ctxt.rnfr = 0;
 	char buf[256];
 	size_t fill = 0;
 	log_dbug(TAG,"starting session");
-	answer(&ctxt,"220 Connection established.\r\n");
+	answer(&ctxt,"220 Connection established.");
 	for (;;) {
-		int n = recv(con,buf+fill,sizeof(buf)-fill-1,0);
+		int n = con->read(buf+fill,sizeof(buf)-fill-1);
 		if (n < 0) {
-			log_dbug(TAG,"error on recv: %s",strneterr(con));
-			close(con);
+			log_dbug(TAG,"error on recv: %s",con->error());
+			delete con;
 			vTaskDelete(0);
 			return;
 		}
@@ -796,7 +790,7 @@ void ftpd_session(void *arg)
 		fill = execute_buffer(&ctxt,buf,fill);
 		if (fill == -1) {
 			log_dbug(TAG,"error executing");
-			close(con);
+			delete con;
 			vTaskDelete(0);
 			return;
 		}
@@ -810,16 +804,19 @@ int ftpd_setup()
 		return 0;
 	const FtpHttpConfig &c = Config.ftpd();
 	uint16_t p = c.port();
+	if (p == 0)
+		p = FTPD_PORT;
 	if (!c.has_root() || (0 == p))
 		return 0;
 	const char *r = c.root().c_str();
-	struct stat st;
-	if (-1 == stat(r,&st)) {
+	DIR *d = opendir(r);
+	if (d == 0) {
 		log_warn(TAG,"error accessing root '%s': %s",r,strerror(errno));
 		return 1;
 	}
+	closedir(d);
 	log_info(TAG,"port %hu, root %s",p,r);
-	return listen_port(p,m_tcp,ftpd_session,"ftpd","_ftp",4,4096);
+	return listen_port(FTPD_PORT,m_tcp,ftpd_session,"ftp","ftp",5,4096);
 }
 
 #endif

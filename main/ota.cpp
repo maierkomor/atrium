@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -20,12 +20,13 @@
 
 #ifdef CONFIG_OTA
 
+#include "log.h"
+#include "lwtcp.h"
+#include "netsvc.h"
 #include "ota.h"
 #include "shell.h"
 #include "status.h"
-#include "support.h"
 #include "terminal.h"
-#include "wifi.h"
 
 #include <esp_system.h>
 #include <esp_ota_ops.h>
@@ -34,35 +35,30 @@
 #include <freertos/task.h>
 #include <freertos/event_groups.h>
 #ifdef CONFIG_IDF_TARGET_ESP32
-#include <mdns.h>
 #include <mbedtls/base64.h>
+#include <sys/socket.h>
 #elif defined CONFIG_IDF_TARGET_ESP8266
 extern "C" {
 #include <esp_base64.h>
 }
+#include <lwip/inet.h>
 #include <lwip/ip_addr.h>
 #include <lwip/ip6.h>
 #include <lwip/err.h>
-#include <lwip/apps/mdns.h>
 #endif
 #include <mbedtls/base64.h>
 
 #include <lwip/dns.h>
 
-#ifdef CONFIG_MDNS
-#include <mdns.h>
-#endif
-
 #include <errno.h>
 #include <fcntl.h>
-#include <netdb.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/socket.h>
 #include <unistd.h>
 
 #define OTABUF_SIZE 4096
 
+#define TAG MODULE_OTA
 
 static char *skip_http_header(Terminal &t, char *text, int len)
 {
@@ -81,35 +77,44 @@ static char *skip_http_header(Terminal &t, char *text, int len)
 }
 
 
+#ifdef CONFIG_IDF_TARGET_ESP32
+
 static int send_http_get(Terminal &t, const char *server, int port, const char *filename, const char *auth)
 {
 	t.printf("http get: host=%s, port=%d, filename=%s\n", server, port, filename);
-	struct sockaddr_in si;
-	memset(&si, 0, sizeof(struct sockaddr_in));
-	si.sin_family = AF_INET;
-	si.sin_port = htons(port);
-	si.sin_addr.s_addr = resolve_hostname(server);
-	if ((si.sin_addr.s_addr == IPADDR_NONE) || (si.sin_addr.s_addr == 0)) {
-		t.printf("could not resolve hostname %s\n",server);
+	ip_addr_t ip;
+	if (err_t e = resolve_hostname(server,&ip)) {
+		t.printf("unable to resolve ip of %s: %s\n",server,strlwiperr(e));
 		return -1;
 	}
-	t.printf("connecting to %d.%d.%d.%d\n"
-			,si.sin_addr.s_addr&0xff
-			,(si.sin_addr.s_addr>>8)&0xff
-			,(si.sin_addr.s_addr>>16)&0xff
-			,(si.sin_addr.s_addr>>24)&0xff
-			);
-
 	int hsock = socket(AF_INET, SOCK_STREAM, 0);
 	if (hsock == -1) {
 		t.printf("unable to create download socket: %s\n",strerror(errno));
 		return -1;
 	}
-	if (-1 == connect(hsock, (struct sockaddr *)&si, sizeof(si))) {
-		t.printf("connect to %s failed: %s\n",server,strerror(errno));
+	struct sockaddr_in in;
+	struct sockaddr_in6 in6;
+	struct sockaddr *a;
+	size_t as;
+	if (IP_IS_V6(&ip)) {
+		in6.sin6_family = AF_INET6;
+		in6.sin6_port = htons(port);
+		a = (struct sockaddr *) &in6;
+		as = sizeof(struct sockaddr_in6);
+		memcpy(&in6.sin6_addr,ip_2_ip6(&ip),sizeof(in6));
+	} else {
+		in.sin_family = AF_INET;
+		in.sin_port = htons(port);
+		a = (struct sockaddr *) &in;
+		as = sizeof(struct sockaddr_in);
+		memcpy(&in.sin_addr,ip_2_ip4(&ip),sizeof(in));
+	}
+	if (-1 == connect(hsock,a,as)) {
+		t.printf("connect to %s failed: %s\n",inet_ntoa(ip),strerror(errno));
 		close(hsock);
 		return -1;
 	}
+	t.printf("connected to %s\n",inet_ntoa(ip));
 	char http_request[512];
 	int get_len = snprintf(http_request,sizeof(http_request),
 		"GET /%s HTTP/1.0\r\n"
@@ -154,6 +159,58 @@ static int send_http_get(Terminal &t, const char *server, int port, const char *
 	return hsock;
 }
 
+#else // ESP8266
+
+static int send_http_get(Terminal &t, LwTcp &P, const char *server, int port, const char *filename, const char *auth)
+{
+	log_dbug(TAG,"http get: filename=%s, auth=%s\n", filename, auth ? auth : "0");
+	t.printf("http get: filename=%s, auth=%s\n", filename, auth ? auth : "0");
+	char http_request[512];
+	int get_len = snprintf(http_request,sizeof(http_request),
+		"GET /%s HTTP/1.0\r\n"
+		"Host: %s:%d\r\n"
+		"User-Agent: atrium\r\n"
+		, filename, server, port);
+	if (get_len+3 > sizeof(http_request))
+		return -1;
+	if (auth) {
+		strcpy(http_request+get_len,"Authorization: Basic ");
+		get_len += 21;
+#ifdef CONFIG_IDF_TARGET_ESP8266
+		int n = esp_base64_encode(auth,strlen(auth),http_request+get_len,sizeof(http_request)-get_len);
+		if (n < 0) {
+			t.printf("base64: 0x%x\n",n);
+			return -1;
+		}
+		get_len += n;
+#else
+		size_t b64l = sizeof(http_request)-get_len;
+		int n = mbedtls_base64_encode((unsigned char *)http_request+get_len,sizeof(http_request)-get_len,&b64l,(unsigned char *)auth,strlen(auth));
+		if (0 > n) {
+			t.printf("base64: 0x%x\n",n);
+			return -1;
+		}
+		get_len += b64l;
+#endif
+		strcpy(http_request+get_len,"\r\n");
+		get_len += 2;
+	}
+	if (get_len + 3 > sizeof(http_request))
+		return -1;
+	strcpy(http_request+get_len,"\r\n");
+	get_len += 2;
+	//t.printf("http request:\n'%s'\n",http_request);
+	int res = P.write(http_request,get_len);
+	if (res < 0) {
+		log_warn(TAG,"unable to send get request: %s\n",P.error());
+		t.printf("unable to send get request: %s\n",P.error());
+    		return -1;
+	}
+	t.println("sent GET");
+	return res;
+}
+
+#endif
 
 static int to_fd(Terminal &t, void *arg, char *buf, size_t s)
 {
@@ -167,15 +224,17 @@ static int to_fd(Terminal &t, void *arg, char *buf, size_t s)
 
 static int to_ota(Terminal &t, void *arg, char *buf, size_t s)
 {
-	//t.printf("to_ota(): %u bytes\n",s);
 	esp_err_t err = esp_ota_write((esp_ota_handle_t)arg,buf,s);
-	if (err == ESP_OK)
+	if (err == ESP_OK) {
 		return 0;
+	}
 	t.printf("OTA flash failed: %s\n",esp_err_to_name(err));
+	log_warn(TAG,"OTA flash failed: %s\n",esp_err_to_name(err));
 	return 1;
 }
 
 
+#ifdef CONFIG_IDF_TARGET_ESP32
 static int socket_to_x(Terminal &t, int hsock, int (*sink)(Terminal&,void*,char*,size_t), void *arg)
 {
 	char *buf = (char*)malloc(OTABUF_SIZE), *data;
@@ -217,15 +276,86 @@ done:
 	return ret;
 }
 
+#else // if ESP8266
+
+static int socket_to_x(Terminal &t, LwTcp &P, int (*sink)(Terminal&,void*,char*,size_t), void *arg)
+{
+	char *buf = (char*)malloc(OTABUF_SIZE), *data;
+	if (buf == 0)
+		return err_oom(t);
+	int ret = 1;
+	size_t numD = 0, contlen = 0;
+	bool ia = t.isInteractive();
+	int r = P.read(buf,OTABUF_SIZE);
+	if (r < 0)
+		goto done;
+	if (memcmp(buf,"HTTP",4) || memcmp(buf+8," 200 OK\r",8)) {
+		if (0 == memcmp(buf+8," 404 ",5)) {
+			t.printf("server 404: file not found\n");
+			goto done;
+		}
+		t.printf("unexpected header\n%128s\n",buf);
+		char *nl = strchr(buf,'\n');
+		if (nl) {
+			*nl = 0;
+			t.printf("unexpted server answer: %s\n",buf);
+		}
+		goto done;
+	}
+	if (const char *cl = strstr(buf+8,"Content-Length:")) {
+		contlen = strtol(cl+16,0,0);
+		t.printf("content-length %u\n",contlen);
+	}
+	if (contlen == 0)
+		goto done;
+	data = skip_http_header(t,buf,r);
+	if (data == 0) {
+		t.println("no end of header");
+		goto done;
+	}
+	r -= (data-buf);
+	while (r > 0) {
+		log_dbug(TAG,"sink %u",r);
+		if (int e = sink(t,arg,data,r)) {
+			log_warn(TAG,"sink error %d",e);
+			goto done;
+		}
+		numD += r;
+		if (ia) {
+			t.printf("\rwrote %d/%u bytes",numD,contlen);
+			t.sync(false);
+		}
+		if (numD == contlen)
+			break;
+		r = P.read(buf,OTABUF_SIZE,60000);
+		data = buf;
+	}
+	if (r < 0) {
+		t.printf("\nerror %d",r);
+		log_warn(TAG,"read error %d",r);
+	} else if (numD != contlen) {
+		t.println("\nincomplete");
+		log_warn(TAG,"incomplete");
+	} else {
+		ret = 0;
+	}
+done:
+	if (ia)
+		t.println();
+	P.close();
+	free(buf);
+	return ret;
+}
+
+#endif
 
 static int file_to_flash(Terminal &t, int fd, esp_ota_handle_t ota)
 {
 	size_t numD = 0;
 	char *buf = (char*)malloc(OTABUF_SIZE);
-	if (buf == 0) {
-		t.println("out of memory");
-		return false;
-	}
+	if (buf == 0)
+		return err_oom(t);
+	bool ia = t.isInteractive();
 	int r = 1;
 	for (;;) {
 		int n = read(fd,buf,OTABUF_SIZE);
@@ -234,7 +364,7 @@ static int file_to_flash(Terminal &t, int fd, esp_ota_handle_t ota)
 			break;
 		}
 		if (n == 0) {
-			//t.printf( "ota received %d bytes, wrote %d bytes",numD,numU);
+			//t.printf("ota received %d bytes, wrote %d bytes",numD,numU);
 			r = 0;
 			break;
 		}
@@ -244,9 +374,11 @@ static int file_to_flash(Terminal &t, int fd, esp_ota_handle_t ota)
 			t.printf("ota write failed: %s\n",esp_err_to_name(err));
 			break;
 		}
-		t.printf("\rwrote %d bytes",r);
+		if (ia)
+			t.printf("\rwrote %d bytes",r);
 	}
-	t.println();
+	if (ia)
+		t.println();
 	free(buf);
 	return r;
 }
@@ -256,6 +388,7 @@ static int http_to(Terminal &t, char *addr, int (*sink)(Terminal &,void*,char*,s
 {
 	uint16_t port;
 	const char *server;
+	t.printf("download %s\n",addr);
 	if (0 == strncmp(addr,"http://",7)) {
 		port = 80;
 		server = addr + 7;
@@ -263,7 +396,7 @@ static int http_to(Terminal &t, char *addr, int (*sink)(Terminal &,void*,char*,s
 		port = 443;
 		server = addr + 8;
 	} else {
-		t.printf("http_to('%s'): invalid address\n",addr);
+		t.printf("invalid address '%s'\n",addr);
 		return 1;
 	}
 	//  user/pass extraction
@@ -294,11 +427,24 @@ static int http_to(Terminal &t, char *addr, int (*sink)(Terminal &,void*,char*,s
 		}
 		port = l;
 	}
+	ip_addr_t ip;
+	if (err_t e = resolve_hostname(server,&ip)) {
+		t.printf("unable to resolve ip of %s: %s\n",server,strlwiperr(e));
+		return -1;
+	}
+#ifdef CONFIG_IDF_TARGET_ESP32
 	int hsock = send_http_get(t,server,port,filepath,username);
 	if (hsock == -1)
 		return 1;
 	int r = socket_to_x(t,hsock,sink,arg);
 	close(hsock);
+#else // ESP8266
+	LwTcp P;
+	P.connect(&ip,port);
+	int r = send_http_get(t,P,server,port,filepath,username);
+	if (r >= 0)
+		r = socket_to_x(t,P,sink,arg);
+#endif
 	return r;
 }
 
@@ -316,11 +462,13 @@ int http_download(Terminal &t, char *addr, const char *fn)
 	int fd;
 	if (fn[0] != '/') {
 		const char *pwd = getpwd();
-		char *path = (char*)malloc(strlen(pwd)+strlen(fn)+1);
+		size_t l = strlen(pwd)+strlen(fn)+1;
+		if (l > 128)
+			return -1;
+		char path[l];
 		strcpy(path,pwd);
 		strcat(path,fn);
 		fd = creat(path,0666);
-		free(path);
 	} else {
 		fd = creat(fn,0666);
 	}
@@ -358,8 +506,11 @@ int update_part(Terminal &t, char *source, const char *dest)
 {
 	esp_partition_t *p = (esp_partition_t *) esp_partition_find_first(ESP_PARTITION_TYPE_DATA,ESP_PARTITION_SUBTYPE_ANY,dest);
 	if (p == 0) {
-		t.printf("unknown partition '%s'",dest);
-		return 1;
+		p = (esp_partition_t *) esp_partition_find_first(ESP_PARTITION_TYPE_APP,ESP_PARTITION_SUBTYPE_ANY,dest);
+		if (p == 0) {
+			t.printf("unknown partition '%s'\n",dest);
+			return 1;
+		}
 	}
 	const esp_partition_t *b = esp_ota_get_running_partition();
 	/*
@@ -386,6 +537,8 @@ int update_part(Terminal &t, char *source, const char *dest)
 	uint32_t addr = p->address;
 	uint32_t s = p->size;
 	t.printf("erasing %d@%x\n",p->size,p->address);
+	t.sync();
+	log_dbug(TAG,"erase");
 	if (esp_err_t e = spi_flash_erase_range(p->address,p->size)) {
 		t.printf("error erasing: %s\n",esp_err_to_name(e));
 		return 1;
@@ -402,9 +555,11 @@ int perform_ota(Terminal &t, char *source, bool changeboot)
 	statusled_set(ledmode_pulse_often);
 	const esp_partition_t *bootp = esp_ota_get_boot_partition();
 	const esp_partition_t *runp = esp_ota_get_running_partition();
-	t.printf("running on '%s' at 0x%08x\n"
-		,runp->label
-		,runp->address);
+	bool ia = t.isInteractive();
+	if (ia)
+		t.printf("running on '%s' at 0x%08x\n"
+			,runp->label
+			,runp->address);
 	if (bootp != runp)
 		t.printf("boot partition: '%s' at 0x%08x\n",bootp->label,bootp->address);
 	const esp_partition_t *updatep = esp_ota_get_next_update_partition(NULL);
@@ -413,7 +568,11 @@ int perform_ota(Terminal &t, char *source, bool changeboot)
 		statusled_set(ledmode_pulse_seldom);
 		return 1;
 	}
-	t.printf("erasing '%s' at 0x%08x\n",updatep->label,updatep->address);
+	if (ia) {
+		t.printf("erasing '%s' at 0x%08x\n",updatep->label,updatep->address);
+		t.sync();
+	}
+	log_dbug(TAG,"erase");
 	esp_ota_handle_t ota = 0;
 	esp_err_t err = esp_ota_begin(updatep, OTA_SIZE_UNKNOWN, &ota);
 	if (err != ESP_OK) {
@@ -435,11 +594,18 @@ int perform_ota(Terminal &t, char *source, bool changeboot)
 		result = file_to_flash(t,fd,ota);
 		close(fd);
 	}
+	if (result)
+		return 1;
+	t.printf("verify ota\n");
+	t.sync();
+	log_dbug(TAG,"verify");
 	if (esp_err_t e = esp_ota_end(ota)) {
-		t.printf("esp_ota_end: %s\n",esp_err_to_name(e));
+		log_warn(TAG,"esp_ota_end: %s\n",esp_err_to_name(e));
+		t.printf("ota verify failed: %s\n",esp_err_to_name(e));
 		statusled_set(ledmode_pulse_seldom);
 		return 1;
 	}
+	log_dbug(TAG,"verify=OK");
 	if (result) {
 		statusled_set(ledmode_pulse_seldom);
 		return 1;
@@ -486,7 +652,8 @@ int boot(Terminal &term, int argc, const char *args[])
 		}
 		i = esp_partition_next(i);
 	}
-	printf("cannot boot %s",args[1]);
+	printf("cannot boot %s\n",args[1]);
 	return 1;
 }
+
 #endif

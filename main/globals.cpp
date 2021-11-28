@@ -21,8 +21,10 @@
 #include "hwcfg.h"
 #include "ujson.h"
 #include "log.h"
+#include "netsvc.h"
 #include "profiling.h"
 #include "swcfg.h"
+#include "versions.h"
 
 #include <esp_system.h>
 #include <esp_timer.h>
@@ -50,6 +52,7 @@ const char ResetReasons[][12] = {
 	"sdio",
 };
 
+extern "C" const char Version[] = VERSION;
 NodeConfig Config;
 HardwareConfig HWConf;
 nvs_handle NVS = 0;
@@ -61,7 +64,7 @@ JsonString *UpdateState = 0;
 #endif
 
 
-static const char TAG[] = "time";
+#define TAG MODULE_SNTP
 
 static SemaphoreHandle_t Mtx = 0;
 
@@ -91,18 +94,24 @@ void globals_setup()
 	HWConf.clear();	// initialize defaults
 	Config.clear();
 	RTData = new JsonObject(0);
+	RTData->add("version",Version);
 	Mtx = xSemaphoreCreateMutex();
+#if LWIP_TCPIP_CORE_LOCKING != 1
+	LwipMtx  = xSemaphoreCreateMutex();
+#endif
 }
 
 void rtd_lock()
 {
-	xSemaphoreTake(Mtx,portMAX_DELAY);
+	if (pdTRUE != xSemaphoreTake(Mtx,MUTEX_ABORT_TIMEOUT))
+		abort_on_mutex(Mtx,"rtd");
 }
 
 
 void rtd_unlock()
 {
-	xSemaphoreGive(Mtx);
+	auto r = xSemaphoreGive(Mtx);
+	assert(r == pdTRUE);
 }
 
 
@@ -110,7 +119,7 @@ void rtd_update()
 {
 	if (Uptime == 0)
 		Uptime = RTData->add("uptime",0.0);
-	Uptime->set(timestamp()/1000000ULL);
+	Uptime->set((double)timestamp()/1000000.0);
 }
 
 
@@ -202,8 +211,7 @@ void get_time_of_day(uint8_t *h, uint8_t *m, uint8_t *s, uint8_t *wd, uint8_t *m
 	gmtime_r(&now,&tm);
 	//dbug("get_time_of_day(): %u:%02u:%02u, %s %d.%d, TZ%d",tm.tm_hour,tm.tm_min,tm.tm_sec,Weekdays_en[tm.tm_wday],tm.tm_mday,tm.tm_mon+1,Timezone);
 	int tz = 0;
-	if (Config.has_timezone()) {
-		const char *t = Config.timezone().c_str();
+	if (const char *t = Config.timezone().c_str()) {
 		if ((t[0] >= '0' && t[0] <= '9')) {
 			tz = strtol(t,0,0);
 		} else if (!strcmp(t,"CET")) {

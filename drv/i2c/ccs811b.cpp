@@ -51,7 +51,7 @@
 #define STATUS_APP_VALID	0x10
 #define STATUS_DATA_READY	0x08
 
-static const char TAG[] = "ccs811b";
+#define TAG MODULE_CCS811B
 
 
 CCS811B::CCS811B(uint8_t bus, uint8_t addr)
@@ -98,10 +98,8 @@ int CCS811B::init()
 void CCS811B::attach(JsonObject *root)
 {
 	m_root = root;
-	m_tvoc = new JsonNumber("tvoc","ppb");
-	m_co2 = new JsonNumber("CO2","ppm");
-	root->append(m_tvoc);
-	root->append(m_co2);
+	m_tvoc = root->add("tvoc",NAN,"ppb");
+	m_co2 = root->add("CO2",NAN,"ppm");
 	if (m_state == st_update)
 		cyclic_add_task(m_name,cyclic,this,0);
 //	action_add(concat(m_name,"!sample"),trigger,(void*)this,"CCS811B sample data");

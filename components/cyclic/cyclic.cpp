@@ -48,7 +48,7 @@
 
 using namespace std;
 
-static char TAG[] = "cyclic";
+#define TAG MODULE_CYCLIC
 
 struct SubTask
 {
@@ -81,7 +81,7 @@ struct SubTaskCmp
 
 
 static SubTask *SubTasks;
-static SemaphoreHandle_t Lock;
+static SemaphoreHandle_t Mtx = 0;
 static uint64_t TimeSpent = 0;
 
 
@@ -89,11 +89,12 @@ int cyclic_add_task(const char *name, unsigned (*loop)(void*), void *arg, unsign
 {
 	log_info(TAG,"add subtask %s",name);
 	SubTask *n = new SubTask(name,loop,arg,esp_timer_get_time()+initdelay*1000);
-	xSemaphoreTake(Lock,portMAX_DELAY);
+	if (pdFALSE == xSemaphoreTake(Mtx,MUTEX_ABORT_TIMEOUT))
+		abort_on_mutex(Mtx,__FUNCTION__);
 	SubTask *s = SubTasks;
 	while (s) {
 		if (0 == strcmp(s->name,name)) {
-			xSemaphoreGive(Lock);
+			xSemaphoreGive(Mtx);
 			delete n;
 			log_error(TAG,"subtask %s already exists",name);
 			return 1;
@@ -102,14 +103,15 @@ int cyclic_add_task(const char *name, unsigned (*loop)(void*), void *arg, unsign
 	}
 	n->next = SubTasks;
 	SubTasks = n;
-	xSemaphoreGive(Lock);
+	xSemaphoreGive(Mtx);
 	return 0;
 }
 
 
 int cyclic_rm_task(const char *name)
 {
-	xSemaphoreTake(Lock,portMAX_DELAY);
+	if (pdFALSE == xSemaphoreTake(Mtx,MUTEX_ABORT_TIMEOUT))
+		abort_on_mutex(Mtx,__FUNCTION__);
 	SubTask *s = SubTasks, *p = 0;
 	while (s) {
 		if (!strcmp(name,s->name)) {
@@ -117,7 +119,7 @@ int cyclic_rm_task(const char *name)
 				p->next = s->next;
 			else
 				SubTasks = s->next;
-			xSemaphoreGive(Lock);
+			xSemaphoreGive(Mtx);
 			delete s;
 			log_info(TAG,"removed subtask %s",name);
 			return 0;
@@ -125,14 +127,14 @@ int cyclic_rm_task(const char *name)
 		p = s;
 		s = s->next;
 	}
-	xSemaphoreGive(Lock);
+	xSemaphoreGive(Mtx);
 	return 1;
 }
 
 
 unsigned cyclic_execute()
 {
-	xSemaphoreTake(Lock,portMAX_DELAY);
+	MLock lock(Mtx,__FUNCTION__);
 	int64_t start = esp_timer_get_time();
 	TimeSpent -= start;
 	unsigned delay = 100;
@@ -140,8 +142,11 @@ unsigned cyclic_execute()
 	while (t) {
 		int32_t off = (int64_t)(t->nextrun - start);
 		if (off <= 0) {
+			lock.unlock();
+//			con_printf("subtask => %s\n",t->name);
 			unsigned d = t->code(t->arg);
 			int64_t end = esp_timer_get_time();
+			lock.lock();
 			t->nextrun = end + (uint64_t)d * 1000LL;
 			++t->calls;
 			int64_t dt = end - start;
@@ -158,14 +163,13 @@ unsigned cyclic_execute()
 	}
 	int64_t end = esp_timer_get_time();
 	TimeSpent += end;
-	xSemaphoreGive(Lock);
 	return delay;
 }
 
 
 void cyclic_setup()
 {
-	Lock = xSemaphoreCreateMutex();
+	Mtx = xSemaphoreCreateMutex();
 	// cyclic_execute is called from the inted
 }
 
@@ -173,9 +177,11 @@ void cyclic_setup()
 uint64_t cyclic_time()
 {
 	uint64_t r;
-	xSemaphoreTake(Lock,portMAX_DELAY);
+//	would require recursive lock - should be ok like this, too
+//	if (pdFALSE == xSemaphoreTake(Mtx,MUTEX_ABORT_TIMEOUT))
+//		abort_on_mutex(Mtx,__FUNCTION__);
 	r = TimeSpent;
-	xSemaphoreGive(Lock);
+//	xSemaphoreGive(Mtx);
 	return r;
 }
 

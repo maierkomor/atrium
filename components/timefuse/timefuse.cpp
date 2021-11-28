@@ -48,7 +48,7 @@ struct Timer
 };
 
 
-static char TAG[] = "timefuse";
+#define TAG MODULE_TIMEFUSE
 static SemaphoreHandle_t Mtx = 0;
 static Timer *Timers = 0;
 

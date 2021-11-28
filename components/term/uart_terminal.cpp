@@ -41,7 +41,7 @@ extern "C" {
 using namespace std;
 
 
-static char TAG[] = "uarttty";
+#define TAG MODULE_UART
 
 #if IDF_VERSION > 32
 #define DRIVER_ARG 0,0
@@ -131,3 +131,7 @@ int UartTerminal::write(const char *str, size_t l)
 }
 
 
+void UartTerminal::sync(bool block)
+{
+//	uart_wait_tx_done((uart_port_t)m_uart_tx,block ? portMAX_DELAY : 0);
+}

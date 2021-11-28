@@ -28,13 +28,10 @@
 #include "globals.h"
 #include "hwcfg.h"
 #include "log.h"
-#include "shell.h"
 #include "status.h"
 #include "terminal.h"
 #include "wifi.h"
 
-#include <freertos/FreeRTOS.h>
-#include <freertos/task.h>
 #include <driver/gpio.h>
 #include <string.h>
 
@@ -45,7 +42,7 @@
 #endif
 
 
-static const char TAG[] = "status";
+#define TAG MODULE_STATUS
 
 struct StatusCtx
 {
@@ -295,12 +292,13 @@ int status_setup()
 	for (const LedConfig &c : HWConf.led()) {
 		if ((c.pwm_ch() != -1) || (c.gpio() == -1))	// these are handled in the dimmer
 			continue;
-		const char *n = c.name().c_str();
+		const auto &n = c.name();
+		assert(n.c_str());
 		gpio_num_t gpio = (gpio_num_t) c.gpio();
 		gpio_pad_select_gpio(gpio);
 		gpio_set_direction(gpio, GPIO_MODE_OUTPUT);
 		uint8_t on = c.config() & 1;
-		if (0 == strcmp(n,"heartbeat")) {
+		if (n == "heartbeat") {
 			StatusCtx *ctx = new StatusCtx;
 			ctx->update = 0;
 			ctx->gpio = gpio;
@@ -309,7 +307,7 @@ int status_setup()
 			ctx->on = on;
 			cyclic_add_task("heartbeat",status_subtask,(void*)ctx);
 			log_dbug(TAG,"heartbeat started");
-		} else if (0 == strcmp(n,"status")) {
+		} else if (n == "status") {
 			StatusCtx *ctx = new StatusCtx;
 			ctx->update = 0;
 			ctx->gpio = gpio;
@@ -320,8 +318,8 @@ int status_setup()
 			cyclic_add_task("status",status_subtask,(void*)ctx);
 			log_dbug(TAG,"status started");
 		} else {
-			action_add(concat(n,"!on"),on ? gpio_high : gpio_low,(void*)gpio,"turn led on");
-			action_add(concat(n,"!off"),on ? gpio_low : gpio_high,(void*)gpio,"turn led off");
+			action_add(concat(n.c_str(),"!on"),on ? gpio_high : gpio_low,(void*)gpio,"turn led on");
+			action_add(concat(n.c_str(),"!off"),on ? gpio_low : gpio_high,(void*)gpio,"turn led off");
 		}
 		action_add("statusled!btnpress",button_press_callback,0,"bind to button press event to monitor with status LED");
 		action_add("statusled!btnrel",button_rel_callback,0,"bind to button release event to monitor with status LED");

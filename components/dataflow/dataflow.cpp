@@ -25,6 +25,7 @@
 #include <freertos/semphr.h>
 
 #include <math.h>
+#include <sched.h>
 #include <string.h>
 
 #include <map>
@@ -32,7 +33,7 @@
 using namespace std;
 
 
-static char TAG[]="signal";
+#define TAG MODULE_SIGNAL
 static DataSignal *Signals = 0;
 static SemaphoreHandle_t Mtx = 0;
 static multimap<DataSignal *,Function *> Triggers;

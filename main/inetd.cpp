@@ -18,10 +18,12 @@
 
 #include <sdkconfig.h>
 
-#include "cyclic.h"
+#ifdef CONFIG_IDF_TARGET_ESP32
+
 #include "globals.h"
 #include "inetd.h"
 #include "log.h"
+#include "lwtcp.h"
 #include "netsvc.h"
 #include "shell.h"
 #include "support.h"
@@ -37,10 +39,6 @@
 #include <lwip/sockets.h>
 #include <sys/socket.h>
 #include <unistd.h>
-
-#ifdef CONFIG_MDNS
-#include <mdns.h>	// requires ipv6 on ESP8266
-#endif
 
 #ifdef CONFIG_IDF_TARGET_ESP32
 #include <soc/soc.h>
@@ -66,7 +64,7 @@ struct InetArg
 };
 
 
-static const char TAG[] = "inetd";
+#define TAG MODULE_INETD
 
 static InetArg *Ports = 0;
 static bool Started = false;
@@ -76,18 +74,18 @@ static int MaxFD = -1;
 
 static int create_udp_socket(int port)
 {
-	log_dbug(TAG,"create udp %u",port);
 	int s = socket(AF_INET,SOCK_DGRAM,port);
 	int on = 1;
 	if (-1 == setsockopt(s, SOL_SOCKET, SO_BROADCAST, &on, sizeof(on)))
 		log_warn(TAG,"unable to enable broadcast reception: %s",strneterr(s));
-	struct sockaddr_in addr;
+	struct sockaddr_in6 addr;
 	bzero(&addr,sizeof(addr));
-	addr.sin_family = AF_INET;
-	addr.sin_port = htons(port);
-	addr.sin_addr.s_addr = htonl(INADDR_ANY);
+	addr.sin6_family = AF_INET6;
+	addr.sin6_port = htons(port);
 	if (-1 == bind(s,(struct sockaddr *)&addr,sizeof(addr)))
 		log_warn(TAG,"unable to bind socket: %s",strneterr(s));
+	else
+		log_dbug(TAG,"created UDP/%u",port);
 	return s;
 }
 
@@ -95,18 +93,19 @@ static int create_udp_socket(int port)
 static int create_bcast_socket(int port)
 {
 	int s = create_udp_socket(port);
-	log_dbug(TAG,"set bcast %u, socket %d",port,s);
 	int on = 1;
 	if (-1 == setsockopt(s, SOL_SOCKET, SO_BROADCAST, &on, sizeof(on)))
 		log_warn(TAG,"unable to enable broadcast reception: %s",strneterr(s));
+	else
+		log_dbug(TAG,"set bcast %u, socket %d",port,s);
 	return s;
 }
 
 
 static int create_tcp_socket(int port)
 {
-	log_dbug(TAG,"create tcp %u",port);
-	int sock = socket(AF_INET,SOCK_STREAM,0);
+	log_dbug(TAG,"create TCP %u",port);
+	int sock = socket(AF_INET6,SOCK_STREAM,0);
 	if (sock < 0) {
 		log_error(TAG,"create socket: %s",strneterr(sock));
 		return -1;
@@ -116,22 +115,20 @@ static int create_tcp_socket(int port)
 		close(sock);
 		return -1;
 	}
-	struct sockaddr_in server_addr;
-	server_addr.sin_family = AF_INET;
-	server_addr.sin_port = htons(port);
-	server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+	struct sockaddr_in6 server_addr;
+	bzero(&server_addr,sizeof(server_addr));
+	server_addr.sin6_family = AF_INET6;
+	server_addr.sin6_port = htons(port);
 	if (bind(sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
 		log_error(TAG,"error binding server socket: %s",strneterr(sock));
-		close(sock);
-		return -1;
-	}
-	if (listen(sock, 1) < 0) {
+	} else if (listen(sock, 1) < 0) {
 		log_error(TAG,"listen failed with %s/%s",strneterr(sock),strerror(errno));
-		close(sock);
-		return -1;
+	} else {
+		log_info(TAG,"listening on TCP6/%d",port);
+		return sock;
 	}
-	log_info(TAG,"listening on port %d",port);
-	return sock;
+	close(sock);
+	return -1;
 }
 
 
@@ -201,7 +198,7 @@ void inet_server(void *ignored)
 		int sock = p->sock;
 		log_dbug(TAG,"service %s",p->name);
 		if (p->mode == m_tcp) {
-			struct sockaddr_in client_addr;
+			struct sockaddr_in6 client_addr;
 			unsigned socklen = sizeof(client_addr);
 			sock = accept(sock, (struct sockaddr *)&client_addr, &socklen);
 			if (sock < 0) {
@@ -209,12 +206,7 @@ void inet_server(void *ignored)
 				log_error(TAG,"error accepting");
 				continue;
 			}
-			log_dbug(TAG,"connection established from %d.%d.%d.%d:%d"
-					,client_addr.sin_addr.s_addr & 0xff
-					,client_addr.sin_addr.s_addr>>8 & 0xff
-					,client_addr.sin_addr.s_addr>>16 & 0xff
-					,client_addr.sin_addr.s_addr>>24 & 0xff
-					,client_addr.sin_port);
+			log_dbug(TAG,"accepted from %s:%d",inet6_ntoa(client_addr.sin6_addr),client_addr.sin6_port);
 			struct timeval tv;
 			tv.tv_sec = TCP_TIMEOUT;
 			tv.tv_usec = 0;
@@ -226,7 +218,8 @@ void inet_server(void *ignored)
 		char name[configMAX_TASK_NAME_LEN+8];
 		snprintf(name,sizeof(name),"%s%02d",p->name,sock);
 		name[configMAX_TASK_NAME_LEN] = 0;
-		BaseType_t r = xTaskCreatePinnedToCore(p->session,name,p->stack,(void*) sock,p->prio,NULL,APP_CPU_NUM);
+		LwTcp *tcp = new LwTcp(sock);
+		BaseType_t r = xTaskCreatePinnedToCore(p->session,name,p->stack,(void*) tcp,p->prio,NULL,APP_CPU_NUM);
 		if (r != pdPASS) {
 			close(sock);
 			log_warn(TAG,"create task: %s",esp_err_to_name(r));
@@ -237,7 +230,7 @@ void inet_server(void *ignored)
 }
 
 
-int listen_port(int port, inet_mode_t mode, void (*session)(void *), const char *name, const char *service, unsigned prio, unsigned stack)
+int listen_port(int port, inet_mode_t mode, void (*session)(LwTcp *), const char *name, const char *service, unsigned prio, unsigned stack)
 {
 	// inetd version
 	if (Started) {
@@ -246,7 +239,7 @@ int listen_port(int port, inet_mode_t mode, void (*session)(void *), const char 
 	}
 	InetArg *a = new InetArg;
 	a->prio = prio;
-	a->session = session;
+	a->session = (void (*)(void*))session;
 	a->name = name;
 #ifdef CONFIG_MDNS
 	a->service = service;
@@ -335,3 +328,4 @@ int inetadm(Terminal &term, int argc, const char *args[])
 	return arg_invalid(term,args[1]);;
 }
 
+#endif

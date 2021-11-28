@@ -19,7 +19,7 @@
 #include "ledcluster.h"
 #include "log.h"
 
-static const char TAG[] = "ledc";
+#define TAG MODULE_LEDC
 
 LedCluster *LedCluster::Instance = 0;
 

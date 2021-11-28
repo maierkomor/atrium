@@ -19,6 +19,7 @@
 #include "HttpReq.h"
 
 #include "log.h"
+#include "lwtcp.h"
 #include "netsvc.h"
 #include "support.h"
 #include "profiling.h"
@@ -29,13 +30,21 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#ifdef read
+#undef read
+#endif
+
+#ifdef write
+#undef write
+#endif
+
 using namespace std;
 
-static const char TAG[] = "httpq";
-static const estring Empty = "";
+#define TAG MODULE_HTTP
+static const estring Empty;
 
 
-HttpRequest::HttpRequest(int con)
+HttpRequest::HttpRequest(LwTcp *con)
 : m_con(con)
 , m_httpreq(hq_none)
 , m_httpver(hv_none)
@@ -301,9 +310,9 @@ void HttpRequest::fillContent()
 		return;
 	}
 	do {
-		int n = recv(m_con,m_content+m_clen0,m_contlen-m_clen0,0);
+		int n = m_con->read(m_content+m_clen0,m_contlen-m_clen0);
 		if (n == -1) {
-			log_error(TAG,"error downloading content: %s",strneterr(m_con));
+			log_error(TAG,"error downloading content: %s",m_con->error());
 			return;
 		}
 		m_clen0 += n;
@@ -321,9 +330,9 @@ void HttpRequest::discardContent()
 	char *tmp = (char *)malloc(asize);
 	assert(tmp);
 	do {
-		int n = recv(m_con,tmp,asize < dsize ? asize : dsize,0);
+		int n = m_con->read(tmp,asize < dsize ? asize : dsize);
 		if (n == -1) {
-			log_error(TAG,"error while discarding: %s",strneterr(m_con));
+			log_error(TAG,"error while discarding: %s",m_con->error());
 			break;
 		}
 		dsize -= n;
@@ -332,7 +341,7 @@ void HttpRequest::discardContent()
 }
 
 
-HttpRequest *HttpRequest::parseRequest(int con, char *buf, size_t bs)
+HttpRequest *HttpRequest::parseRequest(LwTcp *con, char *buf, size_t bs)
 {
 	/*
 	int n, retry = 3;
@@ -341,17 +350,17 @@ HttpRequest *HttpRequest::parseRequest(int con, char *buf, size_t bs)
 		log_dbug(TAG,"recv: %d, retry=%d",n,retry);
 	} while ((n < 0) && --retry);
 	*/
-	int n = recv(con,buf,bs-1,0);
+	int n = con->read(buf,bs-1,10000);
 	if (n < 0) {
-		log_warn(TAG,"receive: %s",strneterr(con));
+		log_warn(TAG,"receive: %s",con->error());
 		return 0;
 	}
 	PROFILE_FUNCTION();
 	if (n == 0) {
 		log_dbug(TAG,"empty request");	// this is normal for certain types of requests
-		n = recv(con,buf,bs-1,0);
+		n = con->read(buf,bs-1,1000);
 		if (n <= 0) {
-			log_error(TAG,"receive after empty: %d, %s",n,strneterr(con));
+			log_error(TAG,"receive after empty: %d, %s",n,con->error());
 			return 0;
 		}
 	}

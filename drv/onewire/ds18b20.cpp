@@ -34,7 +34,7 @@
 #define DS18B20_READ	0xbe
 
 
-static char TAG[] = "DS18B20";
+#define TAG MODULE_DS18B20
 static uint8_t NumDev = 0;
 
 
@@ -116,8 +116,7 @@ void DS18B20::read()
 void DS18B20::attach(JsonObject *o)
 {
 	if (m_json == 0)
-		m_json = new JsonNumber(m_name,"\u00b0C");
-	o->append(m_json);
+		m_json = o->add(m_name,NAN,"\u00b0C");
 }
 
 #endif // CONFIG_ONEWIRE

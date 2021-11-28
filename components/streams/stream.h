@@ -82,6 +82,9 @@ class stream
 
 	virtual int write(const char *s, size_t n) = 0;
 
+	virtual void sync(bool = true)
+	{ }
+
 	bool get_crnl() const
 	{ return m_crnl; }
 

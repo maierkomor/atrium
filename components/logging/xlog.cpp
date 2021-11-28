@@ -20,20 +20,16 @@
 #include "log.h"
 #include "terminal.h"
 
-#include <set>
+#include <bitset>
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
+#define TAG MODULE_LOG
+
 using namespace std;
 
-struct cstrcmp
-{
-	bool operator () (const char *l, const char *r) const
-	{ return strcmp(l,r) < 0; }
-};
-
-static set<const char *,cstrcmp> Modules;
+static bitset<NUM_MODULES> Modules;
 static bool EnableAll = false;
 
 
@@ -41,78 +37,140 @@ void log_module_print(Terminal &t)
 {
 	if (EnableAll)
 		t.println("*");
-	for (auto &m : Modules)
-		t.println(m);
+	for (int i = 0; i < NUM_MODULES; ++i) {
+		if (Modules[i])
+			t.println(ModNames+ModNameOff[i]);
+	}
 }
 
 
 int log_module_enable(const char *m)
 {
-	log_info("log","debug %s",m);
-	if (strcmp(m,"*"))
-		return Modules.emplace(strdup(m)).second ? 0 : 1;
-	EnableAll = true;
-	return 0;
+	log_info(TAG,"debug %s",m);
+	if (0 == strcmp(m,"*")) {
+		EnableAll = true;
+		return 0;
+	}
+	for (int i = 1; i < NUM_MODULES; ++i) {
+		if (0 == strcmp(m,ModNames+ModNameOff[i])) {
+			Modules[i] = true;
+			return 0;
+		}
+	}
+	return 1;
 }
 
-
-int log_module_enabled(const char *m)
+void log_module_enable(const vector<estring> &mods)
 {
-	return Modules.find(m) != Modules.end();
+#if 0
+	estring mn;
+	for (const auto &m : mods) {
+		for (int i = 1; i < NUM_MODULES; ++i) {
+			if (0 == strcmp(m.c_str(),ModNames+ModNameOff[i])) {
+				Modules[i] = true;
+				mn += m;
+				mn += ',';
+				break;
+			}
+		}
+	}
+	if (size_t s = mn.size())
+		log_info(TAG,"debug %.*s",s-1,mn.data());
+#else
+	char mn[80], *at = mn;
+	for (const auto &m : mods) {
+		const char *c = m.c_str();
+		size_t s = m.size();
+		for (int i = 1; i < NUM_MODULES; ++i) {
+			if (0 == memcmp(c,ModNames+ModNameOff[i],s+1)) {
+				Modules[i] = true;
+				if (at+s >= mn+sizeof(mn)) {
+					at[-1] = 0;
+					log_info(TAG,"debug %s",mn);
+					at = mn;
+				}
+				memcpy(at,c,s);
+				at += s;
+				*at++ = ',';
+			}
+		}
+	}
+	if (at != mn) {
+		at[-1] = 0;
+		log_info(TAG,"debug %s",mn);
+	}
+#endif
+}
+
+int log_module_enabled(logmod_t m)
+{
+	return EnableAll || Modules[m];
 }
 
 
 int log_module_disable(const char *m)
 {
 	if (strcmp(m,"*")) {
-		set<const char *,cstrcmp>::iterator i = Modules.find(m);
-		if (i == Modules.end())
-			return 1;
-		free((void*)*i);
-		Modules.erase(i);
+		for (int i = 1; i < NUM_MODULES; ++i) {
+			if (0 == strcmp(m,ModNames+ModNameOff[i])) {
+				Modules[i] = false;
+				return 0;
+			}
+		}
+	} else if (EnableAll) {
+		EnableAll = false;
 		return 0;
 	}
-	if (!EnableAll)
-		return 1;
-	EnableAll = false;
-	return 0;
+	return 1;
 }
 
 
-void log_hex(const char *m, const uint8_t *d, unsigned n, const char *f, ...)
+void log_hex(logmod_t m, const void *d, unsigned n, const char *f, ...)
 {
-	if (!EnableAll && (Modules.find(m) == Modules.end()))
+	if (!EnableAll && !Modules[m])
 		return;
 	va_list val;
 	va_start(val,f);
 	log_common(ll_debug,m,f,val);
-	va_end(val);
 	char line[32], *at = line;
 	unsigned x = 0;
+	at += sprintf(at,"%3d:",x);
 	while (x != n) {
-		sprintf(at,"%02x",d[x]);
-		at += 2;
+		at += sprintf(at," %02x",((uint8_t*)d)[x]);
 		++x;
 		if ((x & 7) == 0) {
+			if (x == n)
+				break;
 			*at = 0;
 			log_common(ll_debug,m,line,val);
 			at = line;
-			continue;
+			at += sprintf(at,"%3d:",x);
 		} else if ((x & 3) == 0)
 			*at++ = ' ';
-		*at++ = ' ';
 	}
 	*at = 0;
 	log_common(ll_debug,m,line,val);
+	va_end(val);
 }
 
 
-void log_dbug(const char *m, const char *f, ...)
+void log_dbug(logmod_t m, const char *f, ...)
 {
-	if (EnableAll || (Modules.find(m) != Modules.end())) {
+	if (EnableAll || Modules[m]) {
 		va_list val;
 		va_start(val,f);
 		log_common(ll_debug,m,f,val);
+		va_end(val);
+	}
+}
+
+
+void log_local(logmod_t m, const char *f, ...)
+{
+	if (EnableAll || Modules[m]) {
+		va_list val;
+		va_start(val,f);
+		log_common(ll_local,m,f,val);
 		va_end(val);
 	}
 }

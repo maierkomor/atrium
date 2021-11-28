@@ -27,7 +27,7 @@
 #define REG_MANU_ID	0xfe	// manufacturer id register
 #define REG_DEV_ID	0xff	// device id register for TI
 
-static const char TAG[] = "ti";
+#define TAG MODULE_TI
 
 unsigned ti_scan(uint8_t bus)
 {

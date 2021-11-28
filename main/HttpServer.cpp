@@ -21,6 +21,7 @@
 #include "HttpServer.h"
 #include "HttpReq.h"
 #include "HttpResp.h"
+#include "lwtcp.h"
 #include "romfs.h"
 
 #include "log.h"
@@ -36,11 +37,18 @@
 #define HAVE_FS
 #endif
 
+#ifdef read
+#undef read
+#endif
+
+#ifdef write
+#undef write
+#endif
 
 using namespace std;
 
 
-static const char TAG[] = "www";
+#define TAG MODULE_WWW
 
 
 HttpServer::HttpServer(const char *wwwroot, const char *rootmap)
@@ -120,7 +128,7 @@ bool HttpServer::runDirectory(HttpRequest *req)
 static bool send_romfs(int r, HttpRequest *req)
 {
 	HttpResponse ans;
-	int con = req->getConnection();
+	LwTcp *con = req->getConnection();
 	const char *uri = req->getURI() + 1;
 	if (strstr(uri,".gz"))
 		ans.addHeader("Content-Encoding:gzip");
@@ -130,23 +138,26 @@ static bool send_romfs(int r, HttpRequest *req)
 	ssize_t s = romfs_size_fd(r);
 	ans.setContentLength(s);
 	ans.senddata(con);
-	int off = 0;
 #ifdef CONFIG_ENABLE_FLASH_MMAP
-	void *addr = romfs_mmap(r);
-	if (-1 == send(con,addr,s,0)) {
+	char *addr = (char *) romfs_mmap(r);
+	log_dbug(TAG,"mmaped romfs file to %p",addr);
+	if (-1 == con->write(addr,s,true)) {
 		log_warn(TAG,"error sending: %s",strerror(errno));
 		return false;
 	}
 #else
+	int off = 0;
 	char tmp[512];
 	do {
 		unsigned n = s > sizeof(tmp) ? sizeof(tmp) : s;
 		romfs_read_at(r,tmp,n,off);
 		off += n;
-		if (-1 == send(con,tmp,n,0)) {
-			log_warn(TAG,"error sending: %s",strerror(errno));
+		// no copy, force sync
+		if (-1 == con->write(tmp,n,false)) {
+			log_warn(TAG,"error sending: %s",con->error());
 			return false;
 		}
+		con->sync(true);
 		s -= n;
 	} while (s > 0);
 #endif // CONFIG_ENABLE_FLASH_MMAP
@@ -157,7 +168,9 @@ static bool send_romfs(int r, HttpRequest *req)
 
 bool HttpServer::runFile(HttpRequest *req)
 {
+#if defined CONFIG_ROMFS || defined HAVE_FS
 	const char *uri = req->getURI();
+#endif
 #ifdef CONFIG_ROMFS
 	if (*uri == '/') {
 		int r = romfs_open(uri+1);
@@ -196,10 +209,8 @@ bool HttpServer::runFile(HttpRequest *req)
 		ans.senddata(req->getConnection(),fd);
 		close(fd);
 	}
-	return true;
-#else // HAVE_FS
-	return true;
 #endif // HAVE_FS
+	return true;
 }
 
 
@@ -264,12 +275,13 @@ void HttpServer::performPOST(HttpRequest *req)
 
 void HttpServer::performPUT(HttpRequest *req)
 {
+#if defined CONFIG_FATFS || defined CONFIG_SPIFFS
 	const char *uri = req->getURI();
 	log_dbug(TAG,"put request %s",uri);
 	const char *sl = strrchr(uri,'/');
 	char fn[strlen(m_wwwroot)+strlen(sl)];
 	int fd = open(fn,O_CREAT|O_WRONLY,0666);
-	int con = req->getConnection();
+	LwTcp *con = req->getConnection();
 	HttpResponse ans;
 	if (fd == -1) {
 		log_warn(TAG,"unable to create upload file %s: %s",fn,strerror(errno));
@@ -289,7 +301,7 @@ void HttpServer::performPUT(HttpRequest *req)
 	int n;
 	do {
 		char buf[1024];
-		n = recv(con,buf,sizeof(buf),0);
+		n = con->read(buf,sizeof(buf));
 		if (n > 0)
 			n = write(fd,buf,n);
 	} while (n > 0);
@@ -301,11 +313,17 @@ void HttpServer::performPUT(HttpRequest *req)
 	else
 		ans.setResult(HTTP_INTERNAL_ERR);
 	ans.senddata(con);
-
+#else
+	HttpResponse ans;
+	log_warn(TAG,"no spiffs - unable to upload files");
+	ans.setResult(HTTP_NOT_IMPL);
+	LwTcp *con = req->getConnection();
+	ans.senddata(con);
+#endif
 }
 
 
-void HttpServer::handleConnection(int con)
+void HttpServer::handleConnection(LwTcp *con)
 {
 	char *buf = (char *) malloc(HTTP_REQ_SIZE);
 	if (buf == 0) {

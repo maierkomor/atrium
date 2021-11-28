@@ -20,9 +20,11 @@
 #ifndef _ESTRING_H
 #define _ESTRING_H
 
+#include <sdkconfig.h>
 #include <stddef.h>
-#include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
+
 
 class estring
 {
@@ -33,32 +35,46 @@ class estring
 	estring(const char *s, size_t l);
 	estring(const char *s, const char *e);
 	estring(const estring &a);
-//	estring(const estring &&a);
-//	estring(estring &&a);
+	estring(estring &&a);
 	~estring();
 	estring &operator = (const estring &a);
 	estring &operator += (const estring &a);
-	bool operator == (const estring &a) const;
-	bool operator != (const estring &a) const;
-	estring &operator = (const char *s);
 	estring &operator += (const char *s);
 	estring &operator += (char c);
 	void assign(const char *m, size_t s);
 	void append(const char *m, size_t s);
 	void resize(size_t,char = 0);
 
+	estring &operator = (const char *s)
+	{
+		len = 0;
+		return operator += (s);
+	}
+
+	bool operator == (const estring &a) const
+	{ return (a.len == len) && (0 == memcmp(str,a.str,len)); }
+
+	bool operator != (const estring &a) const
+	{ return (a.len != len) || (0 != memcmp(str,a.str,len)); }
+
 	bool operator == (const char *s) const
-	{ return 0 == strcmp(str,s); }
+	{ return (str == 0) ? (*s == 0) : (0 == strcmp(str,s)); }
 
 	bool operator != (const char *s) const
-	{ return 0 != strcmp(str,s); }
+	{ return (str == 0) ? (*s != 0) : (0 != strcmp(str,s)); }
 
 	const char *c_str() const
-	{ return str; }
+	{
+		if (str == 0)
+			return "";
+		str[len] = 0;
+		return str;
+	}
 
 	void clear()
 	{
-		str[0] = 0;
+		if (str)
+			str[0] = 0;
 		len = 0;
 	}
 
@@ -89,7 +105,11 @@ class estring
 	friend struct estring_cmp;
 	void reserve(size_t);
 	char *str;
+#if defined CONFIG_IDF_TARGET_ESP8266
+	uint16_t len,alloc;
+#else
 	size_t len,alloc;
+#endif
 };
 
 

@@ -95,7 +95,7 @@
 */
 
 
-static const char TAG[] = "cam";
+#define TAG MODULE_CAM
 
 
 int webcam_setup()

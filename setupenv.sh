@@ -23,6 +23,7 @@ idfdir=""
 interactive="1"
 overwrite="0"
 settings=`mktemp`
+installdir=`pwd`/idf
 
 while getopts "d:fnh" opt; do
 	case ${opt} in
@@ -77,6 +78,7 @@ fi
 if [ "$interactive" != "0" ]; then
 	echo This script will download crosstools, SDKs and WFC to a directory given with option -d, if needed.
 	echo Press enter to continue or CTRL-C to abort.
+	echo Install directory is $installdir
 	read
 fi
 
@@ -87,90 +89,97 @@ if [ -e settings.mk ]; then
 	fi
 fi
 
-if [ "$XTOOLS_ESP32" != "" ]; then
-	PATH=$PATH:$XTOOLS_ESP32/bin
-fi
+#if [ "$XTOOLS_ESP32" != "" ]; then
+#	PATH=$PATH:$XTOOLS_ESP32/bin
+#fi
+#
+#if [ "$XTOOLS_ESP8266" != "" ]; then
+#	PATH=$PATH:$XTOOLS_ESP8266/bin
+#fi
 
-if [ "$XTOOLS_ESP8266" != "" ]; then
-	PATH=$PATH:$XTOOLS_ESP8266/bin
+if [ ! -d $installdir ]; then
+	echo creating install direcotry $installdir
+	mkdir -p $installdir
 fi
-
-## esp8266 crosstools
-ESP8266_GCC=`which xtensa-lx106-elf-gcc`
-if [ "$?" == "1" ]; then
-	# look if it is already installed
-	ESP8266_GCC="$installdir/xtensa-lx106-elf/bin/xtensa-lx106-elf-gcc"
-	if [ ! -x "$ESP8266_GCC" ]; then
-		ESP8266_GCC=""
-	fi
-fi
-if [ "" == "$ESP8266_GCC" ]; then
-	if [ "$installdir" == "" ]; then
-		echo ESP8266 crosstools missing: xtensa-lx106-elf-gcc could not be found.
-		echo Please download, install, and adjust path manually or use option -d to trigger download.
-		exit 1
-	fi
-	pushd $installdir
-	if [ `uname -m` == "x86_64" ]; then
-		xtools=xtensa-lx106-elf-linux64-1.22.0-100-ge567ec7-5.2.0.tar.gz
-	else
-		xtools=xtensa-lx106-elf-linux32-1.22.0-100-ge567ec7-5.2.0.tar.gz
-	fi
-	if [ "1" == "$interactive" ]; then
-		echo OK to start download of esp8266 xtools? Press CTRL-C to cancel.
-		read
-	else
-		echo starting download of $xtools
-	fi
-	wget https://dl.espressif.com/dl/$xtools || exit 1
-	tar xf $xtools || exit 1
-	rm $xtools
-	popd > /dev/null
-	XTOOLS_ESP8266="$installdir/xtensa-lx106-elf/bin"
-else
-	XTOOLS_ESP8266=`dirname $ESP8266_GCC`
-	echo ESP8266 xtools found at $XTOOLS_ESP8266
-fi
-XTOOLS_ESP8266=`dirname $XTOOLS_ESP8266`
-echo "# xtools for esp8266" >> $settings
-echo "XTOOLS_ESP8266=$XTOOLS_ESP8266" >> $settings
-PATH=$PATH:$XTOOLS_ESP8266
 
 ## esp8266 crosstools
-ESP32_GCC=`which xtensa-esp32-elf-gcc`
-if [ "$?" == "1" ]; then
-	ESP32_GCC="$installdir/xtensa-esp32-elf/bin/xtensa-esp32-elf-gcc"
-	if [ ! -x "$ESP32_GCC" ]; then
-		ESP32_GCC=""
-	fi
-fi
-if [ "" == "$ESP32_GCC" ]; then
-	if [ "$installdir" == "" ]; then
-		echo ESP32 crosstools missing: xtensa-esp32-elf-gcc could not be found.
-		echo Please download, install, and adjust path manually or use option -d to trigger download.
-		exit 1
-	fi
-	pushd $installdir
-	if [ `uname -m` == "x86_64" ]; then
-		xtools=xtensa-esp32-elf-linux64-1.22.0-96-g2852398-5.2.0.tar.gz
-	else
-		xtools=xtensa-esp32-elf-linux32-1.22.0-96-g2852398-5.2.0.tar.gz
-	fi
-	if [ "1" == "$interactive" ]; then
-		echo OK to start download of esp32 xtools? Press CTRL-C to cancel.
-		read
-	else
-		echo starting download of $xtools
-	fi
-	wget https://dl.espressif.com/dl/$xtools || exit 1
-	tar xf $xtools || exit 1
-	rm $xtools
-	popd > /dev/null
-	XTOOLS_ESP32="$installdir/xtensa-esp32-elf/bin"
-else
-	XTOOLS_ESP32=`dirname $ESP32_GCC`
-	echo ESP32 xtools found at $XTOOLS_ESP32
-fi
+#ESP8266_GCC=`which xtensa-lx106-elf-gcc`
+#if [ "$?" == "1" ]; then
+#	# look if it is already installed
+#	ESP8266_GCC="$installdir/xtensa-lx106-elf/bin/xtensa-lx106-elf-gcc"
+#	if [ ! -x "$ESP8266_GCC" ]; then
+#		ESP8266_GCC=""
+#	fi
+#fi
+#if [ "" == "$ESP8266_GCC" ]; then
+#	if [ "$installdir" == "" ]; then
+#		echo ESP8266 crosstools missing: xtensa-lx106-elf-gcc could not be found.
+#		echo Please download, install, and adjust path manually or use option -d to trigger download.
+#		exit 1
+#	fi
+#	pushd $installdir
+#	if [ `uname -m` == "x86_64" ]; then
+#		xtools=xtensa-lx106-elf-linux64-1.22.0-100-ge567ec7-5.2.0.tar.gz
+#	else
+#		xtools=xtensa-lx106-elf-linux32-1.22.0-100-ge567ec7-5.2.0.tar.gz
+#	fi
+#	if [ "1" == "$interactive" ]; then
+#		echo OK to start download of esp8266 xtools? Press CTRL-C to cancel.
+#		read
+#	else
+#		echo starting download of $xtools
+#	fi
+#	wget https://dl.espressif.com/dl/$xtools || exit 1
+#	tar xf $xtools || exit 1
+#	rm $xtools
+#	popd > /dev/null
+#	XTOOLS_ESP8266="$installdir/xtensa-lx106-elf/bin"
+#else
+#	XTOOLS_ESP8266=`dirname $ESP8266_GCC`
+#	echo ESP8266 xtools found at $XTOOLS_ESP8266
+#fi
+#XTOOLS_ESP8266=`dirname $XTOOLS_ESP8266`
+#echo "# xtools for esp8266" >> $settings
+#echo "XTOOLS_ESP8266=$XTOOLS_ESP8266" >> $settings
+#PATH=$PATH:$XTOOLS_ESP8266
+
+## esp8266 crosstools
+#ESP32_GCC=`which xtensa-esp32-elf-gcc`
+#if [ "$?" == "1" ]; then
+#	ESP32_GCC="$installdir/xtensa-esp32-elf/bin/xtensa-esp32-elf-gcc"
+#	if [ ! -x "$ESP32_GCC" ]; then
+#		ESP32_GCC=""
+#	fi
+#fi
+#if [ "" == "$ESP32_GCC" ]; then
+#	if [ "$installdir" == "" ]; then
+#		echo ESP32 crosstools missing: xtensa-esp32-elf-gcc could not be found.
+#		echo Please download, install, and adjust path manually or use option -d to trigger download.
+#		exit 1
+#	fi
+#	pushd $installdir
+#	if [ `uname -m` == "x86_64" ]; then
+#		xtools=xtensa-esp32-elf-linux64-1.22.0-96-g2852398-5.2.0.tar.gz
+#	else
+#		xtools=xtensa-esp32-elf-linux32-1.22.0-96-g2852398-5.2.0.tar.gz
+#	fi
+#	if [ "1" == "$interactive" ]; then
+#		echo OK to start download of esp32 xtools? Press CTRL-C to cancel.
+#		read
+#	else
+#		echo starting download of $xtools
+#	fi
+#	wget https://dl.espressif.com/dl/$xtools || exit 1
+#	tar xf $xtools || exit 1
+#	rm $xtools
+#	popd > /dev/null
+#	XTOOLS_ESP32="$installdir/xtensa-esp32-elf/bin"
+#else
+#	XTOOLS_ESP32=`dirname $ESP32_GCC`
+#	echo ESP32 xtools found at $XTOOLS_ESP32
+#fi
+
+
 XTOOLS_ESP32=`dirname $XTOOLS_ESP32`
 echo "# xtools for esp32" >> $settings
 echo "XTOOLS_ESP32=$XTOOLS_ESP32" >> $settings
@@ -193,14 +202,15 @@ if [ "$IDF_ESP32" == "" ]; then
 	else
 		echo starting download of esp32 IDF
 	fi
-	pushd $installdir
+	pushd $installdir > /dev/null
 	git clone https://github.com/espressif/esp-idf.git idf-esp32 || exit 1
 	cd idf-esp32
-	git checkout release/v3.3
+	git checkout v3.3.5	# was v3.3.5
 	git submodule update --init
+	IDF_PATH=`pwd` pip install -r requirements.txt
+	IDF_PATH=`pwd` bash install.sh
 	IDF_ESP32=`pwd`
 	popd > /dev/null
-	/usr/bin/python -m pip install --user -r $installdir/idf-esp32/requirements.txt
 fi
 echo "IDF_ESP32=$IDF_ESP32" >> $settings
 
@@ -222,18 +232,22 @@ if [ "$IDF_ESP8266" == "" ]; then
 	else
 		echo starting download of esp8266 IDF
 	fi
-	pushd $installdir
+	pushd $installdir > /dev/null
 	git clone https://github.com/espressif/ESP8266_RTOS_SDK.git idf-esp8266 || exit 1
 	cd idf-esp8266
 	git checkout release/v3.3
 	git submodule update --init
+	IDF_PATH=`pwd` pip install -r requirements.txt
+	IDF_PATH=`pwd` bash install.sh
 	IDF_ESP8266=`pwd`
 	popd > /dev/null
-	/usr/bin/python -m pip install --user -r $installdir/idf-esp8266/requirements.txt
 fi
 echo "IDF_ESP8266=$IDF_ESP8266" >> $settings
 
 
+#
+# WFC is still used, but files are generated with a private version
+#
 ### WFC - wire format compiler
 #WFC=`which wfc`
 #if [ "$?" != "0" ]; then
@@ -272,8 +286,8 @@ echo "IDF_ESP8266=$IDF_ESP8266" >> $settings
 #echo "WFCDIR=$WFCDIR" >> $settings
 #echo "WFC=$WFC" >> $settings
 
-echo "# PATH"
-echo PATH=$PATH >> $settings
+#echo "# PATH"
+#echo PATH=$PATH >> $settings
 
 ## Webcam sources
 #if [ ! -e "esp32/camera/.git/config" ]; then
@@ -297,10 +311,31 @@ echo PATH=$PATH >> $settings
 
 # python modules
 echo checking requirements of ESP32 IDF in $IDF_ESP32
-pip install -r $IDF_ESP32/requirements.txt
+IDF_PATH=$IDF_ESP32 pip install -r $IDF_ESP32/requirements.txt
 
 echo checking requirements of ESP8266 IDF in $IDF_ESP8266
-pip install -r $IDF_ESP8266/requirements.txt
+IDF_PATH=$IDF_ESP8266 pip install -r $IDF_ESP8266/requirements.txt
+
+echo patching IDF for ESP8266
+patchdir=`pwd`/patches
+pushd $IDF_ESP8266
+patch -p1 < $patchdir/idf-esp8266-v3.3.diff || echo PATCHING FAILED!
+popd
+
+echo patching IDF for ESP32
+pushd $IDF_ESP32
+patch -p1 < $patchdir/idf-esp32-v3.3.diff || echo PATCHING FAILED!
+popd
+pushd $IDF_ESP32/components/lwip/lwip
+patch -p1 < $patchdir/esp32-lwip.diff || echo PATCHING FAILED!
+popd
+
+eval `IDF_PATH=$IDF_ESP32 $IDF_ESP32/tools/idf_tools.py export`
+echo "PATH_ESP32:=$PATH" >> $settings
+echo "IDF_PYTHON_ENV_PATH_ESP32:=$IDF_PYTHON_ENV_PATH" >> $settings
+eval `IDF_PATH=$IDF_ESP8266 $IDF_ESP8266/tools/idf_tools.py export`
+echo "PATH_ESP8266:=$PATH" >> $settings
+echo "IDF_PYTHON_ENV_PATH_ESP8266:=$IDF_PYTHON_ENV_PATH" >> $settings
 
 mv $settings settings.mk || exit 1
 echo new settings:

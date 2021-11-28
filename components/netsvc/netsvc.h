@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -22,13 +22,52 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
+
+#include <lwip/ip_addr.h>
+#include <lwip/tcpip.h>
+#include <lwip/opt.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+#ifdef NETSVC_IMPL
+extern char *Hostname, *Domainname;
+extern uint8_t HostnameLen, DomainnameLen;
+#else
+extern const char *Hostname, *Domainname;
+extern const uint8_t HostnameLen, DomainnameLen;
+#endif
+
+#if LWIP_IPV6
+extern ip6_addr_t IP6G,IP6LL;
+#define ip2str(ip) (IP_IS_V6(ip)?ip6addr_ntoa(ip_2_ip6(ip)):ip4addr_ntoa(ip_2_ip4(ip)))
+#else
+#define ip2str(ip) ip4addr_ntoa(ip_2_ip4(ip))
+#endif
+
 char *streol(char *b, size_t n);
-uint32_t resolve_fqhn(const char *h);
+int resolve_fqhn(const char *h, ip_addr_t *);
+int resolve_hostname(const char *h, ip_addr_t *);
+int query_host(const char *h, ip_addr_t *a, void (*cb)(const char *hn, const ip_addr_t *addr, void *arg), void *arg);
 const char *strneterr(int socket);
+extern SemaphoreHandle_t LwipMtx;
+int sethostname(const char *h, size_t l);
+int setdomainname(const char *h, size_t l);
+const char *strlwiperr(int);
+
+#if LWIP_TCPIP_CORE_LOCKING == 1
+#define LWIP_LOCK() LOCK_TCPIP_CORE()
+#define LWIP_UNLOCK() UNLOCK_TCPIP_CORE()
+#define LWIP_TRY_LOCK() xSemaphoreTakeL(&lock_tcpip_core,10)
+#else
+// no locking for ESP32
+#define LWIP_LOCK()
+#define LWIP_UNLOCK()
+#define LWIP_TRY_LOCK()
+#endif
 
 #ifdef __cplusplus
 }

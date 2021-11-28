@@ -21,7 +21,7 @@
 
 #include <rom/gpio.h>
 
-static char TAG[] = "TLC5916";
+#define TAG MODULE_TLC5916
 
 #define OE_high		gpio_set_level(m_oe,1)
 #define OE_low		gpio_set_level(m_oe,0)

@@ -1,0 +1,39 @@
+diff --git a/components/bootloader_support/include/esp_image_format.h b/components/bootloader_support/include/esp_image_format.h
+index c427cffa..98e7bf23 100644
+--- a/components/bootloader_support/include/esp_image_format.h
++++ b/components/bootloader_support/include/esp_image_format.h
+@@ -37,7 +37,7 @@ typedef enum {
+ } esp_image_spi_mode_t;
+ 
+ /* SPI flash clock frequency */
+-enum {
++typedef enum {
+     ESP_IMAGE_SPI_SPEED_40M,
+     ESP_IMAGE_SPI_SPEED_26M,
+     ESP_IMAGE_SPI_SPEED_20M,
+diff --git a/components/lwip/lwip/src/core/dns.c b/components/lwip/lwip/src/core/dns.c
+index 12c6f16f..8ca5f26c 100644
+--- a/components/lwip/lwip/src/core/dns.c
++++ b/components/lwip/lwip/src/core/dns.c
+@@ -84,7 +84,7 @@
+ 
+ #include "lwip/opt.h"
+ 
+-#if LWIP_DNS /* don't build if not configured for use in lwipopts.h */
++#ifndef CONFIG_UDNS //LWIP_DNS /* don't build if not configured for use in lwipopts.h */
+ 
+ #include "lwip/def.h"
+ #include "lwip/udp.h"
+diff --git a/components/lwip/port/esp8266/include/lwipopts.h b/components/lwip/port/esp8266/include/lwipopts.h
+index 7fea63db..ad6ef780 100644
+--- a/components/lwip/port/esp8266/include/lwipopts.h
++++ b/components/lwip/port/esp8266/include/lwipopts.h
+@@ -195,7 +195,7 @@
+  * UNLOCK_TCPIP_CORE().
+  * Your system should provide mutexes supporting priority inversion to use this.
+  */
+-#define LWIP_TCPIP_CORE_LOCKING         0
++#define LWIP_TCPIP_CORE_LOCKING         1
+ 
+ /**
+  * LWIP_TCPIP_CORE_LOCKING_INPUT: when LWIP_TCPIP_CORE_LOCKING is enabled,

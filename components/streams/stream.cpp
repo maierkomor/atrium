@@ -27,6 +27,7 @@
 #include <math.h>
 
 
+#ifdef CONFIG_NEWLIB_LIBRARY_LEVEL_NANO
 char *float_to_str(char *buf, float f)
 {
 	if (isnan(f)) {
@@ -50,6 +51,13 @@ char *float_to_str(char *buf, float f)
 	o += n;		// don't forget the potential minus
 	return o;
 }
+#else
+char *float_to_str(char *buf, float f)
+{
+	int n = sprintf(buf,"%.1f",f);
+	return buf+n;
+}
+#endif
 
 
 size_t chrcnt(const char *s, char c)
@@ -86,8 +94,7 @@ int stream::print(const char *buf, size_t s)
 	int r, n = 0;
 	if (m_crnl) {
 		const char *at = buf;
-		const char *nl = (const char*) memchr(buf,'\n',s);
-		while (nl) {
+		while (const char *nl = (const char*) memchr(at,'\n',s)) {
 			r = write(at,nl-at);
 			if (r < 0)
 				return -1;
@@ -98,7 +105,6 @@ int stream::print(const char *buf, size_t s)
 			n += 2;
 			s -= (nl-at)+1;
 			at = nl + 1;
-			nl = (const char *) memchr(at,'\n',s);
 		}
 		buf = at;
 	}
@@ -133,7 +139,7 @@ int stream::vprintf(const char *fmt, va_list v)
 
 void stream::println(const char *s)
 {
-	write(s,strlen(s));
+	print(s,0);
 	println();
 }
 
@@ -152,7 +158,7 @@ int stream::printf(const char *f, ...)
 #if 1
 	va_list val;
 	va_start(val,f);
-	int n = vprintf(f,val);
+	int n = this->vprintf(f,val);
 	va_end(val);
 	return n;
 #else
@@ -357,7 +363,7 @@ stream &stream::operator << (double d)
 {
 	char buf[64];
 #ifdef CONFIG_NEWLIB_LIBRARY_LEVEL_FLOAT_NANO
-	int n = snprintf(buf,sizeof(buf),"%4.1f",d);
+	int n = snprintf(buf,sizeof(buf),"%.1f",d);
 	write(buf,n);
 #else
 	char *e = float_to_str(buf,d);

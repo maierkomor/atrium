@@ -24,8 +24,9 @@
 extern "C" {
 #endif
 
+void dmesg_resize(size_t ds);
 void dmesg_setup();
-void dmesg_resize();
+void syslog_setup();
 
 #ifdef __cplusplus
 }

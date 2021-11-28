@@ -30,7 +30,7 @@
 
 #include <stdlib.h>
 
-static const char TAG[] = "hcsr04";
+#define TAG MODULE_HCSR04
 
 
 static void hcsr04_sample(void *arg)

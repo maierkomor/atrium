@@ -25,6 +25,7 @@
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
+#include <freertos/task.h>
 #include <esp_timer.h>
 #include <driver/gpio.h>
 #include <driver/uart.h>
@@ -36,14 +37,17 @@
 #endif
 
 #include <assert.h>
-#include <fcntl.h>
 #include <stdarg.h>
-#include <stdio.h>
 #include <string.h>
 #include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
 
+#if defined WITH_FATFS || defined WITH_SPIFFS
+#define HAVE_FS
+#include <fcntl.h>
+#include <stdio.h>
+#endif
 
 #if IDF_VERSION > 32
 #define DRIVER_ARG 0,0
@@ -51,9 +55,10 @@
 #define DRIVER_ARG 0
 #endif
 
-
-#if defined WITH_FATFS || defined WITH_SPIFFS
-#define HAVE_FS
+#if CONFIG_UART_CONSOLE_NONE != 1
+#ifndef CONFIG_CONSOLE_UART_NUM
+#define CONFIG_CONSOLE_UART_NUM 0
+#endif
 #endif
 
 #define ANSI_RED	"\033[0;31m"
@@ -65,11 +70,12 @@
 #define ANSI_DEFAULT	"\033[0;00m"
 
 
-void log_syslog(log_level_t lvl, const char *a, const char *msg, size_t ml);
-
-
 static SemaphoreHandle_t UartLock;
-static int8_t LogUart = -1;
+#if CONFIG_CONSOLE_UART_NONE != 1
+static uart_port_t LogUart = (uart_port_t) CONFIG_CONSOLE_UART_NUM;
+#else
+static uart_port_t LogUart = (uart_port_t) -1;
+#endif
 
 #ifdef HAVE_FS
 static SemaphoreHandle_t FileLock;
@@ -85,15 +91,21 @@ const char UartPrefix[][8] = {
 	ANSI_PURPLE	"W",
 	ANSI_BLUE	"I",
 	ANSI_GREEN	"D",
+	ANSI_CYAN	"L",
 };
 
 
 void con_print(const char *str)
 {
 #if CONFIG_CONSOLE_UART_NONE != 1
-	if (LogUart == -1)
-		return;
-	con_write(str,strlen(str));
+	if ((LogUart != -1) && (str != 0)) {
+		size_t s = strlen(str);
+		if (pdFALSE == xSemaphoreTake(UartLock,MUTEX_ABORT_TIMEOUT))
+			abort_on_mutex(UartLock,__FUNCTION__);
+		uart_write_bytes(LogUart,str,s);
+		uart_write_bytes(LogUart,"\r\n",2);
+		xSemaphoreGive(UartLock);
+	}
 #endif
 }
 
@@ -103,7 +115,7 @@ void con_printf(const char *f, ...)
 #if CONFIG_CONSOLE_UART_NONE != 1
 	if (LogUart == -1)
 		return;
-	char buf[128];
+	char buf[256];
 	va_list val;
 	va_start(val,f);
 	int n = vsnprintf(buf,sizeof(buf),f,val);
@@ -113,6 +125,7 @@ void con_printf(const char *f, ...)
 			n = sizeof(buf);
 		con_write(buf,n);
 	}
+//	uart_wait_tx_done((uart_port_t)LogUart,portMAX_DELAY);
 #endif
 }
 
@@ -120,12 +133,11 @@ void con_printf(const char *f, ...)
 void con_write(const char *str, ssize_t s)
 {
 #if CONFIG_CONSOLE_UART_NONE != 1
-	if ((LogUart == -1) || (s <= 0))
-		return;
-	xSemaphoreTake(UartLock,portMAX_DELAY);
-	uart_write_bytes(LogUart,str,s);
-	uart_write_bytes(LogUart,"\r\n",2);
-	xSemaphoreGive(UartLock);
+	if ((LogUart != -1) && (s > 0)) {
+		xSemaphoreTake(UartLock,portMAX_DELAY);
+		uart_write_bytes(LogUart,str,s);
+		xSemaphoreGive(UartLock);
+	}
 #endif
 }
 
@@ -144,9 +156,7 @@ void log_setup()
 #if CONFIG_UART_CONSOLE_NONE == 1
 	LogUart = -1;
 #else
-	LogUart = -1;
-	//LogUart = (uart_port_t) CONFIG_CONSOLE_UART_NUM;
-	//uart_driver_install(LogUart,UART_FIFO_LEN*2,UART_FIFO_LEN*2,0,DRIVER_ARG);
+	uart_driver_install((uart_port_t)CONFIG_CONSOLE_UART_NUM,UART_FIFO_LEN*2,UART_FIFO_LEN*2,0,DRIVER_ARG);
 #endif
 
 #ifdef HAVE_FS
@@ -158,7 +168,7 @@ void log_setup()
 void log_set_uart(int8_t uart)
 {
 	xSemaphoreTake(UartLock,portMAX_DELAY);
-	LogUart = uart;
+	LogUart = (uart_port_t)uart;
 	xSemaphoreGive(UartLock);
 }
 
@@ -175,108 +185,80 @@ void set_logfile(const char *fn)
 #endif
 
 
-static inline char *append(char *to, const char *from)
+void log_common(log_level_t l, logmod_t m, const char *f, va_list val)
 {
-	char c;
-	while ((c = *from++) != 0)
-		*to++ = c;
-	//*to = 0;	-- we omit \0, as more text will follow
-	return to;
-}
-
-
-#ifdef HAVE_FS
-static void log_file(log_level_t lvl, const char *m, size_t l)
-{
-	xSemaphoreTake(FileLock,portMAX_DELAY);
-	write(LogFile,m,ml+2);
-	xSemaphoreGive(FileLock);
-}
-#endif
-
-
-static void log_uart(log_level_t lvl, const char *m, size_t ml)
-{
-	if (LogUart == -1)
-		return;
-	xSemaphoreTake(UartLock,portMAX_DELAY);
-	uart_write_bytes((uart_port_t)LogUart,m,ml);
-	xSemaphoreGive(UartLock);
-	if ((lvl == ll_error) || (lvl == ll_warn))
-#if IDF_VERSION >= 32
-		uart_wait_tx_done((uart_port_t)LogUart,portMAX_DELAY);
-#else
-		uart_wait_tx_done((uart_port_t)LogUart);
-#endif
-}
-
-
-static int write_prefix(log_level_t lvl, const char *a, char *buf, size_t n)
-{
-	memcpy(buf,UartPrefix[lvl],8);
+	char buf[LOG_MAXLEN+1];
 	char *at = buf + 8;
-	*at++ = ' ';
-	int r = 9;
-	n -= r;
+	int p = 8;
 	struct timeval tv;
+	const char *a = ModNames+ModNameOff[m];
 	if ((-1 == gettimeofday(&tv,0)) || (tv.tv_sec < 1E6)) {
 #ifdef CONFIG_IDF_TARGET_ESP8266
 #ifdef CONFIG_NEWLIB_LIBRARY_LEVEL_NORMAL
-		r += snprintf(at,n,"(%6f) %s: ",(double)((float)clock()/(float)CLOCKS_PER_SEC+(float)Start),a);
+		p += sprintf(at," (%6f) %s: ",(double)((float)clock()/(float)CLOCKS_PER_SEC+(float)Start),a);
 #else
-		r += snprintf(at,n,"(%6lu) %s: ",clock()*1000/CLOCKS_PER_SEC+Start,a);
+		p += sprintf(at," (%6lu) %s: ",clock()*1000/CLOCKS_PER_SEC+Start,a);
 #endif
 #else
 		struct timespec ts;
 		clock_gettime(CLOCK_REALTIME,&ts);
-		r += snprintf(at,n,"(%lu.%03u) %s: ",ts.tv_sec,(unsigned)(ts.tv_nsec/1E6),a);
+		p += sprintf(at," (%lu.%03u) %s: ",ts.tv_sec,(unsigned)(ts.tv_nsec/1E6),a);
 #endif
 	} else {
 		struct tm tm;
 		localtime_r(&tv.tv_sec,&tm);
-		r += snprintf(at,n
-			, "%02d:%02d:%02d.%03lu %s: "
-			, (int)tm.tm_hour, (int)tm.tm_min, (int)tm.tm_sec, tv.tv_usec/1000, a);
+		p += sprintf(at, " %02d:%02d:%02d.%03lu %s: "
+			, (int)tm.tm_hour, (int)tm.tm_min, (int)tm.tm_sec, tv.tv_usec/1000,a);
 	}
-	return r;
-}
-
-
-void log_common(log_level_t l, const char *a, const char *f, va_list val)
-{
-	char buf[LOG_MAXLEN+1];
-	int p = write_prefix(l,a,buf,sizeof(buf));
-	if (p >= sizeof(buf))
-		return;
 	int s = vsnprintf(buf+p,sizeof(buf)-p,f,val);
 	if (s <= 0)
 		return;
-	char *out = buf;
-	if (p+s+2 > sizeof(buf)) {
-		buf[sizeof(buf)-1] = '\n';
-		buf[sizeof(buf)-2] = '\r';
+	memcpy(buf,UartPrefix[l],8);
+	s += p;
+	if (s+2 > sizeof(buf)) {
 		buf[sizeof(buf)-3] = ']';
 		buf[sizeof(buf)-4] = '.';
 		buf[sizeof(buf)-5] = '.';
 		buf[sizeof(buf)-6] = '.';
 		buf[sizeof(buf)-7] = '[';
-		s = sizeof(buf)-p-2;
-	} else {
-		buf[p+s] = '\r';
-		buf[p+s+1] = '\n';
+		s = sizeof(buf)-2;
 	}
-	log_uart(l,buf,s+p+2);
+	buf[s++] = '\r';
+	buf[s++] = '\n';
+	if (LogUart >= 0) {
+		if (pdTRUE != xSemaphoreTake(UartLock,MUTEX_ABORT_TIMEOUT))
+			abort_on_mutex(UartLock,__FILE__);
+		uart_write_bytes((uart_port_t)LogUart,buf,s);
+		if (l <= ll_warn)
+			uart_wait_tx_done((uart_port_t)LogUart,portMAX_DELAY);
+		xSemaphoreGive(UartLock);
+	}
 #ifdef HAVE_FS
-	if (LogFile == -1)
-		log_file(out+7,s+p-7+2);
+	if (LogFile >= 0) {
+		xSemaphoreTake(FileLock,portMAX_DELAY);
+		write(LogFile,buf+9,s-9);
+		xSemaphoreGive(FileLock);
+	}
 #endif
 #ifdef CONFIG_SYSLOG
-	log_syslog(l,a,out+p,s);
+	if ((l != ll_local) && (m != MODULE_LOG) && (m != MODULE_LWTCP))
+		log_syslog(l,m,buf+p,s-p-2,&tv);
 #endif
 }
 
 
-void log_fatal(const char *m, const char *f, ...)
+void log_gen(log_level_t ll, logmod_t m, const char *f, ...)
+{
+	if ((ll != ll_debug) || (log_module_enabled(m))) {
+		va_list val;
+		va_start(val,f);
+		log_common(ll,m,f,val);
+		va_end(val);
+	}
+}
+
+
+void log_fatal(logmod_t m, const char *f, ...)
 {
 	va_list val;
 	va_start(val,f);
@@ -286,10 +268,10 @@ void log_fatal(const char *m, const char *f, ...)
 }
 
 
-void log_error(const char *m, const char *f, ...)
+void log_error(logmod_t m, const char *f, ...)
 {
 	static uint32_t ts = 0;
-	static unsigned cnt = 0;
+	static uint8_t cnt = 0;
 	bool fatal = false;
 	uint32_t t = esp_timer_get_time() / 1000;
 	if (t - ts > 2000000) {
@@ -306,7 +288,7 @@ void log_error(const char *m, const char *f, ...)
 }
 
 
-void log_warn(const char *m, const char *f, ...)
+void log_warn(logmod_t m, const char *f, ...)
 {
 	va_list val;
 	va_start(val,f);
@@ -315,7 +297,7 @@ void log_warn(const char *m, const char *f, ...)
 }
 
 
-void log_info(const char *m, const char *f, ...)
+void log_info(logmod_t m, const char *f, ...)
 {
 	va_list val;
 	va_start(val,f);
@@ -324,3 +306,30 @@ void log_info(const char *m, const char *f, ...)
 }
 
 
+static inline void uart_print(const char *str)
+{
+	uart_write_bytes(LogUart,str,strlen(str));
+	uart_write_bytes(LogUart,"\r\n",2);
+}
+
+
+void abort_on_mutex(SemaphoreHandle_t mtx, const char *usage)
+{
+	uart_print(usage ? usage : "<null>");
+	uart_print(__FUNCTION__);
+	TaskHandle_t h = xSemaphoreGetMutexHolder(mtx);
+#ifdef CONFIG_IDF_TARGET_ESP32
+	uart_print(pcTaskGetTaskName(0));
+	uart_print(pcTaskGetTaskName(h));
+#else
+	uart_print(pcTaskGetName(0));
+	uart_print(pcTaskGetName(h));
+//	uart_printf("%s: task %s hanging on task %s\n",usage,pcTaskGetName(0),pcTaskGetName(h));
+#endif
+	uart_wait_tx_done((uart_port_t)LogUart,portMAX_DELAY);
+	char buf[512];
+	vTaskList(buf);
+	con_print(buf);
+	uart_wait_tx_done((uart_port_t)LogUart,portMAX_DELAY);
+	abort();
+}
