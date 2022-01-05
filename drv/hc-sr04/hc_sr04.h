@@ -27,7 +27,7 @@ class HC_SR04
 {
 	public:
 	static HC_SR04 *create(int8_t trigger, int8_t echo); 
-	int attach(class JsonObject *o);
+	int attach(class EnvObject *o);
 	void trigger();
 	void setName(const char *name);
 
@@ -51,7 +51,7 @@ class HC_SR04
 	int64_t m_start = 0;
 	int32_t m_dt = 0;
 	HC_SR04 *m_next = 0;
-	class JsonNumber *m_dist = 0;
+	class EnvNumber *m_dist = 0;
 	char *m_name = 0;
 	gpio_num_t m_trigger, m_echo;
 	event_t m_ev = 0;

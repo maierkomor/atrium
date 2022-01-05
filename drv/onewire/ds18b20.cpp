@@ -26,7 +26,7 @@
 #include "event.h"
 #include "log.h"
 #include "onewire.h"
-#include "ujson.h"
+#include "env.h"
 
 #include <string.h>
 
@@ -113,7 +113,7 @@ void DS18B20::read()
 }
 
 
-void DS18B20::attach(JsonObject *o)
+void DS18B20::attach(EnvObject *o)
 {
 	if (m_json == 0)
 		m_json = o->add(m_name,NAN,"\u00b0C");

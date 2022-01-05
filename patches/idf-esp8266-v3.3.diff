@@ -11,6 +11,50 @@ index c427cffa..98e7bf23 100644
      ESP_IMAGE_SPI_SPEED_40M,
      ESP_IMAGE_SPI_SPEED_26M,
      ESP_IMAGE_SPI_SPEED_20M,
+diff --git a/components/esp8266/source/event_default_handlers.c b/components/esp8266/source/event_default_handlers.c
+index a3ef8732..24b9ae3d 100644
+--- a/components/esp8266/source/event_default_handlers.c
++++ b/components/esp8266/source/event_default_handlers.c
+@@ -45,6 +45,7 @@ do{\
+ 
+ typedef esp_err_t (*system_event_handler_t)(system_event_t *e);
+ 
++/*
+ static esp_err_t system_event_ap_start_handle_default(system_event_t *event);
+ static esp_err_t system_event_ap_stop_handle_default(system_event_t *event);
+ static esp_err_t system_event_sta_start_handle_default(system_event_t *event);
+@@ -53,6 +54,7 @@ static esp_err_t system_event_sta_connected_handle_default(system_event_t *event
+ static esp_err_t system_event_sta_disconnected_handle_default(system_event_t *event);
+ static esp_err_t system_event_sta_got_ip_default(system_event_t *event);
+ static esp_err_t system_event_sta_lost_ip_default(system_event_t *event);
++*/
+ 
+ /* Default event handler functions
+ 
+@@ -320,4 +322,4 @@ void esp_event_set_default_wifi_handlers()
+      default_event_handlers[SYSTEM_EVENT_AP_STOP]          = system_event_ap_stop_handle_default;
+ 
+      //esp_register_shutdown_handler((shutdown_handler_t)esp_wifi_stop);
+-}
+\ No newline at end of file
++}
+diff --git a/components/esp8266/source/event_loop.c b/components/esp8266/source/event_loop.c
+index 14f67c65..83115927 100644
+--- a/components/esp8266/source/event_loop.c
++++ b/components/esp8266/source/event_loop.c
+@@ -28,6 +28,7 @@
+ #include "task.h"
+ #include "queue.h"
+ 
++/*
+ static const char* TAG = "event";
+ static bool s_event_init_flag = false;
+ static void *s_event_queue = NULL;
+@@ -114,3 +115,4 @@ esp_err_t esp_event_loop_create_default(void)
+ {
+     return ESP_OK;
+ }
++*/
 diff --git a/components/lwip/lwip/src/core/dns.c b/components/lwip/lwip/src/core/dns.c
 index 12c6f16f..8ca5f26c 100644
 --- a/components/lwip/lwip/src/core/dns.c

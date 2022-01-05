@@ -21,7 +21,7 @@
 #include "dhtdrv.h"
 #include "log.h"
 #include "stream.h"
-#include "ujson.h"
+#include "env.h"
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -129,12 +129,12 @@ DHT::DHT()
 }
 
 
-void DHT::attach(JsonObject *root)
+void DHT::attach(EnvObject *root)
 {
 	log_info(TAG,"attaching DHT%u at gpio %u",m_model,m_pin);
 	char name[16];
 	sprintf(name,"dht%u@%u",m_model,m_pin);
-	JsonObject *o = root->add(name);
+	EnvObject *o = root->add(name);
 	m_temp = o->add("temperature",NAN,"\u00b0C");
 	m_humid = o->add("humidity",NAN,"%");
 }

@@ -43,7 +43,7 @@
 #include "support.h"
 #include "swcfg.h"
 #include "terminal.h"
-#include "ujson.h"
+#include "env.h"
 
 
 #ifdef CONFIG_IDF_TARGET_ESP8266
@@ -70,7 +70,7 @@ struct Dimmer
 {
 	Dimmer *next;
 	const char *name;
-	JsonNumber *json;
+	EnvNumber *json;
 	duty_t duty_set,duty_cur;
 	gpio_num_t gpio;
 	ledc_channel_t channel;

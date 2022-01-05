@@ -23,7 +23,7 @@
 #include "swcfg.h"
 #include "cyclic.h"
 #include "event.h"
-#include "ujson.h"
+#include "env.h"
 #include "log.h"
 #include "globals.h"
 #include "settings.h"
@@ -52,8 +52,7 @@ using namespace std;
 const char *Weekdays_en[] = { "Su", "Mo", "Tu", "We", "Th", "Fr", "Sa", "wd", "we", "ed", "hd" };
 const char *Weekdays_de[] = { "So", "Mo", "Di", "Mi", "Do", "Fr", "Sa", "wt", "we", "jt", "ft" };
 #define TAG MODULE_ALARMS
-static JsonBool *Enabled = 0;
-JsonString *Localtime = 0;
+static EnvBool *Enabled = 0;
 
 #ifdef CONFIG_HOLIDAYS
 static bool is_holiday(uint8_t d, uint8_t m, unsigned y)
@@ -94,10 +93,10 @@ static unsigned alarms_loop(void *)
 	get_time_of_day(&h,&m,&s,&d,&md,&mon,&y);
 	if ((h > 23) || (m == last_m) || (y == 1970))
 		return 300;
-	last_m = m;
 	char now[32];
 	sprintf(now,"%s, %u:%02u",Weekdays_de[d],h,m);
 	Localtime->set(now);
+	last_m = m;
 	if (!Config.actions_enable())
 		return 2000;
 	//dbug("alarmclock() check %s %u:%02u",WeekDay_str((WeekDay)d),h,m);
@@ -161,7 +160,6 @@ bool alarms_enabled()
 int alarms_setup()
 {
 	Enabled = RTData->add("timers_enabled",(bool)Config.actions_enable());
-	Localtime = RTData->add("ltime","");
 	action_add("timer!enable",alarms_set,(void*)1,"enable timer based triggers");
 	action_add("timer!disable",alarms_set,0,"disable timer based triggers");
 	action_add("timer!toggle",alarms_toggle,0,"toggle timer based triggers");

@@ -34,9 +34,9 @@
 void tcpwrite_fn(void *arg)
 {
 	tcpwrite_arg_t *r = (tcpwrite_arg_t *)arg;
-	err_t e = tcp_write(r->pcb,r->data,r->size,TCP_WRITE_FLAG_COPY|TCP_WRITE_FLAG_MORE);
-	if (e) {
-		log_warn(TAG,"%s write %d",e);
+	r->err = tcp_write(r->pcb,r->data,r->size,TCP_WRITE_FLAG_COPY|TCP_WRITE_FLAG_MORE);
+	if (r->err) {
+		log_warn(TAG,"%s write %d",r->name,r->err);
 	}
 	xSemaphoreGive(r->sem);
 }
@@ -45,12 +45,30 @@ void tcpwrite_fn(void *arg)
 void tcpwriteout_fn(void *arg)
 {
 	tcpwrite_arg_t *r = (tcpwrite_arg_t *)arg;
-	err_t e = tcp_write(r->pcb,r->data,r->size,TCP_WRITE_FLAG_COPY);
-	if (e)
-		log_warn(TAG,"%s write %d",r->name,e);
-	e = tcp_output(r->pcb);
-	if (e)
-		log_warn(TAG,"%s output %d",r->name,e);
+	r->err = tcp_write(r->pcb,r->data,r->size,TCP_WRITE_FLAG_COPY);
+	if (r->err)
+		log_warn(TAG,"%s write %d",r->name,r->err);
+	r->err = tcp_output(r->pcb);
+	if (r->err)
+		log_warn(TAG,"%s output %d",r->name,r->err);
 	xSemaphoreGive(r->sem);
+}
+
+
+void tcpout_fn(void *arg)
+{
+	tcpout_arg_t *r = (tcpout_arg_t *)arg;
+	r->err = tcp_output(r->pcb);
+	if (r->err)
+		log_warn(TAG,"%s output %d",r->name,r->err);
+	xSemaphoreGive(r->sem);
+}
+
+
+void tcp_pbuf_free_fn(void *arg)
+{
+	tcp_pbuf_arg_t *a = (tcp_pbuf_arg_t *) arg;
+	pbuf_free(a->pbuf);
+	xSemaphoreGive(a->sem);
 }
 #endif

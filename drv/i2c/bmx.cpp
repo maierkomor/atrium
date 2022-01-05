@@ -36,7 +36,7 @@
 #include "i2cdrv.h"
 #include "log.h"
 #include "stream.h"
-#include "ujson.h"
+#include "env.h"
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -117,7 +117,7 @@ static unsigned bmx_cyclic(void *arg)
 }
 
 
-void BMP280::attach(JsonObject *root)
+void BMP280::attach(EnvObject *root)
 {
 	m_temp = root->add("temperature",NAN,"\u00b0C");
 	m_press = root->add("pressure",NAN,"hPa");
@@ -126,7 +126,7 @@ void BMP280::attach(JsonObject *root)
 }
 
 
-void BME280::attach(JsonObject *root)
+void BME280::attach(EnvObject *root)
 {
 	m_temp = root->add("temperature",NAN,"\u00b0C");
 	m_press = root->add("pressure",NAN,"hPa");
@@ -528,7 +528,7 @@ unsigned BME680::read()
 }
 
 
-void BME680::attach(JsonObject *root)
+void BME680::attach(EnvObject *root)
 {
 	m_temp = root->add("temperature",NAN,"\u00b0C");
 	m_press = root->add("pressure",NAN,"hPa");

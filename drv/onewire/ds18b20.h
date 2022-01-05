@@ -30,13 +30,13 @@ struct DS18B20 : public OwDevice
 	const char *deviceType() const override
 	{ return "DS18B20"; }
 
-	void attach(JsonObject *);
+	void attach(EnvObject *);
 	void read();
 
 	private:
 	explicit DS18B20(uint64_t id, const char *name);
 
-	class JsonNumber *m_json = 0;
+	class EnvNumber *m_json = 0;
 };
 
 

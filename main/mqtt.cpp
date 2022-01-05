@@ -47,7 +47,7 @@
 #include "swcfg.h"
 #include "tcpio.h"
 #include "terminal.h"
-#include "ujson.h"
+#include "env.h"
 #include "wifi.h"
 
 #include <freertos/FreeRTOS.h>
@@ -202,9 +202,9 @@ struct MqttClient
 	struct tcp_pcb *pcb;
 	unsigned ltime = 0;
 	ip_addr_t ip;
-	JsonObject *signals;
+	EnvObject *signals;
 	multimap<estring,Subscription> subscriptions;
-	map<estring,JsonString *> values;
+	map<estring,EnvString *> values;
 	map<uint16_t,const char *> subs;
 #ifdef FEATURE_QOS
 	map<uint16_t,PubReq> pubs;
@@ -403,7 +403,7 @@ static void parse_conack(uint8_t *buf, size_t rlen)
 			if (err_t e = tcp_output(Client->pcb)) {
 				log_warn(TAG,"tcp output %d",e);
 			} else {
-				log_info(TAG,"connected");
+				//log_dbug(TAG,"send ok");
 				return;
 			}
 		} else {
@@ -424,7 +424,7 @@ static void parse_puback(uint8_t *buf, size_t rlen)
 		auto x = Client->pubs.find(pid);
 		if (x != Client->pubs.end()) {
 			if ((rlen == 4) && (buf[2] & 0x80)) {
-				log_warn(TAG,"puback for pid %x, topic %s failed: reason %x",(unsigned)pid,x->second,buf[2]);
+				log_warn(TAG,"puback for pid %x, topic %s failed: reason %x",(unsigned)pid,x->second.topic,buf[2]);
 			} else {
 				log_dbug(TAG,"PUBACK %x for %s",(unsigned)pid,x->second.topic);
 			}
@@ -569,7 +569,7 @@ static void handle_err(void *arg, err_t e)
 static err_t handle_connect(void *arg, struct tcp_pcb *pcb, err_t x)
 {
 	assert(x == ERR_OK);	// according to LWIP docu
-	log_dbug(TAG,"connected %s",inet_ntoa(pcb->remote_ip));
+	log_info(TAG,"connected %s",inet_ntoa(pcb->remote_ip));
 	tcp_recv(pcb,handle_recv);
 	tcp_sent(pcb,handle_sent);
 	tcp_poll(pcb,handle_poll,2);
@@ -722,7 +722,7 @@ int mqtt_pub_nl(const char *t, const char *v, int len, int retain, int qos)
 }
 
 
-static void pub_element(JsonElement *e, const char *parent = "")
+static void pub_element(EnvElement *e, const char *parent = "")
 {
 	size_t pl = strlen(parent);
 	const char *en = e->name();
@@ -742,7 +742,6 @@ static void pub_element(JsonElement *e, const char *parent = "")
 		str << ' ';
 		str << dim;
 	}
-	log_dbug(TAG,"pub element %s %.*s",name,str.size(),buf);
 	mqtt_pub_int(name,str.c_str(),str.size(),0,4,true);
 }
 
@@ -780,6 +779,14 @@ static void mqtt_pub_uptime(void * = 0)
 	}
 }
 
+#ifndef CONFIG_IDF_TARGET_ESP8266
+static void mqtt_tcpout_fn(void *)
+{
+	tcp_output(Client->pcb);
+	xSemaphoreGive(LwipSem);
+}
+#endif
+
 
 static void mqtt_pub_rtdata(void *)
 {
@@ -791,11 +798,11 @@ static void mqtt_pub_rtdata(void *)
 	mqtt_pub_uptime();
 	rtd_lock();
 	rtd_update();
-	for (JsonElement *e : RTData->getChilds()) {
+	for (EnvElement *e : RTData->getChilds()) {
 		const char *n = e->name();
 		if (!strcmp(n,"node") || !strcmp(n,"version") || !strcmp(n,"reset_reason") || !strcmp(n,"mqtt")) {
 			// skip
-		} else if (JsonObject *o = e->toObject()) {
+		} else if (EnvObject *o = e->toObject()) {
 			const char *n = e->name();
 			for (auto c : o->getChilds()) {
 				pub_element(c,n);
@@ -805,9 +812,13 @@ static void mqtt_pub_rtdata(void *)
 		}
 	}
 	rtd_unlock();
+#ifdef CONFIG_IDF_TARGET_ESP8266
 	LWIP_LOCK();
 	tcp_output(Client->pcb);
 	LWIP_UNLOCK();
+#else
+	tcpip_send_msg_wait_sem(mqtt_tcpout_fn,0,&LwipSem);
+#endif
 }
 
 
@@ -829,7 +840,7 @@ int MqttClient::subscribe(const char *topic, void (*callback)(const char *,const
 	Subscription s;
 	s.callback = callback;
 	subscriptions.insert(make_pair((estring)topic,s));
-	JsonString *str = signals->add(topic,"");
+	EnvString *str = signals->add(topic,"");
 	values.insert(make_pair((estring)topic,str));
 	if (state == running) {
 		send_sub(topic,true,true);
@@ -843,7 +854,7 @@ int MqttClient::subscribe(const char *topic, void (*callback)(const char *,const
 void mqtt_stop_fn(void *arg)
 {
 	struct tcp_pcb *pcb = (struct tcp_pcb *) arg;
-	char request[] { DISCONNECT, 0 };
+	uint8_t request[] { DISCONNECT, 0 };
 	err_t e = tcp_write(pcb,request,sizeof(request),TCP_WRITE_FLAG_COPY);
 	if (e)
 		log_warn(TAG,"write DISCONNECT %d",e);
@@ -862,7 +873,7 @@ void mqtt_stop(void *arg)
 	Lock lock(Client->mtx,__FUNCTION__);
 	if (Client->pcb != 0) {
 #ifdef CONFIG_IDF_TARGET_ESP8266
-		char request[] { DISCONNECT, 0 };
+		uint8_t request[] { DISCONNECT, 0 };
 		LWIP_LOCK();
 		err_t e = tcp_write(Client->pcb,request,sizeof(request),TCP_WRITE_FLAG_COPY);
 		if (e)

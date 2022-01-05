@@ -26,7 +26,7 @@
 #include "hdc1000.h"
 #include "i2cdrv.h"
 #include "log.h"
-#include "ujson.h"
+#include "env.h"
 
 #define REG_TEMP	0x00
 #define REG_HUMID	0x01
@@ -205,7 +205,7 @@ void HDC1000::trigger_humid(void *arg)
 }
 
 
-void HDC1000::attach(JsonObject *root)
+void HDC1000::attach(EnvObject *root)
 {
 	m_temp = root->add("temperature",NAN,"\u00b0C");
 	m_humid = root->add("humidity",NAN,"%");

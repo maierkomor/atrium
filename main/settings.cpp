@@ -26,7 +26,7 @@
 #endif
 #include "globals.h"
 #include "hwcfg.h"
-#include "ujson.h"
+#include "env.h"
 #include "log.h"
 #include "netsvc.h"
 #include "profiling.h"
@@ -395,9 +395,9 @@ void list_settings(Terminal &t)
 int cfg_set_hostname(const char *hn)
 {
 	log_info(TAG,"setting hostname to %s",hn);
-	JsonElement *e = RTData->get("node");
-	assert(e);
-	e->toString()->set(hn);
+	EnvString *n = static_cast<EnvString*>(RTData->get("node"));
+	assert(n);
+	n->set(hn);
 #ifdef CONFIG_MDNS
 	static bool MDNS_up = false;
 	if (MDNS_up)

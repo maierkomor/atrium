@@ -25,7 +25,7 @@
 #include "cyclic.h"
 #include "event.h"
 #include "log.h"
-#include "ujson.h"
+#include "env.h"
 
 #define REG_ENABLE	0x80
 #define REG_ATIME	0x81
@@ -140,7 +140,7 @@ int APDS9930::init()
 }
 
 
-void APDS9930::attach(JsonObject *root)
+void APDS9930::attach(EnvObject *root)
 {
 	log_dbug(TAG,"attach");
 	m_lux = root->add("lux",NAN,"");

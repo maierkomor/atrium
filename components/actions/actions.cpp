@@ -151,7 +151,7 @@ void action_iterate(void (*f)(void*,const Action *),void *p)
 static void action_event_cb(void *arg)
 {
 	Action *a = (Action *)arg;
-	log_dbug(TAG,"execute action %p",a);
+	assert(a);
 	log_dbug(TAG,"execute action %s",a->name);
 	a->activate();
 }

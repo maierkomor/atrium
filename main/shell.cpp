@@ -41,7 +41,7 @@
 #include "swcfg.h"
 #include "terminal.h"
 #include "timefuse.h"
-#include "ujson.h"
+#include "env.h"
 #include "wifi.h"
 
 #include <sstream>
@@ -206,7 +206,9 @@ static int action(Terminal &t, int argc, const char *args[])
 
 static void print_ip(Terminal &t, uint32_t ip, const char *pfx = "")
 {
-	t.printf("%s%-15s", pfx, inet_ntoa(ip));
+	char ipstr[32];
+	ip4addr_ntoa_r((ip4_addr_t *)&ip,ipstr,sizeof(ipstr));
+	t.printf("%s%-15s", pfx, ipstr);
 }
 
 
@@ -233,14 +235,14 @@ static int get_ip(const char *str, uint8_t *ip)
 }
 
 
-static void print_obj(Terminal &t, JsonObject *o, int indent)
+static void print_obj(Terminal &t, EnvObject *o, int indent)
 {
 	unsigned c = 0;
-	while (JsonElement *e = o->getChild(c++)) {
+	while (EnvElement *e = o->getChild(c++)) {
 		for (int i = 0; i < indent; ++i)
 			t << "    ";
 		t << e->name();
-		if (JsonObject *c = e->toObject()) {
+		if (EnvObject *c = e->toObject()) {
 			t << ":\n";
 			print_obj(t,c,indent+1);
 		} else {
@@ -258,7 +260,10 @@ static void print_obj(Terminal &t, JsonObject *o, int indent)
 
 static int env(Terminal &t, int argc, const char *args[])
 {
+	rtd_lock();
+	rtd_update();
 	print_obj(t,RTData,0); 
+	rtd_unlock();
 	return 0;
 }
 
@@ -1139,7 +1144,7 @@ static int timefuse(Terminal &term, int argc, const char *args[])
 	case 'm':
 		if (e[1] == 's')
 			;	// milli-seconds
-		else if (e[0] == 0)
+		else if (e[1] == 0)
 			ms *= 60000;
 		else
 			return arg_invalid(term,args[3]);
@@ -2106,9 +2111,6 @@ ExeName ExeNames[] = {
 #ifdef CONFIG_IDF_TARGET_ESP32
 	{"cd",0,shell_cd,"change directory",0},
 #endif
-#ifdef CONFIG_TERMSERV
-	{"console",2,uart_termcon,"switch to UART console",console_man},
-#endif
 	{"config",1,config,"system configuration",config_man},
 	{"cpu",1,cpu,"CPU speed",0},
 	{"debug",0,debug,"enable debug logging (* for all)",debug_man},
@@ -2218,6 +2220,9 @@ ExeName ExeNames[] = {
 #endif
 	{"su",2,su,"set user privilege level",su_man},
 	{"subtasks",0,subtasks,"statistics of cyclic subtasks",0},
+#ifdef CONFIG_TERMSERV
+	{"term",2,uart_termcon,"open terminal on UART",console_man},
+#endif
 	{"timer",1,timefuse,"create timer",timer_man},
 	{"timezone",1,timezone,"set time zone for NTP (offset to GMT or 'CET')",0},
 #ifdef HAVE_FS

@@ -52,7 +52,7 @@
 //#define EXTRA_INFO	// buggy! don't use
 
 #if 0
-#define log_devel log_dbug
+#define log_devel log_local
 #else
 #define log_devel(...)
 #endif
@@ -167,7 +167,7 @@ struct Query
 	uint16_t ql;
 	bool local;
 	uint8_t cnt;	// send count
-	char hostname[];
+	char hostname[1];
 };
 
 
@@ -221,6 +221,7 @@ static int add_ptr(const char *p)
 static void cache_remove_head()
 {
 	DnsEntry *e = CacheS;
+	assert(e);
 	log_dbug(TAG,"cache rm %s",e->host);
 	CacheSize -= sizeof(DnsEntry);
 	CacheSize -= e->len;
@@ -240,18 +241,24 @@ static void cache_add(const char *hn, size_t hl, ip_addr_t *ip, uint32_t ttl)
 			return;
 		e = e->next;
 	}
-//	log_dbug(TAG,"cache size %u/%u, add %s: %s",CacheSize,MaxCache,hn,inet_ntoa(ip));
-	CacheSize += sizeof(DnsEntry)+hl+1;
+//	log_dbug(TAG,"cache size %u/%u, add %s: %s",CacheSize,MaxCache,hn,ip2str(ip));
+	CacheSize += sizeof(DnsEntry)+hl;
 	while (CacheSize > MaxCache) {
+		assert(CacheS);
 		cache_remove_head();
 	}
-	log_dbug(TAG,"cache add %.*s: %s",hl,hn,inet_ntoa(*ip));
-	e = (DnsEntry *) malloc(sizeof(DnsEntry)+hl+1);
-	memcpy(e->host,hn,hl+1);
+	if (Modules[0] || Modules[TAG]) {
+		char ipstr[32];
+		ip2str_r(ip,ipstr,sizeof(ipstr));
+		log_direct(ll_debug,TAG,"cache add %.*s: %s",hl,hn,ipstr);
+	}
+	e = (DnsEntry *) malloc(sizeof(DnsEntry)+hl);
+	memcpy(e->host,hn,hl);
+	e->host[hl] = 0;
 	e->next = 0;
 	memcpy(&e->ip,ip,sizeof(ip_addr_t));
 	e->len = hl;
-	e->ttl = xTaskGetTickCount() + ttl * configTICK_RATE_HZ;;
+	e->ttl = xTaskGetTickCount() + ttl * configTICK_RATE_HZ;
 	if (CacheE)
 		CacheE->next = e;
 	else
@@ -271,31 +278,12 @@ ip_addr_t *cache_lookup(const char *hn)
 	DnsEntry *e = CacheS;
 	while (e) {
 		if (0 == strcmp(e->host,hn)) {
-			log_dbug(TAG,"cache hit %s: %s",e->host,inet_ntoa(e->ip));
+			log_dbug(TAG,"cache hit %s",e->host);
 			return &e->ip;
 		}
 		e = e->next;
 	}
 	return 0;
-}
-
-
-static int copyPbuf(struct pbuf *p, void *to, uint16_t l, uint16_t off)
-{
-//	log_dbug(TAG,"copy %d@%u, len=%u",(int)l,(unsigned)off,(unsigned)p->len);
-	if (l+off > p->len)
-		return -1;
-	memcpy(to,(uint8_t*)p->payload+off,l);
-//	log_hex(TAG,to,l,"copied");
-	return l;
-}
-
-
-static int getPbuf(struct pbuf *p, uint16_t off)
-{
-	int r = (off >= p->len) ? -1 : (int)*((uint8_t *)p->payload+off);
-//	log_dbug(TAG,"byte @%u=%d",off,r);
-	return r;
 }
 
 
@@ -305,7 +293,7 @@ static int parseName(struct pbuf *p, size_t &xoff, char *hostname, size_t hoff)
 	log_devel(TAG,"parseName(%u,%u)",off,hoff);
 	char *h = hostname + hoff;
 	for (;;) {
-		int len = getPbuf(p,off);
+		int len = pbuf_try_get_at(p,off);
 		if (len < 0)
 			return -off;
 		++off;
@@ -317,14 +305,14 @@ static int parseName(struct pbuf *p, size_t &xoff, char *hostname, size_t hoff)
 			log_devel(TAG,"parseName1 => %u: '%.*s'",h-hostname,h-hostname,hostname);
 			return h-hostname;
 		} else if ((len & 0xc0) == 0) {
-			if (len != copyPbuf(p,h,len,off))
+			if (len != pbuf_copy_partial(p,h,len,off))
 				return -off;
 			h += len;
 			*h++ = '.';
 			off += len;
 			log_devel(TAG,"parseName3: %u: '%.*s'",h-hostname,h-hostname,hostname);
 		} else if ((len & 0xc0) == 0xc0) {
-			int xlen = getPbuf(p,off);
+			int xlen = pbuf_try_get_at(p,off);
 			if (xlen < 0)
 				return -off;
 			++off;
@@ -358,7 +346,7 @@ static int parseAnswert(struct pbuf *p, size_t off, const ip_addr_t *sender)
 	}
 	log_devel(TAG,"off=%u, host %s",off,hostname);
 	Answert a;
-	if (SIZEOF_ANSWERT != copyPbuf(p,&a,SIZEOF_ANSWERT,off))
+	if (SIZEOF_ANSWERT != pbuf_copy_partial(p,&a,SIZEOF_ANSWERT,off))
 		return -off;
 	a.rr_type = ntohs(a.rr_type);
 	a.rr_class = ntohs(a.rr_class);
@@ -370,18 +358,18 @@ static int parseAnswert(struct pbuf *p, size_t off, const ip_addr_t *sender)
 	}
 	ip_addr_t ip = IPADDR4_INIT(0);
 	if (((a.rr_class & 0x7fff) == TYPE_ADDR) && (a.rdlen == 4)) {
-		if (4 != copyPbuf(p,ip_2_ip4(&ip),a.rdlen,off)) {
+		if (4 != pbuf_copy_partial(p,ip_2_ip4(&ip),a.rdlen,off)) {
 			log_dbug(TAG,"copy failed");
 			return -off;
 		}
-		log_devel(TAG,"IPv4 %s",inet_ntoa(ip));
+		log_devel(TAG,"IPv4 %s",ip2str(&ip));
 #if defined CONFIG_LWIP_IPV6 || defined CONFIG_IDF_TARGET_ESP32
 	} else if (((a.rr_class & 0x7fff) == TYPE_ADDR6) && (a.rdlen == 16)) {
-		if (4 != copyPbuf(p,ip_2_ip6(&ip),a.rdlen,off)) {
+		if (4 != pbuf_copy_partial(p,ip_2_ip6(&ip),a.rdlen,off)) {
 			log_dbug(TAG,"copy failed");
 			return -off;
 		}
-		log_devel(TAG,"IPv6 %s",inet_ntoa(ip));
+		log_devel(TAG,"IPv6 %s",ip2str(&ip));
 #endif
 	} else if ((a.rr_class & 0x7fff) == TYPE_PTR) {
 		log_dbug(TAG,"ignoring PTR");
@@ -394,7 +382,7 @@ static int parseAnswert(struct pbuf *p, size_t off, const ip_addr_t *sender)
 	LWIP_UNLOCK();	// is that really ok to avoid the deadlock
 	MLock lock(Mtx,__FUNCTION__);
 	if (0 == strcmp(hostname,Hostname)) {
-		log_warn(TAG,"own hostname on %s",inet_ntoa(sender));
+		log_warn(TAG,"own hostname on %s",ip2str(sender));
 		State = mdns_collission;
 	}
 	cache_add(hostname,hl,&ip,a.ttl);
@@ -402,7 +390,7 @@ static int parseAnswert(struct pbuf *p, size_t off, const ip_addr_t *sender)
 	while (q) {
 		if (0 == strcmp(q->hostname,hostname)) {
 			if (q->cb) {
-				log_dbug(TAG,"callback for %s=%s",hostname,inet_ntoa(ip));
+				log_dbug(TAG,"callback for %s=%s",hostname,ip2str(&ip));
 				q->cb(hostname,&ip,q->arg);
 			}
 			Query *n = q->next;
@@ -648,9 +636,9 @@ static int parseQuestion(struct pbuf *p, size_t qoff, uint16_t id, const ip_addr
 		return off;
 	log_devel(TAG,"qtype at %u",off);
 	uint16_t qtype, qclass;
-	copyPbuf(p,&qtype,sizeof(qtype),off);
+	pbuf_copy_partial(p,&qtype,sizeof(qtype),off);
 	off += 2;
-	copyPbuf(p,&qclass,sizeof(qclass),off);
+	pbuf_copy_partial(p,&qclass,sizeof(qclass),off);
 	off += 2;
 	qtype = ntohs(qtype);
 	qclass = ntohs(qclass);
@@ -680,12 +668,12 @@ static int parseQuestion(struct pbuf *p, size_t qoff, uint16_t id, const ip_addr
 static int skipQuestion(struct pbuf *p, size_t off)
 {
 	log_devel(TAG,"skipQuestion 0x%x",off);
-	int len = getPbuf(p,off++);
+	int len = pbuf_try_get_at(p,off++);
 	while (len) {
 		if ((len < 0) || (len >= 64))
 			return -1;
 		off += len;
-		len = getPbuf(p,off++);
+		len = pbuf_try_get_at(p,off++);
 	}
 	return off+4;
 }
@@ -694,7 +682,11 @@ static int skipQuestion(struct pbuf *p, size_t off)
 static void recv_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *ip, u16_t port)
 {
 //	log_hex(TAG,p->payload,p->len,"packet from %s",ip2str(ip));
-	log_dbug(TAG,"packet from %s",ip2str(ip));
+	if (Modules[0] || Modules[TAG]) {
+		char ipstr[32];
+		ip2str_r(ip,ipstr,sizeof(ipstr));
+		log_direct(ll_debug,TAG,"packet from %s",ipstr);
+	}
 	Header h;
 	if (p->len < sizeof(h)) {
 		log_devel(TAG,"short packet");
@@ -751,7 +743,7 @@ static int udns_send_ns(uint8_t *buf,size_t ql)
 	int c = 0;
 	for (int i = 0; i < sizeof(NameServer)/sizeof(NameServer[0]); ++i) {
 		if (!ip_addr_isany(&NameServer[i])) {
-//			log_hex(TAG,buf,ql,"query %s",inet_ntoa(NameServer[i]));
+//			log_hex(TAG,buf,ql,"query %s",ip2str(NameServer[i]));
 			struct pbuf *pb = pbuf_alloc(PBUF_TRANSPORT,ql,PBUF_RAM);
 			err_t e = pbuf_take(pb,buf,ql);
 			assert(e == ERR_OK);
@@ -907,11 +899,7 @@ int udns_query(const char *hn, ip_addr_t *ip, void (*cb)(const char *, const ip_
 	tcpip_send_msg_wait_sem(query_fn,q,&LwipSem);
 	c = q->cnt;
 #endif
-	if (c != 0) {
-		log_dbug(TAG,"query sent");
-	} else {
-		log_warn(TAG,"no query sent");
-	}
+	log_dbug(TAG,"%d query sent",c);
 	return c;
 }
 
@@ -1226,7 +1214,8 @@ int dns_setserver(uint8_t idx, const ip_addr_t *addr)
 		if (ip_addr_cmp(&ns,addr))
 			return 0;
 		if (ip_addr_isany(&ns)) {
-			log_dbug(TAG,"add nameserver %s",inet_ntoa(*addr));
+			char ipstr[32];
+			log_info(TAG,"add nameserver %s",ip2str_r(addr,ipstr,sizeof(ipstr)));
 			ns = *addr;
 			return 0;
 		}
@@ -1260,7 +1249,7 @@ err_t dns_gethostbyname(const char *hostname, ip4_addr_t *addr, dns_found_callba
 		return ERR_ARG;
 	if (ip_addr_isany(&ip))
 		return ERR_INPROGRESS;
-	if (IP_IS_V4(&ip))
+	if (addr && IP_IS_V4(&ip))
 		*addr = *ip_2_ip4(&ip);
 	return 0;
 }
@@ -1269,23 +1258,25 @@ err_t dns_gethostbyname(const char *hostname, ip4_addr_t *addr, dns_found_callba
 int udns(Terminal &t, int argc, const char *argv[])
 {
 	t.print("name server:");
-	for (auto &ns : NameServer) {
-		if (!ip_addr_isany(&ns))
-			t.printf(" %s",inet_ntoa(ns));
+	char ipstr[32];
+	for (const auto &ns : NameServer) {
+		if (!ip_addr_isany(&ns)) {
+			t.printf(" %s",ip2str_r(&ns,ipstr,sizeof(ipstr)));
+		}
 	}
 	t.println("\n\ncache enries:");
 	Lock lock(Mtx,__FUNCTION__);
 	DnsEntry *e = CacheS;
 	while (e) {
 		if (IP_IS_V4(&e->ip))
-			t.printf("%-15s %s\n",inet_ntoa(e->ip),e->host);
+			t.printf("%-15s %s\n",ip4addr_ntoa_r(ip_2_ip4(&e->ip),ipstr,sizeof(ipstr)),e->host);
 		e = e->next;
 	}
 #if defined CONFIG_LWIP_IPV6 || defined CONFIG_IDF_TARGET_ESP32
 	e = CacheS;
 	while (e) {
 		if (IP_IS_V6(&e->ip))
-			t.printf("%-32s %s\n",inet_ntoa(e->ip),e->host);
+			t.printf("%-32s %s\n",ip6addr_ntoa_r(ip_2_ip6(&e->ip),ipstr,sizeof(ipstr)),e->host);
 		e = e->next;
 	}
 #endif

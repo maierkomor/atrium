@@ -19,7 +19,7 @@
 
 #include "globals.h"
 #include "hwcfg.h"
-#include "ujson.h"
+#include "env.h"
 #include "log.h"
 #include "netsvc.h"
 #include "profiling.h"
@@ -37,6 +37,39 @@
 #include <freertos/semphr.h>
 
 using namespace std;
+extern const char *Weekdays_de[];
+
+/*
+// requires ~ 512B ROM
+class Uptime : public EnvElement
+{
+	public:
+	Uptime()
+	: EnvElement("uptime")
+	{ }
+
+	void writeValue(stream &s) const
+	{
+		s << (double)timestamp()*1E-6;
+	}
+};
+
+
+struct LocalTime : public EnvElement
+{
+	public:
+	LocalTime()
+	: EnvElement("ltime")
+	{ }
+
+	void writeValue(stream &s) const override
+	{
+		char now[32];
+		s << localtimestr(now);
+	}
+};
+*/
+
 
 const char ResetReasons[][12] = {
 	"unknown",
@@ -57,11 +90,12 @@ NodeConfig Config;
 HardwareConfig HWConf;
 nvs_handle NVS = 0;
 
-JsonObject *RTData = 0;
-JsonNumber *Uptime = 0;
+EnvObject *RTData = 0;
 #ifdef CONFIG_OTA
-JsonString *UpdateState = 0;
+EnvString *UpdateState = 0;
 #endif
+EnvString *Localtime = 0;
+EnvNumber *Uptime = 0;
 
 
 #define TAG MODULE_SNTP
@@ -69,37 +103,37 @@ JsonString *UpdateState = 0;
 static SemaphoreHandle_t Mtx = 0;
 
 
-/*
-static JsonObject *rtd_get_obj(const char *name)
-{
-	JsonElement *e = RTData->get(name);
-	assert(e);
-	return e->to_object();
-}
-
-
-static JsonElement *rtd_get(const char *cat, const char *item)
-{
-	JsonObject *o;
-	if (cat)
-		o = rtd_get_obj(cat);
-	else
-		o = RTData;
-	return o->getn(item);
-}
-*/
-
 void globals_setup()
 {
 	HWConf.clear();	// initialize defaults
 	Config.clear();
-	RTData = new JsonObject(0);
+	RTData = new EnvObject(0);
 	RTData->add("version",Version);
 	Mtx = xSemaphoreCreateMutex();
 #if LWIP_TCPIP_CORE_LOCKING != 1
 	LwipMtx  = xSemaphoreCreateMutex();
 #endif
+//	RTData->add(new Uptime);
+//	RTData->add(new LocalTime);
+	Localtime = RTData->add("ltime","");
+	Uptime = RTData->add("uptime",0.0);
 }
+
+
+/*
+const char *localtimestr(char *s)
+{
+	uint8_t h,m,d;
+	unsigned y;
+	get_time_of_day(&h,&m,0,&d,0,0,&y);
+	if ((h < 24) && (y > 2020))
+		sprintf(s,"%s, %u:%02u",Weekdays_de[d],h,m);
+	else
+		s[0] = 0;
+	return s;
+}
+*/
+
 
 void rtd_lock()
 {
@@ -117,8 +151,7 @@ void rtd_unlock()
 
 void rtd_update()
 {
-	if (Uptime == 0)
-		Uptime = RTData->add("uptime",0.0);
+//	Uptime->set((double)timestamp()*1E-6);
 	Uptime->set((double)timestamp()/1000000.0);
 }
 

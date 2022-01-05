@@ -187,7 +187,7 @@ void set_logfile(const char *fn)
 
 void log_common(log_level_t l, logmod_t m, const char *f, va_list val)
 {
-	char buf[LOG_MAXLEN+1];
+	char buf[32+LOG_MAXLEN+1];	// 32 for the prefix
 	char *at = buf + 8;
 	int p = 8;
 	struct timeval tv;
@@ -247,14 +247,12 @@ void log_common(log_level_t l, logmod_t m, const char *f, va_list val)
 }
 
 
-void log_gen(log_level_t ll, logmod_t m, const char *f, ...)
+void log_direct(log_level_t ll, logmod_t m, const char *f, ...)
 {
-	if ((ll != ll_debug) || (log_module_enabled(m))) {
-		va_list val;
-		va_start(val,f);
-		log_common(ll,m,f,val);
-		va_end(val);
-	}
+	va_list val;
+	va_start(val,f);
+	log_common(ll,m,f,val);
+	va_end(val);
 }
 
 

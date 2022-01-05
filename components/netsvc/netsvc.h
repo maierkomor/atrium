@@ -43,9 +43,6 @@ extern const uint8_t HostnameLen, DomainnameLen;
 
 #if LWIP_IPV6
 extern ip6_addr_t IP6G,IP6LL;
-#define ip2str(ip) (IP_IS_V6(ip)?ip6addr_ntoa(ip_2_ip6(ip)):ip4addr_ntoa(ip_2_ip4(ip)))
-#else
-#define ip2str(ip) ip4addr_ntoa(ip_2_ip4(ip))
 #endif
 
 char *streol(char *b, size_t n);
@@ -57,6 +54,9 @@ extern SemaphoreHandle_t LwipMtx;
 int sethostname(const char *h, size_t l);
 int setdomainname(const char *h, size_t l);
 const char *strlwiperr(int);
+
+const char *ip2str(const ip_addr_t *ip);
+const char *ip2str_r(const ip_addr_t *ip, char *out, size_t n);
 
 #if LWIP_TCPIP_CORE_LOCKING == 1
 #define LWIP_LOCK() LOCK_TCPIP_CORE()

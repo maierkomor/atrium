@@ -25,7 +25,7 @@
 #include "cyclic.h"
 #include "i2cdrv.h"
 #include "log.h"
-#include "ujson.h"
+#include "env.h"
 
 
 #define DEV_ADDR_MIN	(0x5a << 1)
@@ -95,7 +95,7 @@ int CCS811B::init()
 }
 
 
-void CCS811B::attach(JsonObject *root)
+void CCS811B::attach(EnvObject *root)
 {
 	m_root = root;
 	m_tvoc = root->add("tvoc",NAN,"ppb");
@@ -138,10 +138,10 @@ unsigned CCS811B::cyclic(void *arg)
 unsigned CCS811B::updateHumidity()
 {
 	float t = NAN, h = NAN;
-	if (JsonElement *he = m_root->find("humidity")) {
-		if (JsonNumber *humid = he->toNumber()) {
-			if (JsonElement *te = m_root->find("temperature")) {
-				if (JsonNumber *temp= te->toNumber()) {
+	if (EnvElement *he = m_root->find("humidity")) {
+		if (EnvNumber *humid = he->toNumber()) {
+			if (EnvElement *te = m_root->find("temperature")) {
+				if (EnvNumber *temp= te->toNumber()) {
 					t = temp->get();
 					if (isnan(t))
 						goto done;

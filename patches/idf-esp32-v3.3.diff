@@ -1,3 +1,52 @@
+diff --git a/components/coap/libcoap b/components/coap/libcoap
+--- a/components/coap/libcoap
++++ b/components/coap/libcoap
+@@ -1 +1 @@
+-Subproject commit 6468887a12666f88b8704d797fc176cd4f40ee4c
++Subproject commit 6468887a12666f88b8704d797fc176cd4f40ee4c-dirty
+diff --git a/components/esp32/event_default_handlers.c b/components/esp32/event_default_handlers.c
+index d1c2e13be1..3b872c87dd 100644
+--- a/components/esp32/event_default_handlers.c
++++ b/components/esp32/event_default_handlers.c
+@@ -99,13 +99,13 @@ const char* wifi_get_reason(int err)
+ 
+ typedef esp_err_t (*system_event_handler_t)(system_event_t *e);
+ 
+-static esp_err_t system_event_ap_start_handle_default(system_event_t *event);
+-static esp_err_t system_event_ap_stop_handle_default(system_event_t *event);
+-static esp_err_t system_event_sta_start_handle_default(system_event_t *event);
+-static esp_err_t system_event_sta_stop_handle_default(system_event_t *event);
+-static esp_err_t system_event_sta_connected_handle_default(system_event_t *event);
+-static esp_err_t system_event_sta_disconnected_handle_default(system_event_t *event);
+-static esp_err_t system_event_sta_got_ip_default(system_event_t *event);
++esp_err_t system_event_ap_start_handle_default(system_event_t *event);
++esp_err_t system_event_ap_stop_handle_default(system_event_t *event);
++esp_err_t system_event_sta_start_handle_default(system_event_t *event);
++esp_err_t system_event_sta_stop_handle_default(system_event_t *event);
++esp_err_t system_event_sta_connected_handle_default(system_event_t *event);
++esp_err_t system_event_sta_disconnected_handle_default(system_event_t *event);
++esp_err_t system_event_sta_got_ip_default(system_event_t *event);
+ static esp_err_t system_event_sta_lost_ip_default(system_event_t *event);
+ 
+ static esp_err_t system_event_eth_start_handle_default(system_event_t *event);
+@@ -176,7 +176,7 @@ esp_err_t system_event_eth_disconnected_handle_default(system_event_t *event)
+     return ESP_OK;
+ }
+ 
+-static esp_err_t system_event_eth_got_ip_default(system_event_t *event)
++esp_err_t system_event_eth_got_ip_default(system_event_t *event)
+ {
+     ESP_LOGI(TAG, "eth ip: " IPSTR ", mask: " IPSTR ", gw: " IPSTR,
+            IP2STR(&event->event_info.got_ip.ip_info.ip),
+@@ -186,7 +186,7 @@ static esp_err_t system_event_eth_got_ip_default(system_event_t *event)
+     return ESP_OK;
+ }
+ 
+-static esp_err_t system_event_sta_got_ip_default(system_event_t *event)
++esp_err_t system_event_sta_got_ip_default(system_event_t *event)
+ {
+     WIFI_API_CALL_CHECK("esp_wifi_internal_set_sta_ip", esp_wifi_internal_set_sta_ip(), ESP_OK);
+ 
 diff --git a/components/lwip/component.mk b/components/lwip/component.mk
 index dca3784775..2806eba928 100644
 --- a/components/lwip/component.mk
@@ -20,11 +69,26 @@ index dca3784775..2806eba928 100644
  	lwip/src/core \
  	lwip/src/core/ipv4 \
  	lwip/src/core/ipv6 \
+diff --git a/components/lwip/lwip b/components/lwip/lwip
+--- a/components/lwip/lwip
++++ b/components/lwip/lwip
+@@ -1 +1 @@
+-Subproject commit 2acf959a2bb559313cd2bf9306c24612ba3d0e19
++Subproject commit 2acf959a2bb559313cd2bf9306c24612ba3d0e19-dirty
 diff --git a/components/lwip/port/esp32/freertos/sys_arch.c b/components/lwip/port/esp32/freertos/sys_arch.c
-index 1f98eee71a..5c4c7fecc5 100644
+index 1f98eee71a..b44ff94b00 100644
 --- a/components/lwip/port/esp32/freertos/sys_arch.c
 +++ b/components/lwip/port/esp32/freertos/sys_arch.c
-@@ -72,10 +72,13 @@ sys_mutex_new(sys_mutex_t *pxMutex)
+@@ -59,7 +59,7 @@ sys_mutex_new(sys_mutex_t *pxMutex)
+ {
+   err_t xReturn = ERR_MEM;
+ 
+-  *pxMutex = xSemaphoreCreateMutex();
++  *pxMutex = xSemaphoreCreateRecursiveMutex();
+ 
+   if (*pxMutex != NULL) {
+     xReturn = ERR_OK;
+@@ -72,16 +72,19 @@ sys_mutex_new(sys_mutex_t *pxMutex)
  
  /** Lock a mutex
   * @param mutex the mutex to lock */
@@ -33,8 +97,25 @@ index 1f98eee71a..5c4c7fecc5 100644
  sys_mutex_lock(sys_mutex_t *pxMutex)
  {
 -  while (xSemaphoreTake(*pxMutex, portMAX_DELAY) != pdPASS);
-+	if (pdFALSE == xSemaphoreTake(*pxMutex, 10000))
++	if (pdFALSE == xSemaphoreTakeRecursive(*pxMutex, 30000))
 +		abort_on_mutex(*pxMutex,"<system>");
++//  while (xSemaphoreTake(*pxMutex, portMAX_DELAY) != pdPASS);
  }
  
  err_t
+ sys_mutex_trylock(sys_mutex_t *pxMutex)
+ {
+-  if (xSemaphoreTake(*pxMutex, 0) == pdPASS) return 0;
++  if (xSemaphoreTakeRecursive(*pxMutex, 0) == pdPASS) return 0;
+   else return -1;
+ }
+ 
+@@ -90,7 +93,7 @@ sys_mutex_trylock(sys_mutex_t *pxMutex)
+ void ESP_IRAM_ATTR
+ sys_mutex_unlock(sys_mutex_t *pxMutex)
+ {
+-  xSemaphoreGive(*pxMutex);
++  xSemaphoreGiveRecursive(*pxMutex);
+ }
+ 
+ /** Delete a semaphore

@@ -29,13 +29,12 @@
 
 using namespace std;
 
-static bitset<NUM_MODULES> Modules;
-static bool EnableAll = false;
+bitset<NUM_MODULES> Modules;
 
 
 void log_module_print(Terminal &t)
 {
-	if (EnableAll)
+	if (Modules[0])
 		t.println("*");
 	for (int i = 0; i < NUM_MODULES; ++i) {
 		if (Modules[i])
@@ -48,7 +47,7 @@ int log_module_enable(const char *m)
 {
 	log_info(TAG,"debug %s",m);
 	if (0 == strcmp(m,"*")) {
-		EnableAll = true;
+		Modules[0] = true;
 		return 0;
 	}
 	for (int i = 1; i < NUM_MODULES; ++i) {
@@ -102,9 +101,10 @@ void log_module_enable(const vector<estring> &mods)
 #endif
 }
 
+
 int log_module_enabled(logmod_t m)
 {
-	return EnableAll || Modules[m];
+	return Modules[0] || Modules[m];
 }
 
 
@@ -117,8 +117,8 @@ int log_module_disable(const char *m)
 				return 0;
 			}
 		}
-	} else if (EnableAll) {
-		EnableAll = false;
+	} else if (Modules[0]) {
+		Modules[0] = false;
 		return 0;
 	}
 	return 1;
@@ -127,7 +127,7 @@ int log_module_disable(const char *m)
 
 void log_hex(logmod_t m, const void *d, unsigned n, const char *f, ...)
 {
-	if (!EnableAll && !Modules[m])
+	if (!Modules[0]&& !Modules[m])
 		return;
 	va_list val;
 	va_start(val,f);
@@ -156,7 +156,7 @@ void log_hex(logmod_t m, const void *d, unsigned n, const char *f, ...)
 
 void log_dbug(logmod_t m, const char *f, ...)
 {
-	if (EnableAll || Modules[m]) {
+	if (Modules[0] || Modules[m]) {
 		va_list val;
 		va_start(val,f);
 		log_common(ll_debug,m,f,val);
@@ -167,10 +167,21 @@ void log_dbug(logmod_t m, const char *f, ...)
 
 void log_local(logmod_t m, const char *f, ...)
 {
-	if (EnableAll || Modules[m]) {
+	if (Modules[0] || Modules[m]) {
 		va_list val;
 		va_start(val,f);
 		log_common(ll_local,m,f,val);
+		va_end(val);
+	}
+}
+
+
+void log_gen(log_level_t ll, logmod_t m, const char *f, ...)
+{
+	if ((ll != ll_debug) || Modules[0] || Modules[m]) {
+		va_list val;
+		va_start(val,f);
+		log_common(ll,m,f,val);
 		va_end(val);
 	}
 }

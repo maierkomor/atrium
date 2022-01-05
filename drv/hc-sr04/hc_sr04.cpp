@@ -24,7 +24,7 @@
 #include "hc_sr04.h"
 #include "log.h"
 #include "stream.h"
-#include "ujson.h"
+#include "env.h"
 
 #include <esp_timer.h>
 #include <rom/gpio.h>
@@ -35,7 +35,7 @@
 HC_SR04 *HC_SR04::First = 0;
 
 HC_SR04::HC_SR04(gpio_num_t trigger, gpio_num_t echo)
-: m_dist(new JsonNumber("distance","mm"))
+: m_dist()
 , m_trigger(trigger)
 , m_echo(echo)
 {
@@ -77,11 +77,11 @@ HC_SR04 *HC_SR04::create(int8_t trigger, int8_t echo)
 }
 
 
-int HC_SR04::attach(JsonObject *root)
+int HC_SR04::attach(EnvObject *root)
 {
 	m_ev = event_register(m_name,"`update");
 	event_callback(m_ev,action_add(concat(m_name,"!update"),HC_SR04::update,this,0));
-	m_dist = root->add(m_name,NAN);
+	m_dist = root->add(m_name,NAN,"mm");
 	return 0;
 }
 

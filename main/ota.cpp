@@ -56,7 +56,11 @@ extern "C" {
 #include <string.h>
 #include <unistd.h>
 
+#ifdef CONFIG_IDF_TARGET_ESP32
+#define OTABUF_SIZE 8192
+#else
 #define OTABUF_SIZE 4096
+#endif
 
 #define TAG MODULE_OTA
 
@@ -77,7 +81,7 @@ static char *skip_http_header(Terminal &t, char *text, int len)
 }
 
 
-#ifdef CONFIG_IDF_TARGET_ESP32
+#ifdef CONFIG_SOCKET_API
 
 static int send_http_get(Terminal &t, const char *server, int port, const char *filename, const char *auth)
 {
@@ -234,7 +238,7 @@ static int to_ota(Terminal &t, void *arg, char *buf, size_t s)
 }
 
 
-#ifdef CONFIG_IDF_TARGET_ESP32
+#ifdef CONFIG_SOCKET_API
 static int socket_to_x(Terminal &t, int hsock, int (*sink)(Terminal&,void*,char*,size_t), void *arg)
 {
 	char *buf = (char*)malloc(OTABUF_SIZE), *data;
@@ -432,7 +436,7 @@ static int http_to(Terminal &t, char *addr, int (*sink)(Terminal &,void*,char*,s
 		t.printf("unable to resolve ip of %s: %s\n",server,strlwiperr(e));
 		return -1;
 	}
-#ifdef CONFIG_IDF_TARGET_ESP32
+#ifdef CONFIG_SOCKET_API
 	int hsock = send_http_get(t,server,port,filepath,username);
 	if (hsock == -1)
 		return 1;

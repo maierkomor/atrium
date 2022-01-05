@@ -23,8 +23,6 @@
 
 #include <assert.h>
 
-using namespace std;
-
 
 mstream::~mstream()
 {

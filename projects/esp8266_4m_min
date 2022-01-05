@@ -257,6 +257,7 @@ CONFIG_WFC_TARGET="esp8266"
 # CONFIG_UART_CONSOLE is not set
 # CONFIG_INTEGRATED_HELP is not set
 # CONFIG_HWCONF_DYNAMIC is not set
+# CONFIG_SOCKET_API is not set
 # CONFIG_UDNS is not set
 # CONFIG_MQTT is not set
 # CONFIG_AT_ACTIONS is not set

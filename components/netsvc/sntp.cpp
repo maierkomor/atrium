@@ -81,8 +81,6 @@ static inline void sntp_req_fn(void *arg)
 //	log_hex(TAG,pb->payload,SNTP_PKT_SIZE,"send req");
 	if (err_t e = udp_send(SPCB,pb))
 		log_warn(TAG,"send req %s",strlwiperr(e));
-	else
-		log_dbug(TAG,"sent req");
 	pbuf_free(pb);
 #ifndef CONFIG_IDF_TARGET_ESP8266
 	if (pdTRUE != xSemaphoreGive(LwipSem))
@@ -110,7 +108,7 @@ static void handle_recv(void *arg, struct udp_pcb *pcb, struct pbuf *pbuf, const
 {
 	assert(pbuf);
 	if (pbuf->len > sizeof(sntp_pckt)) {
-		log_hex(TAG,pbuf->payload,pbuf->len,"packet from %s:%d, length %d/%d (%d)",inet_ntoa(*ip),(int)port,pbuf->len,pbuf->tot_len,sizeof(sntp_pckt));
+		log_hex(TAG,pbuf->payload,pbuf->len,"packet from %s:%d, length %d",inet_ntoa(*ip),(int)port,pbuf->tot_len);
 		pbuf_free(pbuf);
 		return;
 	}
@@ -118,7 +116,6 @@ static void handle_recv(void *arg, struct udp_pcb *pcb, struct pbuf *pbuf, const
 	bzero(&p,sizeof(p));
 	pbuf_copy_partial(pbuf,&p,pbuf->tot_len,0);
 	pbuf_free(pbuf);
-	log_dbug(TAG,"packet from %s:%d",inet_ntoa(*ip),(int)port);
 	if (((p.mode&6) == 4) && (((p.mode>>6)&3) == 0)) {	// server reply? (4=unicat,5=broadcast)
 		if (p.stratum == 0) {
 			// kiss-of-death packet
@@ -147,10 +144,12 @@ static void handle_recv(void *arg, struct udp_pcb *pcb, struct pbuf *pbuf, const
 				log_warn(TAG,"set time %d",e);
 			} else {
 				LastUpdate = esp_timer_get_time();
-				char buf[32];
-				ctime_r(&tv.tv_sec,buf);
-				buf[strlen(buf)-1] = 0;
-				log_dbug(TAG,"set to %s",buf);
+				if (Modules[0] || Modules[TAG]) {
+					char buf[32];
+					ctime_r(&tv.tv_sec,buf);
+					buf[strlen(buf)-1] = 0;
+					log_dbug(TAG,"set to %s",buf);
+				}
 			}
 		}
 	} else {
@@ -247,7 +246,7 @@ static void sntp_bc_init_fn(void *)
 	if (err_t e = udp_bind(BPCB,IP_ADDR_ANY,SNTP_PORT)) {
 		log_warn(TAG,"bc bind %d",e);
 	} else {
-		ip_set_option(BPCB,SOF_BROADCAST);		
+		ip_set_option(BPCB,SOF_BROADCAST);
 		log_dbug(TAG,"initialized broadcast SNTP");
 	}
 #ifndef CONFIG_IDF_TARGET_ESP8266

@@ -377,3 +377,23 @@ const char *strlwiperr(int e)
 }
 
 
+const char *ip2str(const ip_addr_t *ip)
+{
+#if LWIP_IPV6
+	if (IP_IS_V6_VAL(*ip)) {
+		return ip6addr_ntoa(ip_2_ip6(ip));
+	}
+#endif
+	return ip4addr_ntoa(ip_2_ip4(ip));
+}
+
+
+const char *ip2str_r(const ip_addr_t *ip, char *out, size_t n)
+{
+#if LWIP_IPV6
+	if (IP_IS_V6_VAL(*ip)) {
+		return ip6addr_ntoa_r(ip_2_ip6(ip),out,n);
+	}
+#endif
+	return ip4addr_ntoa_r(ip_2_ip4(ip),out,n);
+}

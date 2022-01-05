@@ -262,11 +262,11 @@ message OneWireConfig
 
 message UartConfig
 {
-	sint8 port = 1;
-	sint8 tx_gpio = 2;
-	sint8 rx_gpio = 3;
-	sint8 cts_gpio = 4;
-	sint8 rts_gpio = 5;
+	sint8 port = 1		[ unset = -1 ];
+	sint8 tx_gpio = 2	[ unset = -1 ];
+	sint8 rx_gpio = 3	[ unset = -1 ];
+	sint8 cts_gpio = 4	[ unset = -1 ];
+	sint8 rts_gpio = 5	[ unset = -1 ];
 }
 
 
@@ -313,6 +313,7 @@ bitset gpiocfg_t
 	bool initlvl : 6;
 	bool pullup : 7;
 	bool pulldown : 8;
+	bool cap_freq_r2r : 9;	// determine frequence rise-to-rise
 }
 
 
@@ -322,12 +323,13 @@ message GpioConfig
 	sint8 gpio = 2		[ unset = -1 ];
 	// bit 1,0: gpio_mode_t: disable, input, output, output_od
 	// bit 4..2: gpio_int_type_t
-	//	{0=none, 1=pos dge, 2=neg edge, 3=both edge
-	//	, 4=lolevel, 5=hilevel}
+	//	{0=none, 1=pos dge, 2=neg edge, 3=both edge}
+	//	{4=lolevel, 5=hilevel}: currently unused
 	// bit 5: set initial level
 	// bit 6: init level
 	// bit 7: pull-up enable
 	// bit 8: pull-down enable
+	// bit 9: frequency rise2rise instead of fall2fall
 	gpiocfg_t config = 3;
 }
 

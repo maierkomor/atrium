@@ -106,7 +106,7 @@ void I2CDevice::updateName()
 }
 
 
-void I2CDevice::attach(class JsonObject *)
+void I2CDevice::attach(class EnvObject *)
 {
 
 }

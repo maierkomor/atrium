@@ -16,8 +16,8 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef JSON_H
-#define JSON_H
+#ifndef ENV_H
+#define ENV_H
 
 // This JSON implementation consciously provides only a subset of the JSON
 // spec, to consume as little ROM and RAM as possible.
@@ -37,34 +37,34 @@
 
 class stream;
 
-class JsonObject;
-class JsonBool;
-class JsonNumber;
-class JsonInt;
-class JsonString;
+class EnvObject;
+class EnvBool;
+class EnvNumber;
+class EnvInt;
+class EnvString;
 
 
-class JsonElement
+class EnvElement
 {
 	public:
 	// pure virtual functions causes problems on ESP8266/xtensa toolchain
 	// cxx_demangle is linked to iram0, which overflows the segment!
-	//virtual ~JsonElement() = 0;
-	virtual ~JsonElement();
+	//virtual ~EnvElement() = 0;
+	virtual ~EnvElement();
 
 	virtual void toStream(stream &) const;
 	virtual void writeValue(stream &) const;
 
-	virtual JsonObject *toObject()
+	virtual EnvObject *toObject()
 	{ return 0; }
 
-	virtual JsonString *toString()
+	virtual EnvString *toString()
 	{ return 0; }
 
-	virtual JsonBool *toBool()
+	virtual EnvBool *toBool()
 	{ return 0; }
 
-	virtual JsonNumber *toNumber()
+	virtual EnvNumber *toNumber()
 	{ return 0; }
 
 	const char *name() const
@@ -77,7 +77,7 @@ class JsonElement
 	{ return m_dim; }
 
 	protected:
-	explicit JsonElement(const char *n, const char *dim = 0)
+	explicit EnvElement(const char *n, const char *dim = 0)
 	: m_name(n ? strdup(n) : 0)
 	, m_dim(dim)
 	{ }
@@ -86,20 +86,20 @@ class JsonElement
 	const char *m_dim;
 
 	private:
-	JsonElement(const JsonElement &);		// intentionally not supported
-	JsonElement& operator = (const JsonElement &);	// intentionally not supported
+	EnvElement(const EnvElement &);		// intentionally not supported
+	EnvElement& operator = (const EnvElement &);	// intentionally not supported
 };
 
 
-class JsonBool : public JsonElement
+class EnvBool : public EnvElement
 {
 	public:
-	JsonBool(const char *name, bool v, const char *dim = 0)
-	: JsonElement(name,dim)
+	EnvBool(const char *name, bool v, const char *dim = 0)
+	: EnvElement(name,dim)
 	, m_value(v)
 	{ }
 
-	JsonBool *toBool()
+	EnvBool *toBool()
 	{ return this; }
 
 	void writeValue(stream &) const;
@@ -115,31 +115,33 @@ class JsonBool : public JsonElement
 };
 
 
-class JsonNumber : public JsonElement
+
+class EnvNumber : public EnvElement
 {
 	public:
-	explicit JsonNumber(const char *name, const char *dim = 0)
-	: JsonElement(name,dim)
+	explicit EnvNumber(const char *name, const char *dim = 0)
+	: EnvElement(name,dim)
 	, m_value(NAN)
 	{ }
 
-	JsonNumber(const char *name, double v, const char *dim = 0)
-	: JsonElement(name,dim)
+	EnvNumber(const char *name, double v, const char *dim = 0)
+	: EnvElement(name,dim)
 	, m_value(v)
 	{ }
 
-	JsonNumber *toNumber()
+	EnvNumber *toNumber() override
 	{ return this; }
-
-	bool isValid() const;
-
-	void writeValue(stream &) const;
 
 	void set(double v)
 	{ m_value = v; }
 
+	void writeValue(stream &) const;
+
 	double get() const
 	{ return m_value; }
+
+	bool isValid() const
+	{ return isnormal(m_value); }
 
 	protected:
 	// must be double to be conforming to JSON spec
@@ -147,12 +149,12 @@ class JsonNumber : public JsonElement
 };
 
 
-class JsonString : public JsonElement
+class EnvString : public EnvElement
 {
 	public:
-	JsonString(const char *name, const char *v, const char *dim = 0);
+	EnvString(const char *name, const char *v, const char *dim = 0);
 
-	JsonString *toString()
+	EnvString *toString()
 	{ return this; }
 
 	void toStream(stream &) const;
@@ -164,53 +166,53 @@ class JsonString : public JsonElement
 	{ return m_value; }
 
 	private:
-	~JsonString();		// deletion is not supported
-	JsonString(const JsonString &);
-	JsonString &operator = (const JsonString &);
+	~EnvString();		// deletion is not supported
+	EnvString(const EnvString &);
+	EnvString &operator = (const EnvString &);
 	char *m_value;
 };
 
 
-class JsonObject : public JsonElement
+class EnvObject : public EnvElement
 {
 	public:
-	explicit JsonObject(const char *n)
-	: JsonElement(n)
+	explicit EnvObject(const char *n)
+	: EnvElement(n)
 	{ }
 
-	JsonObject *toObject()
+	EnvObject *toObject()
 	{ return this; }
 
-	JsonBool *add(const char *name, bool value, const char *dim = 0);
-	JsonNumber *add(const char *name, double value, const char *dim = 0);
-	JsonString *add(const char *name, const char *value, const char *dim = 0);
-	JsonObject *add(const char *name);
-	void add(JsonElement *e)
+	EnvBool *add(const char *name, bool value, const char *dim = 0);
+	EnvNumber *add(const char *name, double value, const char *dim = 0);
+	EnvString *add(const char *name, const char *value, const char *dim = 0);
+	EnvObject *add(const char *name);
+	void add(EnvElement *e)
 	{ m_childs.push_back(e); }
-	void remove(JsonElement *e);
-	JsonElement *get(const char *) const;
-	JsonElement *find(const char *) const;
-	JsonElement *getChild(unsigned i) const
+	void remove(EnvElement *e);
+	EnvElement *get(const char *) const;
+	EnvElement *find(const char *) const;
+	EnvElement *getChild(unsigned i) const
 	{
 		if (i >= m_childs.size())
 			return 0;
 		return m_childs[i];
 	}
 
-	std::vector<JsonElement *> &getChilds()
+	std::vector<EnvElement *> &getChilds()
 	{ return m_childs; }
 
 	void toStream(stream &) const;
 
 	private:
-	void append(JsonElement *);
+	void append(EnvElement *);
 
-	JsonObject *m_parent = 0;
-	std::vector<JsonElement *> m_childs;
+	EnvObject *m_parent = 0;
+	std::vector<EnvElement *> m_childs;
 };
 
 
-JsonElement *ujson_forward(JsonElement *, const char *basename, const char *subname);
+EnvElement *ujson_forward(EnvElement *, const char *basename, const char *subname);
 
 
 #endif

@@ -1,4 +1,5 @@
-synopsis: con [<console>]
-Without argument the connection is redirected to console <console>.
-<console> can be either the integer id of the console or its name.
-To disconnect from the console, type the sequence "~.".
+synopsis: term [-l|<term>]
+Use option -l to list available terminals.
+Without argument the connection is redirected to the first defined
+terminal. <term> can be either the integer id of the console or its name.
+To disconnect from the terminal, type the sequence "~.".

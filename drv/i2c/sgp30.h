@@ -23,7 +23,7 @@
 
 #define SGP30_ADDR	(0x58<<1)
 
-class JsonNumber;
+class EnvNumber;
 
 
 struct SGP30 : public I2CDevice
@@ -42,7 +42,7 @@ struct SGP30 : public I2CDevice
 	const char *drvName() const;
 	int init();
 	uint8_t status();
-	void attach(class JsonObject *);
+	void attach(class EnvObject *);
 
 	protected:
 	float calc_press(int32_t adc_P, int32_t t_fine);
@@ -54,9 +54,9 @@ struct SGP30 : public I2CDevice
 	int selftest_start();
 	int selftest_finish();
 
-	JsonNumber *m_tvoc = 0, *m_co2 = 0;	// owned
-	JsonNumber *m_temp = 0, *m_humid = 0;	// refered to
-	JsonObject *m_root = 0;
+	EnvNumber *m_tvoc = 0, *m_co2 = 0;	// owned
+	EnvNumber *m_temp = 0, *m_humid = 0;	// refered to
+	EnvObject *m_root = 0;
 	uint16_t m_ahumid = 0;
 	typedef enum { selftest, idle, update_humid, measure, error } state_t;
 	state_t m_state = selftest;

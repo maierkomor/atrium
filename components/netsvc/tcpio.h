@@ -21,21 +21,38 @@
 
 #include <stddef.h>
 #include <freertos/FreeRTOS.h>
+#include <lwip/err.h>
+
+
+typedef struct tcpout_arg {
+	struct tcp_pcb *pcb;
+	const char *name;
+	err_t err;
+	xSemaphoreHandle sem;
+} tcpout_arg_t;
 
 typedef struct tcpwrite_arg {
 	struct tcp_pcb *pcb;
-	size_t size;
-	char *data;
 	const char *name;
+	const char *data;
+	size_t size;
+	err_t err;
 	xSemaphoreHandle sem;
 } tcpwrite_arg_t;
+
+typedef struct tcp_pbuf_arg {
+	struct pbuf *pbuf;
+	xSemaphoreHandle sem;
+} tcp_pbuf_arg_t;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+void tcpout_fn(void *arg);
 void tcpwrite_fn(void *arg);
 void tcpwriteout_fn(void *arg);
+void tcp_pbuf_free_fn(void *);
 
 #ifdef __cplusplus
 }

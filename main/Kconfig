@@ -51,6 +51,12 @@ config HWCONF_DYNAMIC
 	help
 		support for configuring and modifying driver online
 
+config SOCKET_API
+	bool "socket API"
+	default false
+	help
+		use LWIP supplied socket API instead of native LwIP binding
+
 config UDNS
 	bool "uDNS"
 	default false

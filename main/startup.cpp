@@ -52,7 +52,7 @@
 #include "uart_terminal.h"
 #include "uarts.h"
 #include "udns.h"
-#include "ujson.h"
+#include "env.h"
 #include "wifi.h"
 
 #include <set>
@@ -149,11 +149,11 @@ static void system_info()
 }
 
 
-static int count_name(JsonObject *o, const char *name)
+static int count_name(EnvObject *o, const char *name)
 {
 	unsigned n = 0;
-	for (JsonElement *e : o->getChilds()) {
-		if (JsonObject *c = e->toObject()) {
+	for (EnvElement *e : o->getChilds()) {
+		if (EnvObject *c = e->toObject()) {
 			n += count_name(c,name);
 		} else if (0 == strcmp(e->name(),name)) {
 			++n;
@@ -163,10 +163,10 @@ static int count_name(JsonObject *o, const char *name)
 }
 
 
-static int has_dups(JsonObject *o)
+static int has_dups(EnvObject *o)
 {
-	for (JsonElement *e : o->getChilds()) {
-		if (JsonObject *c = e->toObject()) {
+	for (EnvElement *e : o->getChilds()) {
+		if (EnvObject *c = e->toObject()) {
 			if (has_dups(c))
 				return 1;
 		} else if (1 < count_name(RTData,e->name())) {
@@ -182,12 +182,12 @@ static void env_setup()
 	if (has_dups(RTData))
 		return;
 	unsigned i = 0;
-	while (JsonElement *x = RTData->getChild(i)) {
+	while (EnvElement *x = RTData->getChild(i)) {
 		++i;
 		if (0 == strcmp(x->name(),"mqtt"))
 			continue;
-		if (JsonObject *c = x->toObject()) {
-			for (JsonElement *m : c->getChilds())
+		if (EnvObject *c = x->toObject()) {
+			for (EnvElement *m : c->getChilds())
 				RTData->add(m);
 		}
 	}
@@ -204,7 +204,6 @@ void app_main()
 #endif
 	globals_setup();	// init HWConf, Config, RTData with defaults
 	nvs_setup();		// read HWConf
-	uart_setup();		// init configured uarts, set diag uart
 
 	log_info(TAG,"Atrium Firmware for ESP based systems");
 	log_info(TAG,"Copyright 2019-2021, Thomas Maier-Komor, License: GPLv3");
@@ -213,6 +212,7 @@ void app_main()
 
 	action_setup();
 	settings_setup();
+	uart_setup();		// init configured uarts, set diag uart
 	cyclic_setup();
 
 	system_info();
@@ -324,8 +324,10 @@ void app_main()
 	ftpd_setup();
 #endif
 
-#ifdef CONFIG_IDF_TARGET_ESP32
+#ifdef CONFIG_SOCKET_API
 	inetd_setup();
+#endif
+#ifdef CONFIG_IDF_TARGET_ESP32
 	esp_ota_mark_app_valid_cancel_rollback();
 #endif
 	log_info(TAG,"Atrium Version %s",Version);

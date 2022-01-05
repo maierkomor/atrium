@@ -22,12 +22,12 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-class JsonObject;
+class EnvObject;
 
 class I2CDevice
 {
 	public:
-	virtual void attach(class JsonObject *);
+	virtual void attach(class EnvObject *);
 
 	virtual const char *drvName() const
 	{ return "I2CDevice"; }

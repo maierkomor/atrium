@@ -23,8 +23,8 @@
 #include <driver/gpio.h>
 
 #define BUTTON_SHORT_START	40
-#define BUTTON_SHORT_END	200
-#define BUTTON_MED_START	500
+#define BUTTON_SHORT_END	350
+#define BUTTON_MED_START	600
 #define BUTTON_MED_END		1000
 #define BUTTON_LONG_START	1500
 #define BUTTON_LONG_END		3000

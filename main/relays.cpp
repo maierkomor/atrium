@@ -22,7 +22,7 @@
 
 #include "globals.h"
 #include "hwcfg.h"
-#include "ujson.h"
+#include "env.h"
 #include "log.h"
 #include "mqtt.h"
 #include "profiling.h"
@@ -44,15 +44,15 @@ static void relay_callback(Relay *r)
 	if (r->getPersistent())
 		store_nvs_u8(r->name(),r->is_on());
 	rtd_lock();
-	JsonObject *o = static_cast<JsonObject *>(RTData->get(r->name()));
+	EnvObject *o = static_cast<EnvObject *>(RTData->get(r->name()));
 	if (o == 0)
 		o = RTData;
-	JsonNumber *i = static_cast<JsonNumber*>(o->get("on"));
+	EnvNumber *i = static_cast<EnvNumber*>(o->get("on"));
 	assert(i);
-	JsonString *s = static_cast<JsonString*>(o->get("state"));
+	EnvString *s = static_cast<EnvString*>(o->get("state"));
 	assert(s);
 	bool on = r->is_on();
-	JsonString *l = static_cast<JsonString*>(o->get(on ? "laston" : "lastoff"));
+	EnvString *l = static_cast<EnvString*>(o->get(on ? "laston" : "lastoff"));
 	i->set(on ? 1 : -1);
 	s->set(on ? "on" : "off");
 	l->set(Localtime->get());
@@ -146,11 +146,11 @@ int relay_setup()
 			r->setPersistent(true);
 			iv = read_nvs_u8(n,iv);
 		}
-		JsonObject *o = RTData->add(n);
+		EnvObject *o = RTData->add(n);
 		o->add("on",iv?1.0:-1.0);
 		o->add("state",iv?"on":"off");
-		o->add("laston",iv?Localtime->get():"");
-		o->add("lastoff",iv?"":Localtime->get());
+		o->add("laston","");
+		o->add("lastoff","");
 		log_dbug(TAG,"relay '%s' at gpio%d init %d",n,gpio,(int)iv);
 		r->set(iv);
 	}

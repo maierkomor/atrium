@@ -28,21 +28,22 @@ extern nvs_handle NVS;
 #ifdef __cplusplus
 class NodeConfig;
 class HardwareConfig;
-class JsonObject;
-class JsonString;
-class JsonNumber;
+class EnvObject;
+class EnvString;
+class EnvString;
+class EnvNumber;
 
 extern NodeConfig Config;
 extern HardwareConfig HWConf;
-extern JsonObject *RTData;
-extern JsonNumber *Uptime;
-extern JsonString *UpdateState, *Localtime;
+extern EnvObject *RTData;
+extern EnvString *UpdateState, *Localtime;
 
 void globals_setup();
 void rtd_lock();
 void rtd_unlock();
 void rtd_update();	// assumes rtd_lock()'ed
 void runtimedata_to_json(class stream &json);
+const char *localtimestr(char *s);
 void get_time_of_day(uint8_t *h, uint8_t *m, uint8_t *s = 0, uint8_t *wd = 0, uint8_t *md = 0, uint8_t *mon = 0, unsigned *year = 0);
 #endif
 

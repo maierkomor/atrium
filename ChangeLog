@@ -1,3 +1,19 @@
+R2112:
+======
+- remove IDF event-task
+- make use of socket API an option
+- fix syslog hang
+- added esp32 UART pin routing support
+- fix for UART initialization
+- renamed console command to term to avoid confusion
+- syslog messages with millisecond accuracy
+- influx init should restart influx service after stop
+- higher log timestamp resolution
+- fix config enum-names parsing
+- infux/tcp auto-restart
+- fix timer interval parsing for minutes
+- button's timing thresholds adjustment
+
 R2111:
 ======
 - complete new integration with LWIP stack

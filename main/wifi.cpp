@@ -18,6 +18,7 @@
 
 #include <sdkconfig.h>
 
+#include "actions.h"
 #include "event.h"
 #include "globals.h"
 #include "hwcfg.h"
@@ -56,8 +57,15 @@ sta_mode_t StationMode;
 static bool WifiStarted = false;
 static uint8_t Status = 0;
 static uptime_t StationDownTS = 0;
-event_t StationDownEv = 0, StationUpEv = 0;
+event_t StationDownEv = 0, StationUpEv = 0, SysWifiEv = 0;
 
+extern "C" {
+esp_err_t system_event_ap_start_handle_default(system_event_t *);	// IDF
+esp_err_t system_event_ap_stop_handle_default(system_event_t *);	// IDF
+esp_err_t system_event_sta_start_handle_default(system_event_t *);	// IDF
+esp_err_t system_event_sta_connected_handle_default(system_event_t *);	// IDF
+esp_err_t system_event_sta_disconnected_handle_default(system_event_t *);	// IDF
+}
 
 #if IDF_VERSION >= 40
 static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
@@ -114,6 +122,7 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
 			Status |= STATUS_WIFI_UP;
 			StationMode = station_connected;
 		} else if (event_id == IP_EVENT_STA_LOST_IP) {
+			log_info(TAG, "lost IP");
 			if (0 == StationDownTS)
 				StationDownTS = uptime();
 			Status &= ~STATUS_WIFI_UP;
@@ -126,21 +135,24 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
 
 #else
 
-static esp_err_t wifi_event_handler(void *ctx, system_event_t *event)
+static esp_err_t wifi_event_handler(system_event_t *event)
 {
 	switch (event->event_id) {
 	case SYSTEM_EVENT_STA_START:
 		log_info(TAG,"station start");
 		esp_wifi_connect();
 		StationMode = station_starting;
+		system_event_sta_start_handle_default(event);	// IDF
 		break;
 	case SYSTEM_EVENT_AP_START:
 		log_info(TAG,"system event ap start");
 		Status |= STATUS_WIFI_UP | STATUS_SOFTAP_UP;
+		system_event_ap_start_handle_default(event);	// IDF
 		break;
 	case SYSTEM_EVENT_AP_STOP:
 		log_info(TAG,"system event ap stop");
 		Status &= ~(STATUS_WIFI_UP | STATUS_SOFTAP_UP);
+		system_event_ap_stop_handle_default(event);	// IDF
 		break;
 	case SYSTEM_EVENT_STA_STOP:
 	case SYSTEM_EVENT_STA_LOST_IP:
@@ -153,6 +165,7 @@ static esp_err_t wifi_event_handler(void *ctx, system_event_t *event)
 		break;
 	case SYSTEM_EVENT_STA_CONNECTED:
 		log_info(TAG,"station " MACSTR " connected",MAC2STR(event->event_info.sta_connected.mac));
+		system_event_sta_connected_handle_default(event);	// IDF
 #if defined CONFIG_LWIP_IPV6 || defined CONFIG_IDF_TARGET_ESP32
 		if (esp_err_t e = tcpip_adapter_create_ip6_linklocal(TCPIP_ADAPTER_IF_STA))
 			log_warn(TAG,"create IPv6 linklocal on station: %s",esp_err_to_name(e));
@@ -195,6 +208,7 @@ static esp_err_t wifi_event_handler(void *ctx, system_event_t *event)
 		break;
 	case SYSTEM_EVENT_STA_DISCONNECTED:
 		log_info(TAG,"disconnected");
+		system_event_sta_disconnected_handle_default(event);	// IDF
 		Status &= ~(STATUS_STATION_UP | STATUS_WIFI_UP);
 		esp_wifi_connect();
 		if (StationMode != station_starting)
@@ -621,6 +635,27 @@ void wifi_wps_start(void *)
 #endif
 
 
+extern "C"
+esp_err_t esp_event_send(system_event_t *ev)
+{
+	log_dbug(TAG,"send wifi event");
+	void *arg = malloc(sizeof(system_event_t));
+	memcpy(arg,ev,sizeof(system_event_t));
+	event_trigger_arg(SysWifiEv,arg);
+	return 0;
+}
+
+
+extern "C"
+void esp_event_process(void *arg)
+{
+	log_dbug(TAG,"process wifi event");
+	system_event_t *ev = (system_event_t *) arg;
+	wifi_event_handler(ev);
+	free(ev);
+}
+
+
 int wifi_setup()
 {
 	if (Status & STATUS_WIFI_UP)
@@ -629,11 +664,14 @@ int wifi_setup()
 	log_info(TAG,"init");
 #if LWIP_IPV6
 	bzero(&IP6G,sizeof(IP6G));
-	bzero(&IP6LL,sizeof(IP6G));
+	bzero(&IP6LL,sizeof(IP6LL));
 #endif
 	StationMode = station_disconnected;
 	StationUpEv = event_id("wifi`station_up");
 	StationDownEv = event_id("wifi`station_down");
+	SysWifiEv = event_register("system`procwifi");
+	Action *pw = action_add("system!procwifi",esp_event_process,0,0);
+	event_callback(SysWifiEv,pw);
 #if IDF_VERSION >= 40
 	esp_netif_init();
 	esp_event_loop_create_default();
@@ -648,35 +686,9 @@ int wifi_setup()
 		log_error(TAG,"set lost-IP event handler: %s",esp_err_to_name(e));
 #else
 	tcpip_adapter_init();
-	if (esp_err_t e = esp_event_loop_init(wifi_event_handler,0)) {
-		log_error(TAG,"esp_event_loop_init failed: %s",esp_err_to_name(e));
-		return 1;
-	}
 #endif
 
-#if 0 //defined CONFIG_IDF_TARGET_ESP8266 && IDF_VERSION > 32
-	// for esp8266 post v3.2
-	wifi_init_config_t cfg;
-	cfg.event_handler = &esp_event_send;
-	cfg.osi_funcs = NULL;
-	cfg.ampdu_rx_enable = WIFI_AMPDU_RX_ENABLED;
-	cfg.qos_enable = WIFI_QOS_ENABLED;
-	cfg.rx_ampdu_buf_len = WIFI_AMPDU_RX_AMPDU_BUF_LEN;
-	cfg.rx_ampdu_buf_num = WIFI_AMPDU_RX_AMPDU_BUF_NUM;
-	cfg.amsdu_rx_enable = WIFI_AMSDU_RX_ENABLED;
-	cfg.rx_ba_win = WIFI_AMPDU_RX_BA_WIN;
-	cfg.rx_max_single_pkt_len = WIFI_RX_MAX_SINGLE_PKT_LEN;
-	cfg.rx_buf_len = WIFI_HW_RX_BUFFER_LEN;
-	cfg.rx_buf_num = CONFIG_ESP8266_WIFI_RX_BUFFER_NUM;
-	cfg.left_continuous_rx_buf_num = CONFIG_ESP8266_WIFI_LEFT_CONTINUOUS_RX_BUFFER_NUM;
-	cfg.rx_pkt_num = CONFIG_ESP8266_WIFI_RX_PKT_NUM;
-	cfg.tx_buf_num = CONFIG_ESP8266_WIFI_TX_PKT_NUM;
-	cfg.nvs_enable = WIFI_NVS_ENABLED;
-	cfg.nano_enable = 0;
-	cfg.magic = WIFI_INIT_CONFIG_MAGIC;
-#else
 	wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-#endif
 	if (esp_err_t e = esp_wifi_init(&cfg)) {
 		log_error(TAG,"esp_wifi_init failed: %s",esp_err_to_name(e));
 		return 1;

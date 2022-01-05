@@ -21,7 +21,7 @@
 
 #include <sdkconfig.h>
 
-#ifdef CONFIG_IDF_TARGET_ESP32
+#ifdef CONFIG_SOCKET_API
 
 #include <lwip/ip_addr.h>
 #include <lwip/err.h>
@@ -105,6 +105,8 @@ class LwTcp
 	static void handle_err(void *arg, err_t e);
 	static err_t handle_sent(void *arg, struct tcp_pcb *pcb, u16_t l);
 	static err_t handle_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *pbuf, err_t e);
+	static void connect_fn(void *);
+	static void close_fn(void *);
 
 	struct tcp_pcb *m_pcb = 0;
 	char *m_buf = 0;
@@ -113,6 +115,10 @@ class LwTcp
 	uint16_t m_port = 0, m_bufsize = 0, m_fill = 0, m_taken = 0, m_nwrite = 0, m_nout = 0;
 	err_t m_err = 0;
 	SemaphoreHandle_t m_sem, m_send, m_mtx;
+#ifndef CONFIG_IDF_TARGET_ESP8266
+	ip_addr_t *m_addr = 0;
+	SemaphoreHandle_t m_lwip;
+#endif
 	bool m_sync = true;
 
 	friend class LwTcpListener;
@@ -149,6 +155,8 @@ class LwTcpListener
 
 	static err_t handle_accept(void *arg, struct tcp_pcb *pcb, err_t x);
 	static void handle_err(void *arg, err_t e);
+	static void abort_fn(void *);
+	static void create_fn(void *);
 
 	static LwTcpListener *First;
 	LwTcpListener *m_next = 0;
@@ -158,6 +166,9 @@ class LwTcpListener
 	uint16_t m_port = 0, m_id = 0, m_stack;
 	uint8_t m_prio;
 	bool m_enabled = true;
+#ifndef CONFIG_IDF_TARGET_ESP8266
+	SemaphoreHandle_t m_lwip;
+#endif
 };
 
 #endif

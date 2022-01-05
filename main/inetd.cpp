@@ -18,7 +18,7 @@
 
 #include <sdkconfig.h>
 
-#ifdef CONFIG_IDF_TARGET_ESP32
+#ifdef CONFIG_SOCKET_API
 
 #include "globals.h"
 #include "inetd.h"

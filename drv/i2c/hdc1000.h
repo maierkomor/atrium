@@ -23,7 +23,7 @@
 
 #define HDC1000_ADDR (0x40<<1)
 
-class JsonNumber;
+class EnvNumber;
 
 struct HDC1000 : public I2CDevice
 {
@@ -31,7 +31,7 @@ struct HDC1000 : public I2CDevice
 	{ return "hdc1000"; }
 
 	int init();
-	void attach(class JsonObject *);
+	void attach(class EnvObject *);
 	unsigned cyclic();
 
 	static HDC1000 *create(uint8_t bus);
@@ -52,7 +52,7 @@ struct HDC1000 : public I2CDevice
 	void setTemp(uint8_t data[]);
 	void setHumid(uint8_t data[]);
 
-	JsonNumber *m_temp = 0, *m_humid = 0;
+	EnvNumber *m_temp = 0, *m_humid = 0;
 	typedef enum { st_idle, st_readtemp, st_readhumid, st_readboth } state_t;
 	typedef enum { sm_none, sm_temp, sm_humid, sm_seq, sm_both } sample_t;
 	state_t m_state = st_idle;

@@ -24,7 +24,7 @@
 
 #define APDS9930_ADDR	(0x39<<1)
 
-class JsonNumber;
+class EnvNumber;
 
 
 struct APDS9930 : public I2CDevice
@@ -35,7 +35,7 @@ struct APDS9930 : public I2CDevice
 	{ return "apds9930"; }
 
 	int init();
-	void attach(class JsonObject *);
+	void attach(class EnvObject *);
 
 	protected:
 	static void trigger(void *);
@@ -47,7 +47,7 @@ struct APDS9930 : public I2CDevice
 	unsigned poweroff();
 	void handle_error();
 
-	JsonNumber *m_lux = 0, *m_prox = 0;
+	EnvNumber *m_lux = 0, *m_prox = 0;
 	// coefficients: defaults for open air
 	float m_ga = 0.49, m_b = 1.862, m_c = 0.746, m_d = 1.291;
 	typedef enum { st_idle, st_sample, st_measure, st_read, st_poweroff } state_t;

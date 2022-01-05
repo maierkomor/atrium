@@ -16,7 +16,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "ujson.h"
+#include "env.h"
 #include "stream.h"
 
 #include <assert.h>
@@ -25,13 +25,13 @@
 
 using namespace std;
 
-JsonElement::~JsonElement()
+EnvElement::~EnvElement()
 {
 	free(m_name);
 }
 
 
-void JsonElement::toStream(stream &o) const
+void EnvElement::toStream(stream &o) const
 {
 	o.print("\"");
 	o.print(m_name);
@@ -48,13 +48,13 @@ void JsonElement::toStream(stream &o) const
 }
 
 
-void JsonElement::writeValue(stream &o) const
+void EnvElement::writeValue(stream &o) const
 {
 	abort();
 }
 
 
-void JsonBool::writeValue(stream &o) const
+void EnvBool::writeValue(stream &o) const
 {
 	if (m_value)
 		o.write("true",4);
@@ -63,39 +63,32 @@ void JsonBool::writeValue(stream &o) const
 }
 
 
-bool JsonNumber::isValid() const
+void EnvNumber::writeValue(stream &o) const
 {
-	return !isnan(m_value) && !isinf(m_value);
-}
-
-
-void JsonNumber::writeValue(stream &o) const
-{
-	if (isnan(m_value)) {
-		if (m_dim)
-			o.write("NaN",3);
-		else
-			o.write("\"NaN\"",5);
+	if (isValid()) {
+		o << get();
+	} else if (m_dim) {
+		o.write("NaN",3);
 	} else {
-		o << m_value;
+		o.write("\"NaN\"",5);
 	}
 }
 
 
-JsonString::JsonString(const char *name, const char *v, const char *dim)
-: JsonElement(name,dim)
+EnvString::EnvString(const char *name, const char *v, const char *dim)
+: EnvElement(name,dim)
 , m_value(strdup(v))
 {
 }
 
 
-JsonString::~JsonString()
+EnvString::~EnvString()
 {
 	free(m_value);
 }
 
 
-void JsonString::toStream(stream &o) const
+void EnvString::toStream(stream &o) const
 {
 	o.printf("\"%s\":\"",m_name);
 	writeValue(o);
@@ -103,20 +96,20 @@ void JsonString::toStream(stream &o) const
 }
 
 
-void JsonString::writeValue(stream &o) const
+void EnvString::writeValue(stream &o) const
 {
-	o.print(m_value);
+	o.print(get());
 }
 
 
-void JsonString::set(const char *v)
+void EnvString::set(const char *v)
 {
 	size_t l = strlen(v);
 	set(v,l+1);
 }
 
 
-void JsonString::set(const char *v, size_t l)
+void EnvString::set(const char *v, size_t l)
 {
 	char *x = (char*)realloc(m_value,l + (v[l-1] != 0));
 	assert(x);
@@ -127,7 +120,7 @@ void JsonString::set(const char *v, size_t l)
 }
 
 
-void JsonObject::toStream(stream &o) const
+void EnvObject::toStream(stream &o) const
 {
 
 	if (m_name) {
@@ -138,7 +131,7 @@ void JsonObject::toStream(stream &o) const
 	if (unsigned n = m_childs.size()) {
 		unsigned c = 0;
 		for (;;) {
-			JsonElement *e = m_childs[c];
+			EnvElement *e = m_childs[c];
 			e->toStream(o);
 			if (++c == n)
 				break;
@@ -149,26 +142,26 @@ void JsonObject::toStream(stream &o) const
 }
 
 
-void JsonObject::append(JsonElement *e)
+void EnvObject::append(EnvElement *e)
 {
-	if (JsonObject *o = e->toObject())
+	if (EnvObject *o = e->toObject())
 		o->m_parent = this;
 	m_childs.push_back(e);
 }
 
 
-JsonElement *JsonObject::get(const char *n) const
+EnvElement *EnvObject::get(const char *n) const
 {
-	for (JsonElement *e : m_childs) {
+	for (EnvElement *e : m_childs) {
 		if (0 == strcmp(e->name(),n)) {
-			if (JsonNumber *n = e->toNumber()) {
+			if (EnvNumber *n = e->toNumber()) {
 				if (!isnan(n->get()))
 					return e;
 			} else {
 				return e;
 			}
-		} else if (JsonObject *o = e->toObject()) {
-			if (JsonElement *c = o->get(n))
+		} else if (EnvObject *o = e->toObject()) {
+			if (EnvElement *c = o->get(n))
 				return c;
 		}
 	}
@@ -176,47 +169,47 @@ JsonElement *JsonObject::get(const char *n) const
 }
 
 
-JsonElement *JsonObject::find(const char *n) const
+EnvElement *EnvObject::find(const char *n) const
 {
-	const JsonObject *o = this;
+	const EnvObject *o = this;
 	while (o->m_parent)
 		o = o->m_parent;
 	return o->get(n);
 }
 
 
-JsonObject *JsonObject::add(const char *n)
+EnvObject *EnvObject::add(const char *n)
 {
-	JsonObject *r = new JsonObject(n);
+	EnvObject *r = new EnvObject(n);
 	append(r);
 	return r;
 }
 
 
-JsonBool *JsonObject::add(const char *n, bool v, const char *dim)
+EnvBool *EnvObject::add(const char *n, bool v, const char *dim)
 {
-	JsonBool *r = new JsonBool(n,v,dim);
+	EnvBool *r = new EnvBool(n,v,dim);
 	append(r);
 	return r;
 }
 
 
-JsonNumber *JsonObject::add(const char *n, double v, const char *dim)
+EnvNumber *EnvObject::add(const char *n, double v, const char *dim)
 {
-	JsonNumber *r = new JsonNumber(n,v,dim);
+	EnvNumber *r = new EnvNumber(n,v,dim);
 	append(r);
 	return r;
 }
 
 
-JsonString *JsonObject::add(const char *n, const char *v, const char *dim)
+EnvString *EnvObject::add(const char *n, const char *v, const char *dim)
 {
-	JsonString *r = new JsonString(n,v,dim);
+	EnvString *r = new EnvString(n,v,dim);
 	append(r);
 	return r;
 }
 
-void JsonObject::remove(JsonElement *x)
+void EnvObject::remove(EnvElement *x)
 {
 	auto e = m_childs.end();
 	auto i = std::find(m_childs.begin(),e,x);
@@ -225,7 +218,7 @@ void JsonObject::remove(JsonElement *x)
 }
 
 /*
-JsonElement *ujson_forward(JsonElement *e, const char *basename, const char *subname)
+EnvElement *ujson_forward(EnvElement *e, const char *basename, const char *subname)
 {
 	assert(e);
 	size_t l = strlen(basename);
@@ -246,7 +239,7 @@ using namespace std;
 
 int main()
 {
-	JsonObject *o = new JsonObject("object");
+	EnvObject *o = new EnvObject("object");
 	o->add("bool",true);
 	o->add("int",16);
 	o->add("str0","somestring");
@@ -255,7 +248,7 @@ int main()
 	o->add("str1",buf);
 	bzero(buf,sizeof(buf));
 	o->add("f",3.1f);
-	o->append(new JsonDegC("f2",3.1));
+	o->append(new EnvDegC("f2",3.1));
 
 	string s;
 	strstream ss(s);

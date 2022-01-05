@@ -24,7 +24,7 @@
 #define IDFMT "%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x"
 #define IDARG(x) (unsigned)(x&0xff),(unsigned)((x>>8)&0xff),(unsigned)((x>>16)&0xff),(unsigned)((x>>24)&0xff),(unsigned)((x>>32)&0xff),(unsigned)((x>>40)&0xff),(unsigned)((x>>48)&0xff),(unsigned)((x>>56)&0xff)
 
-class JsonObject;
+class EnvObject;
 
 class OwDevice
 {
@@ -54,7 +54,7 @@ class OwDevice
 	OwDevice *getNext() const
 	{ return m_next; }
 
-	virtual void attach(JsonObject *)
+	virtual void attach(EnvObject *)
 	{ }
 
 	static OwDevice *getDevice(uint64_t id);

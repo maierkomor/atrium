@@ -145,7 +145,6 @@ static void init_hwconf()
 
 static void init_romfs()
 {
-	log_info(TAG,"init romfs");
 	romfs_setup();
 	if (HWConf.calcSize() == 0)
 		init_hwconf();

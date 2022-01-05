@@ -25,8 +25,8 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
-class JsonObject;
-class JsonNumber;
+class EnvObject;
+class EnvNumber;
 
 
 // DHTModel_t
@@ -73,13 +73,13 @@ class DHT
 	int8_t getUpperBoundHumidity()
 	{ return m_model == DHT_MODEL_DHT11 ? 90 : 100; }
 
-	void attach(JsonObject *);
+	void attach(EnvObject *);
 
 	private:
 	static void fallIntr(void *arg);
 
 	DHTModel_t m_model;
-	JsonNumber *m_temp = 0, *m_humid = 0;
+	EnvNumber *m_temp = 0, *m_humid = 0;
 	unsigned long m_lastReadTime;
 	long m_lastEdge;
 	SemaphoreHandle_t m_mtx;

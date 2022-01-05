@@ -67,7 +67,7 @@ struct Term
 	{ }
 
 	char *name = 0;
-	Term *next;
+	Term *next = 0;
 	uint8_t rx,tx;
 	bool connected = false;
 };
@@ -124,16 +124,20 @@ void uart_setup()
 {
 	for (const UartSettings &c : Config.uart()) {
 		if (!c.has_port()) {
+			log_warn(TAG,"incomplete config");
 			continue;
 		}
 		uart_port_t port = (uart_port_t) c.port();
-		log_info(TAG,"configuring port %d",port);
 		uart_config_t uc;
 		bzero(&uc,sizeof(uc));
 		uc.baud_rate = c.has_baudrate() ? c.baudrate() : 115200;
 		if (c.has_config()) {
 			uc.data_bits = (uart_word_length_t) c.config_wl();
 			uc.stop_bits = (uart_stop_bits_t) c.config_sb();
+			if (uc.stop_bits == 0) {
+				log_warn(TAG,"uart%u: stop bits is unset",port);
+				uc.stop_bits = UART_STOP_BITS_1;
+			}
 			uc.parity = (uart_parity_t) c.config_p();
 			uc.flow_ctrl = (uart_hw_flowcontrol_t) ((c.config_cts()<<1)|c.config_rts());
 #ifdef CONFIG_IDF_TARGET_ESP32
@@ -149,19 +153,57 @@ void uart_setup()
 			uc.use_ref_tick = false;
 #endif
 		}
-		unsigned rx_buf = c.has_rx_bufsize() ? c.rx_bufsize() : 128;
-		unsigned tx_buf = c.has_tx_bufsize() ? c.tx_bufsize() : (256+128);
+		static const char *stop_bits[] = {"","1","1.5","2"};
+		log_info(TAG,"uart%u: %u baud, %u%c%s",port,uc.baud_rate,uc.data_bits+5,uc.parity==0?'N':uc.parity==2?'E':'O',stop_bits[uc.stop_bits]);
 		if (port == (uart_port_t) CONFIG_CONSOLE_UART_NUM) {
 			// already handled
-			log_info(TAG,"system console on uart%d",port);
+			log_info(TAG,"uart%d is console",port);
 		} else if (esp_err_t e = uart_param_config(port,&uc)) {
 			log_error(TAG,"uart%d config: %s",port,esp_err_to_name(e));
-		} else if (esp_err_t e = uart_driver_install(port,rx_buf,tx_buf,0,DRIVER_ARG)) {
-			log_error(TAG,"uart%d driver: %s",port,esp_err_to_name(e));
+#ifndef CONFIG_IDF_TARGET_ESP32
 		} else {
-			log_info(TAG,"uart%u setup done",port);
+			unsigned rx_buf = c.has_rx_bufsize() ? c.rx_bufsize() : 256;
+			if (rx_buf <= 128)
+				log_warn(TAG,"rx buf size must be >=128");
+			unsigned tx_buf = c.has_tx_bufsize() ? c.tx_bufsize() : (256+128);
+			if (esp_err_t e = uart_driver_install(port,rx_buf,tx_buf,0,DRIVER_ARG))
+				log_error(TAG,"uart%d driver: %s",port,esp_err_to_name(e));
+#endif
 		}
 	}
+#ifdef CONFIG_IDF_TARGET_ESP32
+	// pin setting must be done after param-config and befor driver install!
+	for (const auto &c : HWConf.uart()) {
+		int8_t p = c.port();
+		if (p == -1)
+			continue;
+		int8_t tx = c.tx_gpio();
+		if (tx == -1)
+			tx = UART_PIN_NO_CHANGE;
+		int8_t rx = c.rx_gpio();
+		if (rx == -1)
+			rx = UART_PIN_NO_CHANGE;
+		int8_t cts = c.cts_gpio();
+		if (cts == -1)
+			cts = UART_PIN_NO_CHANGE;
+		int8_t rts = c.rts_gpio();
+		if (rts == -1)
+			rts = UART_PIN_NO_CHANGE;
+		if (esp_err_t e = uart_set_pin((uart_port_t)p,tx,rx,rts,cts))
+			log_warn(TAG,"set uart%d to tx=%d,rx=%d,rtx=%d,cts=%d: %s",p,tx,rx,rts,cts,esp_err_to_name(e));
+		else
+			log_info(TAG,"uart%d at tx=%d,rx=%d,rtx=%d,cts=%d",p,tx,rx,rts,cts);
+	}
+	for (const UartSettings &c : Config.uart()) {
+		uart_port_t port = (uart_port_t) c.port();
+		unsigned rx_buf = c.has_rx_bufsize() ? c.rx_bufsize() : 256;
+		if (rx_buf <= 128)
+			log_warn(TAG,"rx buf size must be >=128");
+		unsigned tx_buf = c.has_tx_bufsize() ? c.tx_bufsize() : (256+128);
+		if (esp_err_t e = uart_driver_install(port,rx_buf,tx_buf,0,DRIVER_ARG))
+			log_error(TAG,"uart%d driver: %s",port,esp_err_to_name(e));
+	}
+#endif
 	uint8_t rx_used = 0, tx_used = 0;
 	int crx = HWConf.system().console_rx();
 	int ctx = HWConf.system().console_tx();
@@ -200,10 +242,13 @@ void uart_setup()
 #ifdef CONFIG_TERMSERV
 		if ((tx != -1) && (rx != -1)) {
 			// this is a terminal
-			log_info(TAG,"UART terminal on %d/%d",rx,tx);
 			Term *n = new Term(rx,tx);
-			if (c.has_name())
+			if (c.has_name()) {
 				n->name = strdup(c.name().c_str());
+			} else {
+				asprintf(&n->name,"uart@%u,%u",rx,tx);
+			}
+			log_info(TAG,"terminal '%s' on %d/%d",n->name,rx,tx);
 			if (Terminals == 0) {
 				Terminals = n;
 			} else {
@@ -260,6 +305,14 @@ int uart_termcon(Terminal &term, int argc, const char *args[])
 {
 	if (argc > 2)
 		return arg_invnum(term);
+	if (0 == strcmp("-l",args[1])) {
+		Term *t = Terminals;
+		while (t) {
+			term.printf("rx=%d, tx=%d: %s\n",t->rx,t->tx,t->name);
+			t = t->next;
+		}
+		return 0;
+	}
 	Term *t = Terminals;
 	if (argc == 2) {
 		if ((args[1][0] >= '0') && (args[1][0] <= '9') && (args[1][1] == 0)) {
@@ -305,11 +358,12 @@ int uart_termcon(Terminal &term, int argc, const char *args[])
 				r = 1;
 				break;
 			}
+			log_dbug(TAG,"recv %u",a);
 			if (a > 0) {
-				//log_info(TAG,"%u bytes av",a);
+				//log_dbug(TAG,"%u bytes av",a);
 				int r = uart_read_bytes(rx, buf, a < CON_BUF_SIZE ? a : CON_BUF_SIZE, 0);
 				if (r > 0) {
-					//log_info(TAG,"%u bytes wr",a);
+					//log_dbug(TAG,"%u bytes wr",a);
 					term.write((const char*)buf,r);
 				}
 			}

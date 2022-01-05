@@ -298,7 +298,6 @@ static void event_task(void *)
 			int64_t end = esp_timer_get_time();
 			log_local(TAG,"callbacks of %s in %lu",h.name,end-start);
 			h.time += end-start;
-			start = end;
 		} else {
 			log_error(TAG,"invalid event %u",e);
 		}

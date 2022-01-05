@@ -26,7 +26,7 @@
 #include "globals.h"
 #include "hwcfg.h"
 #include "influx.h"
-#include "ujson.h"
+#include "env.h"
 #include "log.h"
 #include "mqtt.h"
 #include "support.h"
@@ -38,7 +38,7 @@
 static DHT *Dht = 0;
 
 
-int dht_init(JsonObject *root)
+int dht_init(EnvObject *root)
 {
 	if (!HWConf.has_dht())
 		return 1;
@@ -69,6 +69,9 @@ int dht(Terminal &term, int argc, const char *args[])
 			gatherData(0);
 		else
 			return arg_invalid(term,args[1]);
+	} else if (Dht == 0) {
+		term.println("no DHT found");
+		return 1;
 	} else {
 		char buf[12];
 		float_to_str(buf,Dht->getTemperature());

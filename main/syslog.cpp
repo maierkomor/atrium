@@ -50,22 +50,21 @@
 
 #if 0
 #define log_devel(tag,msg,...) con_printf(STRINGLIT_CONCAT(msg,"\n"),__VA_ARGS__)
-//#define log_devel(tag,msg,...) log_dbug(tag,msg,__VA_ARGS__)
+//#define log_devel(tag,msg,...) log_local(tag,msg,__VA_ARGS__)
 #else
 #define log_devel(...)
 #endif
 
 
+enum { ntp_flag=(1<<3), sent_flag = (1<<4), sending_flag = (1<<5) };
+
 struct LogMsg
 {
-	LogMsg *next;
 	uint32_t ts;
 	logmod_t mod;
 	uint8_t ml;
-	log_level_t lvl;
-	bool ntp;		// true: sec since 1970, false msec since start
-	char sent;		// 'L': local, do not send; '*': unset; ' ': sent
-	char msg[];		// not 0-terminated
+	uint8_t flags;	// 0..2 log_level_t, 3: ntp, 4: sent
+	char msg[LOG_MAXLEN];	// not 0-terminated
 };
 
 struct Syslog
@@ -74,16 +73,20 @@ struct Syslog
 	~Syslog();
 
 	struct udp_pcb *pcb = 0;
-	LogMsg *first = 0, *last = 0;
-	uint16_t maxsize, alloc = 0;
-	uint16_t unsent = 0, overwr = 0;
+	LogMsg *msgs = 0;
+	uint64_t ntpbase = 0;
 	uint32_t sent = 0;
+	int16_t unsent = 0, overwr = 0, lost = 0;
+	uint16_t at = 0, num;
 	event_t ev;
 	bool triggered = false;
+	LogMsg *create_msg();
+	void resize(size_t);
 
 	private:
 	Syslog(const Syslog &);
 	Syslog& operator = (const Syslog &);
+	void shrink();
 };
 
 #define TAG MODULE_LOG
@@ -99,9 +102,8 @@ Syslog::Syslog(size_t s)
 {
 	if ((s > 0) && (s < 512))
 		s = 512;
-	else if (s > UINT16_MAX)
-		s = UINT16_MAX;
-	maxsize = s;
+	num = s / sizeof(LogMsg);
+	msgs = (LogMsg *) calloc(num,sizeof(LogMsg));
 }
 
 
@@ -112,26 +114,49 @@ Syslog::~Syslog()
 		udp_remove(pcb);
 		LWIP_UNLOCK();
 	}
-	LogMsg *m = first;
-	while (m) {
-		LogMsg * n = m->next;
-		delete m;
-		m = n;
+}
+
+
+void Syslog::shrink()
+{
+	--num;
+	if (at != num)
+		memmove(msgs+at,msgs+at+1,sizeof(LogMsg)*(num-at));
+	msgs = (LogMsg *)realloc(msgs,num*sizeof(LogMsg));
+}
+
+
+void Syslog::resize(size_t s)
+{
+	unsigned n = (s-sizeof(Syslog))/sizeof(LogMsg);
+//	log_local(TAG,"resize (%u-%u)/%u=%u, using %u",s,sizeof(Syslog),sizeof(LogMsg),s/sizeof(LogMsg),sizeof(Syslog)+n*sizeof(LogMsg));
+	if (n < num) {
+		do {
+			shrink();
+		} while (n < num);
+	} else if (n > num) {
+		int delta = n - num;
+		msgs = (LogMsg *)realloc(msgs, n * sizeof(LogMsg));
+		bzero(msgs+num,delta*sizeof(LogMsg));
 	}
+	num = n;
 }
 
 
 static int sendmsg(LogMsg *m)
 {
+	if (m->msg[0] == 0)
+		return 0;
 	int n;
 	char header[64];
 	const char *mod = ModNames+ModNameOff[m->mod];
-	if (m->ntp) {
+	uint8_t lvl = (m->flags&7)+3;
+	if (m->flags&ntp_flag) {
 		struct tm tm;
-		time_t ts = m->ts;
+		time_t ts = m->ts/1000 + Ctx->ntpbase;
 		gmtime_r(&ts,&tm);
-		n = snprintf(header,sizeof(header),"<%d>1 %4u-%02u-%02uT%02u:%02u:%02u.%03u %.*s %s - - - "
-			, 16 << 3 | (m->lvl+3)	// facility local use = 16, pri = (facility)<<3|serverity
+		n = snprintf(header,sizeof(header),"<%d>1 %4u-%02u-%02uT%02u:%02u:%02u.%03uZ %.*s %s - - - "
+			, 16 << 3 | lvl	// facility local use = 16, pri = (facility)<<3|serverity
 			, tm.tm_year+1900, tm.tm_mon+1, tm.tm_mday
 			, tm.tm_hour, tm.tm_min, tm.tm_sec, m->ts%1000
 			, HostnameLen
@@ -140,14 +165,14 @@ static int sendmsg(LogMsg *m)
 			);
 	} else {
 		n = snprintf(header,sizeof(header),"<%d>1 - %.*s %s - - - "
-			, 16 << 3 | (m->lvl+3)	// facility local use = 16, pri = (facility)<<3|serverity
+			, 16 << 3 | lvl	// facility local use = 16, pri = (facility)<<3|serverity
 			, HostnameLen
 			, Hostname
 			, mod
 			);
 	}
 	assert(n < sizeof(header));
-	log_devel(TAG,"send %.*s",m->ml,m->msg);
+	log_devel(TAG,"send %.*s",n,header);
 	LWIP_LOCK();	//-- this caused a hang - why? still true?
 	struct pbuf *pbuf = pbuf_alloc(PBUF_TRANSPORT, n+m->ml, PBUF_RAM);
 	pbuf_take(pbuf,header,n);
@@ -156,59 +181,67 @@ static int sendmsg(LogMsg *m)
 	pbuf_free(pbuf);
 	LWIP_UNLOCK();
 	if (e) {
-		log_dbug(TAG,"sendto %d",e);
+		log_local(TAG,"sendto %d",e);
 	}
 	return e;
 }
 
 
-static void sendall(void * = 0)
+void sendall(void * = 0)
 {
 	if (Ctx == 0)
 		return;
 	if (Ctx->pcb == 0) {
-		log_dbug(TAG,"no pcb");
+		log_local(TAG,"no pcb");
 		syslog_start(0);	// hangs on startup on IDF v4.x with station connect not finishing
 		return;
 	}
-	log_dbug(TAG,"sendall");
 	unsigned x = 0;
 	MLock lock(Mtx);
-	LogMsg *m = Ctx->first;
-	while (m) {
-		if (m->sent == '*') {
-			m->sent = 's';
+	LogMsg *at = Ctx->msgs+Ctx->at;
+	LogMsg *end = Ctx->msgs+Ctx->num;
+	LogMsg *m = at;
+	do {
+		if (m->msg[0] && (m->flags & sent_flag) == 0) {
+			m->flags |= sending_flag;
 			lock.unlock();
 			int r = sendmsg(m);
+			m->flags &= ~sending_flag;
 			if (r) {
-				m->sent = '*';
 				goto done;
-//				if (x) {
-//					vTaskDelay(10);	// needed for UDP stack to catch up
-//					lock.lock();
-//					continue;
-//				} else
-//					break;
+#if 0
+				if (x) {
+					vTaskDelay(10);	// needed for UDP stack to catch up
+					lock.lock();
+					continue;
+				} else
+					break;
+#endif
 			}
 			lock.lock();
-			m->sent = ' ';
+			m->flags |= sent_flag;
+			assert(Ctx->unsent>0);
 			--Ctx->unsent;
 			++Ctx->sent;
 			++x;
 		}
-		m = m->next;
-	}
+		++m;
+		if (m == end)
+			m = Ctx->msgs;
+	} while (m != at);
 	Ctx->triggered = false;
 	lock.unlock();
 done:
-	log_dbug(TAG,"sent %u log messages",x);
+	log_local(TAG,"sent %u log messages",x);
 }
 
 
 static void syslog_hostip(const char *hn, const ip_addr_t *ip, void *arg)
 {
 	// no LWIP_LOCK as called from tcpip_task
-	log_dbug(TAG,"connect %s at %s",hn,inet_ntoa(ip));
+	char ipstr[32];
+	inet_ntoa_r(*ip,ipstr,sizeof(ipstr));
+	log_info(TAG,"connect %s at %s",hn,ipstr);
 	err_t e;
 	udp_pcb *pcb;
 	{
@@ -248,62 +281,22 @@ static void syslog_start(void*)
 	if (e < 0)
 		log_warn(TAG,"query host %s: %d",host,e);
 	else
-		log_dbug(TAG,"start");
+		log_local(TAG,"start");
 }
 
 
-static LogMsg *create_msg(uint8_t l)
+LogMsg *Syslog::create_msg()
 {
 	// assume lock is alread taken
-	log_devel(TAG,"%u+%u < %u",Ctx->alloc,l,Ctx->maxsize);
-	bool rfail = false;
-	while (((Ctx->alloc + sizeof(LogMsg) + l > Ctx->maxsize) && Ctx->first) || rfail) {
-		LogMsg *r = Ctx->first, *p = 0;
-		unsigned skip = 0;
-		while (r->sent == 's') {
-			// skip message that is currently being sent
-			log_devel(TAG,"skip %.*s",r->ml,r->msg);
-			++skip;
-			p = r;
-			r = r->next;
-			if (r == 0)
-				return 0;
-		}
-		log_devel(TAG,"remove %c %d %p->%p, skip %u\n",r->sent,r->ml,p,r->next,skip);
-		assert((p == 0) || (skip != 0));
-		rfail = false;
-		if (r->next == 0)
-			Ctx->last = p;
-		if (Ctx->first == r)
-			Ctx->first = r->next;
-		if (p)
-			p->next = r->next;
-		Ctx->alloc -= r->ml;
-		if (r->sent == '*') {
-			--Ctx->unsent;
-			++Ctx->overwr;
-		}
-		// realloc seems to be buggy...!
-		if (Ctx->alloc + l <= Ctx->maxsize) {
-			log_devel(TAG,"recycle %u for %u",r->ml,l);
-			if (r->ml == l) {
-				Ctx->alloc += l;
-				return r;
-			}
-			if (void *x = realloc(r,sizeof(LogMsg)+l)) {
-				Ctx->alloc += l;
-				return (LogMsg *) x;
-			}
-			log_devel(TAG,"realloc failed");
-			rfail = true;
-		}
-		log_devel(TAG,"free %u",r->ml);
-		free(r);
-		Ctx->alloc -= sizeof(LogMsg);
+	LogMsg *r = msgs+at;
+	if (r->flags & sending_flag) {
+		++lost;
+		return 0;
 	}
-	LogMsg *r = (LogMsg *) malloc(sizeof(LogMsg)+l);
-	if (r)
-		Ctx->alloc += sizeof(LogMsg)+l;
+	if (r->msg[0] && ((r->flags & sent_flag) == 0))
+		++overwr;
+	++at;
+	at %= num;
 	return r;
 }
 
@@ -319,39 +312,30 @@ void log_syslog(log_level_t lvl, logmod_t module, const char *msg, size_t ml, st
 	if (pdTRUE != xSemaphoreTake(Mtx,MUTEX_ABORT_TIMEOUT))
 		abort_on_mutex(Mtx,__FILE__);
 	bool trigger = false;
-	if (LogMsg *m = create_msg(ml)) {
-		if (Ctx->last)
-			Ctx->last->next = m;
-		else
-			Ctx->first = m;
-		Ctx->last = m;
-		m->next = 0;
-		m->lvl = lvl;
+	if (LogMsg *m = Ctx->create_msg()) {
+		m->flags = lvl;
 		m->ml = ml;
 		m->mod = module;
 		memcpy(m->msg,msg,ml);
-		if (ml == INT8_MAX)
-			memcpy(m->msg+INT8_MAX-5,"[...]",5);
+		m->msg[ml] = 0;
 		struct timeval tv2;
 		if (tv == 0) {
 			gettimeofday(&tv2,0);
 			tv = &tv2;
 		}
-		m->ntp = tv->tv_sec > 10000000;
-		if (m->ntp)
-			m->ts = tv->tv_sec;
-		else
-			m->ts = tv->tv_sec * 1000 + tv->tv_usec/1000;
-		if (lvl == ll_local) {
-			m->sent = 'L';
-		} else {
-			m->sent = '*';
+		if (tv->tv_sec > 10000000) {
+			m->flags |= ntp_flag;
+			if (Ctx->ntpbase == 0)
+				Ctx->ntpbase = tv->tv_sec;
+		}
+		m->ts = (tv->tv_sec-Ctx->ntpbase) * 1000 + tv->tv_usec/1000;
+		if (lvl != ll_local) {
 			++Ctx->unsent;
 			trigger = !Ctx->triggered && (Ctx->ev != 0);
-			Ctx->triggered = true;
+			Ctx->triggered = trigger;
+		} else {
+			m->flags |= sent_flag;
 		}
-	} else {
-		con_print("syslog: OUT OF MEMORY (OOM)");
 	}
 	xSemaphoreGive(Mtx);
 	if (trigger)
@@ -380,32 +364,36 @@ int dmesg(Terminal &term, int argc, const char *args[])
 		return 1;
 	}
 	Lock lock(Mtx,__FUNCTION__);		// would need a recursive lock to support execution with debug on lwtcp
-	LogMsg *m = Ctx->first;
-	term.printf("%u/%u bytes, %u queued, %u overwritten, %u sent\n",Ctx->alloc,Ctx->maxsize,Ctx->unsent,Ctx->overwr,Ctx->sent);
-	while (m) {
-		const char *mod = ModNames+ModNameOff[m->mod];
-		if (m->ntp) {
-			struct tm tm;
-			time_t ts = m->ts;
-			gmtime_r(&ts,&tm);
-			term.printf("%c %02u:%02u:%02u.%03lu %-8s: %.*s\n"
-				, m->sent
-				, tm.tm_hour, tm.tm_min, tm.tm_sec, m->ts%1000
-				, mod
-				, m->ml
-				, m->msg
-				);
-		} else {
-			term.printf("%c %8u.%03lu %-8s: %.*s\n"
-				, m->sent
-				, m->ts/1000, m->ts%1000
-				, mod
-				, m->ml
-				, m->msg
-				);
+	LogMsg *at = Ctx->msgs+Ctx->at;
+	LogMsg *m = at;
+	term.printf("%u queued, %u overwritten, %u sent, %u lost\n",Ctx->unsent,Ctx->overwr,Ctx->sent,Ctx->lost);
+	do {
+		if (m->msg[0]) {
+			const char *mod = ModNames+ModNameOff[m->mod];
+			char status = (m->flags&7) == ll_local ? 'L' : (m->flags & sending_flag) ? 's' : (m->flags & sent_flag) ? ' ' : '*';
+			if (m->flags & ntp_flag) {
+				struct tm tm;
+				time_t ts = m->ts/1000+Ctx->ntpbase;
+				gmtime_r(&ts,&tm);
+				term.printf("%c %02u:%02u:%02u.%03lu %-8s: "
+					, status
+					, tm.tm_hour, tm.tm_min, tm.tm_sec, m->ts%1000
+					, mod
+					);
+			} else {
+				term.printf("%c %8u.%03lu %-8s: "
+					, status
+					, m->ts/1000, m->ts%1000
+					, mod
+					);
+			}
+			term.write(m->msg,m->ml);
+			term.println();
 		}
-		m = m->next;
-	}
+		++m;
+		if (m == Ctx->msgs+Ctx->num)
+			m = Ctx->msgs;
+	} while (m != at);
 	return 0;
 }
 
@@ -420,24 +408,16 @@ void dmesg_setup()
 
 void dmesg_resize(size_t ds)
 {
-	log_dbug(TAG,"resize %u",ds);
 	Lock lock(Mtx,__FUNCTION__);
 	if (Ctx == 0) {
 		if (ds)
 			Ctx = new Syslog(ds);
 	} else {
-		while (Ctx->alloc > ds) {
-			LogMsg *r = Ctx->first;
-			assert(r);
-			Ctx->first = r->next;
-			Ctx->alloc -= r->ml + sizeof(LogMsg);
-			free(r);
-		}
-		if (ds == 0) {
+		if (ds) {
+			Ctx->resize(ds);
+		} else {
 			delete Ctx;
 			Ctx = 0;
-		} else {
-			Ctx->maxsize = ds;
 		}
 	}
 }
@@ -445,7 +425,7 @@ void dmesg_resize(size_t ds)
 
 void syslog_setup(void)
 {
-	log_dbug(TAG,"setup");
+	log_local(TAG,"setup");
 	action_add("syslog!start",syslog_start,0,0);	// do not advertise - not needed to call manually
 	event_callback("wifi`station_up","syslog!start");
 	Action *a = action_add("syslog!send",sendall,0,"trigger sendind dmesg to syslog");

@@ -22,7 +22,7 @@
 #include "i2cdrv.h"
 #include "bme680.h"
 
-class JsonNumber;
+class EnvNumber;
 
 
 struct BMP280 : public I2CDevice
@@ -39,7 +39,7 @@ struct BMP280 : public I2CDevice
 	{ return "bmp280"; }
 
 	int init();
-	void attach(class JsonObject *);
+	void attach(class EnvObject *);
 	virtual unsigned cyclic();
 
 	protected:
@@ -52,7 +52,7 @@ struct BMP280 : public I2CDevice
 	virtual int read();
 	virtual void handle_error();
 
-	JsonNumber *m_temp = 0, *m_press = 0;
+	EnvNumber *m_temp = 0, *m_press = 0;
 	uint16_t T1 = 0;
 	int16_t T2 = 0, T3 = 0;
 	uint16_t P1 = 0;
@@ -72,7 +72,7 @@ struct BME280 : public BMP280
 	{ return "bme280"; }
 
 	int init();
-	void attach(class JsonObject *);
+	void attach(class EnvObject *);
 
 	protected:
 	float calc_humid(int32_t adc_H, int32_t t_fine);
@@ -80,7 +80,7 @@ struct BME280 : public BMP280
 	int read();
 	void handle_error();
 
-	JsonNumber *m_humid = 0;
+	EnvNumber *m_humid = 0;
 	uint8_t H1 = 0, H3 = 0;
 	int16_t H2 = 0, H4 = 0, H5 = 0;
 	int8_t H6 = 0;
@@ -97,7 +97,7 @@ struct BME680 : public I2CDevice
 	{ return "bme680"; }
 
 	int init();
-	void attach(class JsonObject *);
+	void attach(class EnvObject *);
 
 	protected:
 	unsigned sample();
@@ -105,7 +105,7 @@ struct BME680 : public I2CDevice
 	static unsigned cyclic(void *);
 	static void trigger(void *);
 
-	JsonNumber *m_temp = 0, *m_press = 0, *m_humid = 0, *m_gas = 0;
+	EnvNumber *m_temp = 0, *m_press = 0, *m_humid = 0, *m_gas = 0;
 	bme680_dev m_dev;
 	typedef enum { st_idle, st_sample, st_read, st_error } state_t;
 	state_t m_state = st_idle;

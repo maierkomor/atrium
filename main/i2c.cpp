@@ -25,7 +25,7 @@
 #include "i2cdrv.h"
 #include "log.h"
 #include "terminal.h"
-#include "ujson.h"
+#include "env.h"
 
 #define TAG MODULE_I2C
 
@@ -45,7 +45,7 @@ int i2c_setup(void)
 	}
 	I2CDevice *d = I2CDevice::getFirst();
 	while (d) {
-		JsonObject *o = RTData->add(d->getName());
+		EnvObject *o = RTData->add(d->getName());
 		d->attach(o);
 		d = d->getNext();
 	}

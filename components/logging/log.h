@@ -35,6 +35,7 @@
 
 
 #ifdef __cplusplus
+#include <bitset>
 #include <vector>
 
 extern "C"
@@ -152,6 +153,8 @@ class TryLock
 	bool held;
 };
 
+extern std::bitset<NUM_MODULES> Modules;
+
 struct estring;
 void log_module_print(class Terminal &t);
 void log_module_enable(const std::vector<estring> &mods);
@@ -178,9 +181,12 @@ void log_error(logmod_t m, const char *f, ...);
 void log_warn(logmod_t m, const char *f, ...);
 void log_info(logmod_t m, const char *f, ...);
 void log_dbug(logmod_t m, const char *f, ...);
+#define log_dbugx(m,f,...) {if (Modules[0]||Modules[m]) log_direct(ll_debug,m,f,__VA_ARGS__);}
+#define log_localx(m,f,...) {if (Modules[0]||Modules[m]) log_direct(ll_local,m,f,__VA_ARGS__);}
 void log_hex(logmod_t m, const void *d, unsigned n, const char *f, ...);
 void log_local(logmod_t m, const char *f, ...);
 void log_gen(log_level_t, logmod_t m, const char *f, ...);
+void log_direct(log_level_t ll, logmod_t m, const char *f, ...);
 
 struct timeval;
 void log_syslog(log_level_t lvl, logmod_t m, const char *msg, size_t ml, struct timeval *);
