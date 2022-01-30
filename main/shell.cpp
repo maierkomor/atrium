@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2021, Thomas Maier-Komor
+ *  Copyright (C) 2018-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -182,9 +182,13 @@ static int action(Terminal &t, int argc, const char *args[])
 {
 	if (argc == 1)
 		return help_cmd(t,args[0]);
-	if (argc != 2)
+	if (argc == 3) {
+		char *arg = strdup(args[2]);
+		if (action_activate_arg(args[1],arg))
+			return arg_invalid(t,args[1]);
+	} else if (argc != 2) {
 		return arg_invnum(t);
-	if (0 == strcmp(args[1],"-l")) {
+	} else if (0 == strcmp(args[1],"-l")) {
 		action_iterate(action_print,(void*)&t);
 	} else if (0 == strcmp(args[1],"-p")) {
 		t.printf("\t%-20s %5s %6s (%6s/%6s/%6s)\n","name","count","total","min.","avg.","max.");
@@ -196,7 +200,7 @@ static int action(Terminal &t, int argc, const char *args[])
 	} else if (!strcmp(args[1],"-f")) {
 		if (0 == t.getPrivLevel())
 			return arg_priv(t);
-		Config.set_actions_enable(Config.actions_enable()^~2);
+		Config.set_actions_enable(Config.actions_enable()&~2);
 	} else if (action_activate(args[1])) {
 		return arg_invalid(t,args[1]);
 	}
@@ -239,9 +243,12 @@ static void print_obj(Terminal &t, EnvObject *o, int indent)
 {
 	unsigned c = 0;
 	while (EnvElement *e = o->getChild(c++)) {
+		const char *n = e->name();
+		if (0 == strcmp(n,"mqtt"))
+			continue;
 		for (int i = 0; i < indent; ++i)
 			t << "    ";
-		t << e->name();
+		t << n;
 		if (EnvObject *c = e->toObject()) {
 			t << ":\n";
 			print_obj(t,c,indent+1);
@@ -846,6 +853,7 @@ int mac(Terminal &term, int argc, const char *args[])
 }
 
 
+#if 0
 static int set(Terminal &t, int argc, const char *args[])
 {
 	if (argc == 1) {
@@ -863,6 +871,7 @@ static int set(Terminal &t, int argc, const char *args[])
 		return arg_invnum(t);
 	return arg_invalid(t,args[1]);
 }
+#endif
 
 
 static int hostname(Terminal &term, int argc, const char *args[])
@@ -2209,7 +2218,9 @@ ExeName ExeNames[] = {
 #if 0
 	{"segv",1,segv,"trigger a segmentation violation",0},
 #endif
+#if 0
 	{"set",1,set,"variable settings",set_man},
+#endif
 #ifdef CONFIG_SIGNAL_PROC
 	{"signal",0,signal,"view/modify/connect signals",signal_man},
 #endif

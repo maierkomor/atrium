@@ -1,3 +1,9 @@
+R2201:
+======
+- support arguments for actions
+- ledstrip action/event/mqtt integration
+- uDNS must resolve CNAMEs
+
 R2112:
 ======
 - remove IDF event-task

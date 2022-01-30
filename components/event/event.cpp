@@ -80,13 +80,14 @@ event_t event_register(const char *cat, const char *type)
 	}
 	if (0 == strchr(name,'`'))
 		log_warn(TAG,"event '%s' missing `",name);
-	log_dbug(TAG,"register %s",name);
 	Lock lock(EventMtx,__FUNCTION__);
 	size_t n = EventHandlers.size();
+	log_dbug(TAG,"register %s=%u",name,n);
 	// event_t 0: name: empty string; invalid event, catched in this loop
 	for (size_t i = 0; i < n; ++i) {
 		if (!strcmp(name,EventHandlers[i].name)) {
 			log_warn(TAG,"duplicate event %s",name);
+			abort();
 			if (name != cat)
 				free((void*)name);
 			return (event_t) i;
@@ -115,21 +116,16 @@ uint64_t event_time(event_t e)
 
 int event_callback(event_t e, Action *a)
 {
-	if (e == 0) {
-		log_warn(TAG,"cannot attach action %s to null event",a->name);
-		return -1;
-	}
-	assert(EventMtx);
 	if (pdFALSE == xSemaphoreTake(EventMtx,MUTEX_ABORT_TIMEOUT))
 		abort_on_mutex(EventMtx,__FUNCTION__);
-	if (e < EventHandlers.size()) {
+	if (e && (e < EventHandlers.size())) {
 		EventHandlers[e].callbacks.push_back(a);
 		xSemaphoreGive(EventMtx);
 		log_dbug(TAG,"callback %s -> action %s",EventHandlers[e].name,a->name);
 		return 0;
 	}
 	xSemaphoreGive(EventMtx);
-	log_warn(TAG,"callback event %u: out of range",e);
+	log_warn(TAG,"callback invalid event %u",e);
 	return 1;
 }
 
@@ -141,11 +137,11 @@ int event_callback(const char *event, const char *action)
 		if (Action *a = action_get(action))
 			return event_callback(e,a);
 		else
-			x = "action";
+			x = action;
 	} else {
-		x = "event";
+		x = event;
 	}
-	log_warn(TAG,"event_callback('%s','%s'): invalid %s",event,action,x);
+	log_warn(TAG,"callback arg invalid %s",x);
 	return -1;
 }
 
@@ -171,7 +167,7 @@ int event_detach(event_t e, Action *a)
 			err = "action not found";
 		}
 	}
-	log_error(TAG,"detach event %u: %s",e,err);
+	log_error(TAG,"detach %u: %s",e,err);
 	return 1;
 }
 
@@ -181,7 +177,7 @@ int event_detach(const char *event, const char *action)
 	event_t e = event_id(event);
 	Action *a = action_get(action);
 	if ((e == 0) || (a == 0)) {
-		log_warn(TAG,"event_detach('%s',%s'): invalid arg",event,action);
+		log_warn(TAG,"detach('%s',%s'): invalid arg",event,action);
 		return 2;
 	}
 	return event_detach(e,a);
@@ -219,7 +215,7 @@ const char *event_name(event_t e)
 void event_trigger(event_t id)
 {
 	if (id == 0) {
-		log_warn(TAG,"trigger(0)");
+		log_warn(TAG,"trigger 0");
 		return;
 	}
 	struct Event e = {id,0};
@@ -243,10 +239,7 @@ void event_trigger_nd(event_t id)	// no-debug version for syslog only
 
 void event_trigger_arg(event_t id, void *arg)
 {
-	if (id == 0) {
-		log_warn(TAG,"trigger_arg(0)");
-		return;
-	}
+	assert(id != 0);
 	struct Event e = {id,arg};
 	log_dbug(TAG,"trigger %d %p",id,arg);
 	BaseType_t r = xQueueSend(EventsQ,&e,1000);
@@ -258,12 +251,11 @@ void event_trigger_arg(event_t id, void *arg)
 void event_isr_trigger(event_t id)
 {
 	// ! don't log from ISR
-	if (id == 0)
-		return;
+	assert(id != 0);
 	Event e = {id,0};
 	BaseType_t r = xQueueSendFromISR(EventsQ,&e,0);
  	if (r != pdTRUE)
-		log_fatal(TAG,"send from ISR: %d",r);
+		++Lost;
  }
  
  
@@ -284,22 +276,28 @@ static void event_task(void *)
 			if (e.id == 0)
 				continue;
 		}
-//		con_printf("event %d\n",e.id);
+//		con_printf("event %d,%x\n",e.id,e.arg);
 		Lock lock(EventMtx,__FUNCTION__);
 		int64_t start = esp_timer_get_time();
 		if (e.id < EventHandlers.size()) {
 			EventHandler &h = EventHandlers[e.id];
-			log_local(TAG,"execute callbacks of %s, arg %p",h.name,e.arg);
-			++h.occur;
-			for (auto a : h.callbacks) {
-				log_local(TAG,"\tfunction %s",a->name);
-				a->activate(e.arg);
+			if (!h.callbacks.empty()) {
+				log_local(TAG,"%s callbacks, arg %p",h.name,e.arg);
+				++h.occur;
+				for (auto a : h.callbacks) {
+					log_local(TAG,"\t%s",a->name);
+					a->activate(e.arg);
+				}
+				int64_t end = esp_timer_get_time();
+				log_local(TAG,"%s time: %lu",h.name,end-start);
+				h.time += end-start;
 			}
-			int64_t end = esp_timer_get_time();
-			log_local(TAG,"callbacks of %s in %lu",h.name,end-start);
-			h.time += end-start;
 		} else {
-			log_error(TAG,"invalid event %u",e);
+			log_warn(TAG,"invalid event %u",e);
+		}
+		if (e.arg) {
+//			con_printf("event %d, arg %s\n",e.id,e.arg);
+			free(e.arg);
 		}
 	}
 }

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2021, Thomas Maier-Komor
+ *  Copyright (C) 2018-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -331,8 +331,9 @@ void log_syslog(log_level_t lvl, logmod_t module, const char *msg, size_t ml, st
 		m->ts = (tv->tv_sec-Ctx->ntpbase) * 1000 + tv->tv_usec/1000;
 		if (lvl != ll_local) {
 			++Ctx->unsent;
-			trigger = !Ctx->triggered && (Ctx->ev != 0);
-			Ctx->triggered = trigger;
+			trigger = !Ctx->triggered;
+			if (trigger)
+				Ctx->triggered = trigger;
 		} else {
 			m->flags |= sent_flag;
 		}
@@ -370,19 +371,22 @@ int dmesg(Terminal &term, int argc, const char *args[])
 	do {
 		if (m->msg[0]) {
 			const char *mod = ModNames+ModNameOff[m->mod];
-			char status = (m->flags&7) == ll_local ? 'L' : (m->flags & sending_flag) ? 's' : (m->flags & sent_flag) ? ' ' : '*';
+			const char *lvls = "EWIDL";
+			char status = (m->flags & sending_flag) ? 's' : (m->flags & sent_flag) ? ' ' : '*';
 			if (m->flags & ntp_flag) {
 				struct tm tm;
 				time_t ts = m->ts/1000+Ctx->ntpbase;
 				gmtime_r(&ts,&tm);
-				term.printf("%c %02u:%02u:%02u.%03lu %-8s: "
+				term.printf("%c %c %02u:%02u:%02u.%03lu %-8s: "
 					, status
+					, *(lvls+(m->flags&7))
 					, tm.tm_hour, tm.tm_min, tm.tm_sec, m->ts%1000
 					, mod
 					);
 			} else {
-				term.printf("%c %8u.%03lu %-8s: "
+				term.printf("%c %c %8u.%03lu %-8s: "
 					, status
+					, *(lvls+(m->flags&7))
 					, m->ts/1000, m->ts%1000
 					, mod
 					);

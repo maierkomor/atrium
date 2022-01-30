@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2019, Thomas Maier-Komor
+ *  Copyright (C) 2018-2021, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -20,6 +20,7 @@
 
 #ifdef CONFIG_LEDSTRIP
 
+#include "actions.h"
 #include "dataflow.h"
 #ifdef CONFIG_SIGNAL_PROC
 #include "func.h"
@@ -55,10 +56,29 @@
 
 #define TAG MODULE_LEDSTRIP
 
+struct RgbName
+{
+	uint32_t value;
+	const char *name;
+};
+
+
 static WS2812BDrv *LED_Strip = 0;
 
+static const RgbName RgbNames[] = {
+	{ BLACK, "black" },
+	{ WHITE, "white" },
+	{ RED, "red" },
+	{ BLUE, "blue" },
+	{ MAGENTA, "magenta" },
+	{ YELLOW, "yellow" },
+	{ CYAN, "cyan" },
+	{ PURPLE, "purple" },
+	{ GREEN, "green" },
+};
 
-#if 1 // demo mode
+
+#if 0 // demo mode
 static uint32_t ColorMap[] = {
 	BLACK, WHITE, RED, GREEN, BLUE, MAGENTA, YELLOW, CYAN, PURPLE
 };
@@ -237,6 +257,47 @@ void FnLedstripSet::operator() (DataSignal *s)
 #endif // CONFIG_SIGNAL_PROC
 
 
+static int rgbname_value(const char *n, uint32_t *v)
+{
+	for (const auto &r : RgbNames) {
+		if (0 == strcmp(n,r.name)) {
+			*v = r.value;
+			return 0;
+		}
+	}
+	log_warn(TAG,"unknown color name %s",n);
+	return 1;
+}
+
+
+static void ledstrip_action_set(void *arg)
+{
+	log_dbug(TAG,"action_set");
+	char *a = (char *) arg;
+	if (a == 0) {
+		log_dbug(TAG,"set: missing argument");
+		return;
+	}
+	log_dbug(TAG,"set %s",a);
+	char *e;
+	unsigned long led = strtoul(a,&e,0);
+	if (e == a) {
+		unsigned value;
+		if (rgbname_value(a,&value))
+			return;
+		LED_Strip->set_leds(value);
+	} else if (char *c = strchr(a,',')) {
+		uint32_t value = strtoul(c+1,&e,0);
+		if ((c+1 == e) && rgbname_value(c+1,&value))
+			return;
+		LED_Strip->set_led(led,value);
+	} else {
+		LED_Strip->set_leds(led);
+	}
+	LED_Strip->update();
+}
+
+
 int ledstrip_setup()
 {
 	if (!HWConf.has_ws2812b())
@@ -249,6 +310,7 @@ int ledstrip_setup()
 	log_dbug(TAG,"setup");
 	unsigned nleds = c.nleds();
 	LED_Strip = new WS2812BDrv;
+	action_add("ledstrip!set",ledstrip_action_set,0,"set color of led(s) on strip");
 #ifdef CONFIG_IDF_TARGET_ESP32
 	if (LED_Strip->init((gpio_num_t)c.gpio(),nleds),(rmt_channel_t)c.ch())
 		return 1;
@@ -257,13 +319,13 @@ int ledstrip_setup()
 		return 1;
 #endif
 	LED_Strip->set_leds(0xffffff);
-#if 1
+#if 0
 	BaseType_t r = xTaskCreatePinnedToCore(&ledstrip_task, "ledstrip", 4096, (void*)(unsigned)c.nleds(), 15, NULL, APP_CPU_NUM);
 	if (r != pdPASS) {
 		log_error(TAG,"task creation failed: %s",esp_err_to_name(r));
 		return 1;
 	}
-#else
+#elif 0
 	/*
 	char name[24];
 	new FnLedstripSet("ws2812b_strip",0);

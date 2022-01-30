@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2021, Thomas Maier-Komor
+ *  Copyright (C) 2020-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -209,7 +209,7 @@ void Gpio::init(unsigned config)
 		unsigned lvl = (config>>6)&0x1;
 		log_dbug(TAG,"set level %d",lvl);
 		if (esp_err_t e = gpio_set_level(m_gpio,lvl))
-			log_error(TAG,"cannot set initlevel %d on gpio %d: %s",lvl,m_gpio,esp_err_to_name(e));
+			log_error(TAG,"set level %d on gpio %d: %s",lvl,m_gpio,esp_err_to_name(e));
 	}
 	if (config & (1<<7)) {
 		log_dbug(TAG,"gpio%d: enable pull-up",m_gpio);
@@ -314,13 +314,17 @@ int gpio(Terminal &term, int argc, const char *args[])
 #elif defined CONFIG_IDF_TARGET_ESP8266
 	if (argc == 1) {
 		uint32_t dir = GPIO_REG_READ(GPIO_ENABLE_ADDRESS);
-		uint32_t in = GPIO.in;
-		uint32_t out = GPIO.out;
 		for (int p = 0; p <= 16; ++p ) {
-			if (dir & (1<<p))
-				term.printf("pin %2d: O:%c\n",p,'0'+((out>>p)&1));
-			else
-				term.printf("pin %2d: I:%c\n",p,'0'+((in>>p)&1));
+			uint8_t v;
+			char d;
+			if (dir & (1<<p)) {
+				v = ((GPIO.out>>p)&1);
+				d = 'O';
+			} else {
+				v = ((GPIO.in>>p)&1);
+				d = 'I';
+			}
+			term.printf("pin %2d: %c:%c\n",p,d,'0'+v);
 		}
 #ifndef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 	} else if (0 == strcmp(args[1],"scanin")) {

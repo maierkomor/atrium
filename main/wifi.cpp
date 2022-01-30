@@ -57,7 +57,8 @@ sta_mode_t StationMode;
 static bool WifiStarted = false;
 static uint8_t Status = 0;
 static uptime_t StationDownTS = 0;
-event_t StationDownEv = 0, StationUpEv = 0, SysWifiEv = 0;
+event_t StationDownEv = 0, StationUpEv = 0;
+static event_t SysWifiEv = 0;
 
 extern "C" {
 esp_err_t system_event_ap_start_handle_default(system_event_t *);	// IDF
@@ -97,6 +98,8 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
 				Status |= STATUS_WIFI_FAIL;
 			}
 			StationMode = station_stopped;
+		} else if (event_id == WIFI_EVENT_WIFI_READY) {
+			log_info(TAG,"WiFi ready");
 		} else 
 			log_info(TAG,"unhandled WiFi event %x",event_id);
 	} else if (event_base == IP_EVENT) {
@@ -108,7 +111,9 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
 			WifiRetry = 0;
 			Status |= STATUS_WIFI_UP;
 			StationMode = station_connected;
-			event_trigger_arg(StationUpEv,(void*)event->ip_info.ip.addr);
+			void *arg = malloc(sizeof(event->ip_info.ip.addr));
+			memcpy(arg,&event->ip_info.ip.addr,sizeof(event->ip_info.ip.addr));
+			event_trigger_arg(StationUpEv,arg);
 		} else if (event_id == IP_EVENT_GOT_IP6) {
 			ip_event_got_ip6_t* event = (ip_event_got_ip6_t*) event_data;
 			ip6_addr_t ip;
@@ -138,6 +143,9 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
 static esp_err_t wifi_event_handler(system_event_t *event)
 {
 	switch (event->event_id) {
+	case SYSTEM_EVENT_WIFI_READY:
+		log_info(TAG,"WiFi ready");
+		break;
 	case SYSTEM_EVENT_STA_START:
 		log_info(TAG,"station start");
 		esp_wifi_connect();
@@ -202,7 +210,9 @@ static esp_err_t wifi_event_handler(system_event_t *event)
 			ip4_addr_t ip;
 			ip.addr = event->event_info.got_ip.ip_info.ip.addr;
 			log_info(TAG,"station got IP %s",ip4addr_ntoa(&ip));
-			event_trigger_arg(StationUpEv,(void*)event->event_info.got_ip.ip_info.ip.addr);
+			void *arg = malloc(sizeof(event->event_info.got_ip.ip_info.ip.addr));
+			memcpy(arg,&event->event_info.got_ip.ip_info.ip.addr,sizeof(event->event_info.got_ip.ip_info.ip.addr));
+			event_trigger_arg(StationUpEv,arg);
 			StationDownTS = 0;
 		}
 		break;
@@ -650,9 +660,7 @@ extern "C"
 void esp_event_process(void *arg)
 {
 	log_dbug(TAG,"process wifi event");
-	system_event_t *ev = (system_event_t *) arg;
-	wifi_event_handler(ev);
-	free(ev);
+	wifi_event_handler((system_event_t *) arg);
 }
 
 

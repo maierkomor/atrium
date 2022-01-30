@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021, Thomas Maier-Komor
+ *  Copyright (C) 2021-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -157,6 +157,7 @@ struct DnsEntry
 	char host[];
 };
 
+
 struct Query
 {
 	Query *next;
@@ -168,6 +169,17 @@ struct Query
 	bool local;
 	uint8_t cnt;	// send count
 	char hostname[1];
+};
+
+
+struct CName
+{
+	struct CName *next;
+	char *alias;
+	char *cname;
+
+	CName(const char *hn, const char *cn);
+	~CName();
 };
 
 
@@ -186,6 +198,7 @@ static struct udp_pcb *MPCB6 = 0;
 #endif
 static DnsEntry *CacheS = 0, *CacheE = 0;
 static Query *Queries = 0;;
+static CName *CNames = 0;
 #ifdef EXTRA_INFO
 static char *Ptr = 0;
 #endif
@@ -200,6 +213,21 @@ static SemaphoreHandle_t LwipSem = 0;
 
 
 #define TAG MODULE_UDNS
+
+CName::CName(const char *hn, const char *cn)
+: next(CNames)
+, alias(strdup(hn))
+, cname(strdup(cn))
+{
+	CNames = this;
+}
+
+
+CName::~CName()
+{
+	free(alias);
+	free(cname);
+}
 
 
 #ifdef EXTRA_INFO
@@ -250,7 +278,7 @@ static void cache_add(const char *hn, size_t hl, ip_addr_t *ip, uint32_t ttl)
 	if (Modules[0] || Modules[TAG]) {
 		char ipstr[32];
 		ip2str_r(ip,ipstr,sizeof(ipstr));
-		log_direct(ll_debug,TAG,"cache add %.*s: %s",hl,hn,ipstr);
+		log_dbug(TAG,"cache add %.*s: %s",hl,hn,ipstr);
 	}
 	e = (DnsEntry *) malloc(sizeof(DnsEntry)+hl);
 	memcpy(e->host,hn,hl);
@@ -284,6 +312,18 @@ ip_addr_t *cache_lookup(const char *hn)
 		e = e->next;
 	}
 	return 0;
+}
+
+
+void add_cname(const char *hostname, const char *cname)
+{
+	CName *cn = CNames;
+	while (cn) {
+		if (!strcmp(cn->alias,hostname))
+			return;
+		cn = cn->next;
+	}
+	new CName(hostname,cname);
 }
 
 
@@ -353,20 +393,43 @@ static int parseAnswert(struct pbuf *p, size_t off, const ip_addr_t *sender)
 	a.rdlen = ntohs(a.rdlen);
 	off += SIZEOF_ANSWERT;
 	log_devel(TAG,"answert type %u, class %u, len %u",a.rr_type,a.rr_class,a.rdlen);
+	if (a.rr_type == TYPE_CNAME) {
+		char cname[256];
+		int cnl = parseName(p,off,cname,0);
+		log_dbug(TAG,"%s: cname %s",hostname,cname);
+		add_cname(hostname,cname);
+		Query *q = Queries, *prev = 0;
+		while (q) {
+			if (0 == strcmp(q->hostname,hostname)) {
+				Query *nq = (Query*) realloc(q,sizeof(Query)+cnl+1);
+				strcpy(nq->hostname,cname);
+				if (prev)
+					prev->next = nq;
+				else
+					Queries = nq;
+				prev = nq;
+				q = nq->next;
+			} else {
+				prev = q;
+				q = q->next;
+			}
+		}
+		return off;
+	}
 	if ((a.rr_type != TYPE_ADDR) || ((a.rr_class & 0x7fff) != CLASS_INET) || (a.rdlen != 4)) {
 		return off+a.rdlen;
 	}
 	ip_addr_t ip = IPADDR4_INIT(0);
 	if (((a.rr_class & 0x7fff) == TYPE_ADDR) && (a.rdlen == 4)) {
 		if (4 != pbuf_copy_partial(p,ip_2_ip4(&ip),a.rdlen,off)) {
-			log_dbug(TAG,"copy failed");
+			log_devel(TAG,"copy failed");
 			return -off;
 		}
 		log_devel(TAG,"IPv4 %s",ip2str(&ip));
 #if defined CONFIG_LWIP_IPV6 || defined CONFIG_IDF_TARGET_ESP32
 	} else if (((a.rr_class & 0x7fff) == TYPE_ADDR6) && (a.rdlen == 16)) {
 		if (4 != pbuf_copy_partial(p,ip_2_ip6(&ip),a.rdlen,off)) {
-			log_dbug(TAG,"copy failed");
+			log_devel(TAG,"copy failed");
 			return -off;
 		}
 		log_devel(TAG,"IPv6 %s",ip2str(&ip));
@@ -388,9 +451,10 @@ static int parseAnswert(struct pbuf *p, size_t off, const ip_addr_t *sender)
 	cache_add(hostname,hl,&ip,a.ttl);
 	Query *q = Queries, *prev = 0;
 	while (q) {
+		log_dbug(TAG,"query %s",q->hostname);
 		if (0 == strcmp(q->hostname,hostname)) {
 			if (q->cb) {
-				log_dbug(TAG,"callback for %s=%s",hostname,ip2str(&ip));
+				log_devel(TAG,"callback for %s=%s",hostname,ip2str(&ip));
 				q->cb(hostname,&ip,q->arg);
 			}
 			Query *n = q->next;
@@ -808,6 +872,14 @@ int udns_query(const char *hn, ip_addr_t *ip, void (*cb)(const char *, const ip_
 	if ((hn == 0) || (hn[0] == 0) || (hn[0] == '.'))
 		return -1;
 	assert(Mtx);
+	CName *cn = CNames;
+	while (cn) {
+		if (!strcmp(hn,cn->alias)) {
+			hn = cn->cname;
+			break;
+		}
+		cn = cn->next;
+	}
 	if (ip_addr_t *ce = cache_lookup(hn)) {
 		if (ip)
 			*ip = *ce;
@@ -1280,6 +1352,11 @@ int udns(Terminal &t, int argc, const char *argv[])
 		e = e->next;
 	}
 #endif
+	CName *cn = CNames;
+	while (cn) {
+		t.printf("%s => %s\n",cn->alias,cn->cname);
+		cn = cn->next;
+	}
 	return 0;
 }
 #endif

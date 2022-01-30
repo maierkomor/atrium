@@ -217,7 +217,7 @@ struct MqttClient
 
 static void mqtt_exe_action(const char *t, const void *d, size_t l)
 {
-	action_dispatch((const char *) d,l);
+	action_dispatch((const char *)d,l);
 }
 
 
@@ -1006,6 +1006,12 @@ static void update_signal(const char *t, const void *d, size_t s)
 }
 
 
+static void print_mqtt(Terminal &t, EnvObject *o, int indent)
+{
+
+}
+
+
 int mqtt(Terminal &term, int argc, const char *args[])
 {
 	if (argc > 3)
@@ -1062,8 +1068,8 @@ int mqtt(Terminal &term, int argc, const char *args[])
 			return 1;
 		}
 		if (argc == 2) {
-			for (const auto &s : Client->subscriptions)
-				term.println(s.first.c_str());
+			for (const auto &s : Client->subscriptions) 
+				term.printf("%s: %s\n",s.first.c_str(),Client->values[s.first]->get());
 		} else {
 			if (Client->subscriptions.find(args[2]) != Client->subscriptions.end()) {
 				term.println("already subscribed");
