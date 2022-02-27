@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2021, Thomas Maier-Komor
+ *  Copyright (C) 2018-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -139,8 +139,7 @@ void DHT::attach(EnvObject *root)
 	m_humid = o->add("humidity",NAN,"%");
 }
 
-
-void DHT::fallIntr(void *arg)
+void IRAM_ATTR DHT::fallIntr(void *arg)
 {
 	DHT *d = (DHT*)arg;
 	long now = gettime();
@@ -176,32 +175,27 @@ int DHT::init(uint8_t pin, uint16_t model)
 		log_warn(TAG,"unsupported mode");
 		return 1;
 	}
-	m_pin = pin;
+	m_pin = (xio_t)pin;
 	m_model = (DHTModel_t)model;
 	m_ready = false;
 	m_mtx = xSemaphoreCreateMutex();
+	xio_cfg_t cfg = XIOCFG_INIT;
+	cfg.cfg_io = xio_cfg_io_od;
+	cfg.cfg_intr = xio_cfg_intr_disable;
+	cfg.cfg_pull = xio_cfg_pull_up;
+	if (0 > xio_config(m_pin,cfg)) {
+		log_warn(TAG,"error configuring gpio");
+		return 2;
+	}
 #ifdef ESP32
 	if (esp_err_t e = gpio_reset_pin((gpio_num_t)m_pin)) {
 		log_warn(TAG,"reset pin%u: %s",m_pin,esp_err_to_name(e));
 		return 2;
 	}
 #endif
-	gpio_pad_select_gpio(m_pin);
 	if (esp_err_t e = gpio_isr_handler_add((gpio_num_t)m_pin,fallIntr,(void*)this)) {
 		log_warn(TAG,"gpio%u isr hander: %s",m_pin,esp_err_to_name(e));
 		return 3;
-	}
-	if (esp_err_t e = gpio_set_intr_type((gpio_num_t)m_pin,GPIO_INTR_DISABLE)) {
-		log_warn(TAG,"gpio%u intr: %s",m_pin,esp_err_to_name(e));
-		return 4;
-	}
-	if (esp_err_t e = gpio_set_direction((gpio_num_t)m_pin, GPIO_MODE_INPUT)) {
-		log_warn(TAG,"gpio%u input: %s",m_pin,esp_err_to_name(e));
-		return 5;
-	}
-	if (esp_err_t e = gpio_pullup_en((gpio_num_t)m_pin)) {
-		log_warn(TAG,"pull-up on %u: %s",m_pin,esp_err_to_name(e));
-		return 6;
 	}
 	// sampling should be possible right after setup
 	m_lastReadTime = gettime()/1000 - getMinimumSamplingPeriod();
@@ -240,10 +234,12 @@ bool DHT::read(bool force)
 	m_lastReadTime = currentTime;
 	memset(m_data,0,sizeof(m_data));
 
+	xio_cfg_t cfg = XIOCFG_INIT;
+	cfg.cfg_io = xio_cfg_io_od;
 	ENTER_CRITICAL();
 	// send start signal
-	gpio_set_direction((gpio_num_t)m_pin, GPIO_MODE_OUTPUT);
-	gpio_set_level((gpio_num_t)m_pin,0);
+	xio_config(m_pin,cfg);
+	xio_set_lo(m_pin);
 #ifdef CALIBRATION
 	Edge = Edges;
 #endif
@@ -251,20 +247,20 @@ bool DHT::read(bool force)
 	if (m_model == DHT_MODEL_DHT11)
 		vTaskDelay(18); // [18-20]ms
 	else
-		ets_delay_us(800); // [0.8-20]ms
-
-	// start reading the data line
-	gpio_set_direction((gpio_num_t)m_pin, GPIO_MODE_INPUT);
-	gpio_pullup_en((gpio_num_t)m_pin);
-
+		ets_delay_us(1000); // [0.8-20]ms
 	m_bit = 0;
 	m_edges = 0;
 	m_errors = 0;
 	m_start = 0;
-	gpio_set_intr_type((gpio_num_t)m_pin,GPIO_INTR_NEGEDGE);
+
+	// start reading the data line
+	xio_set_hi(m_pin);
+	cfg.cfg_intr = xio_cfg_intr_fall;
+	xio_config(m_pin,cfg);
 	EXIT_CRITICAL();
 	vTaskDelay(200);
-	gpio_set_intr_type((gpio_num_t)m_pin,GPIO_INTR_DISABLE);
+	cfg.cfg_intr = xio_cfg_intr_disable;
+	xio_config(m_pin,cfg);
 #ifdef CALIBRATION
 	// ignore Edge[0], it will always be out-of-range, and gets ignored
 	log_dbug(TAG,"%u %u %u %u %u %u %u %u %u %u"

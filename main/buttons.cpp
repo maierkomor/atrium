@@ -27,6 +27,9 @@
 #include "hwcfg.h"
 #include "log.h"
 #include "settings.h"
+#ifdef CONFIG_ROTARYENCODER
+#include "rotenc.h"
+#endif
 
 #include <driver/gpio.h>
 
@@ -34,21 +37,11 @@
 
 using namespace std;
 
-#if CONFIG_BUTTON_GPIO < 0 || CONFIG_BUTTON_GPIO >= GPIO_PIN_COUNT
-#error gpio value for button out of range
-#endif
-
 #define TAG MODULE_BUTTON
-
-static Button *Buttons = 0;
 
 
 int button_setup()
 {
-	if (Buttons) {
-		log_warn(TAG,"already initialized");
-		return 1;
-	}
 	for (auto &c : *HWConf.mutable_button()) {
 		if (!c.has_name() || !c.has_gpio())
 			continue;
@@ -63,12 +56,19 @@ int button_setup()
 			n = c.name().c_str();
 		}
 		bool al = c.presslvl();
-		gpio_pull_mode_t pullmode = GPIO_FLOATING;
+		xio_cfg_pull_t pullmode = xio_cfg_pull_none;
 		if (c.pull_mode() == pull_up) 
-			pullmode = GPIO_PULLUP_ONLY;
+			pullmode = xio_cfg_pull_up;
 		else if (c.pull_mode() == pull_down) 
-			pullmode = GPIO_PULLDOWN_ONLY;
-		Buttons = new Button(n,(gpio_num_t)gpio,pullmode,al,Buttons);
+			pullmode = xio_cfg_pull_down;
+#ifdef CONFIG_ROTARYENCODER
+		int8_t clk = c.clk();
+		int8_t dt = c.dt();
+		if ((dt != -1) && (clk != -1))
+			RotaryEncoder::create(n,clk,dt,gpio == -1 ? XIO_INVALID : gpio);
+		else
+#endif
+			Button::create(n,(xio_t)gpio,pullmode,al);
 	}
 	return 0;
 }

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020, Thomas Maier-Komor
+ *  Copyright (C) 2020-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -22,14 +22,15 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/timers.h>
 
-#include <driver/gpio.h>
-
 #include <event.h>
+
+#include "xio.h"
+
 
 class Relay
 {
 	public:
-	Relay(const char *, gpio_num_t gpio, uint32_t minitv, bool onlvl);
+	static Relay *create(const char *, xio_t gpio, uint32_t minitv, bool onlvl);
 
 	void set(bool);
 	void turn_on();
@@ -43,7 +44,7 @@ class Relay
 	const char *name() const
 	{ return m_name; }
 
-	gpio_num_t gpio() const
+	xio_t gpio() const
 	{ return m_gpio; }
 
 	static Relay *first()
@@ -71,19 +72,20 @@ class Relay
 
 
 	private:
+	Relay(const char *, xio_t gpio, uint32_t minitv, bool onlvl);
 	static void timerCallback(void *);
 	void sync();
 
 	static Relay *Relays;
 	Relay *m_next = 0, *m_interlock = 0;
 	const char *m_name;
+	void (*m_cb)(Relay *) = 0;
 	TimerHandle_t m_tmr;
 	uint32_t m_tlt = 0		// time of last toggle
 		, m_minitv = 0;		// minimum toggle interval
-	gpio_num_t m_gpio;
+	xio_t m_gpio;
 	event_t m_onev = 0, m_offev = 0, m_changedev = 0;
 	bool m_state = false, m_set = false, m_persistent = false, m_onlvl;
-	void (*m_cb)(Relay *);
 };
 
 #endif

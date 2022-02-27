@@ -38,7 +38,8 @@ extern int ccs811b_scan(uint8_t);
 extern int ti_scan(uint8_t);
 extern int apds9930_scan(uint8_t);
 extern int pcf8574_scan(uint8_t);
-extern int  ssd1306_scan(uint8_t);
+extern int ssd1306_scan(uint8_t);
+extern int bh1750_scan(uint8_t);
 
 I2CDevice *I2CDevice::m_first = 0;
 
@@ -200,7 +201,7 @@ int i2c_w1rd(uint8_t port, uint8_t addr, uint8_t w, uint8_t *d, uint8_t n)
 	r = i2c_master_cmd_begin((i2c_port_t)port, cmd, 1000 / portTICK_RATE_MS);
 done:
 	i2c_cmd_link_delete(cmd);
-	log_hex(TAG,d,n,"i2c_w1rd(%u,%02x,%02x,...,%u)=%d %c",port,addr>>1,w,n,r,p);
+	log_hex(TAG,d,n,"i2c_w1rd(%u,0x%02x,0x%02x,...,%u)=%d %c",port,addr>>1,w,n,r,p);
 	return r;
 }
 
@@ -352,10 +353,25 @@ int i2c_init(uint8_t port, uint8_t sda, uint8_t scl, unsigned freq, uint8_t xpul
 		log_error(TAG,"config: %s",esp_err_to_name(e));
 		return -1;
 	}
+	// TODO: add config for timeout?
+//	int timeout;
+//	i2c_get_timeout((i2c_port_t) port, &timeout);
+//	log_dbug(TAG,"default timeout %d",timeout);
+//	i2c_set_timeout((i2c_port_t) port, 10*timeout);
+//	TODO: add config for filter?
+//	i2c_filter_enable((i2c_port_t)port,3);
+//	TODO: add config for setup/hold timing?
+//	int setup,hold;
+//	i2c_get_start_timing((i2c_port_t) port, &setup, &hold);
+//	log_dbug(TAG,"start timing: %u setup, %u hold",setup,hold);
+//	i2c_set_start_timing((i2c_port_t) port, setup*4,hold*4);
 	log_dbug(TAG,"i2c %u: sda=%u,scl=%u %s pull-up",port,sda,scl,xpullup?"extern":"intern");
 	Ports |= (1 << port);
 	// scan bus
 	int n = 0;
+#ifdef CONFIG_BH1750
+	n += bh1750_scan(port);
+#endif
 #ifdef CONFIG_BMX280
 	n += bmx_scan(port);
 #endif
@@ -369,9 +385,6 @@ int i2c_init(uint8_t port, uint8_t sda, uint8_t scl, unsigned freq, uint8_t xpul
 	n += apds9930_scan(port);
 #endif
 	n += ti_scan(port);
-#ifdef CONFIG_PCF8574
-	n += pcf8574_scan(port);
-#endif
 #ifdef CONFIG_SSD1306
 	n += ssd1306_scan(port);
 #endif

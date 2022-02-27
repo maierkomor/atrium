@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2021, Thomas Maier-Komor
+ *  Copyright (C) 2018-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -20,75 +20,116 @@
 
 #ifdef CONFIG_BUTTON
 
+#include "actions.h"
 #include "button.h"
 #include "event.h"
 #include "log.h"
 
-#include <driver/gpio.h>
-#include <rom/gpio.h>
 #include <esp_system.h>
 #include <esp_timer.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#if CONFIG_BUTTON_GPIO < 0 || CONFIG_BUTTON_GPIO >= GPIO_PIN_COUNT
-#error gpio value for button out of range
-#endif
-
-
 #define TAG MODULE_BUTTON
 
 
-Button::Button(const char *name, gpio_num_t gpio, gpio_pull_mode_t mode, bool active_high, Button *n)
-: m_next(n)
+Button::Button(const char *name, xio_t gpio, xio_cfg_pull_t mode, bool active_high)
+: m_name(name)
+, m_gpio(gpio)
+, m_presslvl((int8_t)active_high)
+, m_rev(event_register(name,"`released"))
+, m_pev(event_register(name,"`pressed"))
+, m_sev(event_register(name,"`short"))
+, m_mev(event_register(name,"`med"))
+, m_lev(event_register(name,"`long"))
 { 
-	init(name,gpio,mode,active_high);
+	log_info(TAG,"button %s at gpio %u",name,gpio);
 }
 
 
-void Button::init(const char *name, gpio_num_t gpio, gpio_pull_mode_t mode, bool active_high)
+Button *Button::create(const char *name, xio_t gpio, xio_cfg_pull_t mode, bool active_high)
 {
-	log_info(TAG,"button %s at gpio %u",name,gpio);
-	m_name = name;
-	m_gpio = gpio;
-	m_presslvl = (uint8_t)active_high;
-	m_pev = event_register(name,"`pressed");
-	m_rev = event_register(name,"`released");
-	m_sev = event_register(name,"`short");
-	m_mev = event_register(name,"`med");
-	m_lev = event_register(name,"`long");
-	gpio_pad_select_gpio(gpio);
-	if (esp_err_t e = gpio_set_direction(gpio,GPIO_MODE_INPUT))
-		log_error(TAG,"GPIO %d input: %s",gpio,esp_err_to_name(e));
-	if (esp_err_t e = gpio_set_pull_mode(gpio,mode))
-		log_error(TAG,"pull-mode %d on GPIO %d: %s",mode,gpio,esp_err_to_name(e));
-	if (esp_err_t e = gpio_set_intr_type(gpio,GPIO_INTR_ANYEDGE))
-		log_error(TAG,"gpio %d edge interrupt: %s",gpio,esp_err_to_name(e));
-	if (esp_err_t e = gpio_isr_handler_add(gpio,Button::intr,this))
-		log_error(TAG,"register isr: %s",esp_err_to_name(e));
+	xio_cfg_t cfg = XIOCFG_INIT;
+	cfg.cfg_io = xio_cfg_io_in;
+	cfg.cfg_pull = mode;
+	cfg.cfg_intr = xio_cfg_intr_edges;
+	if (0 > xio_config(gpio,cfg)) {
+		log_warn(TAG,"config gpio %u failed",gpio);
+	} else {
+		Button *b = new Button(name,gpio,mode,active_high);
+		event_t fev = xio_get_fallev(gpio);
+		event_t rev = xio_get_riseev(gpio);
+		if (fev && rev) {
+			Action *fa = action_add(concat(name,"!down"),press_ev,b,0);
+			event_callback(fev,fa);
+			Action *ra = action_add(concat(name,"!up"),release_ev,b,0);
+			event_callback(rev,ra);
+			log_dbug(TAG,"listen on events");
+		} else if (0 == xio_set_intr(gpio,intr,b)) {
+			log_dbug(TAG,"listen on interrupt");
+		}
+		return b;
+	}
+	return 0;
+}
+
+
+void Button::press_ev(void *arg)
+{
+	int32_t now = esp_timer_get_time() / 1000;
+	Button *b = static_cast<Button*>(arg);
+	log_dbug(TAG,"%s pressed",b->m_name);
+	b->m_tpressed = now;
+	if (b->m_st != btn_released) {
+		b->m_st = btn_released;
+		event_trigger(b->m_pev);
+	}
+}
+
+
+void Button::release_ev(void *arg)
+{
+	int32_t now = esp_timer_get_time() / 1000;
+	Button *b = static_cast<Button*>(arg);
+	log_dbug(TAG,"%s released",b->m_name);
+	if (b->m_st != btn_released) {
+		event_t ev = 0;
+		unsigned dt = now - b->m_tpressed;
+		b->m_st = btn_released;
+		event_trigger(b->m_rev);
+		if ((dt >= BUTTON_SHORT_START) && (dt < BUTTON_SHORT_END)) {
+			ev = b->m_sev;
+		} else if ((dt >= BUTTON_MED_START) && (dt < BUTTON_MED_END)) {
+			ev = b->m_mev;
+		} else if ((dt >= BUTTON_LONG_START) && (dt < BUTTON_LONG_END)) {
+			ev = b->m_lev;
+		} else
+			return;
+		event_trigger(ev);
+	}
 }
 
 
 // this is an ISR!
-void Button::intr(void *arg)
+void IRAM_ATTR Button::intr(void *arg)
 {
 	// no log_* from ISRs!
 	int32_t now = esp_timer_get_time() / 1000;
 	Button *b = static_cast<Button*>(arg);
 	event_t ev, xev = 0;
-	if (gpio_get_level(b->m_gpio) == b->m_presslvl) {
-		if (b->m_tpressed)	// debounce concecutive pressed events
-			return;
+	if (xio_get_lvl(b->m_gpio) == b->m_presslvl) {
 		b->m_tpressed = now;
 		ev = b->m_pev;
 	} else {
 		ev = b->m_rev;
 		unsigned dt = now - b->m_tpressed;
-		b->m_tpressed = 0;
 		if (dt < BUTTON_SHORT_START) {
 			// fast debounce
-		} else if (dt < BUTTON_SHORT_END) {
+			return;
+		}
+		b->m_tpressed = 0;
+		if (dt < BUTTON_SHORT_END) {
 			xev = b->m_sev;
 		} else if ((dt >= BUTTON_MED_START) && (dt < BUTTON_MED_END)) {
 			xev = b->m_mev;
@@ -96,6 +137,9 @@ void Button::intr(void *arg)
 			xev = b->m_lev;
 		}
 	}
+	if (ev == b->m_lastev)
+		return;
+	b->m_lastev = ev;
 	event_isr_trigger(ev);
 	if (xev)
 		event_isr_trigger(xev);

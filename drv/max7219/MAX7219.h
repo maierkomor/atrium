@@ -20,9 +20,9 @@
 #define DRV_MAX7219_H
 
 #include "ledcluster.h"
+#include "xio.h"
 
 //#include <driver/spi.h> -- for ESP8266???
-#include <driver/gpio.h>
 
 //
 // 5V level adjustment necessary 
@@ -31,7 +31,7 @@
 class MAX7219Drv : public LedCluster
 {
 	public:
-	static MAX7219Drv *create(gpio_num_t clk, gpio_num_t dout, gpio_num_t cs, bool odrain);
+	static MAX7219Drv *create(xio_t clk, xio_t dout, xio_t cs, bool odrain);
 
 	int clear();
 	uint8_t getDim() const
@@ -51,14 +51,11 @@ class MAX7219Drv : public LedCluster
 	{ return "max7219"; }
 
 	private:
-	MAX7219Drv(gpio_num_t clk, gpio_num_t dout, gpio_num_t cs);
+	MAX7219Drv(xio_t clk, xio_t dout, xio_t cs);
 
 	void setreg(uint8_t r, uint8_t v);
-	void clock(int);
-	void dout(int);
-	void chip_select(int);
 
-	gpio_num_t m_clk, m_dout, m_cs;
+	xio_t m_clk, m_dout, m_cs;
 	uint8_t m_digits[8];
 	uint8_t m_at = 0, m_intensity = 0, m_ndigits = 8;
 };

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2021, Thomas Maier-Komor
+ *  Copyright (C) 2018-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -24,6 +24,8 @@
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
+
+#include "xio.h"
 
 class EnvObject;
 class EnvNumber;
@@ -89,7 +91,7 @@ class DHT
 	bool m_ready, m_error;
 
 	protected:
-	uint8_t m_pin;
+	xio_t m_pin;
 };
 
 

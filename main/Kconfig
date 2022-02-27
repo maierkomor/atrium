@@ -164,6 +164,12 @@ endmenu # filesystem
 
 menu "hardware support"
 
+config IOEXTENDERS
+	bool "I/O extenders"
+	default true
+	help
+		enable infrastructure for I/O extenders
+
 config STATUSLEDS
 	bool "heartbeat/status LEDs"
 	default true
@@ -174,7 +180,14 @@ config BUTTON
 	bool	"button support"
 	default true
 	help
-		support direct to GPIOs attached buttons
+		support buttons and switches
+
+config ROTARYENCODER
+	bool	"rotary encoder"
+	default true
+	depends on BUTTON
+	help
+		support rotary encoders
 
 config RELAY
 	bool "relay"
@@ -234,6 +247,13 @@ config I2C
 	help
 		I2C bus with BMP280 (temperature, pressure) and BME280 (temperature, humidity, pressure)
 
+config I2C_XDEV
+	bool "explicit I2C device configuration"
+	depends on I2C
+	default true
+	help
+		support for configuring devices that cannot be detected automatically
+
 config BMX280
 	depends on I2C
 	bool "BMx280"
@@ -277,11 +297,31 @@ config CCS811B
 		I2C driver for CCS811B sensor (TVOC,CO2)
 
 config PCF8574
-	depends on I2C && DISPLAY
+	depends on I2C_XDEV
 	bool "pcf8574"
 	default true
 	help
 		I2C driver for PCF8574 (GPIO expander), used as bridge for HD44780U
+
+config MCP2300X
+	depends on I2C_XDEV
+	bool "mcp2300x"
+	default true
+	help
+		I2C driver for MCP2300x devices (8-port GPIO expander)
+
+config MCP2301X
+	depends on I2C_XDEV
+	bool "mcp2301x"
+	default true
+	help
+		I2C driver for MCP2301x devices (16-port GPIO expander)
+
+config BH1750
+	bool "bh1750"
+	default true
+	help
+		I2C driver for BH1750 (illuminance sensor)
 
 config HCSR04
 	bool "HC-SR04"

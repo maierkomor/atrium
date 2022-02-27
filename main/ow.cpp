@@ -65,7 +65,7 @@ int ow_setup()
 		log_dbug(TAG,"not configured");
 		return 0;
 	}
-	new OneWire(HWConf.onewire().gpio(),HWConf.onewire().pullup());
+	OneWire::create(HWConf.onewire().gpio(),HWConf.onewire().pullup());
 	auto *owdevs = Config.mutable_owdevices();
 	for (const auto &cfg : *owdevs) {
 		if (cfg.has_name()) {

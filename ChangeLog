@@ -1,3 +1,16 @@
+R2202:
+======
+- fix a potential crash on TCP FIN
+- added support for rotary encoder
+- PCF8574 must now be configured explicitly
+- support PCF8574 as I/O-extender
+- generic support for GPIO-clusters
+- better button debouncing
+- added driver for BH1750 (i2c light-sensor)
+- added driver for MCP230xx (gpio clustion)
+- added support for setting config bitfields via their enum names
+- added actions for setting DS18B20 sampling resolution
+
 R2201:
 ======
 - support arguments for actions

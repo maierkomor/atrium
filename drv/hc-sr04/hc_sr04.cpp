@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -27,19 +27,18 @@
 #include "env.h"
 
 #include <esp_timer.h>
-#include <rom/gpio.h>
 
 
 #define TAG MODULE_HCSR04
 
 HC_SR04 *HC_SR04::First = 0;
 
-HC_SR04::HC_SR04(gpio_num_t trigger, gpio_num_t echo)
+HC_SR04::HC_SR04(xio_t trigger, xio_t echo)
 : m_dist()
 , m_trigger(trigger)
 , m_echo(echo)
 {
-	gpio_set_level(m_trigger,1);
+	xio_set_hi(m_trigger);
 	char name[16];
 	sprintf(name,"hcsr04@%d,%d",(int)trigger,(int)echo);
 	m_name = strdup(name);
@@ -50,23 +49,23 @@ HC_SR04 *HC_SR04::create(int8_t trigger, int8_t echo)
 {
 	if ((trigger == echo) || (trigger < 0) || (echo < 0))
 		return 0;
-	gpio_pad_select_gpio(trigger);
-	gpio_pad_select_gpio(echo);
-	if (esp_err_t e = gpio_set_direction((gpio_num_t)trigger,GPIO_MODE_OUTPUT)) {
-		log_warn(TAG,"GPIO %u output: %s",trigger,esp_err_to_name(e));
+	xio_cfg_t cfg = XIOCFG_INIT;
+	cfg.cfg_io = xio_cfg_io_out;
+	if (0 > xio_config((xio_t)trigger,cfg)) {
+		log_warn(TAG,"use GPIO%u as trigger failed",trigger);
 		return 0;
 	}
-	if (esp_err_t e = gpio_set_direction((gpio_num_t)echo,GPIO_MODE_INPUT)) {
-		log_warn(TAG,"GPIO %d input: %s",trigger,esp_err_to_name(e));
+
+	cfg.cfg_io = xio_cfg_io_in;
+	cfg.cfg_intr = xio_cfg_intr_edges;
+	if (0 > xio_config((xio_t)echo,cfg)) {
+		log_warn(TAG,"use GPIO%u as echo failed",trigger);
 		return 0;
 	}
-	if (esp_err_t e = gpio_set_intr_type((gpio_num_t)echo,GPIO_INTR_ANYEDGE)) {
-		log_warn(TAG,"interrupt type on gpio %d: %s",echo,esp_err_to_name(e));
-		return 0;
-	}
-	HC_SR04 *inst = new HC_SR04((gpio_num_t)trigger,(gpio_num_t)echo);
-	if (esp_err_t e = gpio_isr_handler_add((gpio_num_t)echo,hc_sr04_isr,inst)) {
-		log_warn(TAG,"isr handler %s",esp_err_to_name(e));
+
+	HC_SR04 *inst = new HC_SR04((xio_t)trigger,(xio_t)echo);
+	if (xio_set_intr((xio_t)echo,hc_sr04_isr,inst)) {
+		log_warn(TAG,"attach isr handler failed");
 		delete inst;
 		return 0;
 	}
@@ -90,7 +89,7 @@ void HC_SR04::hc_sr04_isr(void *arg)
 {
 	int64_t now = esp_timer_get_time();
 	HC_SR04 *o = (HC_SR04*) arg;
-	if (gpio_get_level(o->m_echo)) {
+	if (xio_get_lvl(o->m_echo)) {
 		o->m_start = now;
 	} else {
 		o->m_dt = now - o->m_start;
@@ -121,8 +120,8 @@ void HC_SR04::setName(const char *name)
 
 void HC_SR04::trigger()
 {
-	gpio_set_level(m_trigger,0);
-	gpio_set_level(m_trigger,1);
+	xio_set_lo(m_trigger);
+	xio_set_hi(m_trigger);
 }
 
 

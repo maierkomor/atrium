@@ -40,7 +40,7 @@ int display_setup()
 		// ESP32 seems to work
 		const Max7219Config &c = HWConf.max7219();
 		if (c.has_clk() && c.has_dout() && c.has_cs() && c.has_digits()) {
-			MAX7219Drv::create((gpio_num_t)c.clk(),(gpio_num_t)c.dout(),(gpio_num_t)c.cs(),c.odrain());
+			MAX7219Drv::create((xio_t)c.clk(),(xio_t)c.dout(),(xio_t)c.cs(),c.odrain());
 		}
 	}
 	if (HWConf.has_display()) {

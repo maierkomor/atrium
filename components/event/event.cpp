@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2021, Thomas Maier-Komor
+ *  Copyright (C) 2020-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -82,17 +82,17 @@ event_t event_register(const char *cat, const char *type)
 		log_warn(TAG,"event '%s' missing `",name);
 	Lock lock(EventMtx,__FUNCTION__);
 	size_t n = EventHandlers.size();
-	log_dbug(TAG,"register %s=%u",name,n);
 	// event_t 0: name: empty string; invalid event, catched in this loop
-	for (size_t i = 0; i < n; ++i) {
+	for (size_t i = 1; i < n; ++i) {
 		if (!strcmp(name,EventHandlers[i].name)) {
-			log_warn(TAG,"duplicate event %s",name);
+			log_warn(TAG,"duplicate event %s,%s",name,EventHandlers[i].name);
 			abort();
 			if (name != cat)
 				free((void*)name);
 			return (event_t) i;
 		}
 	}
+	log_dbug(TAG,"register %s=%u",name,n);
 	EventHandlers.emplace_back(name);
 	return (event_t) n;
 }
@@ -256,9 +256,20 @@ void event_isr_trigger(event_t id)
 	BaseType_t r = xQueueSendFromISR(EventsQ,&e,0);
  	if (r != pdTRUE)
 		++Lost;
- }
- 
- 
+}
+
+
+void event_isr_trigger_arg(event_t id,void *arg)
+{
+	// ! don't log from ISR
+	assert(id != 0);
+	Event e = {id,arg};
+	BaseType_t r = xQueueSendFromISR(EventsQ,&e,0);
+	if (r != pdTRUE)
+		++Lost;
+}
+
+
 static void event_task(void *)
 {
 	unsigned d = 1;
@@ -281,9 +292,9 @@ static void event_task(void *)
 		int64_t start = esp_timer_get_time();
 		if (e.id < EventHandlers.size()) {
 			EventHandler &h = EventHandlers[e.id];
+			++h.occur;
 			if (!h.callbacks.empty()) {
 				log_local(TAG,"%s callbacks, arg %p",h.name,e.arg);
-				++h.occur;
 				for (auto a : h.callbacks) {
 					log_local(TAG,"\t%s",a->name);
 					a->activate(e.arg);
@@ -291,6 +302,8 @@ static void event_task(void *)
 				int64_t end = esp_timer_get_time();
 				log_local(TAG,"%s time: %lu",h.name,end-start);
 				h.time += end-start;
+			} else {
+				log_local(TAG,"%s %p",EventHandlers[e.id].name,e.arg);
 			}
 		} else {
 			log_warn(TAG,"invalid event %u",e);

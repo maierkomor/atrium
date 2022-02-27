@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2017-2021, Thomas Maier-Komor
+ *  Copyright (C) 2017-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -24,7 +24,6 @@
 
 #include <freertos/semphr.h>
 
-#include <driver/gpio.h>
 #include <esp_timer.h>
 #include <string.h>
 
@@ -58,32 +57,39 @@ static void relay_toggle(void *R)
 }
 
 
-Relay::Relay(const char *name, gpio_num_t gpio, uint32_t minitv, bool onlvl)
-: m_name(name)
-, m_tlt(0)
+Relay::Relay(const char *name, xio_t gpio, uint32_t minitv, bool onlvl)
+: m_next(Relays)
+, m_name(name)
 , m_minitv(minitv + 1) // must not be 0, interval should be at least minitv - so+1
 , m_gpio(gpio)
+, m_onev(event_register(name,"`on"))
+, m_offev(event_register(name,"`off"))
+, m_changedev(event_register(name,"`changed"))
 , m_onlvl(onlvl)
-, m_cb(0)
 {
-	if (0 == Mtx)
-		Mtx = xSemaphoreCreateMutex();
-	xSemaphoreTake(Mtx,portMAX_DELAY);
 	m_tmr = xTimerCreate(name,pdMS_TO_TICKS(m_minitv),false,(void*)this,timerCallback);
-	gpio_pad_select_gpio(gpio);
-	gpio_set_direction(gpio,GPIO_MODE_OUTPUT);
 	if (char *an = concat(name,"!on"))
 		action_add(an,relay_turn_on,this,"turn on");
 	if (char *an = concat(name,"!off"))
 		action_add(an,relay_turn_off,this,"turn off");
 	if (char *an = concat(name,"!toggle"))
 		action_add(an,relay_toggle,this,"toggle relay");
-	m_onev = event_register(name,"`on");
-	m_offev = event_register(name,"`off");
-	m_changedev = event_register(name,"`changed");
-	m_next = Relays;
 	Relays = this;
+}
+
+
+Relay *Relay::create(const char *name, xio_t gpio, uint32_t minitv, bool onlvl)
+{
+	if (0 == Mtx)
+		Mtx = xSemaphoreCreateMutex();
+	xSemaphoreTake(Mtx,portMAX_DELAY);
+	xio_cfg_t cfg = XIOCFG_INIT;
+	cfg.cfg_io = xio_cfg_io_out;
+	if (xio_config(gpio,cfg))
+		return 0;
+	Relays = new Relay(name,gpio,minitv,onlvl);
 	xSemaphoreGive(Mtx);
+	return Relays;
 }
 
 
@@ -151,7 +157,7 @@ void Relay::sync()
 			// state=off, onlvl=high, !(s^o) = 0
 			// state=on, onlvl=low, !(s^o) = 0
 			// state=off, onlvl=low, !(s^o) = 1
-		gpio_set_level(m_gpio,!(m_state^m_onlvl));
+		xio_set_lvl(m_gpio,(m_state^m_onlvl)?xio_lvl_0:xio_lvl_1);
 		m_cb(this);
 		m_tlt = esp_timer_get_time() / 1000;
 		event_trigger(m_state ? m_onev : m_offev);

@@ -930,11 +930,11 @@ void mqtt_start(void *arg)
 		return;
 	}
 	if (StationMode != station_connected) {
-		log_warn(TAG,"station not ready");
+		log_dbug(TAG,"station not ready");
 		return;
 	}
 	if (!mqtt.enable()) {
-		log_warn(TAG,"not enabled");
+		log_info(TAG,"disabled");
 		return;
 	}
 	if (Client == 0) {

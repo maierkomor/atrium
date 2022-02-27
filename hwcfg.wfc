@@ -50,6 +50,7 @@ option esp : common {
 	bytestype=estring;
 	SortMembers=size;
 	enumnames=true;
+	enummap="!CONFIG_ESPTOOLPY_FLASHSIZE_1MB";
 }
 
 option esp32 : esp {
@@ -107,7 +108,7 @@ message TouchpadConfig
 
 message TouchChannelConfig
 {
-	string name = 1;
+	string name = 1		[ unset = "" ];
 	sint8 channel = 2	[ unset = -1 ];
 	fixed16 threshold = 3;
 	uint8 slope = 4;
@@ -139,6 +140,8 @@ message ButtonConfig
 	sint8 gpio = 2			[ unset = -1 ];
 	bool presslvl = 3		[ unset = 0 ];
 	pull_mode_t pull_mode = 4	[ unset = pull_none ];
+	sint8 clk = 5			[ unset = -1, ifdef=CONFIG_ROTARYENCODER ];
+	sint8 dt = 6			[ unset = -1, ifdef=CONFIG_ROTARYENCODER ];
 }
 
 
@@ -212,7 +215,10 @@ message DhtConfig
 enum i2cdrv_t {
 	i2cdrv_invalid = 0;
 	i2cdrv_pcf8574 = 1;
+	i2cdrv_mcp2300x = 2;
+	i2cdrv_mcp2301x = 3;
 }
+
 
 bitset i2cdev_t
 {
@@ -229,7 +235,7 @@ message I2CConfig
 	sint8 scl = 3		[ unset = -1 ];
 	unsigned freq = 4	[ default = 100000 ];
 	bool xpullup = 5;	// have external pull-ups
-	repeated i2cdev_t devices = 6	[ packed = true ];
+	repeated i2cdev_t devices = 6	[ packed = true, ifdef=CONFIG_I2C_XDEV ];
 }
 
 
@@ -237,7 +243,14 @@ message HcSr04Config
 {
 	sint8 trigger = 1	[ unset = -1 ];
 	sint8 echo = 2		[ unset = -1 ];
-	string name = 3;
+	string name = 3		[ unset = "" ];
+}
+
+
+bitset ledcfg_t
+{
+	bool active_high : 0;
+	bool open_drain : 1;
 }
 
 
@@ -246,7 +259,7 @@ message LedConfig
 	sint8 gpio = 1		[ unset = -1 ];
 	// bit 0: active high
 	// bit 1: open drain
-	uint8 config = 2;
+	ledcfg_t config = 2	[ default = 0 ];
 	string name = 3		[ unset = "" ];
 	sint8 pwm_ch = 4	[ unset = -1 ];
 }
@@ -353,7 +366,7 @@ enum disp_t
 message DisplayConfig
 {
 	disp_t type = 1		[ unset = dt_none ];
-	unsigned options = 2;
+	unsigned options = 2	[ default = 0 ];
 	unsigned maxx = 3;
 	unsigned maxy = 4	[ default = 1 ];
 }
@@ -390,6 +403,16 @@ message SpiDevice
 */
 
 
+message GpioCluster
+{
+	string name = 1		[ unset = "" ];
+	uint8 base = 2		[ unset = 0 ];
+	uint8 numio = 3		[ unset = 0 ];
+	sint8 int_a = 4		[ unset = -1 ];
+	sint8 int_b = 5		[ unset = -1 ];
+}
+
+
 message HardwareConfig
 {
 	fixed32 magic = 0;	// should always be set to 0xAE54EDCB
@@ -416,6 +439,7 @@ message HardwareConfig
 	repeated I2CConfig i2c = 36		[ ifdef=CONFIG_I2C ];
 	repeated HcSr04Config hcsr04 = 37	[ ifdef=CONFIG_HCSR04 ];
 	OneWireConfig onewire = 38		[ ifdef=CONFIG_ONEWIRE ];
+	repeated GpioCluster iocluster = 40	[ ifdef=CONFIG_IOEXTENDERS ];
 
 	DisplayConfig display = 50		[ ifdef=CONFIG_DISPLAY ];
 }

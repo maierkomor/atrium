@@ -370,7 +370,7 @@ err_t LwTcp::handle_sent(void *arg, struct tcp_pcb *pcb, u16_t l)
 err_t LwTcp::handle_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *pbuf, err_t e)
 {
 	PROFILE_FUNCTION();
-	log_local(TAG,"recv %u err=%d",pbuf ? pbuf->tot_len : 0,e);
+	log_local(TAG,"recv %p:%u err=%d",pbuf,pbuf ? pbuf->tot_len : 0,e);
 	LwTcp *P = (LwTcp *)arg;
 	assert(pcb);
 	if ((e == 0) && (pbuf != 0)) {
@@ -433,7 +433,6 @@ err_t LwTcp::handle_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *pbuf, err_
 		}
 	} else if (pbuf == 0) {
 		log_local(TAG,"recv@%u pbuf=0/FIN",pcb->local_port);
-		tcp_close(pcb);
 		P->m_pcb = 0;
 		xSemaphoreGive(P->m_sem);
 	} else {
@@ -517,6 +516,7 @@ int LwTcp::read(char *buf, size_t l, unsigned timeout)
 			m_fill = 0;
 			m_buf = 0;
 		} else if ((m_pcb == 0) || (m_pcb->state > ESTABLISHED) || (m_pcb->state == CLOSED)) {
+			log_local(TAG,"error pcb=%p, state=%d",m_pcb,m_pcb?m_pcb->state:0);
 			r = -1;
 		} else {
 			con_printf("state %d",m_pcb->state);

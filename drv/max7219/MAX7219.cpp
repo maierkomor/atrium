@@ -28,15 +28,15 @@
 #define TAG MODULE_MAX7219
 
 
-MAX7219Drv::MAX7219Drv(gpio_num_t clk, gpio_num_t dout, gpio_num_t cs)
+MAX7219Drv::MAX7219Drv(xio_t clk, xio_t dout, xio_t cs)
 : LedCluster()
 , m_clk(clk)
 , m_dout(dout)
 , m_cs(cs)
 {
 	bzero(m_digits,sizeof(m_digits));
-	chip_select(1);
-	clock(0);
+	xio_set_hi(cs);
+	xio_set_lo(clk);
 	displayTest(true);
 	displayTest(false);
 	clear();
@@ -46,67 +46,49 @@ MAX7219Drv::MAX7219Drv(gpio_num_t clk, gpio_num_t dout, gpio_num_t cs)
 }
 
 
-MAX7219Drv *MAX7219Drv::create(gpio_num_t clk, gpio_num_t dout, gpio_num_t cs, bool odrain)
+MAX7219Drv *MAX7219Drv::create(xio_t clk, xio_t dout, xio_t cs, bool odrain)
 {
-
-	if (ESP_OK != gpio_set_direction(clk, odrain ? GPIO_MODE_OUTPUT_OD : GPIO_MODE_OUTPUT)) {
+	xio_cfg_t cfg = XIOCFG_INIT;
+	cfg.cfg_io = odrain ? xio_cfg_io_od : xio_cfg_io_out;
+	if (0 > xio_config(clk,cfg)) {
 		log_error(TAG,"cannot set direction of clock gpio %d",clk);
 		return 0;
 	}
-	if (ESP_OK != gpio_set_direction(dout, odrain ? GPIO_MODE_OUTPUT_OD : GPIO_MODE_OUTPUT)) {
+	if (0 > xio_config(dout,cfg)) {
 		log_error(TAG,"cannot set direction of dout gpio %d",dout);
 		return 0;
 	}
-	if (ESP_OK != gpio_set_direction(cs, GPIO_MODE_OUTPUT)) {
+	cfg.cfg_io = xio_cfg_io_out;
+	if (0 > xio_config(cs,cfg)) {
 		log_error(TAG,"cannot set direction of cs gpio %d",cs);
 		return 0;
 	}
-	log_dbug(TAG,"attached driver");
+	log_info(TAG,"ready");
 	return new MAX7219Drv(clk,dout,cs);
 }
 
 
-void MAX7219Drv::clock(int c)
-{
-	if (ESP_OK != gpio_set_level(m_clk,c))
-		log_error(TAG,"cannot set level of clk at gpio %d",m_cs);
-}
-
-
-void MAX7219Drv::dout(int c)
-{
-	if (ESP_OK != gpio_set_level(m_dout,c!=0))
-		log_error(TAG,"cannot set level of dout at gpio %d",m_cs);
-}
-
-
-void MAX7219Drv::chip_select(int c)
-{
-	if (ESP_OK != gpio_set_level(m_cs,c))
-		log_error(TAG,"cannot set level of cs at gpio %d",m_cs);
-}
-
 void MAX7219Drv::setreg(uint8_t r, uint8_t v)
 {
 	//log_info(TAG,"setreg(0x%x,0x%x)",r,v);
-	gpio_set_level(m_clk,0);
-	gpio_set_level(m_cs,0);
+	xio_set_lo(m_clk);
+	xio_set_lo(m_cs);
 	uint8_t b = 8;
 	do {
-		gpio_set_level(m_clk,0);
-		gpio_set_level(m_dout,(r&0x80) != 0);
+		xio_set_lo(m_clk);
+		xio_set_lvl(m_dout,(xio_lvl_t)((r&0x80) != 0));
 		r <<= 1;
-		gpio_set_level(m_clk,1);
+		xio_set_hi(m_clk);
 	} while (--b);
 	b = 8;
 	do {
-		gpio_set_level(m_clk,0);
-		gpio_set_level(m_dout,(v&0x80) != 0);
+		xio_set_lo(m_clk);
+		xio_set_lvl(m_dout,(xio_lvl_t)((v&0x80) != 0));
 		v <<= 1;
-		gpio_set_level(m_clk,1);
+		xio_set_hi(m_clk);
 	} while (--b);
-	gpio_set_level(m_cs,1);
-	gpio_set_level(m_clk,0);
+	xio_set_hi(m_cs);
+	xio_set_lo(m_clk);
 }
 
 

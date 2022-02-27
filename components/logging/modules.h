@@ -32,64 +32,66 @@ typedef enum logmod_e {
 	logmod_adc            =   2,
 	logmod_alarms         =   3,
 	logmod_apds           =   4,
-	logmod_bmx            =   5,
-	logmod_button         =   6,
-	logmod_cam            =   7,
-	logmod_ccs811b        =   8,
-	logmod_cfg            =   9,
-	logmod_clock          =  10,
-	logmod_con            =  11,
-	logmod_cyclic         =  12,
-	logmod_dht            =  13,
-	logmod_dim            =  14,
-	logmod_disp           =  15,
-	logmod_ds18b20        =  16,
-	logmod_event          =  17,
-	logmod_fs             =  18,
-	logmod_ftpd           =  19,
-	logmod_func           =  20,
-	logmod_gpio           =  21,
-	logmod_hcsr04         =  22,
-	logmod_hd44780u       =  23,
-	logmod_hdc1000        =  24,
-	logmod_ht16k33        =  25,
-	logmod_http           =  26,
-	logmod_i2c            =  27,
-	logmod_inetd          =  28,
-	logmod_influx         =  29,
-	logmod_init           =  30,
-	logmod_ledc           =  31,
-	logmod_ledstrip       =  32,
-	logmod_log            =  33,
-	logmod_lwtcp          =  34,
-	logmod_max7219        =  35,
-	logmod_mcp25017       =  36,
-	logmod_mqtt           =  37,
-	logmod_nightsky       =  38,
-	logmod_ns             =  39,
-	logmod_ota            =  40,
-	logmod_owb            =  41,
-	logmod_pcf8574        =  42,
-	logmod_relay          =  43,
-	logmod_romfs          =  44,
-	logmod_sgp30          =  45,
-	logmod_shell          =  46,
-	logmod_signal         =  47,
-	logmod_sntp           =  48,
-	logmod_ssd1306        =  49,
-	logmod_status         =  50,
-	logmod_telnet         =  51,
-	logmod_ti             =  52,
-	logmod_timefuse       =  53,
-	logmod_tlc5916        =  54,
-	logmod_tlc5947        =  55,
-	logmod_tp             =  56,
-	logmod_uart           =  57,
-	logmod_udns           =  58,
-	logmod_udpctrl        =  59,
-	logmod_wlan           =  60,
-	logmod_ws2812         =  61,
-	logmod_www            =  62,
+	logmod_bh1750         =   5,
+	logmod_bmx            =   6,
+	logmod_button         =   7,
+	logmod_cam            =   8,
+	logmod_ccs811b        =   9,
+	logmod_cfg            =  10,
+	logmod_clock          =  11,
+	logmod_con            =  12,
+	logmod_cyclic         =  13,
+	logmod_dht            =  14,
+	logmod_dim            =  15,
+	logmod_disp           =  16,
+	logmod_ds18b20        =  17,
+	logmod_event          =  18,
+	logmod_fs             =  19,
+	logmod_ftpd           =  20,
+	logmod_func           =  21,
+	logmod_gpio           =  22,
+	logmod_hcsr04         =  23,
+	logmod_hd44780u       =  24,
+	logmod_hdc1000        =  25,
+	logmod_ht16k33        =  26,
+	logmod_http           =  27,
+	logmod_i2c            =  28,
+	logmod_inetd          =  29,
+	logmod_influx         =  30,
+	logmod_init           =  31,
+	logmod_ledc           =  32,
+	logmod_ledstrip       =  33,
+	logmod_log            =  34,
+	logmod_lwtcp          =  35,
+	logmod_max7219        =  36,
+	logmod_mcp230xx       =  37,
+	logmod_mqtt           =  38,
+	logmod_nightsky       =  39,
+	logmod_ns             =  40,
+	logmod_ota            =  41,
+	logmod_owb            =  42,
+	logmod_pcf8574        =  43,
+	logmod_relay          =  44,
+	logmod_romfs          =  45,
+	logmod_sgp30          =  46,
+	logmod_shell          =  47,
+	logmod_signal         =  48,
+	logmod_sntp           =  49,
+	logmod_ssd1306        =  50,
+	logmod_status         =  51,
+	logmod_telnet         =  52,
+	logmod_ti             =  53,
+	logmod_timefuse       =  54,
+	logmod_tlc5916        =  55,
+	logmod_tlc5947        =  56,
+	logmod_tp             =  57,
+	logmod_uart           =  58,
+	logmod_udns           =  59,
+	logmod_udpctrl        =  60,
+	logmod_wlan           =  61,
+	logmod_ws2812         =  62,
+	logmod_www            =  63,
+	logmod_xio            =  64,
 } logmod_t;
 
 // module defines
@@ -97,6 +99,7 @@ typedef enum logmod_e {
 #define MODULE_ADC             logmod_adc
 #define MODULE_ALARMS          logmod_alarms
 #define MODULE_APDS            logmod_apds
+#define MODULE_BH1750          logmod_bh1750
 #define MODULE_BMX             logmod_bmx
 #define MODULE_BUTTON          logmod_button
 #define MODULE_CAM             logmod_cam
@@ -128,7 +131,7 @@ typedef enum logmod_e {
 #define MODULE_LOG             logmod_log
 #define MODULE_LWTCP           logmod_lwtcp
 #define MODULE_MAX7219         logmod_max7219
-#define MODULE_MCP25017        logmod_mcp25017
+#define MODULE_MCP230XX        logmod_mcp230xx
 #define MODULE_MQTT            logmod_mqtt
 #define MODULE_NIGHTSKY        logmod_nightsky
 #define MODULE_NS              logmod_ns
@@ -155,8 +158,9 @@ typedef enum logmod_e {
 #define MODULE_WLAN            logmod_wlan
 #define MODULE_WS2812          logmod_ws2812
 #define MODULE_WWW             logmod_www
-#define MAX_MODULE_ID           62
-#define NUM_MODULES             63
+#define MODULE_XIO             logmod_xio
+#define MAX_MODULE_ID           64
+#define NUM_MODULES             65
 
 #ifdef USE_MODULE
 #define TAG USE_MODULE

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2021, Thomas Maier-Komor
+ *  Copyright (C) 2018-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -20,7 +20,7 @@
 #define BUTTON_DRV_H
 
 #include <event.h>
-#include <driver/gpio.h>
+#include "xio.h"
 
 #define BUTTON_SHORT_START	40
 #define BUTTON_SHORT_END	350
@@ -30,21 +30,10 @@
 #define BUTTON_LONG_END		3000
 
 
-
 class Button
 {
 	public:
-	Button()
-	: m_gpio(GPIO_NUM_MAX)
-	, m_rev(0)
-	, m_pev(0)
-	{ 
-
-	}
-
-	Button(const char *name, gpio_num_t gpio, gpio_pull_mode_t mode, bool active_high, Button *n);
-
-	void init(const char *, gpio_num_t gpio, gpio_pull_mode_t mode, bool active_high);
+	static Button *create(const char *name, xio_t gpio, xio_cfg_pull_t mode, bool active_high);
 
 	int32_t pressed_at() const
 	{ return m_tpressed; }
@@ -67,22 +56,20 @@ class Button
 	const char *name() const
 	{ return m_name; }
 
-	Button *getNext() const
-	{ return m_next; }
-
-	void setNext(Button *n)
-	{ m_next = n; }
-
 	private:
+	Button(const char *name, xio_t gpio, xio_cfg_pull_t mode, bool active_high);
 	static void intr(void *);
-	static unsigned cyclic(void *);
+	static void press_ev(void *);
+	static void release_ev(void *);
 
-	Button *m_next = 0;
+	typedef enum btnst_e { btn_unknown = 0, btn_pressed, btn_released } btnst_t;
+
 	const char *m_name;
 	int32_t m_tpressed;
-	gpio_num_t m_gpio;
-	uint8_t m_presslvl;
-	event_t m_rev, m_pev, m_sev, m_mev, m_lev;
+	xio_t m_gpio;
+	int8_t m_presslvl;
+	btnst_t m_st = btn_unknown;
+	event_t m_rev, m_pev, m_sev, m_mev, m_lev, m_lastev = 0;
 };
 
 

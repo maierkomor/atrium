@@ -159,7 +159,6 @@ static int send_http_get(Terminal &t, const char *server, int port, const char *
 		t.printf("unable to send get request: %s\n",strerror(errno));
     		return -1;
 	}
-	t.println("sent GET");
 	return hsock;
 }
 

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2021, Thomas Maier-Komor
+ *  Copyright (C) 2018-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -109,6 +109,7 @@ int touchpads_setup();
 void udns_setup();
 int udpctrl_setup();
 int webcam_setup();
+int xio_setup();
 
 void settings_setup();
 
@@ -206,7 +207,7 @@ void app_main()
 	nvs_setup();		// read HWConf
 
 	log_info(TAG,"Atrium Firmware for ESP based systems");
-	log_info(TAG,"Copyright 2019-2021, Thomas Maier-Komor, License: GPLv3");
+	log_info(TAG,"Copyright 2019-2022, Thomas Maier-Komor, License: GPLv3");
 	log_info(TAG,"Version %s",Version);
 	log_info(TAG,"IDF: %s",esp_get_idf_version());
 
@@ -218,6 +219,10 @@ void app_main()
 	system_info();
 
 	gpio_setup();
+#ifdef CONFIG_I2C
+	i2c_setup();	// must be befor gpio_setup to provide io-cluster
+#endif
+	xio_setup();
 	adc_setup();
 #ifdef CONFIG_IDF_TARGET_ESP32
 	hall_setup();
@@ -247,9 +252,6 @@ void app_main()
 #endif
 #ifdef CONFIG_DHT
 	dht_setup();
-#endif
-#ifdef CONFIG_I2C
-	i2c_setup();
 #endif
 #ifdef CONFIG_TOUCHPAD
 	touchpads_setup();

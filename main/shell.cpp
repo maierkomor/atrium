@@ -1411,8 +1411,10 @@ static int debug(Terminal &term, int argc, const char *args[])
 		return log_module_disable(args[2]);
 	}
 	if (!strcmp("-e",args[1])) {
+		if (log_module_enable(args[2]))
+			return arg_invalid(term,args[2]);
 		Config.add_debugs(args[2]);
-		return log_module_enable(args[2]);
+		return 0;
 	}
 	return arg_invalid(term,args[1]);
 }

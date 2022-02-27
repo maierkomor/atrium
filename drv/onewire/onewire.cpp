@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2021, Thomas Maier-Komor
+ *  Copyright (C) 2020-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -27,8 +27,6 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
-#include <driver/gpio.h>
-#include <rom/gpio.h>
 #include <xtensa/hal.h>
 #include <freertos/task.h>
 #include <freertos/portmacro.h>
@@ -43,8 +41,6 @@
 #define ENTER_CRITICAL() portENTER_CRITICAL()
 #define EXIT_CRITICAL() portEXIT_CRITICAL()
 #endif
-
-#include "onewire.h"
 
 using namespace std;
 
@@ -90,27 +86,30 @@ uint8_t OneWire::crc8(const uint8_t *in, size_t len)
 }
 
 
-OneWire::OneWire(unsigned bus, bool pullup)
-: m_bus((gpio_num_t) bus)
+OneWire::OneWire(xio_t bus)
+: m_bus(bus)
+{
+	Instance = this;
+	log_info(TAG,"bus at %u",bus);
+}
+
+
+OneWire *OneWire::create(unsigned bus, bool pullup)
 {
 	assert(Instance == 0);
-	Instance = this;
 	// idle bus is output, high!
-	gpio_pad_select_gpio(m_bus);
-	if (esp_err_t e = gpio_set_direction(m_bus,GPIO_MODE_OUTPUT))
-		log_warn(TAG,"cannot init to output %d: %s",m_bus,esp_err_to_name(e));
-	if (esp_err_t e = gpio_set_level(m_bus,0))
-		log_error(TAG,"set lvl2 %s",esp_err_to_name(e));
-	if (esp_err_t e = gpio_set_direction(m_bus,GPIO_MODE_INPUT))
-		log_warn(TAG,"cannot init to input %d: %s",m_bus,esp_err_to_name(e));
-	if (pullup) {
-		if (esp_err_t e = gpio_pullup_en(m_bus))
-			log_warn(TAG,"cannot enable pullup %d: %s",m_bus,esp_err_to_name(e));
-	} else {
-		if (esp_err_t e = gpio_pullup_dis(m_bus))
-			log_warn(TAG,"cannot disable pullup %d: %s",m_bus,esp_err_to_name(e));
+	xio_cfg_t cfg = XIOCFG_INIT;
+	cfg.cfg_io = xio_cfg_io_od;
+	cfg.cfg_pull = pullup ? xio_cfg_pull_up : xio_cfg_pull_none;
+	if (0 > xio_config((xio_t)bus,cfg)) {
+		log_warn(TAG,"failed to config xio%u",bus);
+		return 0;
 	}
-	log_dbug(TAG,"init");
+	if (xio_set_lvl((xio_t)bus,xio_lvl_hiz)) {
+		log_warn(TAG,"cannot set hi %u",bus);
+		return 0;
+	}
+	return new OneWire((xio_t)bus);
 }
 
 
@@ -243,20 +242,20 @@ int OneWire::readRom()
 
 int OneWire::resetBus(void)
 {
+	log_dbug(TAG,"reset");
 	ENTER_CRITICAL();
-	gpio_set_direction(m_bus,GPIO_MODE_OUTPUT);
-	gpio_set_level(m_bus,0);
-	ets_delay_us(600);
-	gpio_set_direction(m_bus,GPIO_MODE_INPUT);
-	gpio_pullup_en(m_bus);
-	ets_delay_us(60);
+	xio_set_lvl(m_bus,xio_lvl_0);
+	ets_delay_us(500);
+	xio_set_lvl(m_bus,xio_lvl_hiz);
+	ets_delay_us(20);
 	int r = 1;
-	for (int i = 0; i < 18; ++i) {
-		if (0 == gpio_get_level(m_bus))
+	for (int i = 0; i < 26; ++i) {
+		if (0 == xio_get_lvl(m_bus)) {
 			r = 0;
+		}
 		ets_delay_us(10);
 	}
-	ets_delay_us(230);
+	ets_delay_us(220);
 	EXIT_CRITICAL();
 	if (r)
 		log_error(TAG,"reset: no response");
@@ -271,16 +270,16 @@ unsigned OneWire::xmitBit(uint8_t b)
 	// idle bus is input pull-up
 	unsigned r;
 	ets_delay_us(2);
-	gpio_set_direction(m_bus,GPIO_MODE_OUTPUT);
+	xio_set_lvl(m_bus,xio_lvl_0);
 	if (b) {
 		ets_delay_us(3);
-		gpio_set_direction(m_bus,GPIO_MODE_INPUT);
+		xio_set_lvl(m_bus,xio_lvl_hiz);
 		ets_delay_us(10);
-		r = gpio_get_level(m_bus);
+		r = xio_get_lvl(m_bus);
 		ets_delay_us(65);
 	} else {
 		ets_delay_us(70);
-		gpio_set_direction(m_bus,GPIO_MODE_INPUT);
+		xio_set_lvl(m_bus,xio_lvl_hiz);
 		ets_delay_us(10);
 		r = 0;
 	}
@@ -289,16 +288,16 @@ unsigned OneWire::xmitBit(uint8_t b)
 }
 
 
-uint8_t OneWire::writeByte(uint8_t b)
+uint8_t OneWire::writeByte(uint8_t byte)
 {
 	ENTER_CRITICAL();
 	uint8_t r = 0;
-	for (int i = 0; i < 8; ++i) {
-		if (xmitBit(b & (1<<i)))
-			r |= (1 << i);
+	for (uint8_t b = 1; b; b<<=1) {
+		if (xmitBit(byte & b))
+			r |= b;
 	}
 	EXIT_CRITICAL();
-	log_dbug(TAG,"writeByte(0x%02x) = 0x%02x",b,r);
+//	no debug here, as writeByte is used in timinig critical sections!
 	return r;
 }
 
@@ -306,7 +305,9 @@ uint8_t OneWire::writeByte(uint8_t b)
 uint8_t OneWire::readByte()
 {
 	// read by sending 0xff (a dontcare?)
-	return writeByte(0xFF);
+	uint8_t r = writeByte(0xFF);
+	log_dbug(TAG,"readByte() = 0x%02x",r);
+	return r;
 }
 
 

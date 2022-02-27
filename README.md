@@ -42,6 +42,7 @@ Filesystem support:
   (in data segment stored data files, accessible as C strings)
 
 Hardware drivers:
+- transparent I/O multiplexer support
 - button support with debouncing
 - relay control support
 - displays: SSD1360 (OLED), HD44780U (LCD), 7-/14-segmend LEDs (e.g. HT16K33, MAX7219)
@@ -349,11 +350,12 @@ for devices needs only performed once.
 
 After scanning or booting with pre-configured devices, every device
 registers actions according to its name. The first DS18B20 device will
-register `ds18b20\_0!convert` to trigger a conversion command for
-measuring the temperature, and `ds18b20\_0!read` for reading the result.
+register `ds18b20\_0!sample` to trigger a conversion command with a
+subsequent read. Further actions are registered to adjust the sampling
+resolution.
 
 The result will be stored in a runtinme variable according to the name
-of the device. These variables can be queried with the `webdata`
+of the device. These variables can be queried with the `env`
 command, and can be submitted to an Influx DB with the `influx!rtdata`
 action.
 
@@ -399,6 +401,8 @@ Security Considerations:
 RAM considerations:
 ===================
 Even the ESP8285 can be loaded with telnet, http, mqtt, uart console, and more, when it comes to required ROM. But be aware that the RAM might not be enough in certain situations. So you cannot expect to have multiple http connections active at the same time while MQTT is used, too.
+
+For performing OTA updates it might be necessary to reduce the RAM consumption. For this, you can temporary disable the syslog with `dmesg 0` and stop influx and mqtt.
 
 
 Smart Config:

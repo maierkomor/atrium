@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021, Thomas Maier-Komor
+ *  Copyright (C) 2021-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -36,35 +36,30 @@ PCF8574 *PCF8574::Instance = 0;
 // 8 GPIOs
 // set to hi for use as input!
 
-unsigned PCF8574::create(uint8_t bus)
+PCF8574 *PCF8574::create(uint8_t bus, uint8_t addr)
 {
-	unsigned r = 0;
-	for (uint8_t a = DEV_ADDR_MIN; a < DEV_ADDR_MAX; a += 2) {
-		uint8_t data;
-		if (i2c_read(bus,a,&data,sizeof(data)))
-			continue;
-		log_dbug(TAG,"found");
-		PCF8574 *dev = new PCF8574(bus,a);
-		if (Instance) {
-			log_warn(TAG,"multiple devices");
-		} else {
-			Instance = dev;
-		}
-		++r;
+	uint8_t data;
+	if (i2c_read(bus,addr<<1,&data,sizeof(data))) {
+		log_warn(TAG,"no response from %u/0x%x",bus,addr);
+		return 0;
 	}
-	return r;
+	log_dbug(TAG,"device at %u/0x%x",bus,addr);
+	PCF8574 *dev = new PCF8574(bus,addr<<1);
+	if (Instance) {
+		PCF8574 *i = Instance;
+		while (i->m_next)
+			i = i->m_next;
+		i->m_next = dev;
+	} else {
+		Instance = dev;
+	}
+	return dev;
 }
 
 
 const char *PCF8574::drvName() const
 {
 	return "pcf8574";
-}
-
-
-int PCF8574::init()
-{
-	return 0;
 }
 
 
@@ -119,62 +114,97 @@ uint8_t PCF8574::read()
 }
 
 
-/*
-int PCF8574::write(uint8_t *v, unsigned n, int off)
+#ifdef CONFIG_IOEXTENDERS
+
+int PCF8574::get_lvl(uint8_t io)
 {
-	log_dbug(TAG,"write(%x...,%d)",*v,off);
-	if (off < 0)
-		off = m_pos;
-	if (n + off > m_dim)
-		n = m_dim - off;
-	if (0 != memcmp(m_data+off,v,n)) {
-		uint8_t data[] = { m_addr , (uint8_t)off };
-		if (i2c_write(m_bus,data,sizeof(data),false,true))
-			return -1;
-		if (i2c_write(m_bus,v,n,true,false))
-			return -1;
-		memcpy(m_data+off,v,n);
-	}
-	off += n;
-	if (off < m_dim)
-		m_pos = off;
-	else
-		m_pos = 0;
-	return 0;
+	if (io >> 3)
+		return -1;
+	uint8_t v;
+	if (i2c_read(m_bus,m_addr,&v,sizeof(v)))
+		return -1;
+	return (v >> io) & 1;
 }
 
 
-int PCF8574::setOn(bool on)
+int PCF8574::set_hi(uint8_t io)
 {
-	uint8_t cmd[] = { m_addr, (uint8_t)(CMD_SYSTEM | on) };
-	return i2c_write(m_bus,cmd,sizeof(cmd),true,true);
+	if (io >> 3)
+		return -1;
+	uint8_t v;
+	if (i2c_read(m_bus,m_addr,&v,sizeof(v)))
+		return -1;
+	v |= (1 << io);
+	return i2c_write1(m_bus,m_addr,v);
 }
 
 
-int PCF8574::setBlink(uint8_t blink)
+int PCF8574::set_lo(uint8_t io)
 {
-	uint8_t cmd[] = { m_addr, (uint8_t)(CMD_DISP_ON | 0) };
-	return i2c_write(m_bus,cmd,sizeof(cmd),true,true);
+	if (io >> 3)
+		return -1;
+	uint8_t v;
+	if (i2c_read(m_bus,m_addr,&v,sizeof(v)))
+		return -1;
+	v &= ~(1 << io);
+	return i2c_write1(m_bus,m_addr,v);
+
 }
 
 
-int PCF8574::setNumDigits(unsigned n)
+int PCF8574::set_intr(uint8_t, xio_intrhdlr_t, void*)
 {
-	if (n <= 16) {
-		uint8_t cmd[] = { m_addr, (uint8_t)(CMD_DIM | (n-1)) };
-		if (0 == i2c_write(m_bus,cmd,sizeof(cmd),true,true)) {
-			m_dim = n;
-			return 0;
-		}
-	}
 	return -1;
 }
-*/
 
 
-unsigned pcf8574_scan(uint8_t bus)
+int PCF8574::config(uint8_t io, xio_cfg_t cfg)
 {
-	return PCF8574::create(bus);
+	log_dbug(TAG,"config %x",cfg);
+	if (io >> 3)
+		return -1;
+	if (cfg.cfg_io == xio_cfg_io_keep) {
+	} else if (cfg.cfg_io == xio_cfg_io_in) {
+		set_hi(io);
+	} else if (cfg.cfg_io == xio_cfg_io_out) {
+	} else if (cfg.cfg_io == xio_cfg_io_od) {
+		return -1;
+	}
+
+	if (cfg.cfg_pull != xio_cfg_pull_keep)
+		return -1;
+
+	if (cfg.cfg_intr != xio_cfg_intr_keep)
+		return -1;
+
+	if (cfg.cfg_wakeup != xio_cfg_wakeup_keep)
+		return -1;
+	return xio_cap_edgeintr|xio_cap_lvl0intr|xio_cap_lvl1intr;
+
 }
+
+
+int PCF8574::set_lvl(uint8_t io, xio_lvl_t v)
+{
+	if (v == xio_lvl_0)
+		return set_lo(io);
+	if (v == xio_lvl_1)
+		return set_hi(io);
+	return -1;
+}
+
+
+const char *PCF8574::getName() const
+{
+	return m_name;
+}
+
+
+int PCF8574::get_dir(uint8_t num) const
+{
+	return xio_cfg_io_od;
+}
+#endif	// CONFIG_IOEXTENDERS
+
 
 #endif

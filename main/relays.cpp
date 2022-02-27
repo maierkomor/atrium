@@ -139,7 +139,9 @@ int relay_setup()
 #else
 		log_info(TAG,"no mqtt");
 #endif
-		Relay *r = new Relay(n,(gpio_num_t)gpio,itv,c.config_active_high());
+		Relay *r = Relay::create(n,(xio_t)gpio,itv,c.config_active_high());
+		if (r == 0)
+			continue;
 		r->setCallback(relay_callback);
 		bool iv = c.config_init_on();
 		if (c.config_persistent()) {

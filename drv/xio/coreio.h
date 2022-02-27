@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2022, Thomas Maier-Komor
+ *  Copyright (C) 2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -16,42 +16,18 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef ONEWIRE_H
-#define ONEWIRE_H
-
-#include <esp_timer.h>
-
-#include <vector>
+#ifndef NATIVE_IO_H
+#define NATIVE_IO_H
 
 #include "xio.h"
 
-class OneWire
-{
-	public:
-	static OneWire *create(unsigned bus, bool pullup);
 
-	int sendCommand(uint64_t id, uint8_t command);
-	uint8_t readByte();
-	uint8_t writeByte(uint8_t);
-	int resetBus();
-	int scanBus();
-	int readRom();
-	unsigned xmitBit(uint8_t);
-
-	static OneWire *getInstance()
-	{ return Instance; }
-
-	static uint8_t crc8(const uint8_t *in, size_t len);
-
-	private:
-	explicit OneWire(xio_t bus);
-	int addDevice(uint64_t);
-	int searchRom(uint64_t &id, std::vector<uint64_t> &collisions);
-
-	xio_t m_bus, m_pwr;
-
-	static OneWire *Instance;
-};
+int coreio_config(uint8_t num, xio_cfg_t cfg);
+int coreio_lvl_get(uint8_t num);
+int coreio_lvl_hi(uint8_t num);
+int coreio_lvl_lo(uint8_t num);
+int coreio_lvl_set(uint8_t num, xio_lvl_t l);
+void coreio_register();
 
 
 #endif

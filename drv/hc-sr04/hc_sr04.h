@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2021, Thomas Maier-Komor
+ *  Copyright (C) 2020-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -20,8 +20,9 @@
 #define HC_SR04_H
 
 #include <stdint.h>
-#include <driver/gpio.h>
 #include "event.h"
+#include "xio.h"
+
 
 class HC_SR04
 {
@@ -41,7 +42,7 @@ class HC_SR04
 	{ return m_next; }
 
 	private:
-	HC_SR04(gpio_num_t trigger, gpio_num_t echo);
+	HC_SR04(xio_t trigger, xio_t echo);
 
 	static void hc_sr04_isr(void *);
 	static void update(void *);
@@ -53,7 +54,7 @@ class HC_SR04
 	HC_SR04 *m_next = 0;
 	class EnvNumber *m_dist = 0;
 	char *m_name = 0;
-	gpio_num_t m_trigger, m_echo;
+	xio_t m_trigger, m_echo;
 	event_t m_ev = 0;
 };
 

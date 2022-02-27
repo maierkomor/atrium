@@ -31,8 +31,8 @@
 #include "status.h"
 #include "terminal.h"
 #include "wifi.h"
+#include "xio.h"
 
-#include <driver/gpio.h>
 #include <string.h>
 
 #if defined CONFIG_IDF_TARGET_ESP32 && IDF_VERSION >= 40
@@ -49,7 +49,7 @@ struct StatusCtx
 	uint32_t update;
 	int8_t mode;
 	ledmode_t basemode;
-	gpio_num_t gpio;
+	xio_t gpio;
 	bool on;
 };
 
@@ -197,7 +197,7 @@ static unsigned status_subtask(void *arg)
 		ctx->mode = mode;
 		d = Modes[mode];
 	}
-	gpio_set_level(ctx->gpio, ctx->on == (d&1));
+	xio_set_lvl(ctx->gpio, (xio_lvl_t)(ctx->on == (d&1)));
 	unsigned dt = (d>>1) * 10;
 	ctx->update = now + dt;
 	++ctx->mode;
@@ -218,17 +218,25 @@ static void button_press_callback(void*)
 }
 
 
-void gpio_low(void *arg)
+static void gpio_low(void *arg)
 {
-	gpio_num_t gpio = (gpio_num_t)(int)arg;
-	gpio_set_level(gpio, 0);
+	xio_t gpio = (xio_t)(int)arg;
+	xio_set_lo(gpio);
 }
 
 
-void gpio_high(void *arg)
+static void gpio_high(void *arg)
 {
-	gpio_num_t gpio = (gpio_num_t)(int)arg;
-	gpio_set_level(gpio, 1);
+	xio_t gpio = (xio_t)(int)arg;
+	xio_set_hi(gpio);
+}
+
+
+static void gpio_toggle(void *arg)
+{
+	xio_t gpio = (xio_t)(int)arg;
+	int l = xio_get_lvl(gpio);
+	xio_set_lvl(gpio,(xio_lvl_t)(l^1));
 }
 
 
@@ -293,11 +301,16 @@ int status_setup()
 		if ((c.pwm_ch() != -1) || (c.gpio() == -1))	// these are handled in the dimmer
 			continue;
 		const auto &n = c.name();
-		assert(n.c_str());
-		gpio_num_t gpio = (gpio_num_t) c.gpio();
-		gpio_pad_select_gpio(gpio);
-		gpio_set_direction(gpio, GPIO_MODE_OUTPUT);
-		uint8_t on = c.config() & 1;
+		const char *name = n.c_str();
+		assert(name);
+		xio_cfg_t cfg = XIOCFG_INIT;
+		cfg.cfg_io = c.config_open_drain() ? xio_cfg_io_od : xio_cfg_io_out;
+		xio_t gpio = (xio_t) c.gpio();
+		if (0 > xio_config(gpio,cfg)) {
+			log_warn(TAG,"failed to configure xio%u",gpio);
+			continue;
+		}
+		uint8_t on = c.config_active_high();
 		if (n == "heartbeat") {
 			StatusCtx *ctx = new StatusCtx;
 			ctx->update = 0;
@@ -306,7 +319,7 @@ int status_setup()
 			ctx->basemode = ledmode_auto;
 			ctx->on = on;
 			cyclic_add_task("heartbeat",status_subtask,(void*)ctx);
-			log_dbug(TAG,"heartbeat started");
+			log_info(TAG,"started heartbeat");
 		} else if (n == "status") {
 			StatusCtx *ctx = new StatusCtx;
 			ctx->update = 0;
@@ -316,10 +329,11 @@ int status_setup()
 			ctx->on = on;
 			Status = ctx;
 			cyclic_add_task("status",status_subtask,(void*)ctx);
-			log_dbug(TAG,"status started");
+			log_info(TAG,"started");
 		} else {
-			action_add(concat(n.c_str(),"!on"),on ? gpio_high : gpio_low,(void*)gpio,"turn led on");
-			action_add(concat(n.c_str(),"!off"),on ? gpio_low : gpio_high,(void*)gpio,"turn led off");
+			action_add(concat(name,"!on"),on ? gpio_high : gpio_low,( void*)(unsigned)gpio, "turn led on");
+			action_add(concat(name,"!off"),on ? gpio_low : gpio_high, (void*)(unsigned)gpio, "turn led off");
+			action_add(concat(name,"!toggle"), gpio_toggle, (void*)(unsigned)gpio, "toggle led");
 		}
 		action_add("statusled!btnpress",button_press_callback,0,"bind to button press event to monitor with status LED");
 		action_add("statusled!btnrel",button_rel_callback,0,"bind to button release event to monitor with status LED");
