@@ -144,6 +144,7 @@ void EnvObject::toStream(stream &o) const
 
 void EnvObject::append(EnvElement *e)
 {
+	assert(e);
 	if (EnvObject *o = e->toObject())
 		o->m_parent = this;
 	m_childs.push_back(e);
@@ -166,6 +167,18 @@ EnvElement *EnvObject::get(const char *n) const
 		}
 	}
 	return 0;
+}
+
+
+int EnvObject::getOffset(const char *n) const
+{
+	int idx = 0;
+	for (EnvElement *e : m_childs) {
+		if (0 == strcmp(e->name(),n))
+			return idx;
+		++idx;
+	}
+	return -1;
 }
 
 
@@ -194,9 +207,9 @@ EnvBool *EnvObject::add(const char *n, bool v, const char *dim)
 }
 
 
-EnvNumber *EnvObject::add(const char *n, double v, const char *dim)
+EnvNumber *EnvObject::add(const char *n, double v, const char *dim, const char *fmt)
 {
-	EnvNumber *r = new EnvNumber(n,v,dim);
+	EnvNumber *r = new EnvNumber(n,v,dim,fmt);
 	append(r);
 	return r;
 }

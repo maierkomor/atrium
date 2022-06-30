@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2021, Thomas Maier-Komor
+ *  Copyright (C) 2018-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -36,12 +36,11 @@
 #include "i2cdrv.h"
 #include "log.h"
 #include "stream.h"
+#include "terminal.h"
 #include "env.h"
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
-
-#define CHIP_ID_ADDR	0xd0
 
 #define BMP280_ID		0x58
 #define BME280_ID		0x60
@@ -75,6 +74,21 @@
 #define TAG MODULE_BMX
 
 
+BMP280::BMP280(uint8_t port, uint8_t addr, const char *n)
+: I2CDevice(port,addr,n ? n : drvName())
+{
+	m_temp = new EnvNumber("temperature","\u00b0C","%4.1f");
+	m_press = new EnvNumber("pressure","hPa","%4.1f");
+}
+
+
+BME280::BME280(uint8_t port, uint8_t addr)
+: BMP280(port,addr,drvName())
+{
+	m_humid = new EnvNumber("humidity","%","%4.1f");
+}
+
+
 void BMP280::trigger(void *arg)
 {
 	BMP280 *dev = (BMP280 *)arg;
@@ -83,57 +97,154 @@ void BMP280::trigger(void *arg)
 }
 
 
-unsigned BMP280::cyclic()
+unsigned BMP280::cyclic(void *arg)
 {
-	switch (m_state) {
+	BMP280 *drv = (BMP280 *) arg;
+	switch (drv->m_state) {
 	case st_idle:
 		return 20;
 	case st_sample:
-		if (sample())
+		if (drv->sample())
 			break;
-		m_state = st_measure;
+		drv->m_state = st_measure;
 		return 10;
 	case st_measure:
-		if (status())
+		if (drv->status())
 			break;
 		return 5;
 	case st_read:
-		if (read())
+		if (drv->read())
 			break;
-		m_state = st_idle;
+		drv->m_state = st_idle;
 		return 50;
 	default:
 		abort();
 	}
-	handle_error();
+	drv->handle_error();
 	return 1000;
-}
-
-
-static unsigned bmx_cyclic(void *arg)
-{
-	BMP280 *drv = (BMP280 *) arg;
-	return drv->cyclic();
 }
 
 
 void BMP280::attach(EnvObject *root)
 {
-	m_temp = root->add("temperature",NAN,"\u00b0C");
-	m_press = root->add("pressure",NAN,"hPa");
-	cyclic_add_task(m_name,bmx_cyclic,this,0);
+	root->add(m_temp);
+	root->add(m_press);
+	cyclic_add_task(m_name,BMP280::cyclic,this,0);
 	action_add(concat(m_name,"!sample"),trigger,(void*)this,"BMP280 sample data");
 }
 
 
 void BME280::attach(EnvObject *root)
 {
-	m_temp = root->add("temperature",NAN,"\u00b0C");
-	m_press = root->add("pressure",NAN,"hPa");
-	m_humid = root->add("humidity",NAN,"%");
-	cyclic_add_task(m_name,bmx_cyclic,this,0);
-	action_add(concat(m_name,"!sample"),trigger,(void*)(BME280*)this,"BME280 sample data");
+	BMP280::attach(root);
+	root->add(m_humid);
 }
+
+
+#ifdef CONFIG_I2C_XCMD
+int BMP280::exeCmd(Terminal &term, int argc, const char **args)
+{
+	if ((argc == 0) || ((argc == 1) && (0 == strcmp(args[0],"-h")))) {
+		term.println(
+			"set oversampling, valid values 0,1,2,4,8,16\n"
+			"iir <m>: set IIR filter\n"
+			"tos <m>: for temperature\n"
+			"pos <m>: for pressure"
+			);
+		return 0;
+	}
+	if (argc == 1) {
+		int8_t s;
+		if (0 == strcmp(args[0],"tos")) {
+			s = m_sampmod>>5;
+		} else if (0 == strcmp(args[0],"pos")) {
+			s = m_sampmod>>2;
+			s &= 7;
+		} else {
+			return arg_invalid(term,args[0]);
+		}
+		term.printf("x%u\n",s != 0 ? 1<<--s : 0);
+		return 0;
+	}
+	if (argc != 2)
+		return arg_invnum(term);
+	char *e;
+	long v = strtol(args[1],&e,0);
+	if (*e)
+		return arg_invalid(term,args[1]);
+	uint8_t x;
+	if ((v >= 0) && (v < 3))
+		x = v;
+	else if (v == 4)
+		x = 3;
+	else if (v == 8)
+		x = 4;
+	else if (v == 16)
+		x = 5;
+	else
+		return arg_invalid(term,args[1]);
+	if (0 == strcmp(args[0],"tos")) {
+		m_sampmod &= 0x1f;
+		m_sampmod |= x << 5;
+	} else if (0 == strcmp(args[0],"pos")) {
+		m_sampmod &= 0xe3;
+		m_sampmod |= x << 2;
+	} else {
+		return arg_invalid(term,args[0]);
+	}
+	return 0;
+}
+
+
+int BME280::exeCmd(Terminal &term, int argc, const char **args)
+{
+	if ((argc == 0) || ((argc == 1) && (0 == strcmp(args[0],"-h")))) {
+		BMP280::exeCmd(term,argc,args);
+		term.println("hos <m>: for humidity");
+		return 0;
+	}
+	if (argc == 1) {
+		uint8_t s;
+		if (0 == strcmp(args[0],"hos")) {
+			if (i2c_w1rd(m_bus,m_addr,BME280_REG_CTRLHUM,&s,sizeof(s)))
+				return 1;
+		} else {
+			return BMP280::exeCmd(term,argc,args);
+		}
+		term.printf("x%u\n",s != 0 ? 1<<--s : 0);
+		return 0;
+	}
+	if (argc != 2)
+		return arg_invnum(term);
+	char *e;
+	long v = strtol(args[1],&e,0);
+	if (*e)
+		return arg_invalid(term,args[1]);
+	uint8_t x;
+	if ((v >= 0) && (v < 3))
+		x = v;
+	else if (v == 4)
+		x = 3;
+	else if (v == 8)
+		x = 4;
+	else if (v == 16)
+		x = 5;
+	else
+		return arg_invalid(term,args[1]);
+	if (0 == strcmp(args[0],"tos")) {
+		m_sampmod &= 0x1f;
+		m_sampmod |= x << 5;
+	} else if (0 == strcmp(args[0],"pos")) {
+		m_sampmod &= 0xe3;
+		m_sampmod |= x << 2;
+	} else if (0 == strcmp(args[0],"hos")) {
+		return i2c_write2(m_bus, m_addr, BME280_REG_CTRLHUM, x);
+	} else {
+		return arg_invalid(term,args[0]);
+	}
+	return 0;
+}
+#endif
 
 
 void BMP280::handle_error()
@@ -245,17 +356,13 @@ int BMP280::sample()
 	// bit 4-2: pressure oversampling:	001=1x, ... 101=16x
 	// bit 1,0: sensor mode			00: sleep, 01/10: force, 11: normal
 	// ctrl_meas: t*1, p*1, force
-	uint8_t cmd[] = { m_addr, BME280_REG_CTRLMEAS, 0b00100101 };
+	uint8_t cmd[] = { m_addr, BME280_REG_CTRLMEAS, m_sampmod };
 	return i2c_write(m_bus, cmd, sizeof(cmd), true, true);
 }
 
 
 int BMP280::read()
 {
-	if (m_temp == 0) {
-		log_dbug(TAG,"read on non-attached device");
-		return -1;
-	}
 	uint8_t data[6];
 	if (int r = i2c_w1rd(m_bus,m_addr,BMX280_REG_BASE,data,sizeof(data)))
 		return r;
@@ -283,8 +390,6 @@ int BME280::sample()
 	uint8_t cmd[] =
 		// x1 sampling of humidity
 		{ m_addr
-		, BME280_REG_CTRLHUM, 0b001
-
 		 // bit 7-5: temperature oversampling:	001=1x, ... 101=16x
 		 // bit 4-2: pressure oversampling:	001=1x, ... 101=16x
 		 // bit 1,0: sensor mode		00: sleep, 01/10: force, 11: normal
@@ -296,10 +401,6 @@ int BME280::sample()
 
 int BME280::read()
 {
-	if (m_temp == 0) {
-		log_dbug(TAG,"read on non-attached device");
-		return -1;
-	}
 	uint8_t data[8] = {0};
 	if (int r = i2c_w1rd(m_bus,m_addr,BMX280_REG_BASE,data,sizeof(data)))
 		return r;
@@ -336,8 +437,18 @@ bool BMP280::status()
 }
 
 
-void BMP280::init_calib(uint8_t *calib)
+int BMP280::init()
 {
+	int r;
+	r = i2c_write2	(m_bus, m_addr
+			, BME280_REG_CONFIG, m_cfg
+		);
+	if (r)
+		return r;
+	uint8_t calib[26];
+	r = i2c_w1rd(m_bus,m_addr,BME280_CALIB_DATA,calib,sizeof(calib));
+	if (r)
+		return r;
 	T1 = (calib[1] << 8) | calib[0];
 	T2 = (calib[3] << 8) | calib[2];
 	T3 = (calib[5] << 8) | calib[4];
@@ -350,53 +461,19 @@ void BMP280::init_calib(uint8_t *calib)
 	P7 = (calib[19] << 8) | calib[18];
 	P8 = (calib[21] << 8) | calib[20];
 	P9 = (calib[23] << 8) | calib[22];
-}
-
-
-int BMP280::init()
-{
-	int r;
-	r = i2c_write2	(m_bus, m_addr
-
-			/*
-			 * bit 7-5: sampling time interval: 101=1000ms
-			 * bit 4-2: iir filter time
-			 * bit 0:   1=3-wire spi interace
-			 */
-			, BME280_REG_CONFIG, 0b10100000		// config   : 1000ms sampling, filter off, 3-wire disable
-		);
-	if (r)
-		return r;
-	uint8_t calib[26];
-	r = i2c_w1rd(m_bus,m_addr,BME280_CALIB_DATA,calib,sizeof(calib));
-	if (r)
-		return r;
-	init_calib(calib);
+	H1 = calib[25];
 	return 0;
 }
 
 
 int BME280::init()
 {
+	if (BMP280::init())
+		return 1;
 	int r;
-	uint8_t cfg[] =
-		{ m_addr
-		// enable humidity sampling
-		, BME280_REG_CTRLHUM, 1
-		// bit 7-5: sampling time interval: 101=1000ms
-		// bit 4-2: iir filter time
-		// bit 0:   1=3-wire spi interace
-		, BME280_REG_CONFIG, 0b01100000		// config   : 200ms sampling, filter off, 3-wire disable
-	};
-	r = i2c_write(m_bus, cfg, sizeof(cfg), true, true);
+	r = i2c_write2(m_bus, m_addr, BME280_REG_CTRLHUM, 1);
 	if (r)
 		return r;
-	uint8_t calib[26];
-	r = i2c_w1rd(m_bus,m_addr,BME280_CALIB_DATA,calib,sizeof(calib));
-	if (r)
-		return r;
-	init_calib(calib);
-	H1 = calib[25];
 
 	uint8_t calib_h[7];
 	r = i2c_w1rd(m_bus,m_addr,BME280_REG_CALIB,calib_h,sizeof(calib_h));
@@ -414,6 +491,10 @@ int BME280::init()
 #ifdef CONFIG_BME680
 int BME680::init()
 {
+	m_temp = new EnvNumber("temperature","\u00b0C","%4.1f");
+	m_press = new EnvNumber("pressure","hPa","%4.1f");
+	m_humid = new EnvNumber("humidity","%","%4.1f");
+	m_gas = new EnvNumber("gasresistance","kOhm","%4.1f");
 	bzero(&m_dev,sizeof(m_dev));
 	m_dev.bus = m_bus;
 	m_dev.addr = m_addr;
@@ -530,10 +611,10 @@ unsigned BME680::read()
 
 void BME680::attach(EnvObject *root)
 {
-	m_temp = root->add("temperature",NAN,"\u00b0C");
-	m_press = root->add("pressure",NAN,"hPa");
-	m_humid = root->add("humidity",NAN,"%");
-	m_gas = root->add("gasresistance",NAN,"kOhm");
+	root->add(m_temp);
+	root->add(m_press);
+	root->add(m_humid);
+	root->add(m_gas);
 	cyclic_add_task(m_name,cyclic,this,0);
 	action_add(concat(m_name,"!sample"),trigger,(void*)this,"BME680 sample data");
 }
@@ -569,10 +650,13 @@ unsigned bmx_scan(uint8_t port)
 	// 7bit			=     8bit with R/W
 	// (0x76,0x77) << 1) | R/_W = 0xec/0xee
 	unsigned num = 0;
-	uint8_t addr = 0xec, id;
+	uint8_t addr = 0xec, id = 0;
 	do {
-		int r = i2c_w1rd(port,addr,CHIP_ID_ADDR,&id,1);
-		if (0 <= r)
+		int r = i2c_w1rd(port,addr,BME_REG_ID,&id,sizeof(id));
+		// esp32 i2c stack has a bug and reports timeout
+		// although data was received correctly...
+		// so ignore return codes > 0
+		if ((r >= 0) && (id != 0))
 			num += create_device(port,addr,id);
 		addr += 2;
 	} while (addr <= 0xee);

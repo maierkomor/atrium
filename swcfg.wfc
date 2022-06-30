@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2021, Thomas Maier-Komor
+ *  Copyright (C) 2018-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -280,6 +280,21 @@ message OwDeviceConfig
 }
 
 
+message StateConfig
+{
+	string name = 1;
+	repeated Trigger conds = 2;
+}
+
+
+message StateMachineConfig
+{
+	string name = 1;
+	uint8 ini_st = 2	[ default = 0 ];
+	repeated StateConfig states = 3;
+}
+
+
 message NodeConfig
 {
 	fixed32 magic = 0;	// should always be set to 0xAE54EDC0
@@ -306,14 +321,13 @@ message NodeConfig
 	repeated Trigger triggers = 19;
 
 	repeated UartSettings uart = 20;
-	repeated TerminalConfig terminal = 21;
+	repeated TerminalConfig terminal = 21	[ ifdef=CONFIG_TERMSERV ];
 
 	// set udp_ctrl_port to 0 to disable this feature
 	fixed16 udp_ctrl_port = 22	[ default = 12719 ];
 
 	repeated string debugs = 23;
 
-	// TODO
 	FtpHttpConfig ftpd = 24			[ ifdef=CONFIG_FTP ];
 	FtpHttpConfig httpd = 25		[ ifdef=CONFIG_HTTP ];
 
@@ -321,6 +335,8 @@ message NodeConfig
 	repeated EventTimer timefuses = 30;
 	repeated SignalConfig signals = 31	[ ifdef=CONFIG_SIGNAL_PROC ];
 	repeated FunctionConfig functions = 32	[ ifdef=CONFIG_SIGNAL_PROC ];
+
+	repeated StateMachineConfig statemachs = 33	[ ifdef=CONFIG_STATEMACHINES ];
 
 	// relay control (e.g. s20)
 	unsigned max_on_time = 34	[ unset = 0, usage=deprecated ];	// in minutes

@@ -21,9 +21,11 @@
 #ifdef CONFIG_ROTARYENCODER
 
 #include "actions.h"
+#include "button.h"
 #include "log.h"
 #include "rotenc.h"
 #include <driver/uart.h>
+#include <esp_timer.h>
 #include <rom/uart.h>
 
 #define TAG MODULE_BUTTON
@@ -35,6 +37,8 @@ RotaryEncoder::RotaryEncoder(const char *name, xio_t clk, xio_t dt, xio_t sw)
 , m_sw(sw)
 , m_rev(event_register(name,"`released"))
 , m_pev(event_register(name,"`pressed"))
+, m_sev(event_register(name,"`short"))
+, m_mev(event_register(name,"`med"))
 , m_rlev(event_register(name,"`left"))
 , m_rrev(event_register(name,"`right"))
 { 
@@ -103,14 +107,25 @@ RotaryEncoder *RotaryEncoder::create(const char *name, xio_t clk, xio_t dt, xio_
 
 void IRAM_ATTR RotaryEncoder::sw_ev(void *arg)
 {
+	int32_t now = esp_timer_get_time() / 1000;
 	RotaryEncoder *dev = static_cast<RotaryEncoder*>(arg);
 	int sw = xio_get_lvl(dev->m_sw);
 	if (sw) {
-		if (dev->m_lsw == 0)
+		if (dev->m_lsw == 0) {
 			event_trigger(dev->m_rev);
+			int dt = now - dev->m_ptime;
+			log_dbug(TAG,"dt=%d",dt);
+			if ((dt >= BUTTON_SHORT_START) && (dt < BUTTON_SHORT_END))
+				event_trigger(dev->m_sev);
+			else if ((dt >= BUTTON_MED_START) && (dt < BUTTON_MED_END))
+				event_trigger(dev->m_mev);
+			dev->m_ptime = 0;
+		}
 	} else {
-		if (dev->m_lsw == 1)
+		if (dev->m_lsw == 1) {
 			event_trigger(dev->m_pev);
+			dev->m_ptime = now;
+		}
 	}
 	dev->m_lsw = sw;
 }
@@ -120,14 +135,24 @@ void IRAM_ATTR RotaryEncoder::sw_ev(void *arg)
 void IRAM_ATTR RotaryEncoder::swIntr(void *arg)
 {
 	// no log_* from ISRs!
+	int32_t now = esp_timer_get_time() / 1000;
 	RotaryEncoder *dev = static_cast<RotaryEncoder*>(arg);
 	int sw = xio_get_lvl(dev->m_sw);
 	if (sw) {
-		if (dev->m_lsw == 0)
+		if (dev->m_lsw == 0) {
 			event_isr_trigger(dev->m_rev);
+			int dt = now - dev->m_ptime;
+			if ((dt >= BUTTON_SHORT_START) && (dt < BUTTON_SHORT_END))
+				event_isr_trigger(dev->m_sev);
+			else if ((dt >= BUTTON_MED_START) && (dt < BUTTON_MED_END))
+				event_isr_trigger(dev->m_mev);
+			dev->m_ptime = 0;
+		}
 	} else {
-		if (dev->m_lsw == 1)
+		if (dev->m_lsw == 1) {
 			event_isr_trigger(dev->m_pev);
+			dev->m_ptime = now;
+		}
 	}
 	dev->m_lsw = sw;
 }

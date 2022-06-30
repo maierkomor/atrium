@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2021, Thomas Maier-Komor
+ *  Copyright (C) 2018-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -226,12 +226,12 @@ static esp_err_t wifi_event_handler(system_event_t *event)
 		if (Config.has_station() && Config.station().activate())
 			wifi_start_station(Config.station().ssid().c_str(),Config.station().pass().c_str());
 		else if (esp_err_t e = esp_wifi_set_mode(WIFI_MODE_APSTA))
-			log_error(TAG,"wifi set mode ap+sta: %s",esp_err_to_name(e));
+			log_warn(TAG,"wifi set mode ap+sta: %s",esp_err_to_name(e));
 		/*
 		} else {
 			wifi_mode_t m = WIFI_MODE_NULL;
 			if (esp_err_t e = esp_wifi_get_mode(&m)) {
-				log_error(TAG,"wifi_get_mode(): %s",esp_err_to_name(e));
+				log_warn(TAG,"wifi_get_mode(): %s",esp_err_to_name(e));
 				m = WIFI_MODE_APSTA;
 			}
 			if (m == WIFI_MODE_STA)
@@ -239,7 +239,7 @@ static esp_err_t wifi_event_handler(system_event_t *event)
 			else
 				m = WIFI_MODE_NULL;
 			if (esp_err_t e = esp_wifi_set_mode(m))
-				log_error(TAG,"wifi set mode %d: 0x%x",m,e);
+				log_warn(TAG,"wifi set mode %d: 0x%x",m,e);
 		}
 		*/
 		if (0 == StationDownTS) {
@@ -262,7 +262,7 @@ static esp_err_t wifi_event_handler(system_event_t *event)
 		log_info(TAG,"WPS success");
 		esp_wifi_wps_disable();
 		if (esp_err_t e = esp_wifi_connect()) {
-			log_error(TAG,"connect returned %s",esp_err_to_name(e));
+			log_warn(TAG,"connect returned %s",esp_err_to_name(e));
 		} else {
 			wifi_config_t wifi_config;
 			esp_wifi_get_config(WIFI_IF_STA, &wifi_config);
@@ -277,12 +277,12 @@ static esp_err_t wifi_event_handler(system_event_t *event)
 	case SYSTEM_EVENT_STA_WPS_ER_FAILED:
 		log_info(TAG,"WPS failed");
 		if (esp_err_t e = esp_wifi_wps_disable()) 
-			log_error(TAG,"WPS disable returned %s",esp_err_to_name(e));
+			log_warn(TAG,"WPS disable returned %s",esp_err_to_name(e));
 		break;
 	case SYSTEM_EVENT_STA_WPS_ER_TIMEOUT:
 		log_info(TAG,"WPS timeout");
 		if (esp_err_t e = esp_wifi_wps_disable()) 
-			log_error(TAG,"wps disable returned %s",esp_err_to_name(e));
+			log_warn(TAG,"wps disable returned %s",esp_err_to_name(e));
 		Status |= STATUS_WPS_TERM;
 		break;
 	case SYSTEM_EVENT_STA_WPS_ER_PIN:
@@ -376,15 +376,15 @@ static void sc_callback(smartconfig_status_t status, void *pdata)
 int smartconfig_start()
 {
 	if (SCstarted == true) {
-		log_error(TAG,"smartconfig already started");
+		log_warn(TAG,"smartconfig already started");
 		return 1;
 	}
 	if (Config.has_station() && !Config.station().ssid().empty()) {
-		log_error(TAG,"smartconfig can only be started if station is not configured");
+		log_warn(TAG,"smartconfig can only be started if station is not configured");
 		return 1;
 	}
 	if (esp_err_t e = esp_wifi_set_mode(WIFI_MODE_STA))
-		log_error(TAG,"wifi set station mode failure %s",esp_err_to_name(e));
+		log_warn(TAG,"wifi set station mode failure %s",esp_err_to_name(e));
 	esp_wifi_disconnect();
 	if (esp_err_t e = esp_smartconfig_set_type(SC_TYPE_ESPTOUCH_AIRKISS)) {
 		log_warn(TAG,"smartconfig set type failure %s",esp_err_to_name(e));
@@ -440,17 +440,17 @@ bool wifi_start_station(const char *ssid, const char *pass)
 	//if (station_starting == StationMode)
 		//return true;
 //	if (ESP_OK != esp_wifi_start())
-//		log_error(TAG,"error starting wifi");
+//		log_warn(TAG,"error starting wifi");
 	log_info(TAG,"wifi_start_station(%s,%s)",ssid,pass);
 	wifi_mode_t m = WIFI_MODE_NULL;
 	if (esp_err_t e = esp_wifi_get_mode(&m))
-		log_error(TAG,"wifi_get_mode(): %s",esp_err_to_name(e));
+		log_warn(TAG,"wifi_get_mode(): %s",esp_err_to_name(e));
 	wifi_mode_t nm = WIFI_MODE_STA;
 	if ((m == WIFI_MODE_AP) || (m == WIFI_MODE_APSTA))
 		nm = WIFI_MODE_APSTA;
 	if (m != nm)  {
 		if (esp_err_t e = esp_wifi_set_mode(nm))
-			log_error(TAG,"wifi set mode %s",esp_err_to_name(e));
+			log_warn(TAG,"wifi set mode %s",esp_err_to_name(e));
 	}
 	const WifiConfig &station = Config.station();
 	if (station.has_mac() && (station.mac().size() == 6)) {
@@ -494,7 +494,7 @@ bool wifi_start_station(const char *ssid, const char *pass)
 		log_warn(TAG,"static IP needs address and netmask");
 	}
 	if (ESP_OK != esp_wifi_start()) {
-		log_error(TAG,"error starting wifi");
+		log_warn(TAG,"error starting wifi");
 		return false;
 	}
 	return true;
@@ -505,13 +505,13 @@ bool wifi_stop_station()
 {
 	wifi_mode_t m = WIFI_MODE_NULL;
 	if (esp_err_t e = esp_wifi_get_mode(&m))
-		log_error(TAG,"error getting wifi mode: %s",esp_err_to_name(e));
+		log_warn(TAG,"error getting wifi mode: %s",esp_err_to_name(e));
 	if (m == WIFI_MODE_APSTA)
 		m = WIFI_MODE_AP;
 	else if (m == WIFI_MODE_STA)
 		m = WIFI_MODE_NULL;
 	if (esp_err_t e = esp_wifi_set_mode(m))
-		log_error(TAG,"error setting wifi mode %d: 0x%x",m,e);
+		log_warn(TAG,"error setting wifi mode %d: 0x%x",m,e);
 	if (m == 0) {
 		WifiStarted = false;
 		return (ESP_OK == esp_wifi_stop());
@@ -530,7 +530,7 @@ bool wifi_start_softap(const char *ssid, const char *pass)
 	log_info(TAG, "start WiFi soft-ap with SSID '%s', pass '%s'",ssid,pass);
 	wifi_mode_t m = WIFI_MODE_NULL;
 	if (esp_err_t e = esp_wifi_get_mode(&m))
-		log_error(TAG,"error getting wifi mode: %s",esp_err_to_name(e));
+		log_warn(TAG,"error getting wifi mode: %s",esp_err_to_name(e));
 	const WifiConfig &softap = Config.softap();
 	if (softap.has_mac() && (softap.mac().size() == 6)) {
 		if (esp_err_t e = esp_wifi_set_mac(WIFI_IF_AP,(const uint8_t *)softap.mac().data()))
@@ -547,17 +547,17 @@ bool wifi_start_softap(const char *ssid, const char *pass)
 	wifi_config.ap.max_connection = 4;
 	wifi_config.ap.beacon_interval = 300;
 	if (esp_err_t e = esp_wifi_set_config(WIFI_IF_AP, &wifi_config))
-		log_error(TAG,"setting wifi config %s",esp_err_to_name(e));
+		log_warn(TAG,"setting wifi config %s",esp_err_to_name(e));
 	if (m == WIFI_MODE_NULL) {
 		if (esp_err_t e = esp_wifi_set_mode(WIFI_MODE_AP))
-			log_error(TAG,"setting station mode %s",esp_err_to_name(e));
+			log_warn(TAG,"setting station mode %s",esp_err_to_name(e));
 	} else if (m == WIFI_MODE_STA) {
 		if (esp_err_t e = esp_wifi_set_mode(WIFI_MODE_APSTA))
-			log_error(TAG,"setting station+ap mode %s",esp_err_to_name(e));
+			log_warn(TAG,"setting station+ap mode %s",esp_err_to_name(e));
 	}
 	if (!WifiStarted) {
 		if (esp_err_t e = esp_wifi_start())
-			log_error(TAG,"start wifi %s",esp_err_to_name(e));
+			log_warn(TAG,"start wifi %s",esp_err_to_name(e));
 		else
 			WifiStarted = true;
 	}
@@ -575,13 +575,13 @@ bool wifi_stop_softap()
 	}
 	wifi_mode_t m = WIFI_MODE_NULL;
 	if (esp_err_t e = esp_wifi_get_mode(&m))
-		log_error(TAG,"error getting wifi mode: %s",esp_err_to_name(e));
+		log_warn(TAG,"error getting wifi mode: %s",esp_err_to_name(e));
 	if (m == WIFI_MODE_APSTA)
 		m = WIFI_MODE_AP;
 	else if (m == WIFI_MODE_AP)
 		m = WIFI_MODE_NULL;
 	if (esp_err_t e = esp_wifi_set_mode(m))
-		log_error(TAG,"error setting wifi mode %d: 0x%x",m,e);
+		log_warn(TAG,"error setting wifi mode %d: 0x%x",m,e);
 	if (m == WIFI_MODE_NULL) {
 		WifiStarted = false;
 		return ESP_OK == esp_wifi_stop();
@@ -632,11 +632,11 @@ void wifi_wps_start(void *)
 
 	Status &= ~STATUS_WPS_TERM;
 	if (esp_err_t e = esp_wifi_wps_enable(&config)) {
-		log_error(TAG,"wps enable failed with error %s",esp_err_to_name(e));
+		log_warn(TAG,"wps enable failed with error %s",esp_err_to_name(e));
 		return;
 	}
 	if (esp_err_t e = esp_wifi_wps_start(0)) {
-		log_error(TAG,"wps start failed with error %s",esp_err_to_name(e));
+		log_warn(TAG,"wps start failed with error %s",esp_err_to_name(e));
 		return;
 	}
 	log_info(TAG,"wps started, waiting to complete");
@@ -685,20 +685,20 @@ int wifi_setup()
 	esp_event_loop_create_default();
 	esp_netif_create_default_wifi_sta();
 	if (esp_err_t e = esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, 0))
-		log_error(TAG,"set wifi event handler: %s",esp_err_to_name(e));
+		log_warn(TAG,"set wifi event handler: %s",esp_err_to_name(e));
 	if (esp_err_t e = esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, 0))
-		log_error(TAG,"set got-IP event handler: %s",esp_err_to_name(e));
+		log_warn(TAG,"set got-IP event handler: %s",esp_err_to_name(e));
 	if (esp_err_t e = esp_event_handler_register(IP_EVENT, IP_EVENT_GOT_IP6, &event_handler, 0))
-		log_error(TAG,"set got-IP event handler: %s",esp_err_to_name(e));
+		log_warn(TAG,"set got-IP event handler: %s",esp_err_to_name(e));
 	if (esp_err_t e = esp_event_handler_register(IP_EVENT, IP_EVENT_STA_LOST_IP, &event_handler, 0))
-		log_error(TAG,"set lost-IP event handler: %s",esp_err_to_name(e));
+		log_warn(TAG,"set lost-IP event handler: %s",esp_err_to_name(e));
 #else
 	tcpip_adapter_init();
 #endif
 
 	wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
 	if (esp_err_t e = esp_wifi_init(&cfg)) {
-		log_error(TAG,"esp_wifi_init failed: %s",esp_err_to_name(e));
+		log_warn(TAG,"esp_wifi_init failed: %s",esp_err_to_name(e));
 		return 1;
 	}
 	uint8_t mac[6];
@@ -713,7 +713,7 @@ int wifi_setup()
 		log_info(TAG,"no station MAC");
 	}
 	if (esp_err_t e = esp_wifi_set_storage(WIFI_STORAGE_RAM)) {
-		log_error(TAG,"esp_wifi_set_storage failed: %s",esp_err_to_name(e));
+		log_warn(TAG,"esp_wifi_set_storage failed: %s",esp_err_to_name(e));
 		return 1;
 	}
 	esp_wifi_set_mode(WIFI_MODE_NULL);

@@ -36,11 +36,7 @@ class BH1750 : public I2CDevice
 	typedef enum { st_undef, st_off, st_idle, st_sampling, st_err } state_t;
 	typedef enum { rq_none, rq_off, rq_on, rq_sample, rq_qsample, rq_reset } req_t;
 
-	BH1750(uint8_t b, uint8_t a)
-	: I2CDevice(b,a,"bh1750")
-	, m_st(st_idle)
-	{ }
-
+	BH1750(uint8_t b, uint8_t a);
 	static unsigned cyclic(void*);
 	static void sample(void*);
 	static void qsample(void*);

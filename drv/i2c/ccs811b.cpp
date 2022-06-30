@@ -90,6 +90,8 @@ int CCS811B::init()
 		}
 	}
 	m_state = st_update;
+	m_tvoc = new EnvNumber("tvoc","ppb","%4.0f");
+	m_co2 = new EnvNumber("CO2","ppm","%4.0f");
 	log_dbug(TAG,"initialized");
 	return 0;
 }
@@ -98,8 +100,8 @@ int CCS811B::init()
 void CCS811B::attach(EnvObject *root)
 {
 	m_root = root;
-	m_tvoc = root->add("tvoc",NAN,"ppb");
-	m_co2 = root->add("CO2",NAN,"ppm");
+	root->add(m_tvoc);
+	root->add(m_co2);
 	if (m_state == st_update)
 		cyclic_add_task(m_name,cyclic,this,0);
 //	action_add(concat(m_name,"!sample"),trigger,(void*)this,"CCS811B sample data");

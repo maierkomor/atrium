@@ -111,17 +111,17 @@ void HttpRequest::parseField(char *at, char *end)
 	// parse field name
 	while (c != ':') {
 		if ((f-fn) == sizeof(fn)) {
-			m_error = "field name too long";
+			m_error = "field too big";
 			return;
 			}
 		if (isTCHAR(c)) {
 			*f++ = c;
 		} else {
-			m_error = "invalid field name character";
+			m_error = "invalid character";
 			return;
 		}
 		if (++at == end) {
-			m_error = "missing field value";
+			m_error = "missing value";
 			return;
 		}
 		c = *at;
@@ -150,7 +150,7 @@ void HttpRequest::parseField(char *at, char *end)
 	estring value;
 	if (*at == '"') {
 		if (end[-1] != '"') {
-			m_error = "missing terminating quote in header value";
+			m_error = "missing terminating quote in header";
 			return;
 		}
 		--end;
@@ -158,7 +158,7 @@ void HttpRequest::parseField(char *at, char *end)
 		++at;
 	}
 	if (end[-1] == '\\') {
-		m_error = "trailing backslash in header value";
+		m_error = "trailing backslash in header";
 		return;
 	}
 	log_dbug(TAG,"at = %s",at);
@@ -179,7 +179,7 @@ void HttpRequest::parseField(char *at, char *end)
 		else
 			m_error = "header value parser error";
 	}
-	log_dbug(TAG,"adding pair '%s' -> '%s'",fn,value.c_str());
+	log_dbug(TAG,"add pair '%s' -> '%s'",fn,value.c_str());
 	m_headers.emplace(pair<estring,estring>(fn,value.c_str()));
 	//auto x = m_headers.emplace(pair<estring,estring>(fn,value.c_str()));
 	//log_dbug(TAG,"added pair '%s' -> '%s'",x.first->first.c_str(),x.first->second.c_str());
@@ -191,10 +191,10 @@ char *HttpRequest::parseHeader(char *at, size_t s)
 	PROFILE_FUNCTION();
 	char *cr = (char*)memchr(at,'\r',s);
 	if (cr[1] != '\n') {
-		m_error = "stray carriage-return";
+		m_error = "stray CR";
 		return 0;
 	}
-	if (0 == strncasecmp(at,"content-length:",15)) {
+	if (0 == strncasecmp(at,"Content-Length:",15)) {
 		errno = 0;
 		long l = strtol(at+15,0,0);
 		if (errno != 0) {
@@ -291,7 +291,7 @@ void HttpRequest::parseArgs(const char *str)
 char *HttpRequest::getContent()
 {
 	if (m_content == 0) {
-		log_error(TAG,"request to query content after content was discarded");
+		log_warn(TAG,"request to query discarded content");
 		assert(0);
 	}
 	m_content[m_contlen] = 0;
@@ -312,7 +312,7 @@ void HttpRequest::fillContent()
 	do {
 		int n = m_con->read(m_content+m_clen0,m_contlen-m_clen0);
 		if (n == -1) {
-			log_error(TAG,"error downloading content: %s",m_con->error());
+			log_error(TAG,"error downloading: %s",m_con->error());
 			return;
 		}
 		m_clen0 += n;
@@ -332,7 +332,7 @@ void HttpRequest::discardContent()
 	do {
 		int n = m_con->read(tmp,asize < dsize ? asize : dsize);
 		if (n == -1) {
-			log_error(TAG,"error while discarding: %s",m_con->error());
+			log_error(TAG,"error discarding: %s",m_con->error());
 			break;
 		}
 		dsize -= n;
@@ -370,7 +370,7 @@ HttpRequest *HttpRequest::parseRequest(LwTcp *con, char *buf, size_t bs)
 //	con_write(buf,n);
 	char *cr = strchr(buf,'\r');
 	if (cr == 0) {
-		log_warn(TAG,"unterminated header line (%u)\n%-256s",n,buf);
+		log_warn(TAG,"unterminated header (%u)\n%-256s",n,buf);
 		return 0;
 	}
 	HttpRequest *r = new HttpRequest(con);
@@ -397,7 +397,7 @@ HttpRequest *HttpRequest::parseRequest(LwTcp *con, char *buf, size_t bs)
 	while ((at < buf+bs) && ((*at & 0x80) == 0) && (*at != ' '))
 		++at;
 	if ((at == buf+bs) || (*at != ' ')) {
-		log_error(TAG,"invalid start line while parsing request:\n");
+		log_warn(TAG,"invalid start line:\n");
 		delete r;
 		return 0;
 	}
@@ -411,7 +411,7 @@ HttpRequest *HttpRequest::parseRequest(LwTcp *con, char *buf, size_t bs)
 	} else if (0 == memcmp(at,"HTTP/2.0",9)) {
 		r->m_httpver = hv_2_0;
 	} else {
-		log_error(TAG,"unknown http version %8s",at);
+		log_warn(TAG,"unknown http version %8s",at);
 		delete r;
 		return 0;
 	}
@@ -422,8 +422,8 @@ HttpRequest *HttpRequest::parseRequest(LwTcp *con, char *buf, size_t bs)
 	if (*at == 0)
 		return r;
 	if ((at[0] != '\r') || (at[1] != '\n')) {
-		log_error(TAG,"invalid message termination");
-		r->m_error = "invalid message termination";
+		log_warn(TAG,"invalid termination");
+		r->m_error = "invalid termination";
 		return r;
 	}
 	at += 2;

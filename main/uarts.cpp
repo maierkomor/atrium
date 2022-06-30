@@ -216,6 +216,7 @@ void uart_setup()
 		log_set_uart(diag);
 		log_info(TAG,"diag on uart %u",diag);
 	}
+#ifdef CONFIG_TERMSERV
 	for (auto &c : Config.terminal()) {
 		int8_t rx = c.uart_rx();
 		int8_t tx = c.uart_tx();
@@ -239,7 +240,6 @@ void uart_setup()
 			}
 		}
 #endif
-#ifdef CONFIG_TERMSERV
 		if ((tx != -1) && (rx != -1)) {
 			// this is a terminal
 			Term *n = new Term(rx,tx);
@@ -260,8 +260,8 @@ void uart_setup()
 			rx_used |= (1 << rx);
 			tx_used |= (1 << tx);
 		}
-#endif
 	}
+#endif
 }
 
 
@@ -377,7 +377,7 @@ int uart_termcon(Terminal &term, int argc, const char *args[])
 		} else if ((i == -1) && term.error()) {
 			r = 1;
 			const char *e = term.error();
-			log_info(TAG,"read error: %s; closing session", e ? e : "<null>");
+			log_info(TAG,"read error: %s", e ? e : "<null>");
 			break;
 		}
 		if ((a == 0) && (i <= 0))

@@ -91,6 +91,7 @@ unsigned CoreIO1::numIOs() const
 
 int CoreIO0::config(uint8_t num, xio_cfg_t cfg)
 {
+	log_dbug(TAG,"config0 %u,0x%x",num,cfg);
 	if (num >= 32) {
 		log_warn(TAG,"invalid gpio%u",num);
 		return -EINVAL;
@@ -140,9 +141,11 @@ int CoreIO0::config(uint8_t num, xio_cfg_t cfg)
 #if 1
 	if (cfg.cfg_io == xio_cfg_io_keep) {
 	} else if (cfg.cfg_io == xio_cfg_io_in) {
-		PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[num]);
-		GPIO.enable_w1tc = (1 << num);
-		GPIO.pin[num].pad_driver = 0;
+//		PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[num]);
+//		GPIO.enable_w1tc = (1 << num);
+//		GPIO.pin[num].pad_driver = 0;
+		gpio_pad_select_gpio(num);
+		gpio_set_direction((gpio_num_t)num,GPIO_MODE_INPUT);
 		log_dbug(TAG,"input %u",num);
 	} else if (cfg.cfg_io == xio_cfg_io_out) {
 		gpio_pad_select_gpio(num);
@@ -168,10 +171,13 @@ int CoreIO0::config(uint8_t num, xio_cfg_t cfg)
 		REG_CLR_BIT(GPIO_PIN_MUX_REG[num], FUN_PD);
 		log_dbug(TAG,"no pull %u",num);
 	} else if (cfg.cfg_pull == xio_cfg_pull_up) {
-		gpio_set_pull_mode((gpio_num_t)num,GPIO_PULLUP_ONLY);
+		gpio_pulldown_dis((gpio_num_t)num);
+		if (esp_err_t e = gpio_pullup_en((gpio_num_t)num))
+			log_warn(TAG,"pull-up on %d failed: %d",num,e);
+		else
+			log_dbug(TAG,"pull-up %u",num);
 //		REG_SET_BIT(GPIO_PIN_MUX_REG[num], FUN_PU);
 //		REG_CLR_BIT(GPIO_PIN_MUX_REG[num], FUN_PD);
-		log_dbug(TAG,"pull-up %u",num);
 	} else if (cfg.cfg_pull == xio_cfg_pull_down) {
 		REG_CLR_BIT(GPIO_PIN_MUX_REG[num], FUN_PU);
 		REG_SET_BIT(GPIO_PIN_MUX_REG[num], FUN_PD);
@@ -220,6 +226,7 @@ int CoreIO0::config(uint8_t num, xio_cfg_t cfg)
 
 int CoreIO1::config(uint8_t num, xio_cfg_t cfg)
 {
+	log_dbug(TAG,"config1 %u,0x%x",num,cfg);
 	if (num >= 8) {
 		log_warn(TAG,"invalid gpio%u",num);
 		return -EINVAL;
@@ -230,16 +237,16 @@ int CoreIO1::config(uint8_t num, xio_cfg_t cfg)
 		gpio_pad_select_gpio(xnum);
 		PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[xnum]);
 		GPIO.enable1_w1tc.data = (1 << num);
-		GPIO.pin[num].pad_driver = 0;
+		GPIO.pin[xnum].pad_driver = 0;
 		REG_WRITE(GPIO_FUNC0_OUT_SEL_CFG_REG + (num * 4), SIG_GPIO_OUT_IDX);
 	} else if (cfg.cfg_io == xio_cfg_io_out) {
-		gpio_pad_select_gpio(num);
+		gpio_pad_select_gpio(xnum);
 		PIN_INPUT_DISABLE(GPIO_PIN_MUX_REG[xnum]);
 		GPIO.enable1_w1ts.data = (1 << num);
-		gpio_matrix_out(num, SIG_GPIO_OUT_IDX, false, false);
+		gpio_matrix_out(xnum, SIG_GPIO_OUT_IDX, false, false);
 		GPIO.pin[xnum].pad_driver = 0;
 	} else if (cfg.cfg_io == xio_cfg_io_od) {
-		gpio_pad_select_gpio(num);
+		gpio_pad_select_gpio(xnum);
 		PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[xnum]);
 		GPIO.enable1_w1ts.data = (1 << num);
 		gpio_matrix_out(xnum, SIG_GPIO_OUT_IDX, false, false);
@@ -268,10 +275,17 @@ int CoreIO1::config(uint8_t num, xio_cfg_t cfg)
 		GPIO.pin[xnum].int_type = cfg.cfg_intr;
 		GPIO.pin[xnum].int_ena = 0;
 		gpio_intr_disable((gpio_num_t)xnum);
+		log_dbug(TAG,"interrupt disable %u",xnum);
 	} else if (cfg.cfg_intr < xio_cfg_intr_keep) {
-		GPIO.pin[xnum].int_type = cfg.cfg_intr;
-		GPIO.pin[xnum].int_ena = 1;
-		gpio_intr_enable((gpio_num_t)xnum);
+		// GPIO.pin[xnum].int_type = cfg.cfg_intr;
+		// GPIO.pin[xnum].int_ena = 1;
+		// gpio_intr_enable((gpio_num_t)xnum);
+		if (esp_err_t e = gpio_set_intr_type((gpio_num_t)xnum,(gpio_int_type_t)cfg.cfg_intr))
+			log_error(TAG,"set intr type %d",e);
+		else if (esp_err_t e = gpio_intr_enable((gpio_num_t)xnum))
+			log_error(TAG,"intr enable %d",e);
+		else
+			log_dbug(TAG,"interrupt on %s on %u",GpioIntrTriggerStr[cfg.cfg_intr],num);
 	} else {
 		return -EINVAL;
 	}
@@ -325,16 +339,24 @@ int CoreIO1::get_dir(uint8_t num) const
 
 int CoreIO0::get_lvl(uint8_t num)
 {
-	if (num < 32)
-		return (GPIO.in >> num) & 0x1;
+	if (num < 32) {
+		if (GPIO.enable & (1 << num))
+			return (GPIO.out >> num) & 0x1;
+		else
+			return (GPIO.in >> num) & 0x1;
+	}
 	return -EINVAL;
 }
 
 
 int CoreIO1::get_lvl(uint8_t num)
 {
-	if (num < 32)
-		return (GPIO.in1.data >> num) & 0x1;
+	if (num < 32) {
+		if (GPIO.enable1.data & (1 << num))
+			return (GPIO.out >> num) & 0x1;
+		else
+			return (GPIO.in1.data >> num) & 0x1;
+	}
 	return -EINVAL;
 }
 

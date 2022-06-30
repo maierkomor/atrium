@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2017-2021, Thomas Maier-Komor
+ *  Copyright (C) 2017-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -64,7 +64,7 @@ static bool is_holiday(uint8_t d, uint8_t m, unsigned y)
 		unsigned sm = hd.month();
 		if ((d == sd) && (m == sm) 
 			&& (!hd.has_year() || (y == hd.year()))) {
-			log_dbug(TAG,"direct match d=%u, m=%u, y=%u, sd=%u, sm=%u",d,m,y,sd,sm);
+//			log_dbug(TAG,"direct match d=%u, m=%u, y=%u, sd=%u, sm=%u",d,m,y,sd,sm);
 			return true;
 		}
 		unsigned ed = hd.endday();
@@ -75,7 +75,7 @@ static bool is_holiday(uint8_t d, uint8_t m, unsigned y)
 			unsigned so = sd | (sm<<8) | (sy<<16);
 			unsigned eo = ed | (em<<8) | (ey<<16);
 			if ((doy >= so) && (doy <= eo)) {
-				log_dbug(TAG,"match so = %x, eo = %x",so,eo);
+//				log_dbug(TAG,"match so = %x, eo = %x",so,eo);
 				return true;
 			}
 		}
@@ -125,13 +125,13 @@ static unsigned alarms_loop(void *)
 				event_t e = event_id(aname);
 				if (e == 0)
 					e = event_register(aname);
-				log_dbug(TAG,"alarm at %s %u:%02u triggers event %s",Weekdays_de[wd],a.min_of_day()/60,a.min_of_day()%60,aname);
+				log_dbug(TAG,"at %s %u:%02u => %s",Weekdays_de[wd],a.min_of_day()/60,a.min_of_day()%60,aname);
 				event_trigger(e);
 
 			} else {
-				log_dbug(TAG,"alarm at %s %u:%02u triggers action %s",Weekdays_de[wd],a.min_of_day()/60,a.min_of_day()%60,aname);
+				log_dbug(TAG,"at %s %u:%02u => %s",Weekdays_de[wd],a.min_of_day()/60,a.min_of_day()%60,aname);
 				if (action_activate(aname))
-					log_warn(TAG,"unable to execute unknown action '%s'",aname);
+					log_warn(TAG,"unknown action '%s'",aname);
 			}
 		}
 	}
@@ -160,14 +160,33 @@ bool alarms_enabled()
 int alarms_setup()
 {
 	Enabled = RTData->add("timers_enabled",(bool)Config.actions_enable());
-	action_add("timer!enable",alarms_set,(void*)1,"enable timer based triggers");
-	action_add("timer!disable",alarms_set,0,"disable timer based triggers");
-	action_add("timer!toggle",alarms_toggle,0,"toggle timer based triggers");
+	action_add("timer!enable",alarms_set,(void*)1,"enable 'at' execution");
+	action_add("timer!disable",alarms_set,0,"disable 'at' execution");
+	action_add("timer!toggle",alarms_toggle,0,"toggle 'at' execution");
 	return cyclic_add_task("alarms",alarms_loop);
 }
 
 
 #ifdef CONFIG_HOLIDAYS
+static int parse_date(const char *arg, unsigned *d)
+{
+	int n = sscanf(arg,"%u.%u.%u",d,d+1,d+2);
+	if (n < 2) {
+		n = sscanf(arg,"%u/%u/%u",d+1,d,d+2);
+		if (n < 2) {
+			n = sscanf(arg,"%u-%u-%u",d+2,d+1,d);
+			if (n < 3)
+				return 1;
+		}
+	}
+	if ((d[1] <= 0) || (d[1] > 12))
+		return -1;
+	if ((d[0] <= 0) || (d[0] > 31))
+		return -1;
+	return n;
+}
+
+
 int holiday(Terminal &t, int argc, const char *args[])
 {
 	if ((argc == 1) || (argc > 3))
@@ -209,13 +228,24 @@ int holiday(Terminal &t, int argc, const char *args[])
 		t.print("]}\n");
 		return 0;
 	}
+#if 1
+	unsigned date[3];
+	int n = parse_date(args[1],date);
+	if (n < 2)
+		return arg_invalid(t,args[1]);
+	Date h;
+	h.set_month(date[1]);
+	h.set_day(date[0]);
+	if ((n == 3) && (date[2] != 0))
+		h.set_year(date[2]);
+#else
 	int y,m,d;
 	int n = sscanf(args[1],"%d.%d.%d",&d,&m,&y);
 	if (n < 2) {
 		n = sscanf(args[1],"%d/%d/%d",&m,&d,&y);
 		if (n < 2) {
 			n = sscanf(args[1],"%d-%d-%d",&y,&m,&d);
-			if (n < 2)
+			if (n < 3)
 				return arg_invalid(t,args[1]);
 		}
 	}
@@ -232,13 +262,23 @@ int holiday(Terminal &t, int argc, const char *args[])
 	h.set_day(d);
 	if ((n == 3) && (y != 0))
 		h.set_year(y);
+#endif
 	if (argc == 3) {
+#if 1
+		unsigned enddate[3];
+		n = parse_date(args[2],enddate);
+		if (n < 2)
+			return arg_invalid(t,args[2]);
+		h.set_endday(enddate[0]);
+		h.set_endmonth(enddate[1]);
+		h.set_endyear(enddate[2]-h.year());
+#else
 		n = sscanf(args[2],"%d.%d.%d",&d,&m,&y);
 		if (n < 3) {
 			n = sscanf(args[2],"%d/%d/%d",&m,&d,&y);
 			if (n < 3) {
 				n = sscanf(args[2],"%d-%d-%d",&y,&m,&d);
-				if (n < 2) {
+				if (n < 3) {
 					t.println("invalid input format");
 					return 1;
 				}
@@ -255,6 +295,7 @@ int holiday(Terminal &t, int argc, const char *args[])
 		h.set_endday(d);
 		h.set_endmonth(m);
 		h.set_endyear(y-h.year());
+#endif
 	}
 	*Config.add_holidays() = h;
 	return 0;
@@ -275,24 +316,24 @@ int at(Terminal &t, int argc, const char *args[])
 				const AtAction &a = Config.at_actions(i);
 				const char *name = a.action().c_str();
 				Action *x = action_get(name);
-				const char *text = x ? x->text : "<action not found>";
+				const char *text = x ? x->text : "<unknown action>";
 				t.printf("\t[%d]: %-10s %2u:%02u  %-16s '%s'%s\n"
 					,i
 					,WeekDay_str(a.day())
 					,a.min_of_day()/60
 					,a.min_of_day()%60
 					,name
-					,text?text:"<unnamed action>"
+					,text
 					,a.enable()?"":" (disabled)");
 			}
 		} else if (!strcmp(args[1],"-0")) {
 			Config.set_actions_enable(Config.actions_enable()&~1);
 			Enabled->set(false);
-			t.println("timers disabled");
+			t.println("at disabled");
 		} else if (!strcmp(args[1],"-1")) {
 			Config.set_actions_enable(Config.actions_enable()|1);
 			Enabled->set(true);
-			t.println("timers enabled");
+			t.println("at enabled");
 		} else if (!strcmp(args[1],"-s")) {
 			cfg_store_nodecfg();
 		} else if (!strcmp(args[1],"-j")) {
@@ -357,8 +398,7 @@ int at(Terminal &t, int argc, const char *args[])
 	int h,m;
 	int n = sscanf(args[2],"%d:%d",&h,&m);
 	if ((2 != n) || (h < 0) || (h > 23) || (m < 0) || (m > 59)) {
-		t.printf("invalid time spec (n=%d, h=%d, m=%d)\n",n,h,m);
-		return 1;
+		return arg_invalid(t,args[2]);
 	}
 	if (0 == action_exists(args[3]))
 		return arg_invalid(t,args[3]);

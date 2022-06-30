@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2021, Thomas Maier-Komor
+ *  Copyright (C) 2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -16,44 +16,37 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef ALIVE_H
-#define ALIVE_H
+#ifndef PCA9685_H
+#define PCA9685_H
 
-#include <stdint.h>
+#include "i2cdrv.h"
 
-#ifdef __cplusplus
-extern "C" {
+
+class PCA9685 : public I2CDevice
+{
+	public:
+	static PCA9685 *create(uint8_t bus, uint8_t addr, bool invrt, bool outdrv, bool xclk = false);
+
+	const char *drvName() const override
+	{ return "pca9685"; }
+
+	void attach(class EnvObject *) override;
+
+	int setPrescale(uint8_t ps);
+	int setCh(int8_t led, uint16_t duty, uint16_t off = 0);	// duty=0..4096
+
+#ifdef CONFIG_I2C_XCMD
+	int exeCmd(struct Terminal &, int argc, const char **argv) override;
 #endif
 
-typedef enum ledmode {
-	ledmode_auto = 0,
-	ledmode_off,
-	ledmode_on,
-	ledmode_pulse_seldom,
-	ledmode_pulse_often,
-	ledmode_neg_seldom,
-	ledmode_neg_often,
-	ledmode_heartbeat,
-	ledmode_slow,
-	ledmode_medium,
-	ledmode_fast,
-	ledmode_max	// not a mode, just for iteration
-} ledmode_t;
+	PCA9685 *getNext() const
+	{ return m_next; }
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-int status_setup();
-void statusled_set(ledmode_t);
-//void status_task(void *ignored);
-uint16_t statusled_get();
-
-#ifdef __cplusplus
-}
-#endif
-
-#ifdef __cplusplus
-}
-#endif
+	private:
+	PCA9685(uint8_t bus, uint8_t addr);
+	int setAll(uint16_t off, uint16_t on);
+	
+	PCA9685 *m_next;
+};
 
 #endif

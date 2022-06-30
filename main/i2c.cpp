@@ -20,9 +20,12 @@
 
 #ifdef CONFIG_I2C
 
+#include "bh1750.h"
 #include "globals.h"
 #include "hwcfg.h"
+#include "ht16k33.h"
 #include "i2cdrv.h"
+#include "pca9685.h"
 #include "pcf8574.h"
 #include "log.h"
 #include "terminal.h"
@@ -57,6 +60,31 @@ static inline void i2c_scan_device(uint8_t bus, uint8_t addr, i2cdrv_t drv)
 		MCP2301X::create(bus,addr);
 		break;
 #endif
+#ifdef CONFIG_HT16K33
+	case i2cdrv_ht16k33:
+		HT16K33::create(bus,addr);
+		break;
+#endif
+#ifdef CONFIG_PCA9685
+	case i2cdrv_pca9685:
+		PCA9685::create(bus,addr,true,false);
+		break;
+	case i2cdrv_pca9685_npn:
+		PCA9685::create(bus,addr,false,true);
+		break;
+	case i2cdrv_pca9685_pnp:
+		PCA9685::create(bus,addr,true,true);
+		break;
+	case i2cdrv_pca9685_xclk:
+		PCA9685::create(bus,addr,true,false,true);
+		break;
+	case i2cdrv_pca9685_xclk_npn:
+		PCA9685::create(bus,addr,false,true,true);
+		break;
+	case i2cdrv_pca9685_xclk_pnp:
+		PCA9685::create(bus,addr,true,true,true);
+		break;
+#endif
 	default:
 		log_warn(TAG,"request to look for unknown i2c device %d at address %u,0x%x",drv,bus,addr);
 	}
@@ -69,6 +97,7 @@ int i2c_setup(void)
 	for (const I2CConfig &c : HWConf.i2c()) {
 		if (c.has_sda() && c.has_scl()) {
 			uint8_t bus = c.port();
+			log_info(TAG,"init at %d/%d",c.sda(),c.scl());
 #ifdef CONFIG_IDF_TARGET_ESP8266
 			int r = i2c_init(bus,c.sda(),c.scl(),0,c.xpullup());
 #else
@@ -78,15 +107,19 @@ int i2c_setup(void)
 				log_warn(TAG,"error %d",r);
 #ifdef CONFIG_I2C_XDEV
 			for (i2cdev_t d : c.devices()) {
-				i2c_scan_device(bus,d & 0x7f,(i2cdrv_t)((d >> 8) & 0xff));
+				i2c_scan_device(bus,d & 0xff,(i2cdrv_t)((d >> 8) & 0xff));
 			}
 #endif
 		}
 	}
 	I2CDevice *d = I2CDevice::getFirst();
 	while (d) {
-		EnvObject *o = RTData->add(d->getName());
+		EnvObject *o = new EnvObject(d->getName());
 		d->attach(o);
+		if (o->numChildren())
+			RTData->add(o);
+		else
+			delete o;
 		d = d->getNext();
 	}
 	return 0;
@@ -95,14 +128,22 @@ int i2c_setup(void)
 
 int i2c(Terminal &term, int argc, const char *args[])
 {
-	if (argc != 1)
-		return arg_invnum(term);;
 	I2CDevice *s = I2CDevice::getFirst();
-	term.println("bus addr  name");
+	if (argc == 1) {
+		term.println("bus addr  name");
+		while (s) {
+			term.printf("%3d   %02x  %s\n",s->getBus(),s->getAddr(),s->getName());
+			s = s->getNext();
+		}
+		return 0;
+	}
+#ifdef CONFIG_I2C_XCMD
 	while (s) {
-		term.printf("%3d   %02x  %s\n",s->getBus(),s->getAddr(),s->getName());
+		if (0 == strcmp(s->getName(),args[1]))
+			return s->exeCmd(term,argc-2,args+2);
 		s = s->getNext();
 	}
-	return 0;
+#endif
+	return arg_invalid(term,args[1]);;
 }
 #endif

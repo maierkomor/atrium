@@ -110,10 +110,10 @@ bool HttpServer::runDirectory(HttpRequest *req)
 	HttpResponse ans;
 	int fd = open(fn,O_RDONLY);
 	if (fd == -1) {
-		log_info(TAG,"open of %s failed",fn);
+		log_warn(TAG,"open of %s failed",fn);
 		ans.setResult(HTTP_NOT_FOUND);
 	} else {
-		log_info(TAG,"sending file");
+		log_info(TAG,"sending file %s",fn);
 		ans.setResult(HTTP_OK);
 	}
 	ans.senddata(req->getConnection(),fd);
@@ -185,7 +185,7 @@ bool HttpServer::runFile(HttpRequest *req)
 	if (i == m_files.end())
 		return false;
 	if (m_wwwroot == 0) {
-		log_warn(TAG,"looking for file but no wwwroot given");
+		log_warn(TAG,"wwwroot not set");
 		return false;
 	}
 	log_dbug(TAG,"found file %s",uri);
@@ -220,7 +220,7 @@ bool HttpServer::runFunction(HttpRequest *req)
 	if (i == m_functions.end()) {
 		return false;
 	}
-	log_dbug(TAG,"found function %s",req->getURI());
+	log_dbug(TAG,"function %s",req->getURI());
 	www_fun_t f = i->second;
 	f(req);
 	return true;
@@ -232,7 +232,7 @@ bool HttpServer::runMemory(HttpRequest *req)
 	auto m = m_memfiles.find(req->getURI());
 	if (m == m_memfiles.end())
 		return false;
-	log_dbug(TAG,"found memfile %s",req->getURI());
+	log_dbug(TAG,"memfile %s",req->getURI());
 	HttpResponse ans;
 	ans.setResult(HTTP_OK);
 	ans.addContent(m->second);
@@ -264,7 +264,7 @@ void HttpServer::performGET(HttpRequest *req)
 
 void HttpServer::performPOST(HttpRequest *req)
 {
-	log_dbug(TAG,"post request %s",req->getURI());
+	log_dbug(TAG,"POST %s",req->getURI());
 	if (!runFunction(req)) {
 		HttpResponse ans;
 		ans.setResult(HTTP_NOT_FOUND);
@@ -295,23 +295,22 @@ void HttpServer::performPUT(HttpRequest *req)
 		close(fd);
 		log_warn(TAG,"unable to write to upload file %s: %s",fn,strerror(errno));
 		ans.setResult(errno == ENOSPC ? HTTP_INSUF_SPACE : HTTP_INTERNAL_ERR);
-		ans.senddata(con);
-		return;
+	} else {
+		int n;
+		do {
+			char buf[1024];
+			n = con->read(buf,sizeof(buf));
+			if (n > 0)
+				n = write(fd,buf,n);
+		} while (n > 0);
+		close(fd);
+		if (n == 0)
+			ans.setResult(HTTP_OK);
+		else if (errno == ENOSPC)
+			ans.setResult(HTTP_INSUF_SPACE);
+		else
+			ans.setResult(HTTP_INTERNAL_ERR);
 	}
-	int n;
-	do {
-		char buf[1024];
-		n = con->read(buf,sizeof(buf));
-		if (n > 0)
-			n = write(fd,buf,n);
-	} while (n > 0);
-	close(fd);
-	if (n == 0)
-		ans.setResult(HTTP_OK);
-	else if (errno == ENOSPC)
-		ans.setResult(HTTP_INSUF_SPACE);
-	else
-		ans.setResult(HTTP_INTERNAL_ERR);
 	ans.senddata(con);
 #else
 	HttpResponse ans;

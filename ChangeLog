@@ -1,3 +1,27 @@
+R2206:
+======
+- new runtime-define state-machine concept for binding event-action
+  pairs to a state of a state-machine
+- reworked OLED user-interface code to be more flexible
+- added support for parasite power on 1-wire bus
+- dimmer update
+- added init`done event at the end of initialization
+- added mqtt support for dimmer/pwm
+- advanced I2C init support
+- put cyclic processing into dedicated task on esp32
+- fixes for I2C error handling
+- fixes for esp32/gpio
+- fixes for esp32/adc
+- fix LED init
+- workaround for I2C init bug of IDF v3.3.x
+- update to esp32-idf v3.3.6
+- added driver for PCA9685
+- HT16K33 must now explicitly configured to avoid mis-detections
+- added system`ready event that indicates end of startup
+- added support for device specific commands for I2C devices
+- enhanced LED modes support
+- COMPATIBILITY: clock actions have been renamed to display
+
 R2202:
 ======
 - fix a potential crash on TCP FIN

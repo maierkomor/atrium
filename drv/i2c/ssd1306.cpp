@@ -171,7 +171,7 @@ SSD1306::~SSD1306()
 
 int SSD1306::init(uint8_t maxx, uint8_t maxy, uint8_t hwcfg)
 {
-	log_dbug(TAG,"init(%u,%u)",maxx,maxy);
+	log_info(TAG,"init(%u,%u)",maxx,maxy);
 	m_maxx = maxx;
 	m_maxy = maxy;
 	uint32_t dsize = maxx * maxy;
@@ -206,6 +206,7 @@ int SSD1306::init(uint8_t maxx, uint8_t maxy, uint8_t hwcfg)
 	sync();
 	setOn(true);
 	initOK();
+	log_info(TAG,"ready");
 	return 0;
 }
 
@@ -760,14 +761,14 @@ int SSD1306::writeHex(uint8_t h, bool comma)
 
 int SSD1306::setPos(uint8_t x, uint8_t y)
 {
-	log_info(TAG,"setPos(%u/%u)",x,y);
+	log_dbug(TAG,"setPos(%u/%u)",x,y);
 	x *= CHAR_WIDTH;
 	y *= fontHeight();
 	if ((x >= m_maxx-(CHAR_WIDTH)) || (y > m_maxy-fontHeight())) {
 		log_dbug(TAG,"invalid pos %u/%u",x,y);
 		return 1;
 	}
-	log_info(TAG,"setPos %u/%u",x,y);
+	log_dbug(TAG,"setPos %u/%u",x,y);
 	m_posx = x;
 	m_posy = y;
 	return 0;

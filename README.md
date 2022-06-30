@@ -33,6 +33,8 @@ Software services:
 - serial monitor to forward uart to syslog
 - WPS support (unstable, untested)
 - SmartConfig support (compatible hardware required, untested)
+- runtime-configurable state-machines to define state-bound event-action
+  bindings
 
 Filesystem support:
 - fatfs on ESP32
@@ -138,68 +140,65 @@ the appropriate address. I.e. this works only after the device has been
 initialized with a partition table.
 
 
-Buliding Atrium yourself:
-=========================
-To prepare the build environment, run "./setupenv.sh", which will:
-- check some prerequisites that need to be installed manually
-- download the xtools for lx106 (esp8266) and for esp32
-- download and compile wire-format-compiler
-- patch the IDF trees
-- satisfy Python requirements of IDF using pip
+Interfaces:
+===========
+Atrium provides timers, events, and actions to configure the behavior of
+a devices. Like this a single flash image can be used for different
+kinds of hardware and/or applications. Additionally, state-machines can
+be used to provide user-interactions with buttons, LEDs, and a display.
+This also enables the user to define dynamic behavior based on states
+and event processing.
 
-To build a project, run:
-```
-> make PROJECT=<project-name>
-```
+Timers:
+-------
+Timers can be created on the fly, started and stopped by events, and can
+be used to trigger arbitrary actions. For every timer an associated
+timeout event is created, and the timer can be started and stopped with
+associated actions. Furthermore, they can be configured  to
+automatically start on startup and to repeat with the given interval
+time.
 
-This will build the project in a subdirectory called `build.<project>`.
+Actions:
+--------
+Actions can be triggered by events or executed manually via a shell.
+Execute `action -l` for a list and description of available actions.
 
-To flash a target, run:
-```
-> make PROJECT=<project-name> flash
-```
+To trigger actions remotely, MQTT can be used. Therefore, send the name
+of the action to be triggered as value to the topic `<nodename>/action`.
 
-To build for live update, always do a clean build, by running:
-```
-> rm -r build.<project-name>
-> make PROJECT=<project-name> ota
-```
+Some actions take an optional argument. The argument can be given on the
+command-line when invoking it directly, or via the event interface,
+described below.
 
-Required Tools:
-===============
-- On Windows:
-	- Flash download tool:
-		- Download at: https://www.espressif.com/en/support/download/other-tools
-		- https://www.espressif.com/sites/default/files/tools/flash\_download\_tool\_v3.8.5.zip
-- On Linux:
-	- IDF for ESP32 or ESP8266 respectively
+Events:
+-------
+Timers, state-machines, and drivers create events that can be bound to
+actions defined by the system and other drivers. Events are named
+according to the driver or its instnace name. Execute `event -l` for a
+list of availbe events.
 
+Events can be associated with an action, using the command `event -a
+<event> <action>`. Optionally, an argument can be given to the action.
 
-Building a flash image:
-=======================
-To build you need a properly patched IDF. You can either manually apply
-the appropriate patch from the patches directory to the relevant IDF or
-let it be done automatically with the setup script.
+State-Machines:
+---------------
+To handle differents mode of operation, runtime-configurable
+state-machines are provided that enable associated event-action pairs
+only if the related state of the state-machine is active. In addition
+events are provided that inform about entry and exit of states. These
+events can also be associated with actions.
 
-To build the flash image of a specific project run:
-```
-make PROJECT=<project>
-```
+Like this it is easily possible to use a couple of buttons and LEDs to
+provide a user-interface that can drive multiple modes of operation.
 
-Select _components_, then select _application_. Here you can configure software and hardware feature and specify which type of file-system should be used.
-
-
-WFC dependency:
-===============
-WFC - wire format compiler - is used to generate code for serializing
-and parsing config data. The version used is a non-public version with
-advanced features. Therefore, the generated files are included in the
-distribution and the generation is not performed during the build
-process.
-
-If you want to expand the configuration and therefore need to generated
-the associated .cpp and .h files, please get in touch with the author
-(e-mail: thomas at maier-komor dot de).
+Use the `sm` command to add new machines and states. States can be
+referneced as `<machine>:<state>` pair in actions. To change the state
+of a state-machine, use the `sm!set` action and give it a
+`<machine>:<state>` pair as an argument. This action will cause a state
+transistion, which first triggers the ``<machine>:<state>`exit`` event,
+disable all event-action bindings of the old state, enables all
+event-action bindings of the new state, and triggers the
+``<machine>`enter`` event of the new state.
 
 
 Offline configuration:
@@ -359,6 +358,73 @@ of the device. These variables can be queried with the `env`
 command, and can be submitted to an Influx DB with the `influx!rtdata`
 action.
 
+Parasite power is supported and is enabled if you configure the
+related gpio. 
+
+
+Buliding Atrium yourself:
+=========================
+To prepare the build environment, run "./setupenv.sh", which will:
+- check some prerequisites that need to be installed manually
+- download the xtools for lx106 (esp8266) and for esp32
+- download and compile wire-format-compiler
+- patch the IDF trees
+- satisfy Python requirements of IDF using pip
+
+To build a project, run:
+```
+> make PROJECT=<project-name>
+```
+
+This will build the project in a subdirectory called `build.<project>`.
+
+To flash a target, run:
+```
+> make PROJECT=<project-name> flash
+```
+
+To build for live update, always do a clean build, by running:
+```
+> rm -r build.<project-name>
+> make PROJECT=<project-name> ota
+```
+
+Required Tools:
+===============
+- On Windows:
+	- Flash download tool:
+		- Download at: https://www.espressif.com/en/support/download/other-tools
+		- https://www.espressif.com/sites/default/files/tools/flash_download_tool_v3.8.5.zip
+- On Linux:
+	- IDF for ESP32 or ESP8266 respectively
+
+
+Building a flash image:
+=======================
+To build you need a properly patched IDF. You can either manually apply
+the appropriate patch from the patches directory to the relevant IDF or
+let it be done automatically with the setup script.
+
+To build the flash image of a specific project run:
+```
+make PROJECT=<project>
+```
+
+Select _components_, then select _application_. Here you can configure software and hardware feature and specify which type of file-system should be used.
+
+
+WFC dependency:
+===============
+WFC - wire format compiler - is used to generate code for serializing
+and parsing config data. The version used is a non-public version with
+advanced features. Therefore, the generated files are included in the
+distribution and the generation is not performed during the build
+process.
+
+If you want to expand the configuration and therefore need to generated
+the associated .cpp and .h files, please get in touch with the author
+(e-mail: thomas at maier-komor dot de).
+
 
 Security Concepts:
 ==================
@@ -479,30 +545,6 @@ To update via telnet you need to perform the following steps:
 Never switch boot partition if updating returned an error.  If your system doesn't boot anymore, you will need to flash via serial boot loader.
 
 If your system reports out of memory while flashing, try to turn of some services (e.g. use `dmesg 0`, `mqtt disable`, and `influx stop` via telnet or serial console). This should free enough RAM to make the update possible.
-
-
-Interfaces:
-===========
-
-Timers:
--------
-Timers can be created on the fly, started and stopped by events, and can
-be used to trigger arbitrary actions.
-
-Events:
--------
-Drivers create events that can be bound to actions defined by the
-system and other drivers. Events are named according to the driver or
-its instnace name. Execute 'event -l' for a list of availbe
-events.
-
-Actions:
---------
-Actions can be triggered by events or executed manually via a shell.
-Execute 'action -l' for a list and description of available actions.
-
-To trigger actions remotely, MQTT can be used. Therefore, send the name
-of the action to be triggered as value to the topic `<nodename>/action`.
 
 
 Interface Stability:
@@ -657,6 +699,43 @@ maximum X and Y resolution of the diplays (digits for LED and text LCDs,
 and dots for OLEDs). OLEDs based on SSD1306 may also need appropriate
 options for the individual hardware configuration as specified in the
 ssd1306.h file. Documentation for this is on the TODO list right now.
+
+
+I/O-Extenders:
+==============
+Support for several I/O extenders is included. These can be used like
+regular controller internal GPIOs for most drivers. Of course operation
+of these GPIOs come with a latency impact over core GPIOs. In
+consequence timing sensitive devices may not operate correctly with I/O
+extenders. But for drivers like button and LEDs will work without a
+problem.
+
+GPIO ports of I/O extenders are listed like core GPIOs when using the
+`gpio` command. To ensure the GPIOs' ids don't change after rebooting,
+newly detected I/O extenders are added to the hardware configuration. To
+make this change persistent, you must use `hwconf write` to write the
+new configuration to NVM.
+
+
+Advanced I2C commands:
+======================
+The `i2c` command provides access to device specific commands. To issue
+such a command use the `i2c` command followed by the device name and the
+command and its arguments to execute. Similarly these commands may be
+invoked via the action interface (e.g. binding them to the ``init done`` event).
+
+
+Advanced I2C configuration:
+===========================
+Some I2C devices such as PCA9685 may need application specific settings
+that also may change with the software or use-case. For these devices
+the startup event ``init`done`` can be used to trigger an action that
+configures the devices appropriately. E.g. for setting the prescale
+value of PCA9685 to adjust the base frequency of the PWM.
+
+Like this the configuration can also be adjusted at run-time.
+Therefore, these parameters are also not seen as part of the hardware
+configuration and not part of the `hwconf` settings.
 
 
 Known Issues:

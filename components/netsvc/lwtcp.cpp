@@ -569,7 +569,7 @@ int LwTcp::send(const char *buf, size_t l, bool copy)
 		m_nwrite += l;
 		m_nout += l;
 	} else {
-		log_warn(TAG,"@%u error %d",m_port,e);
+		log_local(TAG,"@%u error %d",m_port,e);
 	}
 	return e;
 }

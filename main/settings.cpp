@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2017-2021, Thomas Maier-Komor
+ *  Copyright (C) 2017-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -394,24 +394,29 @@ void list_settings(Terminal &t)
 
 int cfg_set_hostname(const char *hn)
 {
-	log_info(TAG,"setting hostname to %s",hn);
+	if (hn == 0)
+		return 1;
+	log_info(TAG,"hostname %s",hn);
 	EnvString *n = static_cast<EnvString*>(RTData->get("node"));
-	assert(n);
-	n->set(hn);
+	if (n == 0) {
+		n = RTData->add("node",hn);
+	} else {
+		n->set(hn);
+	}
 #ifdef CONFIG_MDNS
 	static bool MDNS_up = false;
 	if (MDNS_up)
 		mdns_free();
 	if (esp_err_t e = mdns_init()) {
-		log_error(TAG,"mdns init failed: %s",esp_err_to_name(e));
+		log_warn(TAG,"mdns init failed: %s",esp_err_to_name(e));
 		return 1;
 	}
 	if (esp_err_t e = mdns_hostname_set(hn)) {
-		log_error(TAG,"set mdns hostname failed: %s",esp_err_to_name(e));
+		log_warn(TAG,"set mdns hostname failed: %s",esp_err_to_name(e));
 		return 1;
 	}
 	if (esp_err_t e = mdns_instance_name_set(hn)) {
-		log_error(TAG,"unable to set mdns instance name: %s",esp_err_to_name(e));
+		log_warn(TAG,"unable to set mdns instance name: %s",esp_err_to_name(e));
 		return 1;
 	}
 	MDNS_up = true;
@@ -512,9 +517,9 @@ bool isValidBaudrate(long l)
 static void set_cfg_err(uint8_t v)
 {
 	if (NVS == 0)
-		log_error(TAG,"cannot set nvs/%s: nvs not mounted",cfg_err);
+		log_warn(TAG,"set nvs/%s: not mounted",cfg_err);
 	else if (esp_err_t e = nvs_set_u8(NVS,cfg_err,v))
-		log_error(TAG,"error clearing cfg_ok: %s",esp_err_to_name(e));
+		log_warn(TAG,"clear cfg_ok: %s",esp_err_to_name(e));
 	else
 		nvs_commit(NVS);
 }
@@ -563,7 +568,7 @@ void cfg_clear_nodecfg()
 int cfg_erase_nvs()
 {
 	if (esp_err_t e = nvs_erase_all(NVS)) {
-		log_error(TAG,"error erasing nvs/%s: %s",TAG,esp_err_to_name(e));
+		log_warn(TAG,"erase nvs/%s: %s",TAG,esp_err_to_name(e));
 		return 1;
 	}
 	return 0;
@@ -573,7 +578,7 @@ int cfg_erase_nvs()
 void cfg_factory_reset(void *)
 {
 	if (esp_err_t e = nvs_erase_all(NVS))
-		log_error(TAG,"error erasing nvs/%s: %s",TAG,esp_err_to_name(e));
+		log_warn(TAG,"erase nvs/%s: %s",TAG,esp_err_to_name(e));
 	esp_wifi_restore();
 	esp_restart();
 }
@@ -582,9 +587,9 @@ void cfg_factory_reset(void *)
 int writeNVM(const char *name, const uint8_t *buf, size_t s)
 {
 	if (esp_err_t e = nvs_set_blob(NVS,name,buf,s))
-		log_error(TAG,"cannot write %s (%u bytes): %s",name,s,esp_err_to_name(e));
+		log_warn(TAG,"NVS write %s (%u bytes): %s",name,s,esp_err_to_name(e));
 	else if (esp_err_t e = nvs_commit(NVS))
-		log_error(TAG,"cannot commit %s: %s",name,esp_err_to_name(e));
+		log_warn(TAG,"commit %s: %s",name,esp_err_to_name(e));
 	else
 		return 0;
 	return 1;
@@ -636,14 +641,14 @@ int cfg_read_nodecfg()
 	size_t s = 0;
 	uint8_t *buf = 0;
 	if (int e = readNVconfig(name,&buf,&s)) {
-		log_error(TAG,"error reading %s: %s",name,esp_err_to_name(e));
+		log_warn(TAG,"error reading %s: %s",name,esp_err_to_name(e));
 		return e;
 	}
 	Config.clear();
 	int r = Config.fromMemory(buf,s);
 	free(buf);
 	if (r < 0) {
-		log_error(TAG,"%s: error %d",name,r);
+		log_warn(TAG,"parse %s: %d",name,r);
 		return r;
 	}
 	log_info(TAG,"%s: %u bytes",name,s);
@@ -667,15 +672,15 @@ static int cfg_copy(const char *to, const char *from)
 	size_t s = 0;
 	uint8_t *buf = 0;
 	if (int e = readNVconfig(from,&buf,&s)) {
-		log_error(TAG,"error reading %s: %s",from,esp_err_to_name(e));
+		log_warn(TAG,"read nvs/%s: %s",from,esp_err_to_name(e));
 		return e;
 	}
 	esp_err_t e = nvs_set_blob(NVS,to,buf,s);
 	free(buf);
 	if (e)
-		log_error(TAG,"NVS write %s (%u bytes): %s",to,s,esp_err_to_name(e));
+		log_warn(TAG,"NVS write %s (%u bytes): %s",to,s,esp_err_to_name(e));
 	else if (esp_err_t e = nvs_commit(NVS))
-		log_error(TAG,"NVS commit %s: %s",to,esp_err_to_name(e));
+		log_warn(TAG,"commit %s: %s",to,esp_err_to_name(e));
 	else
 		return 0;
 	return 1;
@@ -701,14 +706,14 @@ int cfg_read_hwcfg()
 	size_t s = 0;
 	uint8_t *buf = 0;
 	if (int e = readNVconfig("hw.cfg",&buf,&s)) {
-		log_error(TAG,"error reading hw.cfg: %s",esp_err_to_name(e));
+		log_warn(TAG,"reading hw.cfg: %s",esp_err_to_name(e));
 		return e;
 	}
 	HWConf.clear();
 	int r = HWConf.fromMemory(buf,s);
 	free(buf);
 	if (r <= 0) {
-		log_error(TAG,"error parsing hw.cfg: %d",r);
+		log_warn(TAG,"parsing hw.cfg: %d",r);
 		return r;
 	}
 	log_info(TAG,"hw.cfg: parsed %u bytes",s);
@@ -751,7 +756,7 @@ void initDns()
 			log_info(TAG,"DNS %s",dns.c_str());
 			dns_setserver(x++,&a);
 		} else
-			log_error(TAG,"invalid dns server '%s'",dns);
+			log_warn(TAG,"invalid dns server '%s'",dns);
 	}
 #endif
 }
@@ -895,11 +900,23 @@ void cfg_activate_triggers()
 			continue;
 		for (const auto &action : t.action()) {
 			const char *an = action.c_str();
-			if (Action *a = action_get(an)) {
-				log_dbug(TAG,"event %s triggers action %s",en,an);
-				event_callback(e,a);
+			if (char *sp = strchr(an,' ')) {
+				char cmd[sp-an+1];
+				memcpy(cmd,an,sp-an);
+				cmd[sp-an] = 0;
+				if (Action *a = action_get(cmd)) {
+					log_dbug(TAG,"%s => %s(%s)",en,cmd,sp+1);
+					event_callback_arg(e,a,strdup(sp+1));
+				} else {
+					log_warn(TAG,"unknown action %s",an);
+				}
 			} else {
-				log_warn(TAG,"unknown action %s",an);
+				if (Action *a = action_get(an)) {
+					log_dbug(TAG,"%s => %s",en,an);
+					event_callback(e,a);
+				} else {
+					log_warn(TAG,"unknown action %s",an);
+				}
 			}
 		}
 	}
@@ -936,37 +953,33 @@ static int cfg_set_param(const char *name, const char *value)
 {
 	PROFILE_FUNCTION();
 	AppParam *p = cfg_get_param(name);
+	int r = 0;
 	if (p == 0)
-		return 1;
-	if (p->has_uValue()) {
+		r = 1;
+	else if (p->has_uValue()) {
 		char *e;
 		long l = strtol(value,&e,0);
 		if ((e == value) || (l < 0))
 			return 1;
 		p->set_uValue(l);
-		return 0;
-	}
-	if (p->has_dValue()) {
+	} else if (p->has_dValue()) {
 		char *e;
 		long l = strtol(value,&e,0);
 		if (e == value)
 			return 1;
 		p->set_dValue(l);
-		return 0;
-	}
-	if (p->has_sValue()) {
+	} else if (p->has_sValue()) {
 		p->set_sValue(value);
-		return 0;
-	}
-	if (p->has_fValue()) {
+	} else if (p->has_fValue()) {
 		char *e = 0;
 		float f = strtof(value,&e);
 		if (e == value)
 			return 1;
 		p->set_fValue(f);
-		return 0;
+	} else {
+		r = 1;
 	}
-	return 1;
+	return r;
 }
 #endif
 
@@ -1033,17 +1046,15 @@ void cfg_set_fvalue(const char *name, double f)
 void nvs_setup()
 {
 	PROFILE_FUNCTION();
-	if (esp_err_t err = nvs_flash_init()) {
-		log_error(TAG,"NVS init failed - erasing NVS");
-		err = nvs_flash_erase();
-		if (err)
-			log_error(TAG,"nvs erase %s",esp_err_to_name(err));
-		err = nvs_flash_init();
-		if (err)
-			log_error(TAG,"nvs init %s",esp_err_to_name(err));
+	if (nvs_flash_init()) {
+		log_warn(TAG,"NVS init failed - erasing NVS");
+		if (esp_err_t e = nvs_flash_erase())
+			log_warn(TAG,"nvs erase %s",esp_err_to_name(e));
+		else if (esp_err_t e = nvs_flash_init())
+			log_warn(TAG,"nvs init %s",esp_err_to_name(e));
 	}
 	if (esp_err_t err = nvs_open("cfg",NVS_READWRITE,&NVS))
-		log_error(TAG,"NVS open failed: %s",esp_err_to_name(err));
+		log_warn(TAG,"NVS open failed: %s",esp_err_to_name(err));
 	else 
 		cfg_read_hwcfg();
 }
@@ -1051,21 +1062,66 @@ void nvs_setup()
 
 uint8_t read_nvs_u8(const char *id, uint8_t d)
 {
-        uint8_t v;
-        if (esp_err_t e = nvs_get_u8(NVS,id,&v)) {
-                log_error(TAG,"error getting nvs/%s: %s",id,esp_err_to_name(e));
+	uint8_t v;
+	if (esp_err_t e = nvs_get_u8(NVS,id,&v)) {
+		log_warn(TAG,"get nvs/%s: %s",id,esp_err_to_name(e));
+		return d;
+	}
+	return v;
+}
+
+
+void store_nvs_u8(const char *id, uint8_t v)
+{
+	if (esp_err_t e = nvs_set_u8(NVS,id,v))
+		log_warn(TAG,"set nvs/%s to %u: %s",id,(unsigned)v,esp_err_to_name(e));
+	else if (esp_err_t e = nvs_commit(NVS))
+		log_warn(TAG,"commit %s: %s",id,esp_err_to_name(e));
+}
+
+
+uint32_t read_nvs_u32(const char *id, uint32_t d)
+{
+	uint32_t v;
+	if (esp_err_t e = nvs_get_u32(NVS,id,&v)) {
+		log_warn(TAG,"get nvs/%s: %s",id,esp_err_to_name(e));
+		return d;
+	}
+	return v;
+}
+
+
+void store_nvs_u32(const char *id, uint32_t v)
+{
+        if (esp_err_t e = nvs_set_u32(NVS,id,v))
+                log_warn(TAG,"set nvs/%s to %u: %s",id,(unsigned)v,esp_err_to_name(e));
+        else if (esp_err_t e = nvs_commit(NVS))
+                log_warn(TAG,"commit %s: %s",id,esp_err_to_name(e));
+}
+
+
+float read_nvs_float(const char *id, float d)
+{
+	float v;
+        if (esp_err_t e = nvs_get_u32(NVS,id,(uint32_t*)&v)) {
+                log_warn(TAG,"get nvs/%s: %s",id,esp_err_to_name(e));
                 return d;
         }
         return v;
 }
 
 
-void store_nvs_u8(const char *id, uint8_t v)
+void store_nvs_float(const char *id, float v)
 {
-        if (esp_err_t e = nvs_set_u8(NVS,id,v))
-                log_error(TAG,"error setting %s to %u: %s",id,(unsigned)v,esp_err_to_name(e));
+	union {
+		float f;
+		uint32_t u;
+	} x;
+	x.f = v;
+        if (esp_err_t e = nvs_set_u32(NVS,id,x.u))
+                log_warn(TAG,"set nvs/%s to %f: %s",id,v,esp_err_to_name(e));
         else if (esp_err_t e = nvs_commit(NVS))
-                log_error(TAG,"error committing %s to %u: %s",id,(unsigned)v,esp_err_to_name(e));
+                log_warn(TAG,"commit %s: %s",id,esp_err_to_name(e));
 }
 
 

@@ -56,6 +56,8 @@ HDC1000 *HDC1000::create(uint8_t bus)
 
 int HDC1000::init()
 {
+	m_temp = new EnvNumber("temperature","\u00b0C");
+	m_humid = new EnvNumber("humidity","%");
 	return setSingle(true);
 }
 
@@ -207,8 +209,8 @@ void HDC1000::trigger_humid(void *arg)
 
 void HDC1000::attach(EnvObject *root)
 {
-	m_temp = root->add("temperature",NAN,"\u00b0C");
-	m_humid = root->add("humidity",NAN,"%");
+	root->add(m_temp);
+	root->add(m_humid);
 	cyclic_add_task(m_name,hdc1000_cyclic,this,0);
 	action_add(concat(m_name,"!sample"),HDC1000::trigger,(void*)this,"HDC1000 sample data");
 	action_add(concat(m_name,"!temp"),HDC1000::trigger_temp,(void*)this,"HDC1000 sample temperature");

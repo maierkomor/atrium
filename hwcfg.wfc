@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2021, Thomas Maier-Komor
+ *  Copyright (C) 2018-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -217,13 +217,22 @@ enum i2cdrv_t {
 	i2cdrv_pcf8574 = 1;
 	i2cdrv_mcp2300x = 2;
 	i2cdrv_mcp2301x = 3;
+	i2cdrv_pca9685 = 4;
+	i2cdrv_pca9685_npn = 5;
+	i2cdrv_pca9685_pnp = 6;
+	i2cdrv_pca9685_xclk = 7;
+	i2cdrv_pca9685_xclk_npn = 8;
+	i2cdrv_pca9685_xclk_pnp = 9;
+	i2cdrv_ht16k33 = 10;
 }
 
 
 bitset i2cdev_t
 {
+	// Use addr=0 (general call address) to scan all potential addresses.
+	// Address range scan is not supported by all drivers and may
+	// result in misdetections.
 	uint8 addr : 0..6;
-	bool scanaddr : 7;
 	i2cdrv_t drv : 8..15;
 }
 
@@ -257,8 +266,6 @@ bitset ledcfg_t
 message LedConfig
 {
 	sint8 gpio = 1		[ unset = -1 ];
-	// bit 0: active high
-	// bit 1: open drain
 	ledcfg_t config = 2	[ default = 0 ];
 	string name = 3		[ unset = "" ];
 	sint8 pwm_ch = 4	[ unset = -1 ];
@@ -268,7 +275,8 @@ message LedConfig
 message OneWireConfig
 {
 	sint8 gpio = 1		[ unset = -1 ];
-	bool pullup = 2		[ unset = false ];	// pull-up the gpio
+	// pull-up the gpio - internal pull-up is too weak for most applications!
+	bool pullup = 2		[ unset = false ];
 	sint8 power = 3		[ unset = -1 ];
 }
 

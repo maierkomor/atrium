@@ -73,6 +73,10 @@ int set_cpu_freq(unsigned mhz);
 int set_timezone(const char *v);
 void store_nvs_u8(const char *, uint8_t);
 uint8_t read_nvs_u8(const char *, uint8_t);
+void store_nvs_u32(const char *, uint32_t);
+uint32_t read_nvs_u32(const char *, uint32_t);
+void store_nvs_float(const char *, float);
+float read_nvs_float(const char *, float);
 int writeNVM(const char *name, const uint8_t *buf, size_t s);
 
 

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2021, Thomas Maier-Komor
+ *  Copyright (C) 2020-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -119,15 +119,21 @@ class EnvBool : public EnvElement
 class EnvNumber : public EnvElement
 {
 	public:
-	explicit EnvNumber(const char *name, const char *dim = 0)
+	explicit EnvNumber(const char *name, const char *dim = 0, const char *fmt = 0)
 	: EnvElement(name,dim)
 	, m_value(NAN)
-	{ }
+	{
+		if (fmt)
+			m_fmt = fmt;
+	}
 
-	EnvNumber(const char *name, double v, const char *dim = 0)
+	EnvNumber(const char *name, double v, const char *dim = 0, const char *fmt = 0)
 	: EnvElement(name,dim)
 	, m_value(v)
-	{ }
+	{
+		if (fmt)
+			m_fmt = fmt;
+	}
 
 	EnvNumber *toNumber() override
 	{ return this; }
@@ -141,11 +147,19 @@ class EnvNumber : public EnvElement
 	{ return m_value; }
 
 	bool isValid() const
-	{ return isnormal(m_value); }
+//	{ return isnormal(m_value); }
+	{ return !isnan(m_value); }
+
+	void setFormat(const char *f)
+	{ m_fmt = f; }
+
+	const char *getFormat() const
+	{ return m_fmt; }
 
 	protected:
 	// must be double to be conforming to JSON spec
 	double m_value;
+	const char *m_fmt = "%4.1f";
 };
 
 
@@ -184,13 +198,14 @@ class EnvObject : public EnvElement
 	{ return this; }
 
 	EnvBool *add(const char *name, bool value, const char *dim = 0);
-	EnvNumber *add(const char *name, double value, const char *dim = 0);
+	EnvNumber *add(const char *name, double value, const char *dim = 0, const char *fmt = 0);
 	EnvString *add(const char *name, const char *value, const char *dim = 0);
 	EnvObject *add(const char *name);
 	void add(EnvElement *e)
 	{ m_childs.push_back(e); }
 	void remove(EnvElement *e);
 	EnvElement *get(const char *) const;
+	int getOffset(const char *) const;
 	EnvElement *find(const char *) const;
 	EnvElement *getChild(unsigned i) const
 	{
@@ -198,6 +213,20 @@ class EnvObject : public EnvElement
 			return 0;
 		return m_childs[i];
 	}
+
+	int getIndex(EnvElement *e) const
+	{
+		int idx = 0;
+		for (EnvElement *c : m_childs) {
+			if (e == c)
+				return idx;
+			++idx;
+		}
+		return -1;
+	}
+
+	size_t numChildren() const
+	{ return m_childs.size(); }
 
 	std::vector<EnvElement *> &getChilds()
 	{ return m_childs; }

@@ -1,6 +1,0 @@
-synopsis: bme [<cmd>]
-With no <cmd> bme prints the bme measurements.
-Valid <cmd> are:
-enable: to enable bme sampling
-disable: to disable bme sampling
-sample: to force sampling

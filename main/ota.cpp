@@ -20,13 +20,17 @@
 
 #ifdef CONFIG_OTA
 
+#include "leds.h"
 #include "log.h"
 #include "lwtcp.h"
 #include "netsvc.h"
 #include "ota.h"
 #include "shell.h"
-#include "status.h"
 #include "terminal.h"
+
+#ifndef CONFIG_LEDS
+#define statusled_set(x)
+#endif
 
 #include <esp_system.h>
 #include <esp_ota_ops.h>
@@ -59,7 +63,7 @@ extern "C" {
 #ifdef CONFIG_IDF_TARGET_ESP32
 #define OTABUF_SIZE 8192
 #else
-#define OTABUF_SIZE 4096
+#define OTABUF_SIZE 2048
 #endif
 
 #define TAG MODULE_OTA
@@ -85,7 +89,7 @@ static char *skip_http_header(Terminal &t, char *text, int len)
 
 static int send_http_get(Terminal &t, const char *server, int port, const char *filename, const char *auth)
 {
-	t.printf("http get: host=%s, port=%d, filename=%s\n", server, port, filename);
+	t.printf("get %s:%d/%s\n", server, port, filename);
 	ip_addr_t ip;
 	if (err_t e = resolve_hostname(server,&ip)) {
 		t.printf("unable to resolve ip of %s: %s\n",server,strlwiperr(e));
@@ -166,8 +170,8 @@ static int send_http_get(Terminal &t, const char *server, int port, const char *
 
 static int send_http_get(Terminal &t, LwTcp &P, const char *server, int port, const char *filename, const char *auth)
 {
-	log_dbug(TAG,"http get: filename=%s, auth=%s\n", filename, auth ? auth : "0");
-	t.printf("http get: filename=%s, auth=%s\n", filename, auth ? auth : "0");
+	log_dbug(TAG,"get: %s, auth=%s\n", filename, auth ? auth : "0");
+	t.printf("get: %s, auth=%s\n", filename, auth ? auth : "0");
 	char http_request[512];
 	int get_len = snprintf(http_request,sizeof(http_request),
 		"GET /%s HTTP/1.0\r\n"
@@ -205,8 +209,8 @@ static int send_http_get(Terminal &t, LwTcp &P, const char *server, int port, co
 	//t.printf("http request:\n'%s'\n",http_request);
 	int res = P.write(http_request,get_len);
 	if (res < 0) {
-		log_warn(TAG,"unable to send get request: %s\n",P.error());
-		t.printf("unable to send get request: %s\n",P.error());
+		log_warn(TAG,"unable to send get: %s\n",P.error());
+		t.printf("unable to send get: %s\n",P.error());
     		return -1;
 	}
 	t.println("sent GET");
@@ -231,8 +235,8 @@ static int to_ota(Terminal &t, void *arg, char *buf, size_t s)
 	if (err == ESP_OK) {
 		return 0;
 	}
-	t.printf("OTA flash failed: %s\n",esp_err_to_name(err));
-	log_warn(TAG,"OTA flash failed: %s\n",esp_err_to_name(err));
+	t.printf("OTA flash: %s\n",esp_err_to_name(err));
+	log_warn(TAG,"OTA flash: %s\n",esp_err_to_name(err));
 	return 1;
 }
 
@@ -254,7 +258,7 @@ static int socket_to_x(Terminal &t, int hsock, int (*sink)(Terminal&,void*,char*
 		char *nl = strchr(buf,'\n');
 		if (nl) {
 			*nl = 0;
-			t.printf("unexpted server answer: %s\n",buf);
+			t.printf("unexpted answer: %s\n",buf);
 		}
 		goto done;
 	}
@@ -290,18 +294,19 @@ static int socket_to_x(Terminal &t, LwTcp &P, int (*sink)(Terminal&,void*,char*,
 	size_t numD = 0, contlen = 0;
 	bool ia = t.isInteractive();
 	int r = P.read(buf,OTABUF_SIZE);
+	const char *result = 0;
 	if (r < 0)
 		goto done;
 	if (memcmp(buf,"HTTP",4) || memcmp(buf+8," 200 OK\r",8)) {
 		if (0 == memcmp(buf+8," 404 ",5)) {
-			t.printf("server 404: file not found\n");
+			result = "server 404: file not found";
 			goto done;
 		}
 		t.printf("unexpected header\n%128s\n",buf);
 		char *nl = strchr(buf,'\n');
 		if (nl) {
 			*nl = 0;
-			t.printf("unexpted server answer: %s\n",buf);
+			t.printf("unexpted answer: %s\n",buf);
 		}
 		goto done;
 	}
@@ -313,7 +318,7 @@ static int socket_to_x(Terminal &t, LwTcp &P, int (*sink)(Terminal&,void*,char*,
 		goto done;
 	data = skip_http_header(t,buf,r);
 	if (data == 0) {
-		t.println("no end of header");
+		result = "no end of header";
 		goto done;
 	}
 	r -= (data-buf);
@@ -334,17 +339,17 @@ static int socket_to_x(Terminal &t, LwTcp &P, int (*sink)(Terminal&,void*,char*,
 		data = buf;
 	}
 	if (r < 0) {
-		t.printf("\nerror %d",r);
+		t.printf("error %d",r);
 		log_warn(TAG,"read error %d",r);
 	} else if (numD != contlen) {
-		t.println("\nincomplete");
+		result = "incomplete";
 		log_warn(TAG,"incomplete");
 	} else {
 		ret = 0;
 	}
 done:
 	if (ia)
-		t.println();
+		t.println(result);
 	P.close();
 	free(buf);
 	return ret;
@@ -534,7 +539,7 @@ int update_part(Terminal &t, char *source, const char *dest)
 	unsigned Ps = p->address;
 	unsigned Pe = p->address+p->size;
 	if (! ((Be <= Ps) || (Pe <= Bs))) {
-		t.println("cannot update to running partition");
+		t.println("cannot update active partition");
 		return 1;
 	}
 	uint32_t addr = p->address;
@@ -556,6 +561,7 @@ int update_part(Terminal &t, char *source, const char *dest)
 int perform_ota(Terminal &t, char *source, bool changeboot)
 {
 	statusled_set(ledmode_pulse_often);
+	vTaskPrioritySet(0,10);
 	const esp_partition_t *bootp = esp_ota_get_boot_partition();
 	const esp_partition_t *runp = esp_ota_get_running_partition();
 	bool ia = t.isInteractive();
@@ -601,10 +607,9 @@ int perform_ota(Terminal &t, char *source, bool changeboot)
 		return 1;
 	t.printf("verify ota\n");
 	t.sync();
-	log_dbug(TAG,"verify");
 	if (esp_err_t e = esp_ota_end(ota)) {
 		log_warn(TAG,"esp_ota_end: %s\n",esp_err_to_name(e));
-		t.printf("ota verify failed: %s\n",esp_err_to_name(e));
+		t.printf("ota verify: %s\n",esp_err_to_name(e));
 		statusled_set(ledmode_pulse_seldom);
 		return 1;
 	}

@@ -42,11 +42,11 @@
 #include "event.h"
 #include "fs.h"
 #include "globals.h"
+#include "leds.h"
 #include "log.h"
 #include "netsvc.h"
 #include "ota.h"
 #include "settings.h"
-#include "status.h"
 #include "support.h"
 #include "syslog.h"
 #include "uart_terminal.h"
@@ -83,7 +83,6 @@ int action_setup();
 int adc_setup();
 int alarms_setup();
 int button_setup();
-int clockapp_setup();
 int console_setup();
 int cyclic_setup();
 int dht_setup();
@@ -103,7 +102,8 @@ int mqtt_setup();
 int nightsky_setup();
 int ow_setup();
 int relay_setup();
-int status_setup();
+int screen_setup();
+int sm_setup();
 int telnet_setup();
 int touchpads_setup();
 void udns_setup();
@@ -154,6 +154,7 @@ static int count_name(EnvObject *o, const char *name)
 {
 	unsigned n = 0;
 	for (EnvElement *e : o->getChilds()) {
+		assert(e);
 		if (EnvObject *c = e->toObject()) {
 			n += count_name(c,name);
 		} else if (0 == strcmp(e->name(),name)) {
@@ -228,8 +229,11 @@ void app_main()
 	hall_setup();
 #endif
 
-#ifdef CONFIG_STATUSLEDS
-	status_setup();
+#ifdef CONFIG_AT_ACTIONS
+	alarms_setup();	// must be bevore status_setup, as status reads alarm info
+#endif
+#ifdef CONFIG_LEDS
+	leds_setup();
 #endif
 	init_fs();
 
@@ -237,9 +241,6 @@ void app_main()
 	console_setup();
 #endif
 
-#ifdef CONFIG_AT_ACTIONS
-	alarms_setup();
-#endif
 	event_start();
 #ifdef CONFIG_RELAY
 	relay_setup();
@@ -297,9 +298,12 @@ void app_main()
 	webcam_setup();
 #endif
 
+#ifdef CONFIG_STATEMACHINES
+	sm_setup();
+#endif
 #ifdef CONFIG_DISPLAY
 	display_setup();
-	clockapp_setup();
+	screen_setup();
 #endif // CONFIG_DISPLAY
 
 	// activate actions after all events and actions are setup
@@ -333,4 +337,5 @@ void app_main()
 	esp_ota_mark_app_valid_cancel_rollback();
 #endif
 	log_info(TAG,"Atrium Version %s",Version);
+	event_trigger(event_id("init`done"));
 }

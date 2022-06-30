@@ -1,0 +1,7 @@
+synopsis:
+	led
+	led -l
+	led <name> <mode>
+The first variant lists the defined LEDs and their state.
+The 2nd variant list potential LED modes.
+The 3rd variant sets an LED to a specific mode.

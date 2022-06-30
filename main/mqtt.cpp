@@ -424,7 +424,7 @@ static void parse_puback(uint8_t *buf, size_t rlen)
 		auto x = Client->pubs.find(pid);
 		if (x != Client->pubs.end()) {
 			if ((rlen == 4) && (buf[2] & 0x80)) {
-				log_warn(TAG,"puback for pid %x, topic %s failed: reason %x",(unsigned)pid,x->second.topic,buf[2]);
+				log_warn(TAG,"PUBACK for pid %x, topic %s failed: reason %x",(unsigned)pid,x->second.topic,buf[2]);
 			} else {
 				log_dbug(TAG,"PUBACK %x for %s",(unsigned)pid,x->second.topic);
 			}
@@ -433,7 +433,7 @@ static void parse_puback(uint8_t *buf, size_t rlen)
 			log_warn(TAG,"PUBACK %x for unknown topic",(unsigned)pid);
 		}
 	} else {
-		log_warn(TAG,"puback rlen %u",rlen);
+		log_warn(TAG,"PUBACK rlen %u",rlen);
 	}
 }
 #endif
@@ -982,7 +982,7 @@ int mqtt_setup(void)
 	action_add("mqtt!start",mqtt_start,0,"mqtt start");
 	action_add("mqtt!stop",mqtt_stop,0,"mqtt stop");
 	action_add("mqtt!pub_rtdata",mqtt_pub_rtdata,0,"mqtt publish data");
-	if (event_callback("wifi`station_up","mqtt!start"))
+	if (0 == event_callback("wifi`station_up","mqtt!start"))
 		abort();
 	if (Config.has_mqtt() && (Client == 0))
 		Client = new MqttClient;
@@ -1003,12 +1003,6 @@ static void update_signal(const char *t, const void *d, size_t s)
 		i->second->set((const char *)d,s);
 		log_dbug(TAG,"topic %s update '%.*s'",t,s,d);
 	}
-}
-
-
-static void print_mqtt(Terminal &t, EnvObject *o, int indent)
-{
-
 }
 
 
@@ -1061,6 +1055,7 @@ int mqtt(Terminal &term, int argc, const char *args[])
 	} else if (!strcmp(args[1],"start")) {
 		mqtt_start();
 	} else if (!strcmp(args[1],"stop")) {
+		m->set_enable(false);
 		mqtt_stop();
 	} else if (!strcmp(args[1],"sub")) {
 		if (Client == 0) {

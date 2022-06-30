@@ -139,7 +139,8 @@ int stream::vprintf(const char *fmt, va_list v)
 
 void stream::println(const char *s)
 {
-	print(s,0);
+	if (s)
+		print(s,0);
 	println();
 }
 

@@ -34,9 +34,10 @@ config UART_CONSOLE
 config UART_MONITOR
 	bool "serial monitor"
 	depends on SYSLOG
+	depends on TERM_SERV
 	default true
 	help
-		serial monitor that forwards input data to syslog"
+		serial monitor that forwards input data to syslog
 
 config INTEGRATED_HELP
 	bool "integrate help in app binary"
@@ -127,6 +128,12 @@ config SMARTCONFIG
 	help
 		WiFi configuration with EPS smart config
 
+config STATEMACHINES
+	bool "state machines"
+	default false
+	help
+		state-machine based event/action triggering
+
 config UDPCTRL
 	bool "UDP control port"
 	default false
@@ -170,11 +177,11 @@ config IOEXTENDERS
 	help
 		enable infrastructure for I/O extenders
 
-config STATUSLEDS
-	bool "heartbeat/status LEDs"
+config LEDS
+	bool "LEDs support with heartbeat/status logic"
 	default true
 	help
-		heartbeat/status LED
+		heartbeat/status LEDs and different blinking schemes
 
 config BUTTON
 	bool	"button support"
@@ -254,6 +261,13 @@ config I2C_XDEV
 	help
 		support for configuring devices that cannot be detected automatically
 
+config I2C_XCMD
+	bool "extended command support for I2C devices"
+	depends on I2C
+	default true
+	help
+		provide extended commands for configuring I2C devices
+
 config BMX280
 	depends on I2C
 	bool "BMx280"
@@ -295,6 +309,13 @@ config CCS811B
 	default true
 	help
 		I2C driver for CCS811B sensor (TVOC,CO2)
+
+config PCA9685
+	depends on I2C_XDEV
+	bool "pca9685"
+	default true
+	help
+		16 channel, 12bit PWM I2C driver
 
 config PCF8574
 	depends on I2C_XDEV

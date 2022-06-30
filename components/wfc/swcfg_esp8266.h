@@ -10,7 +10,7 @@
  * Copyright: 2018-2021
  * Author   : Thomas Maier-Komor
  * 
- * Code generated on 2022-02-26, 11:54:10 (CET).
+ * Code generated on 2022-06-30, 21:08:34 (CET).
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -2552,6 +2552,276 @@ class OwDeviceConfig
 };
 
 
+class StateConfig
+{
+	public:
+	StateConfig();
+	
+	bool operator == (const StateConfig &r) const;
+	
+	//! Function for resetting all members to their default values.
+	void clear();
+	
+	/*!
+	* Calculates the required number of bytes for serializing this object.
+	* If member variables of the object are modified, the number of bytes
+	* needed for serialization may change, too.
+	* @return bytes needed for a serialized object representation
+	*/
+	size_t calcSize() const;
+	
+	/*!
+	* Function for parsing serialized data and update this object accordingly.
+	* Member variables that are not in the serialized data are not reset.
+	* @param b buffer of serialized data
+	* @param s number of bytes available in the buffer
+	* @return number of bytes successfully parsed (can be < s)
+	*         or a negative value indicating the error encountered
+	*/
+	ssize_t fromMemory(const void *b, ssize_t s);
+	
+	/*!
+	* Function for serializing the object to memory.
+	* @param b buffer to serialize the object to
+	* @param s number of bytes available in the buffer
+	* @return number of bytes successfully serialized
+	*/
+	ssize_t toMemory(uint8_t *, ssize_t) const;
+	
+	/*!
+	* Function for writing a JSON representation of this object to a stream.
+	* @param json stream object the JSON output shall be written to
+	* @indLvl current indention level
+	*/
+	void toJSON(stream &json, unsigned indLvl = 0) const;
+	
+	/*!
+	* Function for writing an ASCII representation of this object to a stream.
+	* @param o output stream
+	* @param indent initial indention level
+	*/
+	void toASCII(stream &o, size_t indent = 0) const;
+	
+	/*!
+	* Function for determining the maximum size that the object may need for
+	* its serialized representation
+	* @return maximum number of bytes or SIZE_MAX if no limit can be determined
+	*/
+	static size_t getMaxSize();
+	
+	//! Function for setting a parameter by its ASCII name using an ASCII representation of value.
+	//! @param param parameter name
+	//! @param value ASCII representation of the value
+	//! @return number of bytes parsed from value or negative value if an error occurs
+	int setByName(const char *param, const char *value);
+	
+	// optional string name, id 1
+	/*!
+	* Function for querying if name has been set.
+	* @return true if name is set.
+	*/
+	bool has_name() const;
+	//! Function to reset name to its default/unset value.
+	void clear_name();
+	//! Get value of name.
+	const estring &name() const;
+	/*!
+	* Function for setting name using binary data.
+	* @param data pointer to binary data
+	* @param s number of bytes at data pointer
+	*/
+	void set_name(const void *data, size_t s);
+	//! Set name using a constant reference
+	void set_name(const estring &v);
+	//! Set name using a pointer to a null-terminated C-string.
+	void set_name(const char *);
+	/*!
+	* Provide mutable access to name.
+	* @return pointer to member variable of name.
+	*/
+	estring *mutable_name();
+	
+	// repeated Trigger conds, id 2
+	//! Function get const-access to the elements of conds.
+	const std::vector<Trigger> &conds() const;
+	//! Function to get the number of elements in conds.
+	size_t conds_size() const;
+	/*!
+	* Function to append a element to conds.
+	* @return point to newly added element.
+	*/
+	Trigger* add_conds();
+	//! Function to reset conds to its default/unset value.
+	void clear_conds();
+	//! Get value of element x of conds.
+	const Trigger &conds(unsigned x) const;
+	//! Set conds using a constant reference
+	void set_conds(unsigned x, const Trigger &v);
+	/*!
+	* Provide mutable access to conds.
+	* @return pointer to member variable of conds.
+	*/
+	Trigger *mutable_conds(unsigned x);
+	//! Function to get mutable access to all elements of conds.
+	std::vector<Trigger> *mutable_conds();
+	
+	
+	protected:
+	//! string name, id 1
+	estring m_name;
+	//! Trigger conds, id 2
+	std::vector<Trigger> m_conds;
+	
+	private:
+	uint8_t p_validbits;
+};
+
+
+class StateMachineConfig
+{
+	public:
+	StateMachineConfig();
+	
+	bool operator == (const StateMachineConfig &r) const;
+	
+	//! Function for resetting all members to their default values.
+	void clear();
+	
+	/*!
+	* Calculates the required number of bytes for serializing this object.
+	* If member variables of the object are modified, the number of bytes
+	* needed for serialization may change, too.
+	* @return bytes needed for a serialized object representation
+	*/
+	size_t calcSize() const;
+	
+	/*!
+	* Function for parsing serialized data and update this object accordingly.
+	* Member variables that are not in the serialized data are not reset.
+	* @param b buffer of serialized data
+	* @param s number of bytes available in the buffer
+	* @return number of bytes successfully parsed (can be < s)
+	*         or a negative value indicating the error encountered
+	*/
+	ssize_t fromMemory(const void *b, ssize_t s);
+	
+	/*!
+	* Function for serializing the object to memory.
+	* @param b buffer to serialize the object to
+	* @param s number of bytes available in the buffer
+	* @return number of bytes successfully serialized
+	*/
+	ssize_t toMemory(uint8_t *, ssize_t) const;
+	
+	/*!
+	* Function for writing a JSON representation of this object to a stream.
+	* @param json stream object the JSON output shall be written to
+	* @indLvl current indention level
+	*/
+	void toJSON(stream &json, unsigned indLvl = 0) const;
+	
+	/*!
+	* Function for writing an ASCII representation of this object to a stream.
+	* @param o output stream
+	* @param indent initial indention level
+	*/
+	void toASCII(stream &o, size_t indent = 0) const;
+	
+	/*!
+	* Function for determining the maximum size that the object may need for
+	* its serialized representation
+	* @return maximum number of bytes or SIZE_MAX if no limit can be determined
+	*/
+	static size_t getMaxSize();
+	
+	//! Function for setting a parameter by its ASCII name using an ASCII representation of value.
+	//! @param param parameter name
+	//! @param value ASCII representation of the value
+	//! @return number of bytes parsed from value or negative value if an error occurs
+	int setByName(const char *param, const char *value);
+	
+	// optional string name, id 1
+	/*!
+	* Function for querying if name has been set.
+	* @return true if name is set.
+	*/
+	bool has_name() const;
+	//! Function to reset name to its default/unset value.
+	void clear_name();
+	//! Get value of name.
+	const estring &name() const;
+	/*!
+	* Function for setting name using binary data.
+	* @param data pointer to binary data
+	* @param s number of bytes at data pointer
+	*/
+	void set_name(const void *data, size_t s);
+	//! Set name using a constant reference
+	void set_name(const estring &v);
+	//! Set name using a pointer to a null-terminated C-string.
+	void set_name(const char *);
+	/*!
+	* Provide mutable access to name.
+	* @return pointer to member variable of name.
+	*/
+	estring *mutable_name();
+	
+	// optional uint8 ini_st, id 2
+	/*!
+	* Function for querying if ini_st has been set.
+	* @return true if ini_st is set.
+	*/
+	bool has_ini_st() const;
+	//! Function to reset ini_st to its default/unset value.
+	void clear_ini_st();
+	//! Get value of ini_st.
+	uint8_t ini_st() const;
+	//! Set ini_st using a constant reference
+	void set_ini_st(uint8_t v);
+	/*!
+	* Provide mutable access to ini_st.
+	* @return pointer to member variable of ini_st.
+	*/
+	uint8_t *mutable_ini_st();
+	
+	// repeated StateConfig states, id 3
+	//! Function get const-access to the elements of states.
+	const std::vector<StateConfig> &states() const;
+	//! Function to get the number of elements in states.
+	size_t states_size() const;
+	/*!
+	* Function to append a element to states.
+	* @return point to newly added element.
+	*/
+	StateConfig* add_states();
+	//! Function to reset states to its default/unset value.
+	void clear_states();
+	//! Get value of element x of states.
+	const StateConfig &states(unsigned x) const;
+	//! Set states using a constant reference
+	void set_states(unsigned x, const StateConfig &v);
+	/*!
+	* Provide mutable access to states.
+	* @return pointer to member variable of states.
+	*/
+	StateConfig *mutable_states(unsigned x);
+	//! Function to get mutable access to all elements of states.
+	std::vector<StateConfig> *mutable_states();
+	
+	
+	protected:
+	//! string name, id 1
+	estring m_name;
+	//! uint8 ini_st, id 2
+	uint8_t m_ini_st;
+	//! StateConfig states, id 3
+	std::vector<StateConfig> m_states;
+	
+	private:
+	uint8_t p_validbits;
+};
+
+
 class NodeConfig
 {
 	public:
@@ -3081,6 +3351,7 @@ class NodeConfig
 	//! Function to get mutable access to all elements of uart.
 	std::vector<UartSettings> *mutable_uart();
 	
+	#ifdef CONFIG_TERMSERV
 	// repeated TerminalConfig terminal, id 21
 	//! Function get const-access to the elements of terminal.
 	const std::vector<TerminalConfig> &terminal() const;
@@ -3104,6 +3375,7 @@ class NodeConfig
 	TerminalConfig *mutable_terminal(unsigned x);
 	//! Function to get mutable access to all elements of terminal.
 	std::vector<TerminalConfig> *mutable_terminal();
+	#endif // CONFIG_TERMSERV
 	
 	// optional fixed16 udp_ctrl_port, id 22
 	/*!
@@ -3276,6 +3548,32 @@ class NodeConfig
 	//! Function to get mutable access to all elements of functions.
 	std::vector<FunctionConfig> *mutable_functions();
 	#endif // CONFIG_SIGNAL_PROC
+	
+	#ifdef CONFIG_STATEMACHINES
+	// repeated StateMachineConfig statemachs, id 33
+	//! Function get const-access to the elements of statemachs.
+	const std::vector<StateMachineConfig> &statemachs() const;
+	//! Function to get the number of elements in statemachs.
+	size_t statemachs_size() const;
+	/*!
+	* Function to append a element to statemachs.
+	* @return point to newly added element.
+	*/
+	StateMachineConfig* add_statemachs();
+	//! Function to reset statemachs to its default/unset value.
+	void clear_statemachs();
+	//! Get value of element x of statemachs.
+	const StateMachineConfig &statemachs(unsigned x) const;
+	//! Set statemachs using a constant reference
+	void set_statemachs(unsigned x, const StateMachineConfig &v);
+	/*!
+	* Provide mutable access to statemachs.
+	* @return pointer to member variable of statemachs.
+	*/
+	StateMachineConfig *mutable_statemachs(unsigned x);
+	//! Function to get mutable access to all elements of statemachs.
+	std::vector<StateMachineConfig> *mutable_statemachs();
+	#endif // CONFIG_STATEMACHINES
 	
 	// deprecated optional unsigned max_on_time, id 34
 	/*!
@@ -3479,8 +3777,10 @@ class NodeConfig
 	std::vector<Trigger> m_triggers;
 	//! UartSettings uart, id 20
 	std::vector<UartSettings> m_uart;
+	#ifdef CONFIG_TERMSERV
 	//! TerminalConfig terminal, id 21
 	std::vector<TerminalConfig> m_terminal;
+	#endif // CONFIG_TERMSERV
 	//! fixed16 udp_ctrl_port, id 22
 	uint16_t m_udp_ctrl_port;
 	//! string debugs, id 23
@@ -3503,6 +3803,10 @@ class NodeConfig
 	//! FunctionConfig functions, id 32
 	std::vector<FunctionConfig> m_functions;
 	#endif // CONFIG_SIGNAL_PROC
+	#ifdef CONFIG_STATEMACHINES
+	//! StateMachineConfig statemachs, id 33
+	std::vector<StateMachineConfig> m_statemachs;
+	#endif // CONFIG_STATEMACHINES
 	//! unsigned max_on_time, id 34
 	uint32_t m_max_on_time;
 	//! unsigned threshold_off, id 35
@@ -5941,6 +6245,256 @@ inline void OwDeviceConfig::set_name(const estring &v)
 
 
 
+inline size_t StateConfig::getMaxSize()
+{
+	// optional string name, id 1 has unlimited size
+	// repeated Trigger conds, id 2 has unlimited size
+	return SIZE_MAX;
+}
+
+inline const estring &StateConfig::name() const
+{
+	return m_name;
+}
+
+inline bool StateConfig::has_name() const
+{
+	return 0 != (p_validbits & ((uint8_t)1U << 0));
+}
+
+/*!
+ * Function for clearing the associated member variable.
+ * It will reset the value to the default value.
+ */
+inline void StateConfig::clear_name()
+{
+	p_validbits &= ~((uint8_t)1U << 0);
+	m_name.clear();
+}
+
+inline estring *StateConfig::mutable_name()
+{
+	if (0 == (p_validbits & ((uint8_t)1U << 0))) {
+		p_validbits |= ((uint8_t)1U << 0);
+		m_name.clear();
+	}
+	return &m_name;
+}
+
+inline void StateConfig::set_name(const void *data, size_t s)
+{
+	m_name.assign((const char *)data,s);
+	p_validbits |= ((uint8_t)1U << 0);
+}
+
+inline void StateConfig::set_name(const char *data)
+{
+	m_name = data;
+	p_validbits |= ((uint8_t)1U << 0);
+}
+
+inline void StateConfig::set_name(const estring &v)
+{
+	m_name = v;
+	p_validbits |= ((uint8_t)1U << 0);
+}
+
+
+
+inline const Trigger &StateConfig::conds(unsigned x) const
+{
+	return m_conds[x];
+}
+
+inline const std::vector<Trigger> &StateConfig::conds() const
+{
+	return m_conds;
+}
+
+/*!
+ * Function for clearing the associated member variable.
+ * It will reset the value to the default value.
+ */
+inline void StateConfig::clear_conds()
+{
+	m_conds.clear();
+}
+
+inline Trigger *StateConfig::mutable_conds(unsigned x)
+{
+	if (x >= m_conds.size())
+		m_conds.resize(x+1);
+	return &m_conds[x];
+}
+
+inline std::vector<Trigger> *StateConfig::mutable_conds()
+{
+	return &m_conds;
+}
+
+inline Trigger *StateConfig::add_conds()
+{
+	m_conds.resize(m_conds.size()+1);
+	return &m_conds.back();
+}
+
+inline void StateConfig::set_conds(unsigned x, const Trigger &v)
+{
+	assert(x < m_conds.size());
+	m_conds[x] = v;
+}
+
+inline size_t StateConfig::conds_size() const
+{
+	return m_conds.size();
+}
+
+
+
+inline size_t StateMachineConfig::getMaxSize()
+{
+	// optional string name, id 1 has unlimited size
+	// optional uint8 ini_st, id 2 has maximum size 3
+	// repeated StateConfig states, id 3 has unlimited size
+	return SIZE_MAX;
+}
+
+inline const estring &StateMachineConfig::name() const
+{
+	return m_name;
+}
+
+inline bool StateMachineConfig::has_name() const
+{
+	return 0 != (p_validbits & ((uint8_t)1U << 0));
+}
+
+/*!
+ * Function for clearing the associated member variable.
+ * It will reset the value to the default value.
+ */
+inline void StateMachineConfig::clear_name()
+{
+	p_validbits &= ~((uint8_t)1U << 0);
+	m_name.clear();
+}
+
+inline estring *StateMachineConfig::mutable_name()
+{
+	if (0 == (p_validbits & ((uint8_t)1U << 0))) {
+		p_validbits |= ((uint8_t)1U << 0);
+		m_name.clear();
+	}
+	return &m_name;
+}
+
+inline void StateMachineConfig::set_name(const void *data, size_t s)
+{
+	m_name.assign((const char *)data,s);
+	p_validbits |= ((uint8_t)1U << 0);
+}
+
+inline void StateMachineConfig::set_name(const char *data)
+{
+	m_name = data;
+	p_validbits |= ((uint8_t)1U << 0);
+}
+
+inline void StateMachineConfig::set_name(const estring &v)
+{
+	m_name = v;
+	p_validbits |= ((uint8_t)1U << 0);
+}
+
+
+
+inline uint8_t StateMachineConfig::ini_st() const
+{
+	return m_ini_st;
+}
+
+inline bool StateMachineConfig::has_ini_st() const
+{
+	return 0 != (p_validbits & ((uint8_t)1U << 1));
+}
+
+/*!
+ * Function for clearing the associated member variable.
+ * It will reset the value to the default value.
+ */
+inline void StateMachineConfig::clear_ini_st()
+{
+	p_validbits &= ~((uint8_t)1U << 1);
+	m_ini_st = 0;
+}
+
+inline uint8_t *StateMachineConfig::mutable_ini_st()
+{
+	if (0 == (p_validbits & ((uint8_t)1U << 1))) {
+		p_validbits |= ((uint8_t)1U << 1);
+		m_ini_st = 0;
+	}
+	return &m_ini_st;
+}
+
+inline void StateMachineConfig::set_ini_st(uint8_t v)
+{
+	m_ini_st = v;
+	p_validbits |= ((uint8_t)1U << 1);
+}
+
+
+
+inline const StateConfig &StateMachineConfig::states(unsigned x) const
+{
+	return m_states[x];
+}
+
+inline const std::vector<StateConfig> &StateMachineConfig::states() const
+{
+	return m_states;
+}
+
+/*!
+ * Function for clearing the associated member variable.
+ * It will reset the value to the default value.
+ */
+inline void StateMachineConfig::clear_states()
+{
+	m_states.clear();
+}
+
+inline StateConfig *StateMachineConfig::mutable_states(unsigned x)
+{
+	if (x >= m_states.size())
+		m_states.resize(x+1);
+	return &m_states[x];
+}
+
+inline std::vector<StateConfig> *StateMachineConfig::mutable_states()
+{
+	return &m_states;
+}
+
+inline StateConfig *StateMachineConfig::add_states()
+{
+	m_states.resize(m_states.size()+1);
+	return &m_states.back();
+}
+
+inline void StateMachineConfig::set_states(unsigned x, const StateConfig &v)
+{
+	assert(x < m_states.size());
+	m_states[x] = v;
+}
+
+inline size_t StateMachineConfig::states_size() const
+{
+	return m_states.size();
+}
+
+
+
 inline size_t NodeConfig::getMaxSize()
 {
 	// optional fixed32 magic, id 0 has maximum size 5
@@ -5971,6 +6525,7 @@ inline size_t NodeConfig::getMaxSize()
 	// repeated EventTimer timefuses, id 30 has unlimited size
 	// repeated SignalConfig signals, id 31 has unlimited size
 	// repeated FunctionConfig functions, id 32 has unlimited size
+	// repeated StateMachineConfig statemachs, id 33 has unlimited size
 	// deprecated optional unsigned max_on_time, id 34 has maximum size 7
 	// optional unsigned threshold_off, id 35 has maximum size 7
 	// optional unsigned threshold_on, id 36 has maximum size 7
@@ -6845,6 +7400,7 @@ inline size_t NodeConfig::uart_size() const
 
 
 
+#ifdef CONFIG_TERMSERV
 inline const TerminalConfig &NodeConfig::terminal(unsigned x) const
 {
 	return m_terminal[x];
@@ -6893,6 +7449,7 @@ inline size_t NodeConfig::terminal_size() const
 	return m_terminal.size();
 }
 
+#endif // CONFIG_TERMSERV
 
 
 inline uint16_t NodeConfig::udp_ctrl_port() const
@@ -7228,6 +7785,58 @@ inline size_t NodeConfig::functions_size() const
 }
 
 #endif // CONFIG_SIGNAL_PROC
+
+
+#ifdef CONFIG_STATEMACHINES
+inline const StateMachineConfig &NodeConfig::statemachs(unsigned x) const
+{
+	return m_statemachs[x];
+}
+
+inline const std::vector<StateMachineConfig> &NodeConfig::statemachs() const
+{
+	return m_statemachs;
+}
+
+/*!
+ * Function for clearing the associated member variable.
+ * It will reset the value to the default value.
+ */
+inline void NodeConfig::clear_statemachs()
+{
+	m_statemachs.clear();
+}
+
+inline StateMachineConfig *NodeConfig::mutable_statemachs(unsigned x)
+{
+	if (x >= m_statemachs.size())
+		m_statemachs.resize(x+1);
+	return &m_statemachs[x];
+}
+
+inline std::vector<StateMachineConfig> *NodeConfig::mutable_statemachs()
+{
+	return &m_statemachs;
+}
+
+inline StateMachineConfig *NodeConfig::add_statemachs()
+{
+	m_statemachs.resize(m_statemachs.size()+1);
+	return &m_statemachs.back();
+}
+
+inline void NodeConfig::set_statemachs(unsigned x, const StateMachineConfig &v)
+{
+	assert(x < m_statemachs.size());
+	m_statemachs[x] = v;
+}
+
+inline size_t NodeConfig::statemachs_size() const
+{
+	return m_statemachs.size();
+}
+
+#endif // CONFIG_STATEMACHINES
 
 
 inline uint32_t NodeConfig::max_on_time() const

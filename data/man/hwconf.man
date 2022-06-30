@@ -9,7 +9,7 @@ reset   : rest to defaults
 write   : write config to NVS
 read    : read config rom NVS
 parsexxd: parse xxd input to RAM
+clearbuf: clear parse buffer
 writebuf: write parsed xxd buffer to NVS
 nvxxd   : create xxd output of NVS
 xxd     : create xxd output of current config
-clearbuf: clear parse buffer

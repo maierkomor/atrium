@@ -230,6 +230,12 @@ static void influx_init(void * = 0)
 	const Influx &influx = Config.influx();
 	if (!influx.has_hostname() || !influx.has_port() || !influx.has_measurement())
 		return;
+	if (State == error) {
+		if (TPCB) {
+			tcp_close(TPCB);
+			TPCB = 0;
+		}
+	}
 	if ((State == offline) || (State == error)) {
 		const char *host = Config.influx().hostname().c_str();
 		if (err_t e = query_host(host,0,influx_connect,0))
@@ -268,16 +274,19 @@ static void influx_connect(const char *hn, const ip_addr_t *addr, void *arg)
 	}
 	Header[hl] = 0;
 	HL = hl;
-	assert(TPCB == 0);
+	if (TPCB) {
+		tcp_close(TPCB);
+		TPCB = 0;
+	}
 	char addrstr[32];
 	inet_ntoa_r(*addr,addrstr,sizeof(addrstr));
 	if (influx.database().empty()) {
 		if (UPCB == 0) {
 			UPCB = udp_new();
 			if (err_t e = udp_connect(UPCB,addr,port)) {
-				log_warn(TAG,"UDP connect %s %d",addrstr,e);
+				log_warn(TAG,"listen %s %d",addrstr,e);
 			} else {
-				log_info(TAG,"UDP connect %s:%u",addrstr,port);
+				log_info(TAG,"listen %s:%u",addrstr,port);
 			}
 			State = running;
 		}
@@ -290,10 +299,10 @@ static void influx_connect(const char *hn, const ip_addr_t *addr, void *arg)
 		State = connecting;
 		tcp_err(TPCB,handle_err);
 		if (err_t e = tcp_connect(TPCB,addr,port,handle_connect)) {
-			log_warn(TAG,"TCP connect: %s",strlwiperr(e));
+			log_warn(TAG,"connect: %s",strlwiperr(e));
 			State = error;
 		} else {
-			log_info(TAG,"TCP connect %s:%u",addrstr,port);
+			log_info(TAG,"connect %s:%u",addrstr,port);
 			astream str(128,true);
 			const auto &i = Config.influx();
 			str <<	"POST /write?db=" << i.database() << " HTTP/1.1\n"
@@ -399,23 +408,22 @@ int influx_send(const char *data, size_t l)
 //		log_dbug(TAG,"tcp send '%.*s'",l,data);
 		char len[16];
 		int n = sprintf(len,"%u\r\n\r\n",l);
-		if (err_t e = tcp_write(TPCB,TcpHdr,THL,TCP_WRITE_FLAG_MORE)) {
-			log_warn(TAG,"send header: %s",strlwiperr(e));
-			State = error;
-		} else if (err_t e = tcp_write(TPCB,len,n,TCP_WRITE_FLAG_MORE|TCP_WRITE_FLAG_COPY)) {
-			log_warn(TAG,"send length: %s",strlwiperr(e));
-			State = error;
-		} else if (err_t e = tcp_write(TPCB,data,l,TCP_WRITE_FLAG_COPY)) {
-			log_warn(TAG,"send data: %s",strlwiperr(e));
-			State = error;
+		esp_err_t e;
+		if (0 != (e = tcp_write(TPCB,TcpHdr,THL,TCP_WRITE_FLAG_MORE))) {
+		} else if (0 != (e = tcp_write(TPCB,len,n,TCP_WRITE_FLAG_MORE|TCP_WRITE_FLAG_COPY))) {
+		} else if (0 != (e = tcp_write(TPCB,data,l,TCP_WRITE_FLAG_COPY))) {
 		} else {
 			tcp_output(TPCB);
+		}
+		if (e) {
+			log_warn(TAG,"send error: %s",strlwiperr(e));
+			State = error;
 		}
 	} else if (UPCB) {
 		struct pbuf *pbuf = pbuf_alloc(PBUF_TRANSPORT,l,PBUF_RAM);
 		pbuf_take(pbuf,data,l);
 		if (err_t e = udp_send(UPCB,pbuf))
-			log_warn(TAG,"send failed: %d",e);
+			log_warn(TAG,"send error: %s",strlwiperr(e));
 		pbuf_free(pbuf);
 	}
 	LWIP_UNLOCK();
@@ -613,7 +621,7 @@ int influx(Terminal &term, int argc, const char *args[])
 			Config.clear_influx();
 		} else if (0 == strcmp(args[1],"stop")) {
 			State = stopped;
-			return action_dispatch("influx!init",0);
+			return 0;
 		} else {
 			return arg_invalid(term,args[1]);
 		}
@@ -624,12 +632,12 @@ int influx(Terminal &term, int argc, const char *args[])
 		if (0 == strcmp(args[1],"config")) {
 			const char *c = strchr(args[2],':');
 			if (c == 0) {
-				term.println("':' missing");
+				term.printf("'%c' missing\n",':');
 				return 1;
 			}
 			const char *s = strchr(c+1,'/');
 			if (s == 0) {
-				term.println("'/' missing");
+				term.printf("'%c' missing\n",'/');
 				return 1;
 			}
 			long l = strtol(c+1,0,0);

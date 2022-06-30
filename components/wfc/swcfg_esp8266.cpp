@@ -10,7 +10,7 @@
  * Copyright: 2018-2021
  * Author   : Thomas Maier-Komor
  * 
- * Code generated on 2022-02-26, 11:54:10 (CET).
+ * Code generated on 2022-06-30, 21:08:34 (CET).
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -4403,6 +4403,511 @@ int OwDeviceConfig::setByName(const char *name, const char *value)
 	return -191;
 }
 
+StateConfig::StateConfig()
+: m_name()
+, p_validbits(0)
+{
+}
+
+void StateConfig::clear()
+{
+	m_name.clear();
+	m_conds.clear();
+	p_validbits = 0;
+}
+
+void StateConfig::toASCII(stream &o, size_t indent) const
+{
+	o << "StateConfig {";
+	++indent;
+	ascii_indent(o,indent,"name");
+	ascii_string(o,m_name.data(),m_name.size(),indent+2);
+	o << ';';
+	ascii_indent(o,indent);
+	size_t s_conds = m_conds.size();
+	o << "conds[" << s_conds << "] = {";
+	++indent;
+	for (size_t i = 0, e = s_conds; i != e; ++i) {
+		ascii_indent(o,indent);
+		o << i << ": ";
+		m_conds[i].toASCII(o,indent);
+	}
+	--indent;
+	ascii_indent(o,indent);
+	o << '}';
+	--indent;
+	ascii_indent(o,indent);
+	o << '}';
+}
+
+ssize_t StateConfig::fromMemory(const void *b, ssize_t s)
+{
+	const uint8_t *a = (const uint8_t *)b;
+	const uint8_t *e = a + s;
+	while (a < e) {
+		varint_t fid;
+		union decode_union ud;
+		ssize_t x = decode_early(a,e,&ud,&fid);
+		if (x < 0)
+			return -192;
+		a += x;
+		switch (fid) {
+		case 0xa:	// name id 1, type estring, coding byte[]
+			if ((ssize_t)ud.vi > e-a) {
+				return -193;
+			}
+			m_name.assign((const char*)a,ud.vi);
+			p_validbits |= ((uint8_t)1U << 0);
+			a += ud.vi;
+			break;
+		case 0x12:	// conds id 2, type Trigger, coding byte[]
+			m_conds.emplace_back();
+			if (((ssize_t)ud.vi > 0) && ((ssize_t)ud.vi <= (e-a))) {
+				int n;
+				n = m_conds.back().fromMemory((const uint8_t*)a,ud.vi);
+				if (n != (ssize_t)ud.vi)
+					return -194;
+				a += ud.vi;
+			}
+			break;
+		default:
+			if ((fid & 7) == 2) {
+				// need only to skip len prefixed data
+				a += ud.vi;
+				if (a > e)
+					return -195;
+			}
+		}
+	}
+	assert((a-(const uint8_t *)b) == s);
+	if (a > e)
+		return -196;
+	return a-(const uint8_t *)b;
+}
+
+ssize_t StateConfig::toMemory(uint8_t *b, ssize_t s) const
+{
+	assert(s >= 0);
+	uint8_t *a = b, *e = b + s;
+	signed n;
+	// has name?
+	if (0 != (p_validbits & ((uint8_t)1U << 0))) {
+		// 'name': id=1, encoding=lenpfx, tag=0xa
+		if (a >= e)
+			return -197;
+		*a++ = 0xa;
+		n = encode_bytes(m_name,a,e);
+		if (n < 0)
+			return -198;
+		a += n;
+	}
+	for (const auto &x : m_conds) {
+		// 'conds': id=2, encoding=lenpfx, tag=0x12
+		if (a >= e)
+			return -199;
+		*a++ = 0x12;
+		ssize_t conds_ws = x.calcSize();
+		n = write_varint(a,e-a,conds_ws);
+		a += n;
+		if ((n <= 0) || (conds_ws > (e-a)))
+			return -200;
+		n = x.toMemory(a,e-a);
+		a += n;
+		assert(n == conds_ws);
+	}
+	assert(a <= e);
+	return a-b;
+}
+
+void StateConfig::toJSON(stream &json, unsigned indLvl) const
+{
+	char fsep = '{';
+	++indLvl;
+	if (has_name()) {
+		fsep = json_indent(json,indLvl,fsep,"name");
+		json_cstr(json,m_name.c_str());
+	}
+	if (size_t s = m_conds.size()) {
+		fsep = json_indent(json,indLvl,fsep);
+		indLvl += 2;
+		json << "\"conds\":[\n";
+		size_t i = 0;
+		for (;;) {
+			json_indent(json,indLvl,0);
+			m_conds[i].toJSON(json,indLvl);
+			++i;
+			if (i == s)
+				break;
+			json << ",\n";
+		}
+		indLvl -= 2;
+		json.put('\n');
+		json_indent(json,indLvl,0);
+		json.put(']');
+	}
+	if (fsep == '{')
+		json.put('{');
+	json.put('\n');
+	--indLvl;
+	json_indent(json,indLvl,0);
+	json.put('}');
+	if (indLvl == 0)
+		json.put('\n');
+}
+
+size_t StateConfig::calcSize() const
+{
+	size_t r = 0;	// required size, default is fixed length
+	// optional string name, id 1
+	if (has_name()) {
+		size_t name_s = m_name.size();
+		r += name_s + wiresize(name_s) + 1 /* tag(name) 0x8 */;
+	}
+	// repeated Trigger conds, id 2
+	// repeated message conds
+	for (size_t x = 0, y = m_conds.size(); x < y; ++x) {
+		size_t s = m_conds[x].calcSize();
+		r += wiresize(s);
+		r += s + 1 /* tag(conds) 0x10 */;
+	}
+	return r;
+}
+
+bool StateConfig::operator == (const StateConfig &r) const
+{
+	if (p_validbits != r.p_validbits)
+		return false;
+	if (has_name() && (!(m_name == r.m_name)))
+		return false;
+	if (!(m_conds == r.m_conds))
+		return false;
+	return true;
+}
+
+
+/*
+ * Function for setting an element in dot notation with an ASCII value.
+ * It will call the specified parse_ascii function for parsing the value.
+ *
+ * @return number of bytes successfully parsed or negative value indicating
+ *         an error.
+ */
+int StateConfig::setByName(const char *name, const char *value)
+{
+	if (0 == strcmp(name,"name")) {
+		if (value == 0) {
+			clear_name();
+			return 0;
+		}
+		m_name = value;
+		int r = m_name.size();
+		if (r > 0)
+			p_validbits |= ((uint8_t)1U << 0);
+		return r;
+	}
+	if (0 == memcmp(name,"conds",5)) {
+		if ((name[5] == 0) && (value == 0)) {
+			clear_conds();
+			return 0;
+		} else if (name[5] == '[') {
+			char *idxe;
+			unsigned long x;
+			if ((name[6] == '+') && (name[7] == ']')) {
+				x = m_conds.size();
+				m_conds.resize(x+1);
+				idxe = (char*)(name + 7);
+				if (idxe[1] == 0)
+					return 0;
+			} else {
+				x = strtoul(name+6,&idxe,0);
+				if (idxe[0] != ']')
+					return -201;
+				if (m_conds.size() <= x)
+					return -202;
+				if ((idxe[1] == 0) && (value == 0)) {
+					m_conds.erase(m_conds.begin()+x);
+					return 0;
+				}
+			}
+			if (idxe[1] != '.')
+				return -203;
+			return m_conds[x].setByName(idxe+2,value);
+		}
+	}
+	return -204;
+}
+
+StateMachineConfig::StateMachineConfig()
+: m_name()
+, m_ini_st(0)
+, p_validbits(0)
+{
+}
+
+void StateMachineConfig::clear()
+{
+	m_name.clear();
+	m_ini_st = 0;
+	m_states.clear();
+	p_validbits = 0;
+}
+
+void StateMachineConfig::toASCII(stream &o, size_t indent) const
+{
+	o << "StateMachineConfig {";
+	++indent;
+	ascii_indent(o,indent,"name");
+	ascii_string(o,m_name.data(),m_name.size(),indent+2);
+	o << ';';
+	ascii_numeric(o, indent, "ini_st", (unsigned) m_ini_st);
+	ascii_indent(o,indent);
+	size_t s_states = m_states.size();
+	o << "states[" << s_states << "] = {";
+	++indent;
+	for (size_t i = 0, e = s_states; i != e; ++i) {
+		ascii_indent(o,indent);
+		o << i << ": ";
+		m_states[i].toASCII(o,indent);
+	}
+	--indent;
+	ascii_indent(o,indent);
+	o << '}';
+	--indent;
+	ascii_indent(o,indent);
+	o << '}';
+}
+
+ssize_t StateMachineConfig::fromMemory(const void *b, ssize_t s)
+{
+	const uint8_t *a = (const uint8_t *)b;
+	const uint8_t *e = a + s;
+	while (a < e) {
+		varint_t fid;
+		union decode_union ud;
+		ssize_t x = decode_early(a,e,&ud,&fid);
+		if (x < 0)
+			return -205;
+		a += x;
+		switch (fid) {
+		case 0xa:	// name id 1, type estring, coding byte[]
+			if ((ssize_t)ud.vi > e-a) {
+				return -206;
+			}
+			m_name.assign((const char*)a,ud.vi);
+			p_validbits |= ((uint8_t)1U << 0);
+			a += ud.vi;
+			break;
+		case 0x10:	// ini_st id 2, type uint8_t, coding varint
+			set_ini_st((uint8_t)ud.u32);
+			break;
+		case 0x1a:	// states id 3, type StateConfig, coding byte[]
+			m_states.emplace_back();
+			if (((ssize_t)ud.vi > 0) && ((ssize_t)ud.vi <= (e-a))) {
+				int n;
+				n = m_states.back().fromMemory((const uint8_t*)a,ud.vi);
+				if (n != (ssize_t)ud.vi)
+					return -207;
+				a += ud.vi;
+			}
+			break;
+		default:
+			if ((fid & 7) == 2) {
+				// need only to skip len prefixed data
+				a += ud.vi;
+				if (a > e)
+					return -208;
+			}
+		}
+	}
+	assert((a-(const uint8_t *)b) == s);
+	if (a > e)
+		return -209;
+	return a-(const uint8_t *)b;
+}
+
+ssize_t StateMachineConfig::toMemory(uint8_t *b, ssize_t s) const
+{
+	assert(s >= 0);
+	uint8_t *a = b, *e = b + s;
+	signed n;
+	// has name?
+	if (0 != (p_validbits & ((uint8_t)1U << 0))) {
+		// 'name': id=1, encoding=lenpfx, tag=0xa
+		if (a >= e)
+			return -210;
+		*a++ = 0xa;
+		n = encode_bytes(m_name,a,e);
+		if (n < 0)
+			return -211;
+		a += n;
+	}
+	// has ini_st?
+	if (0 != (p_validbits & ((uint8_t)1U << 1))) {
+		// 'ini_st': id=2, encoding=varint, tag=0x10
+		if (a >= e)
+			return -212;
+		*a++ = 0x10;
+		n = write_varint(a,e-a,m_ini_st);
+		if (n <= 0)
+			return -213;
+		a += n;
+	}
+	for (const auto &x : m_states) {
+		// 'states': id=3, encoding=lenpfx, tag=0x1a
+		if (a >= e)
+			return -214;
+		*a++ = 0x1a;
+		ssize_t states_ws = x.calcSize();
+		n = write_varint(a,e-a,states_ws);
+		a += n;
+		if ((n <= 0) || (states_ws > (e-a)))
+			return -215;
+		n = x.toMemory(a,e-a);
+		a += n;
+		assert(n == states_ws);
+	}
+	assert(a <= e);
+	return a-b;
+}
+
+void StateMachineConfig::toJSON(stream &json, unsigned indLvl) const
+{
+	char fsep = '{';
+	++indLvl;
+	if (has_name()) {
+		fsep = json_indent(json,indLvl,fsep,"name");
+		json_cstr(json,m_name.c_str());
+	}
+	if (has_ini_st()) {
+		fsep = json_indent(json,indLvl,fsep,"ini_st");
+		to_decstr(json,(unsigned) m_ini_st);
+	}
+	if (size_t s = m_states.size()) {
+		fsep = json_indent(json,indLvl,fsep);
+		indLvl += 2;
+		json << "\"states\":[\n";
+		size_t i = 0;
+		for (;;) {
+			json_indent(json,indLvl,0);
+			m_states[i].toJSON(json,indLvl);
+			++i;
+			if (i == s)
+				break;
+			json << ",\n";
+		}
+		indLvl -= 2;
+		json.put('\n');
+		json_indent(json,indLvl,0);
+		json.put(']');
+	}
+	if (fsep == '{')
+		json.put('{');
+	json.put('\n');
+	--indLvl;
+	json_indent(json,indLvl,0);
+	json.put('}');
+	if (indLvl == 0)
+		json.put('\n');
+}
+
+size_t StateMachineConfig::calcSize() const
+{
+	size_t r = 0;	// required size, default is fixed length
+	// optional string name, id 1
+	if (has_name()) {
+		size_t name_s = m_name.size();
+		r += name_s + wiresize(name_s) + 1 /* tag(name) 0x8 */;
+	}
+	// optional uint8 ini_st, id 2
+	if (has_ini_st()) {
+		r += wiresize((varint_t)m_ini_st) + 1 /* tag(ini_st) 0x10 */;
+	}
+	// repeated StateConfig states, id 3
+	// repeated message states
+	for (size_t x = 0, y = m_states.size(); x < y; ++x) {
+		size_t s = m_states[x].calcSize();
+		r += wiresize(s);
+		r += s + 1 /* tag(states) 0x18 */;
+	}
+	return r;
+}
+
+bool StateMachineConfig::operator == (const StateMachineConfig &r) const
+{
+	if (p_validbits != r.p_validbits)
+		return false;
+	if (has_name() && (!(m_name == r.m_name)))
+		return false;
+	if (has_ini_st() && (!(m_ini_st == r.m_ini_st)))
+		return false;
+	if (!(m_states == r.m_states))
+		return false;
+	return true;
+}
+
+
+/*
+ * Function for setting an element in dot notation with an ASCII value.
+ * It will call the specified parse_ascii function for parsing the value.
+ *
+ * @return number of bytes successfully parsed or negative value indicating
+ *         an error.
+ */
+int StateMachineConfig::setByName(const char *name, const char *value)
+{
+	if (0 == strcmp(name,"name")) {
+		if (value == 0) {
+			clear_name();
+			return 0;
+		}
+		m_name = value;
+		int r = m_name.size();
+		if (r > 0)
+			p_validbits |= ((uint8_t)1U << 0);
+		return r;
+	}
+	if (0 == strcmp(name,"ini_st")) {
+		if (value == 0) {
+			clear_ini_st();
+			return 0;
+		}
+		int r = parse_ascii_u8(&m_ini_st,value);
+		if (r > 0)
+			p_validbits |= ((uint8_t)1U << 1);
+		return r;
+	}
+	if (0 == memcmp(name,"states",6)) {
+		if ((name[6] == 0) && (value == 0)) {
+			clear_states();
+			return 0;
+		} else if (name[6] == '[') {
+			char *idxe;
+			unsigned long x;
+			if ((name[7] == '+') && (name[8] == ']')) {
+				x = m_states.size();
+				m_states.resize(x+1);
+				idxe = (char*)(name + 8);
+				if (idxe[1] == 0)
+					return 0;
+			} else {
+				x = strtoul(name+7,&idxe,0);
+				if (idxe[0] != ']')
+					return -216;
+				if (m_states.size() <= x)
+					return -217;
+				if ((idxe[1] == 0) && (value == 0)) {
+					m_states.erase(m_states.begin()+x);
+					return 0;
+				}
+			}
+			if (idxe[1] != '.')
+				return -218;
+			return m_states[x].setByName(idxe+2,value);
+		}
+	}
+	return -219;
+}
+
 NodeConfig::NodeConfig()
 : m_magic(0)
 , m_nodename()
@@ -4419,6 +4924,8 @@ NodeConfig::NodeConfig()
 , m_station2ap_time(0)
 , m_domainname()
 , m_actions_enable(1)
+#ifdef CONFIG_TERMSERV
+#endif // CONFIG_TERMSERV
 , m_udp_ctrl_port(12719)
 #ifdef CONFIG_FTP
 #endif // CONFIG_FTP
@@ -4428,6 +4935,8 @@ NodeConfig::NodeConfig()
 #endif // CONFIG_SIGNAL_PROC
 #ifdef CONFIG_SIGNAL_PROC
 #endif // CONFIG_SIGNAL_PROC
+#ifdef CONFIG_STATEMACHINES
+#endif // CONFIG_STATEMACHINES
 , m_max_on_time(0)
 , m_threshold_off(0)
 , m_threshold_on(0)
@@ -4468,7 +4977,9 @@ void NodeConfig::clear()
 	m_actions_enable = 1;
 	m_triggers.clear();
 	m_uart.clear();
+	#ifdef CONFIG_TERMSERV
 	m_terminal.clear();
+	#endif // CONFIG_TERMSERV
 	m_udp_ctrl_port = 12719;
 	m_debugs.clear();
 	#ifdef CONFIG_FTP
@@ -4484,6 +4995,9 @@ void NodeConfig::clear()
 	#ifdef CONFIG_SIGNAL_PROC
 	m_functions.clear();
 	#endif // CONFIG_SIGNAL_PROC
+	#ifdef CONFIG_STATEMACHINES
+	m_statemachs.clear();
+	#endif // CONFIG_STATEMACHINES
 	m_max_on_time = 0;
 	m_threshold_off = 0;
 	m_threshold_on = 0;
@@ -4599,6 +5113,7 @@ void NodeConfig::toASCII(stream &o, size_t indent) const
 	--indent;
 	ascii_indent(o,indent);
 	o << '}';
+	#ifdef CONFIG_TERMSERV
 	ascii_indent(o,indent);
 	size_t s_terminal = m_terminal.size();
 	o << "terminal[" << s_terminal << "] = {";
@@ -4611,6 +5126,7 @@ void NodeConfig::toASCII(stream &o, size_t indent) const
 	--indent;
 	ascii_indent(o,indent);
 	o << '}';
+	#endif // CONFIG_TERMSERV
 	ascii_numeric(o, indent, "udp_ctrl_port", m_udp_ctrl_port);
 	ascii_indent(o,indent);
 	size_t s_debugs = m_debugs.size();
@@ -4673,6 +5189,20 @@ void NodeConfig::toASCII(stream &o, size_t indent) const
 	ascii_indent(o,indent);
 	o << '}';
 	#endif // CONFIG_SIGNAL_PROC
+	#ifdef CONFIG_STATEMACHINES
+	ascii_indent(o,indent);
+	size_t s_statemachs = m_statemachs.size();
+	o << "statemachs[" << s_statemachs << "] = {";
+	++indent;
+	for (size_t i = 0, e = s_statemachs; i != e; ++i) {
+		ascii_indent(o,indent);
+		o << i << ": ";
+		m_statemachs[i].toASCII(o,indent);
+	}
+	--indent;
+	ascii_indent(o,indent);
+	o << '}';
+	#endif // CONFIG_STATEMACHINES
 	ascii_numeric(o, indent, "max_on_time", m_max_on_time);
 	ascii_numeric(o, indent, "threshold_off", m_threshold_off);
 	ascii_numeric(o, indent, "threshold_on", m_threshold_on);
@@ -4722,7 +5252,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 		union decode_union ud;
 		ssize_t x = decode_early(a,e,&ud,&fid);
 		if (x < 0)
-			return -192;
+			return -220;
 		a += x;
 		switch (fid) {
 		case 0x5:	// magic id 0, type uint32_t, coding 32bit
@@ -4730,14 +5260,14 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 			break;
 		case 0xa:	// nodename id 1, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -193;
+				return -221;
 			}
 			m_nodename.assign((const char*)a,ud.vi);
 			a += ud.vi;
 			break;
 		case 0x12:	// pass_hash id 2, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -194;
+				return -222;
 			}
 			m_pass_hash.assign((const char*)a,ud.vi);
 			p_validbits |= ((uint32_t)1U << 1);
@@ -4751,7 +5281,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n;
 				n = m_station.fromMemory((const uint8_t*)a,ud.vi);
 				if (n != (ssize_t)ud.vi)
-					return -195;
+					return -223;
 				a += ud.vi;
 			}
 			p_validbits |= ((uint32_t)1U << 3);
@@ -4761,35 +5291,35 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n;
 				n = m_softap.fromMemory((const uint8_t*)a,ud.vi);
 				if (n != (ssize_t)ud.vi)
-					return -196;
+					return -224;
 				a += ud.vi;
 			}
 			p_validbits |= ((uint32_t)1U << 4);
 			break;
 		case 0x32:	// dns_server id 6, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -197;
+				return -225;
 			}
 			m_dns_server.emplace_back((const char*)a,ud.vi);
 			a += ud.vi;
 			break;
 		case 0x3a:	// syslog_host id 7, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -198;
+				return -226;
 			}
 			m_syslog_host.assign((const char*)a,ud.vi);
 			a += ud.vi;
 			break;
 		case 0x42:	// sntp_server id 8, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -199;
+				return -227;
 			}
 			m_sntp_server.assign((const char*)a,ud.vi);
 			a += ud.vi;
 			break;
 		case 0x4a:	// timezone id 9, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -200;
+				return -228;
 			}
 			m_timezone.assign((const char*)a,ud.vi);
 			a += ud.vi;
@@ -4800,7 +5330,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n;
 				n = m_mqtt.fromMemory((const uint8_t*)a,ud.vi);
 				if (n != (ssize_t)ud.vi)
-					return -201;
+					return -229;
 				a += ud.vi;
 			}
 			p_validbits |= ((uint32_t)1U << 5);
@@ -4815,7 +5345,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n;
 				n = m_influx.fromMemory((const uint8_t*)a,ud.vi);
 				if (n != (ssize_t)ud.vi)
-					return -202;
+					return -230;
 				a += ud.vi;
 			}
 			p_validbits |= ((uint32_t)1U << 7);
@@ -4826,7 +5356,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 			break;
 		case 0x7a:	// domainname id 15, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -203;
+				return -231;
 			}
 			m_domainname.assign((const char*)a,ud.vi);
 			a += ud.vi;
@@ -4837,7 +5367,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n;
 				n = m_holidays.back().fromMemory((const uint8_t*)a,ud.vi);
 				if (n != (ssize_t)ud.vi)
-					return -204;
+					return -232;
 				a += ud.vi;
 			}
 			break;
@@ -4847,7 +5377,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n;
 				n = m_at_actions.back().fromMemory((const uint8_t*)a,ud.vi);
 				if (n != (ssize_t)ud.vi)
-					return -205;
+					return -233;
 				a += ud.vi;
 			}
 			break;
@@ -4860,7 +5390,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n;
 				n = m_triggers.back().fromMemory((const uint8_t*)a,ud.vi);
 				if (n != (ssize_t)ud.vi)
-					return -206;
+					return -234;
 				a += ud.vi;
 			}
 			break;
@@ -4870,26 +5400,28 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n;
 				n = m_uart.back().fromMemory((const uint8_t*)a,ud.vi);
 				if (n != (ssize_t)ud.vi)
-					return -207;
+					return -235;
 				a += ud.vi;
 			}
 			break;
+			#ifdef CONFIG_TERMSERV
 		case 0xaa:	// terminal id 21, type TerminalConfig, coding byte[]
 			m_terminal.emplace_back();
 			if (((ssize_t)ud.vi > 0) && ((ssize_t)ud.vi <= (e-a))) {
 				int n;
 				n = m_terminal.back().fromMemory((const uint8_t*)a,ud.vi);
 				if (n != (ssize_t)ud.vi)
-					return -208;
+					return -236;
 				a += ud.vi;
 			}
 			break;
+			#endif // CONFIG_TERMSERV
 		case 0xb4:	// udp_ctrl_port id 22, type uint16_t, coding 16bit
 			set_udp_ctrl_port(ud.u16);
 			break;
 		case 0xba:	// debugs id 23, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -209;
+				return -237;
 			}
 			m_debugs.emplace_back((const char*)a,ud.vi);
 			a += ud.vi;
@@ -4900,7 +5432,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n;
 				n = m_ftpd.fromMemory((const uint8_t*)a,ud.vi);
 				if (n != (ssize_t)ud.vi)
-					return -210;
+					return -238;
 				a += ud.vi;
 			}
 			p_validbits |= ((uint32_t)1U << 11);
@@ -4912,7 +5444,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n;
 				n = m_httpd.fromMemory((const uint8_t*)a,ud.vi);
 				if (n != (ssize_t)ud.vi)
-					return -211;
+					return -239;
 				a += ud.vi;
 			}
 			p_validbits |= ((uint32_t)1U << 12);
@@ -4924,7 +5456,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n;
 				n = m_timefuses.back().fromMemory((const uint8_t*)a,ud.vi);
 				if (n != (ssize_t)ud.vi)
-					return -212;
+					return -240;
 				a += ud.vi;
 			}
 			break;
@@ -4935,7 +5467,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n;
 				n = m_signals.back().fromMemory((const uint8_t*)a,ud.vi);
 				if (n != (ssize_t)ud.vi)
-					return -213;
+					return -241;
 				a += ud.vi;
 			}
 			break;
@@ -4947,11 +5479,23 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n;
 				n = m_functions.back().fromMemory((const uint8_t*)a,ud.vi);
 				if (n != (ssize_t)ud.vi)
-					return -214;
+					return -242;
 				a += ud.vi;
 			}
 			break;
 			#endif // CONFIG_SIGNAL_PROC
+			#ifdef CONFIG_STATEMACHINES
+		case 0x10a:	// statemachs id 33, type StateMachineConfig, coding byte[]
+			m_statemachs.emplace_back();
+			if (((ssize_t)ud.vi > 0) && ((ssize_t)ud.vi <= (e-a))) {
+				int n;
+				n = m_statemachs.back().fromMemory((const uint8_t*)a,ud.vi);
+				if (n != (ssize_t)ud.vi)
+					return -243;
+				a += ud.vi;
+			}
+			break;
+			#endif // CONFIG_STATEMACHINES
 		case 0x110:	// max_on_time id 34, type uint32_t, coding varint
 			set_max_on_time((uint32_t)ud.u32);
 			break;
@@ -4977,7 +5521,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n;
 				n = m_app_params.back().fromMemory((const uint8_t*)a,ud.vi);
 				if (n != (ssize_t)ud.vi)
-					return -215;
+					return -244;
 				a += ud.vi;
 			}
 			break;
@@ -4989,7 +5533,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n;
 				n = m_owdevices.back().fromMemory((const uint8_t*)a,ud.vi);
 				if (n != (ssize_t)ud.vi)
-					return -216;
+					return -245;
 				a += ud.vi;
 			}
 			break;
@@ -4999,13 +5543,13 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				// need only to skip len prefixed data
 				a += ud.vi;
 				if (a > e)
-					return -217;
+					return -246;
 			}
 		}
 	}
 	assert((a-(const uint8_t *)b) == s);
 	if (a > e)
-		return -218;
+		return -247;
 	return a-(const uint8_t *)b;
 }
 
@@ -5018,10 +5562,10 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint32_t)1U << 0))) {
 		// 'magic': id=0, encoding=32bit, tag=0x5
 		if (5 > (e-a))
-			return -219;
+			return -248;
 		*a++ = 0x5;
 		if ((e-a) < 4)
-			return -220;
+			return -249;
 		write_u32(a,(uint32_t)m_magic);
 		a += 4;
 	}
@@ -5029,46 +5573,46 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (!m_nodename.empty()) {
 		// 'nodename': id=1, encoding=lenpfx, tag=0xa
 		if (a >= e)
-			return -221;
+			return -250;
 		*a++ = 0xa;
 		n = encode_bytes(m_nodename,a,e);
 		if (n < 0)
-			return -222;
+			return -251;
 		a += n;
 	}
 	// has pass_hash?
 	if (0 != (p_validbits & ((uint32_t)1U << 1))) {
 		// 'pass_hash': id=2, encoding=lenpfx, tag=0x12
 		if (a >= e)
-			return -223;
+			return -252;
 		*a++ = 0x12;
 		n = encode_bytes(m_pass_hash,a,e);
 		if (n < 0)
-			return -224;
+			return -253;
 		a += n;
 	}
 	// has cpu_freq?
 	if (0 != (p_validbits & ((uint32_t)1U << 2))) {
 		// 'cpu_freq': id=3, encoding=varint, tag=0x18
 		if (a >= e)
-			return -225;
+			return -254;
 		*a++ = 0x18;
 		n = write_varint(a,e-a,m_cpu_freq);
 		if (n <= 0)
-			return -226;
+			return -255;
 		a += n;
 	}
 	// has station?
 	if (0 != (p_validbits & ((uint32_t)1U << 3))) {
 		// 'station': id=4, encoding=lenpfx, tag=0x22
 		if (a >= e)
-			return -227;
+			return -256;
 		*a++ = 0x22;
 		ssize_t station_ws = m_station.calcSize();
 		n = write_varint(a,e-a,station_ws);
 		a += n;
 		if ((n <= 0) || (station_ws > (e-a)))
-			return -228;
+			return -257;
 		n = m_station.toMemory(a,e-a);
 		a += n;
 		assert(n == station_ws);
@@ -5077,13 +5621,13 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint32_t)1U << 4))) {
 		// 'softap': id=5, encoding=lenpfx, tag=0x2a
 		if (a >= e)
-			return -229;
+			return -258;
 		*a++ = 0x2a;
 		ssize_t softap_ws = m_softap.calcSize();
 		n = write_varint(a,e-a,softap_ws);
 		a += n;
 		if ((n <= 0) || (softap_ws > (e-a)))
-			return -230;
+			return -259;
 		n = m_softap.toMemory(a,e-a);
 		a += n;
 		assert(n == softap_ws);
@@ -5091,44 +5635,44 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_dns_server) {
 		// 'dns_server': id=6, encoding=lenpfx, tag=0x32
 		if (a >= e)
-			return -231;
+			return -260;
 		*a++ = 0x32;
 		n = encode_bytes(x,a,e);
 		if (n < 0)
-			return -232;
+			return -261;
 		a += n;
 	}
 	// has syslog_host?
 	if (!m_syslog_host.empty()) {
 		// 'syslog_host': id=7, encoding=lenpfx, tag=0x3a
 		if (a >= e)
-			return -233;
+			return -262;
 		*a++ = 0x3a;
 		n = encode_bytes(m_syslog_host,a,e);
 		if (n < 0)
-			return -234;
+			return -263;
 		a += n;
 	}
 	// has sntp_server?
 	if (!m_sntp_server.empty()) {
 		// 'sntp_server': id=8, encoding=lenpfx, tag=0x42
 		if (a >= e)
-			return -235;
+			return -264;
 		*a++ = 0x42;
 		n = encode_bytes(m_sntp_server,a,e);
 		if (n < 0)
-			return -236;
+			return -265;
 		a += n;
 	}
 	// has timezone?
 	if (!m_timezone.empty()) {
 		// 'timezone': id=9, encoding=lenpfx, tag=0x4a
 		if (a >= e)
-			return -237;
+			return -266;
 		*a++ = 0x4a;
 		n = encode_bytes(m_timezone,a,e);
 		if (n < 0)
-			return -238;
+			return -267;
 		a += n;
 	}
 	#ifdef CONFIG_MQTT
@@ -5136,13 +5680,13 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint32_t)1U << 5))) {
 		// 'mqtt': id=10, encoding=lenpfx, tag=0x52
 		if (a >= e)
-			return -239;
+			return -268;
 		*a++ = 0x52;
 		ssize_t mqtt_ws = m_mqtt.calcSize();
 		n = write_varint(a,e-a,mqtt_ws);
 		a += n;
 		if ((n <= 0) || (mqtt_ws > (e-a)))
-			return -240;
+			return -269;
 		n = m_mqtt.toMemory(a,e-a);
 		a += n;
 		assert(n == mqtt_ws);
@@ -5152,7 +5696,7 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint32_t)1U << 6))) {
 		// 'dmesg_size': id=11, encoding=16bit, tag=0x5c
 		if (3 > (e-a))
-			return -241;
+			return -270;
 		*a++ = 0x5c;
 		write_u16(a,m_dmesg_size);
 		a += 2;
@@ -5162,13 +5706,13 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint32_t)1U << 7))) {
 		// 'influx': id=12, encoding=lenpfx, tag=0x62
 		if (a >= e)
-			return -242;
+			return -271;
 		*a++ = 0x62;
 		ssize_t influx_ws = m_influx.calcSize();
 		n = write_varint(a,e-a,influx_ws);
 		a += n;
 		if ((n <= 0) || (influx_ws > (e-a)))
-			return -243;
+			return -272;
 		n = m_influx.toMemory(a,e-a);
 		a += n;
 		assert(n == influx_ws);
@@ -5178,35 +5722,35 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint32_t)1U << 8))) {
 		// 'station2ap_time': id=13, encoding=varint, tag=0x68
 		if (a >= e)
-			return -244;
+			return -273;
 		*a++ = 0x68;
 		n = write_varint(a,e-a,m_station2ap_time);
 		if (n <= 0)
-			return -245;
+			return -274;
 		a += n;
 	}
 	// has domainname?
 	if (!m_domainname.empty()) {
 		// 'domainname': id=15, encoding=lenpfx, tag=0x7a
 		if (a >= e)
-			return -246;
+			return -275;
 		*a++ = 0x7a;
 		n = encode_bytes(m_domainname,a,e);
 		if (n < 0)
-			return -247;
+			return -276;
 		a += n;
 	}
 	for (const auto &x : m_holidays) {
 		// 'holidays': id=16, encoding=lenpfx, tag=0x82
 		if (2 > (e-a))
-			return -248;
+			return -277;
 		*a++ = 0x82;
 		*a++ = 0x1;
 		ssize_t holidays_ws = x.calcSize();
 		n = write_varint(a,e-a,holidays_ws);
 		a += n;
 		if ((n <= 0) || (holidays_ws > (e-a)))
-			return -249;
+			return -278;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == holidays_ws);
@@ -5214,14 +5758,14 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_at_actions) {
 		// 'at_actions': id=17, encoding=lenpfx, tag=0x8a
 		if (2 > (e-a))
-			return -250;
+			return -279;
 		*a++ = 0x8a;
 		*a++ = 0x1;
 		ssize_t at_actions_ws = x.calcSize();
 		n = write_varint(a,e-a,at_actions_ws);
 		a += n;
 		if ((n <= 0) || (at_actions_ws > (e-a)))
-			return -251;
+			return -280;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == at_actions_ws);
@@ -5230,25 +5774,25 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint32_t)1U << 9))) {
 		// 'actions_enable': id=18, encoding=varint, tag=0x90
 		if (2 > (e-a))
-			return -252;
+			return -281;
 		*a++ = 0x90;
 		*a++ = 0x1;
 		n = write_varint(a,e-a,m_actions_enable);
 		if (n <= 0)
-			return -253;
+			return -282;
 		a += n;
 	}
 	for (const auto &x : m_triggers) {
 		// 'triggers': id=19, encoding=lenpfx, tag=0x9a
 		if (2 > (e-a))
-			return -254;
+			return -283;
 		*a++ = 0x9a;
 		*a++ = 0x1;
 		ssize_t triggers_ws = x.calcSize();
 		n = write_varint(a,e-a,triggers_ws);
 		a += n;
 		if ((n <= 0) || (triggers_ws > (e-a)))
-			return -255;
+			return -284;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == triggers_ws);
@@ -5256,38 +5800,40 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_uart) {
 		// 'uart': id=20, encoding=lenpfx, tag=0xa2
 		if (2 > (e-a))
-			return -256;
+			return -285;
 		*a++ = 0xa2;
 		*a++ = 0x1;
 		ssize_t uart_ws = x.calcSize();
 		n = write_varint(a,e-a,uart_ws);
 		a += n;
 		if ((n <= 0) || (uart_ws > (e-a)))
-			return -257;
+			return -286;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == uart_ws);
 	}
+	#ifdef CONFIG_TERMSERV
 	for (const auto &x : m_terminal) {
 		// 'terminal': id=21, encoding=lenpfx, tag=0xaa
 		if (2 > (e-a))
-			return -258;
+			return -287;
 		*a++ = 0xaa;
 		*a++ = 0x1;
 		ssize_t terminal_ws = x.calcSize();
 		n = write_varint(a,e-a,terminal_ws);
 		a += n;
 		if ((n <= 0) || (terminal_ws > (e-a)))
-			return -259;
+			return -288;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == terminal_ws);
 	}
+	#endif // CONFIG_TERMSERV
 	// has udp_ctrl_port?
 	if (0 != (p_validbits & ((uint32_t)1U << 10))) {
 		// 'udp_ctrl_port': id=22, encoding=16bit, tag=0xb4
 		if (4 > (e-a))
-			return -260;
+			return -289;
 		a += write_varint(a,e-a,0xb4);	// 'udp_ctrl_port': id=22
 		write_u16(a,m_udp_ctrl_port);
 		a += 2;
@@ -5295,12 +5841,12 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_debugs) {
 		// 'debugs': id=23, encoding=lenpfx, tag=0xba
 		if (2 > (e-a))
-			return -261;
+			return -290;
 		*a++ = 0xba;
 		*a++ = 0x1;
 		n = encode_bytes(x,a,e);
 		if (n < 0)
-			return -262;
+			return -291;
 		a += n;
 	}
 	#ifdef CONFIG_FTP
@@ -5308,14 +5854,14 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint32_t)1U << 11))) {
 		// 'ftpd': id=24, encoding=lenpfx, tag=0xc2
 		if (2 > (e-a))
-			return -263;
+			return -292;
 		*a++ = 0xc2;
 		*a++ = 0x1;
 		ssize_t ftpd_ws = m_ftpd.calcSize();
 		n = write_varint(a,e-a,ftpd_ws);
 		a += n;
 		if ((n <= 0) || (ftpd_ws > (e-a)))
-			return -264;
+			return -293;
 		n = m_ftpd.toMemory(a,e-a);
 		a += n;
 		assert(n == ftpd_ws);
@@ -5326,14 +5872,14 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint32_t)1U << 12))) {
 		// 'httpd': id=25, encoding=lenpfx, tag=0xca
 		if (2 > (e-a))
-			return -265;
+			return -294;
 		*a++ = 0xca;
 		*a++ = 0x1;
 		ssize_t httpd_ws = m_httpd.calcSize();
 		n = write_varint(a,e-a,httpd_ws);
 		a += n;
 		if ((n <= 0) || (httpd_ws > (e-a)))
-			return -266;
+			return -295;
 		n = m_httpd.toMemory(a,e-a);
 		a += n;
 		assert(n == httpd_ws);
@@ -5342,14 +5888,14 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_timefuses) {
 		// 'timefuses': id=30, encoding=lenpfx, tag=0xf2
 		if (2 > (e-a))
-			return -267;
+			return -296;
 		*a++ = 0xf2;
 		*a++ = 0x1;
 		ssize_t timefuses_ws = x.calcSize();
 		n = write_varint(a,e-a,timefuses_ws);
 		a += n;
 		if ((n <= 0) || (timefuses_ws > (e-a)))
-			return -268;
+			return -297;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == timefuses_ws);
@@ -5358,14 +5904,14 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_signals) {
 		// 'signals': id=31, encoding=lenpfx, tag=0xfa
 		if (2 > (e-a))
-			return -269;
+			return -298;
 		*a++ = 0xfa;
 		*a++ = 0x1;
 		ssize_t signals_ws = x.calcSize();
 		n = write_varint(a,e-a,signals_ws);
 		a += n;
 		if ((n <= 0) || (signals_ws > (e-a)))
-			return -270;
+			return -299;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == signals_ws);
@@ -5375,61 +5921,78 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_functions) {
 		// 'functions': id=32, encoding=lenpfx, tag=0x102
 		if (2 > (e-a))
-			return -271;
+			return -300;
 		*a++ = 0x82;
 		*a++ = 0x2;
 		ssize_t functions_ws = x.calcSize();
 		n = write_varint(a,e-a,functions_ws);
 		a += n;
 		if ((n <= 0) || (functions_ws > (e-a)))
-			return -272;
+			return -301;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == functions_ws);
 	}
 	#endif // CONFIG_SIGNAL_PROC
+	#ifdef CONFIG_STATEMACHINES
+	for (const auto &x : m_statemachs) {
+		// 'statemachs': id=33, encoding=lenpfx, tag=0x10a
+		if (2 > (e-a))
+			return -302;
+		*a++ = 0x8a;
+		*a++ = 0x2;
+		ssize_t statemachs_ws = x.calcSize();
+		n = write_varint(a,e-a,statemachs_ws);
+		a += n;
+		if ((n <= 0) || (statemachs_ws > (e-a)))
+			return -303;
+		n = x.toMemory(a,e-a);
+		a += n;
+		assert(n == statemachs_ws);
+	}
+	#endif // CONFIG_STATEMACHINES
 	// 'max_on_time' is deprecated. Therefore no data will be written.
 	// has threshold_off?
 	if (0 != (p_validbits & ((uint32_t)1U << 13))) {
 		// 'threshold_off': id=35, encoding=varint, tag=0x118
 		if (2 > (e-a))
-			return -273;
+			return -304;
 		*a++ = 0x98;
 		*a++ = 0x2;
 		n = write_varint(a,e-a,m_threshold_off);
 		if (n <= 0)
-			return -274;
+			return -305;
 		a += n;
 	}
 	// has threshold_on?
 	if (0 != (p_validbits & ((uint32_t)1U << 14))) {
 		// 'threshold_on': id=36, encoding=varint, tag=0x120
 		if (2 > (e-a))
-			return -275;
+			return -306;
 		*a++ = 0xa0;
 		*a++ = 0x2;
 		n = write_varint(a,e-a,m_threshold_on);
 		if (n <= 0)
-			return -276;
+			return -307;
 		a += n;
 	}
 	// has dim_step?
 	if (0 != (p_validbits & ((uint32_t)1U << 15))) {
 		// 'dim_step': id=37, encoding=varint, tag=0x128
 		if (2 > (e-a))
-			return -277;
+			return -308;
 		*a++ = 0xa8;
 		*a++ = 0x2;
 		n = write_varint(a,e-a,m_dim_step);
 		if (n <= 0)
-			return -278;
+			return -309;
 		a += n;
 	}
 	// has lightctrl?
 	if (0 != (p_validbits & ((uint32_t)1U << 16))) {
 		// 'lightctrl': id=38, encoding=8bit, tag=0x133
 		if (3 > (e-a))
-			return -279;
+			return -310;
 		a += write_varint(a,e-a,0x133);	// 'lightctrl': id=38
 		*a++ = m_lightctrl;
 	}
@@ -5437,26 +6000,26 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint32_t)1U << 17))) {
 		// 'pwm_freq': id=39, encoding=varint, tag=0x138
 		if (2 > (e-a))
-			return -280;
+			return -311;
 		*a++ = 0xb8;
 		*a++ = 0x2;
 		n = write_varint(a,e-a,m_pwm_freq);
 		if (n <= 0)
-			return -281;
+			return -312;
 		a += n;
 	}
 	#ifdef CONFIG_APP_PARAMS
 	for (const auto &x : m_app_params) {
 		// 'app_params': id=40, encoding=lenpfx, tag=0x142
 		if (2 > (e-a))
-			return -282;
+			return -313;
 		*a++ = 0xc2;
 		*a++ = 0x2;
 		ssize_t app_params_ws = x.calcSize();
 		n = write_varint(a,e-a,app_params_ws);
 		a += n;
 		if ((n <= 0) || (app_params_ws > (e-a)))
-			return -283;
+			return -314;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == app_params_ws);
@@ -5466,14 +6029,14 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_owdevices) {
 		// 'owdevices': id=50, encoding=lenpfx, tag=0x192
 		if (2 > (e-a))
-			return -284;
+			return -315;
 		*a++ = 0x92;
 		*a++ = 0x3;
 		ssize_t owdevices_ws = x.calcSize();
 		n = write_varint(a,e-a,owdevices_ws);
 		a += n;
 		if ((n <= 0) || (owdevices_ws > (e-a)))
-			return -285;
+			return -316;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == owdevices_ws);
@@ -5641,6 +6204,7 @@ void NodeConfig::toJSON(stream &json, unsigned indLvl) const
 		json_indent(json,indLvl,0);
 		json.put(']');
 	}
+	#ifdef CONFIG_TERMSERV
 	if (size_t s = m_terminal.size()) {
 		fsep = json_indent(json,indLvl,fsep);
 		indLvl += 2;
@@ -5659,6 +6223,7 @@ void NodeConfig::toJSON(stream &json, unsigned indLvl) const
 		json_indent(json,indLvl,0);
 		json.put(']');
 	}
+	#endif // CONFIG_TERMSERV
 	if (has_udp_ctrl_port()) {
 		fsep = json_indent(json,indLvl,fsep,"udp_ctrl_port");
 		to_decstr(json,m_udp_ctrl_port);
@@ -5751,6 +6316,26 @@ void NodeConfig::toJSON(stream &json, unsigned indLvl) const
 		json.put(']');
 	}
 	#endif // CONFIG_SIGNAL_PROC
+	#ifdef CONFIG_STATEMACHINES
+	if (size_t s = m_statemachs.size()) {
+		fsep = json_indent(json,indLvl,fsep);
+		indLvl += 2;
+		json << "\"statemachs\":[\n";
+		size_t i = 0;
+		for (;;) {
+			json_indent(json,indLvl,0);
+			m_statemachs[i].toJSON(json,indLvl);
+			++i;
+			if (i == s)
+				break;
+			json << ",\n";
+		}
+		indLvl -= 2;
+		json.put('\n');
+		json_indent(json,indLvl,0);
+		json.put(']');
+	}
+	#endif // CONFIG_STATEMACHINES
 	if (has_max_on_time()) {
 		fsep = json_indent(json,indLvl,fsep,"max_on_time");
 		to_decstr(json,m_max_on_time);
@@ -5939,6 +6524,7 @@ size_t NodeConfig::calcSize() const
 		r += wiresize(s);
 		r += s + 2 /* tag(uart) 0xa0 */;
 	}
+	#ifdef CONFIG_TERMSERV
 	// repeated TerminalConfig terminal, id 21
 	// repeated message terminal
 	for (size_t x = 0, y = m_terminal.size(); x < y; ++x) {
@@ -5946,6 +6532,7 @@ size_t NodeConfig::calcSize() const
 		r += wiresize(s);
 		r += s + 2 /* tag(terminal) 0xa8 */;
 	}
+	#endif // CONFIG_TERMSERV
 	// optional fixed16 udp_ctrl_port, id 22
 	if (has_udp_ctrl_port()) {
 		r += 4;
@@ -5998,6 +6585,15 @@ size_t NodeConfig::calcSize() const
 		r += s + 2 /* tag(functions) 0x100 */;
 	}
 	#endif // CONFIG_SIGNAL_PROC
+	#ifdef CONFIG_STATEMACHINES
+	// repeated StateMachineConfig statemachs, id 33
+	// repeated message statemachs
+	for (size_t x = 0, y = m_statemachs.size(); x < y; ++x) {
+		size_t s = m_statemachs[x].calcSize();
+		r += wiresize(s);
+		r += s + 2 /* tag(statemachs) 0x108 */;
+	}
+	#endif // CONFIG_STATEMACHINES
 	// deprecated optional unsigned max_on_time, id 34
 	// optional unsigned threshold_off, id 35
 	if (has_threshold_off()) {
@@ -6088,8 +6684,10 @@ bool NodeConfig::operator == (const NodeConfig &r) const
 		return false;
 	if (!(m_uart == r.m_uart))
 		return false;
+	#ifdef CONFIG_TERMSERV
 	if (!(m_terminal == r.m_terminal))
 		return false;
+	#endif // CONFIG_TERMSERV
 	if (has_udp_ctrl_port() && (!(m_udp_ctrl_port == r.m_udp_ctrl_port)))
 		return false;
 	if (!(m_debugs == r.m_debugs))
@@ -6112,6 +6710,10 @@ bool NodeConfig::operator == (const NodeConfig &r) const
 	if (!(m_functions == r.m_functions))
 		return false;
 	#endif // CONFIG_SIGNAL_PROC
+	#ifdef CONFIG_STATEMACHINES
+	if (!(m_statemachs == r.m_statemachs))
+		return false;
+	#endif // CONFIG_STATEMACHINES
 	if (has_max_on_time() && (!(m_max_on_time == r.m_max_on_time)))
 		return false;
 	if (has_threshold_off() && (!(m_threshold_off == r.m_threshold_off)))
@@ -6218,16 +6820,16 @@ int NodeConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+11,&idxe,0);
 				if (idxe[0] != ']')
-					return -286;
+					return -317;
 				if (m_dns_server.size() <= x)
-					return -287;
+					return -318;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_dns_server.erase(m_dns_server.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != 0)
-				return -288;
+				return -319;
 			m_dns_server[x] = value;
 			return m_dns_server[x].size();
 		}
@@ -6326,16 +6928,16 @@ int NodeConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+9,&idxe,0);
 				if (idxe[0] != ']')
-					return -289;
+					return -320;
 				if (m_holidays.size() <= x)
-					return -290;
+					return -321;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_holidays.erase(m_holidays.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -291;
+				return -322;
 			return m_holidays[x].setByName(idxe+2,value);
 		}
 	}
@@ -6355,16 +6957,16 @@ int NodeConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+11,&idxe,0);
 				if (idxe[0] != ']')
-					return -292;
+					return -323;
 				if (m_at_actions.size() <= x)
-					return -293;
+					return -324;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_at_actions.erase(m_at_actions.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -294;
+				return -325;
 			return m_at_actions[x].setByName(idxe+2,value);
 		}
 	}
@@ -6394,16 +6996,16 @@ int NodeConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+9,&idxe,0);
 				if (idxe[0] != ']')
-					return -295;
+					return -326;
 				if (m_triggers.size() <= x)
-					return -296;
+					return -327;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_triggers.erase(m_triggers.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -297;
+				return -328;
 			return m_triggers[x].setByName(idxe+2,value);
 		}
 	}
@@ -6423,19 +7025,20 @@ int NodeConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+5,&idxe,0);
 				if (idxe[0] != ']')
-					return -298;
+					return -329;
 				if (m_uart.size() <= x)
-					return -299;
+					return -330;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_uart.erase(m_uart.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -300;
+				return -331;
 			return m_uart[x].setByName(idxe+2,value);
 		}
 	}
+	#ifdef CONFIG_TERMSERV
 	if (0 == memcmp(name,"terminal",8)) {
 		if ((name[8] == 0) && (value == 0)) {
 			clear_terminal();
@@ -6452,19 +7055,20 @@ int NodeConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+9,&idxe,0);
 				if (idxe[0] != ']')
-					return -301;
+					return -332;
 				if (m_terminal.size() <= x)
-					return -302;
+					return -333;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_terminal.erase(m_terminal.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -303;
+				return -334;
 			return m_terminal[x].setByName(idxe+2,value);
 		}
 	}
+	#endif // CONFIG_TERMSERV
 	if (0 == strcmp(name,"udp_ctrl_port")) {
 		if (value == 0) {
 			clear_udp_ctrl_port();
@@ -6491,16 +7095,16 @@ int NodeConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+7,&idxe,0);
 				if (idxe[0] != ']')
-					return -304;
+					return -335;
 				if (m_debugs.size() <= x)
-					return -305;
+					return -336;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_debugs.erase(m_debugs.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != 0)
-				return -306;
+				return -337;
 			m_debugs[x] = value;
 			return m_debugs[x].size();
 		}
@@ -6543,16 +7147,16 @@ int NodeConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+10,&idxe,0);
 				if (idxe[0] != ']')
-					return -307;
+					return -338;
 				if (m_timefuses.size() <= x)
-					return -308;
+					return -339;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_timefuses.erase(m_timefuses.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -309;
+				return -340;
 			return m_timefuses[x].setByName(idxe+2,value);
 		}
 	}
@@ -6573,16 +7177,16 @@ int NodeConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+8,&idxe,0);
 				if (idxe[0] != ']')
-					return -310;
+					return -341;
 				if (m_signals.size() <= x)
-					return -311;
+					return -342;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_signals.erase(m_signals.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -312;
+				return -343;
 			return m_signals[x].setByName(idxe+2,value);
 		}
 	}
@@ -6604,20 +7208,51 @@ int NodeConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+10,&idxe,0);
 				if (idxe[0] != ']')
-					return -313;
+					return -344;
 				if (m_functions.size() <= x)
-					return -314;
+					return -345;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_functions.erase(m_functions.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -315;
+				return -346;
 			return m_functions[x].setByName(idxe+2,value);
 		}
 	}
 	#endif // CONFIG_SIGNAL_PROC
+	#ifdef CONFIG_STATEMACHINES
+	if (0 == memcmp(name,"statemachs",10)) {
+		if ((name[10] == 0) && (value == 0)) {
+			clear_statemachs();
+			return 0;
+		} else if (name[10] == '[') {
+			char *idxe;
+			unsigned long x;
+			if ((name[11] == '+') && (name[12] == ']')) {
+				x = m_statemachs.size();
+				m_statemachs.resize(x+1);
+				idxe = (char*)(name + 12);
+				if (idxe[1] == 0)
+					return 0;
+			} else {
+				x = strtoul(name+11,&idxe,0);
+				if (idxe[0] != ']')
+					return -347;
+				if (m_statemachs.size() <= x)
+					return -348;
+				if ((idxe[1] == 0) && (value == 0)) {
+					m_statemachs.erase(m_statemachs.begin()+x);
+					return 0;
+				}
+			}
+			if (idxe[1] != '.')
+				return -349;
+			return m_statemachs[x].setByName(idxe+2,value);
+		}
+	}
+	#endif // CONFIG_STATEMACHINES
 	if (0 == strcmp(name,"max_on_time")) {
 		if (value == 0) {
 			clear_max_on_time();
@@ -6693,16 +7328,16 @@ int NodeConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+11,&idxe,0);
 				if (idxe[0] != ']')
-					return -316;
+					return -350;
 				if (m_app_params.size() <= x)
-					return -317;
+					return -351;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_app_params.erase(m_app_params.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -318;
+				return -352;
 			return m_app_params[x].setByName(idxe+2,value);
 		}
 	}
@@ -6724,20 +7359,20 @@ int NodeConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+10,&idxe,0);
 				if (idxe[0] != ']')
-					return -319;
+					return -353;
 				if (m_owdevices.size() <= x)
-					return -320;
+					return -354;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_owdevices.erase(m_owdevices.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -321;
+				return -355;
 			return m_owdevices[x].setByName(idxe+2,value);
 		}
 	}
 	#endif // CONFIG_ONEWIRE
-	return -322;
+	return -356;
 }
 

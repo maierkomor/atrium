@@ -140,6 +140,7 @@ int XioCluster::getBase() const
 
 int xio_config(xio_t x, xio_cfg_t cfg)
 {
+	log_dbug(TAG,"config %d,0x%x",x,cfg);
 	if (XioCluster *c = XioCluster::getCluster(x))
 		return c->config(x-c->getBase(),cfg);
 	log_warn(TAG,"xio_config: invalid io %u",x);

@@ -10,7 +10,7 @@
  * Copyright: 2018-2021
  * Author   : Thomas Maier-Komor
  * 
- * Code generated on 2022-02-26, 11:54:10 (CET).
+ * Code generated on 2022-06-30, 21:08:34 (CET).
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -160,6 +160,13 @@ typedef enum {
 	i2cdrv_pcf8574 = 1,
 	i2cdrv_mcp2300x = 2,
 	i2cdrv_mcp2301x = 3,
+	i2cdrv_pca9685 = 4,
+	i2cdrv_pca9685_npn = 5,
+	i2cdrv_pca9685_pnp = 6,
+	i2cdrv_pca9685_xclk = 7,
+	i2cdrv_pca9685_xclk_npn = 8,
+	i2cdrv_pca9685_xclk_pnp = 9,
+	i2cdrv_ht16k33 = 10,
 } i2cdrv_t;
 //! Function to get an ASCII string from a value of a i2cdrv_t.
 const char *i2cdrv_t_str(i2cdrv_t e);
@@ -1969,10 +1976,6 @@ class I2CConfig
 	uint8_t devices_addr(unsigned x) const;
 	//! Function to set the addr part of bitset devices.
 	void set_devices_addr(unsigned x, uint8_t);
-	//! Function to get the scanaddr part of bitset devices.
-	bool devices_scanaddr(unsigned x) const;
-	//! Function to set the scanaddr part of bitset devices.
-	void set_devices_scanaddr(unsigned x, bool);
 	//! Function to get the drv part of bitset devices.
 	i2cdrv_t devices_drv(unsigned x) const;
 	//! Function to set the drv part of bitset devices.
@@ -5928,11 +5931,6 @@ inline uint8_t I2CConfig::devices_addr(unsigned x) const
 	return (uint8_t)((m_devices[x] >> 0) & 0x7f);
 }
 
-inline bool I2CConfig::devices_scanaddr(unsigned x) const
-{
-	return (bool)((m_devices[x] >> 7) & 0x1);
-}
-
 inline i2cdrv_t I2CConfig::devices_drv(unsigned x) const
 {
 	return (i2cdrv_t)((m_devices[x] >> 8) & 0xff);
@@ -5963,12 +5961,6 @@ inline void I2CConfig::set_devices_addr(unsigned x, uint8_t v)
 {
 	m_devices[x] &= ~(0x7fULL << 0);
 	m_devices[x] |= ((uint16_t) v << 0);
-}
-
-inline void I2CConfig::set_devices_scanaddr(unsigned x, bool v)
-{
-	m_devices[x] &= ~(0x1ULL << 7);
-	m_devices[x] |= ((uint16_t) v << 7);
 }
 
 inline void I2CConfig::set_devices_drv(unsigned x, i2cdrv_t v)

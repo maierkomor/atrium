@@ -192,6 +192,8 @@ void sntp_mc_init()
 #ifdef CONFIG_IDF_TARGET_ESP8266
 	sntp_mc_init_fn(0);
 #else
+	if (LwipSem == 0)
+		LwipSem = xSemaphoreCreateBinary();
 	tcpip_send_msg_wait_sem(sntp_mc_init_fn,0,&LwipSem);
 #endif
 }

@@ -49,10 +49,11 @@ class RotaryEncoder
 	static void clkIntr(void *arg);
 	static void dtIntr(void *arg);
 
+	uint32_t m_ptime = 0;
 	xio_t m_clk, m_dt, m_sw;
 	uint8_t m_lc = 0, m_lst = 0, m_lsw = 1;
 	bool m_le = false;
-	event_t m_rev, m_pev, m_rlev, m_rrev;
+	event_t m_rev, m_pev, m_sev, m_mev, m_rlev, m_rrev;
 };
 
 #endif

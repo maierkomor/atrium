@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2021, Thomas Maier-Komor
+ *  Copyright (C) 2018-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -274,7 +274,7 @@ static void exeShell(HttpRequest *req)
 	}
 	if (com[0] == 0)
 		error = true;
-	log_dbug(TAG,"exeShell(com='%s', password=???, cont='%s')",com,cont);
+	log_dbug(TAG,"exeShell(com='%s', cont='%s')",com,cont);
 	if (error) {
 		log_warn(TAG,"error in request");
 		ans.setResult(HTTP_BAD_REQ);
@@ -286,7 +286,7 @@ static void exeShell(HttpRequest *req)
 		term.setPrivLevel(1);
 	ans.setContentType(CT_TEXT_HTML);
 	if (int r = shellexe(term,com))
-		log_dbug(TAG,"exeShell('%s') = %d",com,r);
+		log_dbug(TAG,"exeShell '%s': %d",com,r);
 	ans.setResult(HTTP_OK);
 	if (int s = term.getSize())
 		ans.addContent(term.getBuffer(),s);
@@ -298,16 +298,16 @@ static void exeShell(HttpRequest *req)
 
 static void updateFirmware(HttpRequest *r)
 {
-	log_dbug(TAG,"updateFirmware()");
+	log_dbug(TAG,"updateFirmware");
 	LwTcp *c = r->getConnection();
 	HttpResponse ans;
 	const char *pass = r->getHeader("password").c_str();
 	if (!verifyPassword(pass)) {
 		ans.setResult(HTTP_UNAUTH);
 		ans.setContentType(CT_TEXT_PLAIN);
-		ans.addContent("Password is set. Please fill password field.");
+		ans.addContent("Password error.");
 		ans.senddata(c);
-		log_dbug(TAG,"missing password");
+		log_dbug(TAG,"Password error.");
 		return;
 	}
 	int s = r->getContentLength();
@@ -338,20 +338,20 @@ static void updateFirmware(HttpRequest *r)
 			ans.addContent(err);
 			return;
 		}
-		log_dbug(TAG,"erasing");
+		log_dbug(TAG,"erasing flash");
 		UpdateState->set("erasing flash");
 		if (esp_err_t err = esp_ota_begin(updatep, s, &ota)) {
-			sprintf(st,"update begin error %s",esp_err_to_name(err));
+			sprintf(st,"update begin: %s",esp_err_to_name(err));
 			UpdateState->set(st);
 			ans.addContent(st);
 			return;
 		}
 		UpdateState->set("flashing...");
-		log_dbug(TAG,"flashing");
+		log_dbug(TAG,"flashing...");
 		addr = updatep->address;
 		if (s0 > 0) {
 			if (esp_err_t err = esp_ota_write(ota,r->getContent(),s0)) {
-				sprintf(st,"update write0 error %s",esp_err_to_name(err));
+				sprintf(st,"OTA write: %s",esp_err_to_name(err));
 				UpdateState->set(st);
 				ans.addContent(st);
 				return;
@@ -387,7 +387,7 @@ static void updateFirmware(HttpRequest *r)
 	} else {
 		auto p = esp_partition_find_first(ESP_PARTITION_TYPE_DATA,ESP_PARTITION_SUBTYPE_ANY,part);
 		if (p == 0) {
-			sprintf(st,"unable to find romfs partition '%s'",part);
+			sprintf(st,"no ROMFS partition '%s'",part);
 			UpdateState->set(st);
 			ans.addContent(st);
 			return;
@@ -409,7 +409,7 @@ static void updateFirmware(HttpRequest *r)
 		}
 		if (s0 > 0) {
 			if (esp_err_t e = spi_flash_write(p->address,r->getContent(),s0)) {
-				sprintf(st,"write0 failed %s",esp_err_to_name(e));
+				sprintf(st,"SPI write: %s",esp_err_to_name(e));
 				UpdateState->set(st);
 				ans.addContent(st);
 				return;
@@ -429,7 +429,7 @@ static void updateFirmware(HttpRequest *r)
 		log_dbug(TAG,st);
 		int n = c->read(buf,s > FLASHBUFSIZE ? FLASHBUFSIZE : s);
 		if (0 > n) {
-			snprintf(st,sizeof(st),"receive failed: %s",c->error());
+			snprintf(st,sizeof(st),"receive error: %s",c->error());
 			UpdateState->set(st);
 			free(buf);
 			if (ota)
@@ -443,7 +443,7 @@ static void updateFirmware(HttpRequest *r)
 		else
 			e = spi_flash_write(addr,buf,n);
 		if (e) {
-			snprintf(st,sizeof(st),"write failed: %d",e);
+			snprintf(st,sizeof(st),"write error: %d",e);
 			UpdateState->set(st);
 			log_warn(TAG,st);
 			free(buf);
@@ -459,21 +459,21 @@ static void updateFirmware(HttpRequest *r)
 	if (app) {
 		if (esp_ota_end(ota)) {
 			UpdateState->set("image error");
-			ans.addContent("image error, update failed");
+			ans.addContent("image error");
 			return;
 		}
 		if (esp_err_t err = esp_ota_set_boot_partition(updatep)) {
-			UpdateState->set("changing boot partition failed");
+			UpdateState->set("set boot failed");
 			log_error(TAG, "set boot failed: %s",esp_err_to_name(err));
 			return;
 		}
-		UpdateState->set("done, rebooting");
+		UpdateState->set("success, rebooting");
 		ans.addContent("success, rebooting");
 		vTaskDelay(1000);
 		esp_restart();
 	}
 	UpdateState->set("update completed");
-	log_dbug(TAG,"update done");
+	log_dbug(TAG,"update completed");
 }
 
 
@@ -486,7 +486,7 @@ static void postConfig(HttpRequest *r)
 	if (Config.has_pass_hash() && !verifyPassword(r->arg("passwd").c_str())) {
 		ans.setResult(HTTP_UNAUTH);
 		ans.setContentType(CT_TEXT_PLAIN);
-		ans.addContent("Password is set. Please fill password field.");
+		ans.addContent("Password error.");
 		ans.senddata(r->getConnection());
 		return;
 	}

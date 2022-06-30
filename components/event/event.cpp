@@ -34,18 +34,6 @@
 using namespace std;
 
 
-struct EventHandler
-{
-	explicit EventHandler(const char *n)
-	: name(n)
-	{ } 
-
-	const char *name;	// name of event
-	uint32_t occur = 0;
-	uint64_t time = 0;
-	vector<Action *> callbacks;
-};
-
 struct Event {
 	event_t id;
 	void *arg;
@@ -85,8 +73,7 @@ event_t event_register(const char *cat, const char *type)
 	// event_t 0: name: empty string; invalid event, catched in this loop
 	for (size_t i = 1; i < n; ++i) {
 		if (!strcmp(name,EventHandlers[i].name)) {
-			log_warn(TAG,"duplicate event %s,%s",name,EventHandlers[i].name);
-			abort();
+			log_error(TAG,"duplicate event %d: %s",i,name);
 			if (name != cat)
 				free((void*)name);
 			return (event_t) i;
@@ -114,23 +101,54 @@ uint64_t event_time(event_t e)
 }
 
 
-int event_callback(event_t e, Action *a)
+trigger_t event_callback(event_t e, Action *a)
 {
 	if (pdFALSE == xSemaphoreTake(EventMtx,MUTEX_ABORT_TIMEOUT))
 		abort_on_mutex(EventMtx,__FUNCTION__);
 	if (e && (e < EventHandlers.size())) {
-		EventHandlers[e].callbacks.push_back(a);
+		Callback c(a);
+		trigger_t t = (trigger_t) ((e << 16) | EventHandlers[e].callbacks.size());
+		EventHandlers[e].callbacks.push_back(c);
 		xSemaphoreGive(EventMtx);
-		log_dbug(TAG,"callback %s -> action %s",EventHandlers[e].name,a->name);
-		return 0;
+		log_dbug(TAG,"%s -> %s",EventHandlers[e].name,a->name);
+		return t;
 	}
 	xSemaphoreGive(EventMtx);
-	log_warn(TAG,"callback invalid event %u",e);
-	return 1;
+	log_warn(TAG,"invalid event %u",e);
+	return 0;
 }
 
 
-int event_callback(const char *event, const char *action)
+trigger_t event_callback_arg(event_t e, Action *a, char *arg)
+{
+	if (pdFALSE == xSemaphoreTake(EventMtx,MUTEX_ABORT_TIMEOUT))
+		abort_on_mutex(EventMtx,__FUNCTION__);
+	if (e && (e < EventHandlers.size())) {
+		Callback c(a,arg);
+		trigger_t t = (trigger_t) ((e << 16) | EventHandlers[e].callbacks.size());
+		EventHandlers[e].callbacks.push_back(c);
+		xSemaphoreGive(EventMtx);
+		log_dbug(TAG,"%s -> %s",EventHandlers[e].name,a->name);
+		return t;
+	}
+	xSemaphoreGive(EventMtx);
+	log_warn(TAG,"invalid event %u",e);
+	return 0;
+}
+
+
+int event_trigger_en(trigger_t t, bool en)
+{
+	event_t e = t >> 16;
+	uint16_t c = t;
+	if ((e == 0) || (e >= EventHandlers.size()) ||  (c >= EventHandlers[e].callbacks.size()))
+		return 1;
+	EventHandlers[e].callbacks[c].enabled = en;
+	return 0;
+}
+
+
+trigger_t event_callback(const char *event, const char *action)
 {
 	const char *x = 0;
 	if (event_t e = event_id(event)) {
@@ -142,13 +160,32 @@ int event_callback(const char *event, const char *action)
 		x = event;
 	}
 	log_warn(TAG,"callback arg invalid %s",x);
-	return -1;
+	return 0;
 }
 
 
-const std::vector<Action *> &event_callbacks(event_t e)
+trigger_t event_callback_arg(const char *event, const char *action, char *arg)
 {
-	return EventHandlers[e].callbacks;
+	const char *x = 0;
+	if (event_t e = event_id(event)) {
+		if (Action *a = action_get(action))
+			return event_callback_arg(e,a,arg);
+		else
+			x = action;
+	} else {
+		x = event;
+	}
+	assert(x);
+	log_warn(TAG,"callback arg invalid %s",x);
+	return 0;
+}
+
+
+const EventHandler *event_handler(event_t e)
+{
+	if (e < EventHandlers.size())
+		return &EventHandlers[e];
+	return 0;
 }
 
 
@@ -158,9 +195,10 @@ int event_detach(event_t e, Action *a)
 	if (e != 0) {
 		Lock lock(EventMtx,__FUNCTION__);
 		if (e < EventHandlers.size()) {
-			for (auto i = EventHandlers[e].callbacks.begin(), j = EventHandlers[e].callbacks.end(); i != j; ++i) {
-				if (*i == a) {
-					EventHandlers[e].callbacks.erase(i);
+			EventHandler &h = EventHandlers[e];
+			for (size_t i = 0, j = h.callbacks.size(); i != j; ++i) {
+				if (h.callbacks[i].action == a) {
+					h.callbacks.erase(h.callbacks.begin()+i);
 					return 0;
 				}
 			}
@@ -203,11 +241,10 @@ event_t event_id(const char *n)
 const char *event_name(event_t e)
 {
 	if (e != 0) {
-		Lock lock(EventMtx,__FUNCTION__);
 		if (e < EventHandlers.size())
 			return EventHandlers[e].name;
 	}
-	log_dbug(TAG,"invalid event %d",e);
+	log_dbug(TAG,"invalid event %u",e);
 	return 0;
 }
 
@@ -272,32 +309,57 @@ void event_isr_trigger_arg(event_t id,void *arg)
 
 static void event_task(void *)
 {
+#ifdef CONFIG_IDF_TARGET_ESP32
+#define dt portMAX_DELAY
+#else
 	unsigned d = 1;
+#define dt (d * portTICK_PERIOD_MS)
+#endif
 	for (;;) {
 		Event e;
 		e.id = 0;
-		BaseType_t r = xQueueReceive(EventsQ,&e,d * portTICK_PERIOD_MS);
+		BaseType_t r = xQueueReceive(EventsQ,&e,dt);
 		if (Lost) {
 			log_warn(TAG,"lost %u events",(unsigned)Lost);
 			Lost = 0;
 		}
 		if (r == pdFALSE) {
 			// timeout: process cyclic
+#ifdef CONFIG_IDF_TARGET_ESP32
+			// cyclic has its own task
+#else
 			d = cyclic_execute();
+#endif
 			if (e.id == 0)
 				continue;
 		}
 //		con_printf("event %d,%x\n",e.id,e.arg);
-		Lock lock(EventMtx,__FUNCTION__);
+		MLock lock(EventMtx,__FUNCTION__);
 		int64_t start = esp_timer_get_time();
 		if (e.id < EventHandlers.size()) {
 			EventHandler &h = EventHandlers[e.id];
 			++h.occur;
 			if (!h.callbacks.empty()) {
 				log_local(TAG,"%s callbacks, arg %p",h.name,e.arg);
-				for (auto a : h.callbacks) {
-					log_local(TAG,"\t%s",a->name);
-					a->activate(e.arg);
+				// need to copy the enabled callbacks,
+				// because the enabling might be changed
+				// with an action
+				unsigned n = 0;
+				for (const auto &c : h.callbacks)
+					if (c.enabled)
+						++n;
+				Callback cb[n];
+				n = 0;
+				for (const auto &c : h.callbacks)
+					if (c.enabled)
+						cb[n++] = c;
+				for (const auto &c : cb) {
+					if (c.enabled) {
+						lock.unlock();
+						log_local(TAG,"\t%s, arg %s",c.action->name,c.arg ? c.arg : "''");
+						c.action->activate(e.arg ? e.arg : (c.arg ? strdup((const char *)c.arg) : 0));
+						lock.lock();
+					}
 				}
 				int64_t end = esp_timer_get_time();
 				log_local(TAG,"%s time: %lu",h.name,end-start);
@@ -320,6 +382,7 @@ void event_init(void)
 {
 	EventMtx = xSemaphoreCreateMutex();
 	EventHandlers.emplace_back("<null>");	// (event_t)0 is an invalid event
+	EventHandlers.emplace_back("init`done");
 	EventHandlers.emplace_back("wifi`station_up");
 	EventHandlers.emplace_back("wifi`station_down");
 	EventsQ = xQueueCreate(32,sizeof(Event));

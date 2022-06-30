@@ -1,0 +1,7 @@
+synopsis: i2c [<device> [<cmd> [<args>]]]
+Without <device> this command prints the available I2C devices.
+With a specified <device>, device specific operations can be triggered.
+This includes sending commands with arguments to the I2C device.
+Read the documentation of the individual device drivers or pass '-h' as
+command to the device to learn what commands can be sent to the
+individual I2C devices.

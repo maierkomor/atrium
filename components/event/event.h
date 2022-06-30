@@ -27,17 +27,51 @@ typedef uint16_t event_t;
 #ifdef __cplusplus
 class Action;
 
-int event_callback(event_t e, Action *a);
+struct Callback
+{
+	Callback()
+	{ }
+
+	Callback(Action *a, char *v = 0, bool e = true)
+	: action(a), arg(v), enabled(e)
+	{ }
+
+	Action *action = 0;
+	char *arg = 0;
+	bool enabled = true;
+};
+
+struct EventHandler
+{
+	explicit EventHandler(const char *n)
+	: name(n)
+	{ } 
+
+	const char *name;	// name of event
+	uint32_t occur = 0;
+	uint64_t time = 0;
+	std::vector<Callback> callbacks;
+};
+
+
+typedef uint32_t trigger_t;
+
+trigger_t event_callback(event_t e, Action *a);
+trigger_t event_callback_arg(event_t e, Action *a, char *arg);
 int event_detach(event_t e, Action *a);
-const std::vector<Action *> &event_callbacks(event_t);
 event_t event_register(const char *cat, const char *type = 0);
+const EventHandler *event_handler(event_t);
 extern "C" {
 #endif // __cplusplus
 
-int event_callback(const char *e, const char *a);
+trigger_t event_callback(const char *e, const char *a);
+trigger_t event_callback_arg(const char *e, const char *a, char *arg);
+int event_cb_set_en(event_t e, Action *a, bool en);
+int event_cba_set_en(event_t e, Action *a, const char *, bool en);
 int event_detach(const char *e, const char *a);
 int event_start(void);
 void event_init(void);
+int event_trigger_en(trigger_t t, bool en);
 void event_trigger(event_t e);
 void event_trigger_nd(event_t id);	// no-debug version for syslog only
 void event_trigger_arg(event_t e, void *);

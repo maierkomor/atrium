@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2019-2021, Thomas Maier-Komor
+ *  Copyright (C) 2019-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -32,6 +32,7 @@
 #error missing implementation
 #endif
 #include <driver/gpio.h>
+#include <nvs.h>
 
 #include "actions.h"
 #include "cyclic.h"
@@ -40,6 +41,8 @@
 #include "dimmer.h"
 #include "hwcfg.h"
 #include "log.h"
+#include "mqtt.h"
+#include "settings.h"
 #include "support.h"
 #include "swcfg.h"
 #include "terminal.h"
@@ -49,10 +52,12 @@
 #ifdef CONFIG_IDF_TARGET_ESP8266
 #define DIM_MAX Period
 #define PWM_BITS 16
+#define DIM_INC	5
 typedef uint8_t ledc_channel_t;
 #else
 #define DIM_MAX 1023
 #define PWM_BITS 10
+#define DIM_INC	5
 #endif
 
 #if PWM_BITS <= 8
@@ -66,18 +71,21 @@ typedef uint32_t duty_t;
 
 #define TAG MODULE_DIM
 
+unsigned Period = 1000;
+
 struct Dimmer
 {
 	Dimmer *next;
 	const char *name;
-	EnvNumber *json;
-	duty_t duty_set,duty_cur;
+	EnvNumber *env;
+	duty_t duty;
+	float backup = 0;
+	bool invert;
 	gpio_num_t gpio;
 	ledc_channel_t channel;
 };
 
 static Dimmer *Dimmers = 0;
-unsigned Period = 1000;
 
 
 static Dimmer *get_dimmer(const char *name)
@@ -95,20 +103,41 @@ int dimmer_set_value(const char *name, unsigned v)
 	if (d == 0)
 		return 1;
 	if (v > DIM_MAX)
-		return EINVAL;
-	d->duty_set = v;
-	d->json->set(v);
+		v = DIM_MAX;
+	d->env->set((double)v/(double)DIM_MAX*100.0);
 	return 0;
 }
 
 
-unsigned dimmer_get_value(const char *n)
+int dimmer_set(const char *name, float v)
 {
-	Dimmer *d = get_dimmer(n);
-	if (d == 0)
-		return UINT32_MAX;
-	return d->duty_set;
+	if (Dimmer *d = get_dimmer(name)) {
+		if ((v >= 0) && (v <= 100)) {
+			d->env->set(v);
+			return 0;
+		}
+	}
+	return 1;
 }
+
+
+
+#ifdef CONFIG_MQTT
+static void mqtt_callback(const char *topic, const void *data, size_t len)
+{
+	const char *sl = strchr(topic,'/');
+	if ((sl == 0) || (0 != memcmp(sl+1,"set_",4))) {
+		log_warn(TAG,"unknown topic %s",topic);
+		return;
+	}
+	log_info(TAG,"mqtt_cb: %s %.*s",sl+5,len,(const char *)data);
+	const char *text = (const char *)data;
+	char *ep = 0;
+	float f = strtof(text,&ep);
+	if (ep != text)
+		dimmer_set(sl+5,f);
+}
+#endif
 
 
 unsigned dimmer_fade(void *)
@@ -117,30 +146,40 @@ unsigned dimmer_fade(void *)
 	unsigned s = Config.dim_step();
 	Dimmer *d = Dimmers;
 	while (d) {
-		auto cur = d->duty_cur;
-		if (cur == d->duty_set) {
+		float set = d->env->get();
+		if (set > 100) {
+			set = 100;
+			d->env->set(100);
+		} else if (set < 0) {
+			set = 0;
+			d->env->set(0);
+		}
+		duty_t nv = set * DIM_MAX / 100.0;
+		if (nv == d->duty) {
 			d = d->next;
 			continue;
 		}
 		if (s == 0) {
-			cur = d->duty_set;
+			d->duty = nv;
 		} else {
 			if (s < ret)
 				ret = s;
-			if (d->duty_set > cur+DIM_MAX/100)
-				cur += DIM_MAX/100;
-			else if (d->duty_set < cur-DIM_MAX/100)
-				cur -= DIM_MAX/100;
+			if (nv > d->duty+DIM_MAX/100.0)
+				d->duty += DIM_MAX/100.0;
+			else if (nv < d->duty-DIM_MAX/100.0)
+				d->duty -= DIM_MAX/100.0;
 			else
-				cur = d->duty_set;
+				d->duty = nv;
 		}
-		d->duty_cur = cur;
-		log_dbug(TAG,"%s=%u",d->name,cur);
+		log_dbug(TAG,"%s=%u %u",d->name,nv,d->duty);
+		duty_t v = d->invert ? (DIM_MAX-d->duty) : d->duty;
 #ifdef CONFIG_IDF_TARGET_ESP8266
-		pwm_set_duty(d->channel,cur);
-		pwm_start();
+		if (esp_err_t e = pwm_set_duty(d->channel,v))
+			log_warn(TAG,"set duty %d",e);
+		if (esp_err_t e = pwm_start())
+			log_warn(TAG,"pwm start %d",e);
 #elif defined CONFIG_IDF_TARGET_ESP32
-		ledc_set_duty(LEDC_HIGH_SPEED_MODE,d->channel,cur);
+		ledc_set_duty(LEDC_HIGH_SPEED_MODE,d->channel,v);
 		ledc_update_duty(LEDC_HIGH_SPEED_MODE,d->channel);
 #else
 #error missing implementation
@@ -156,7 +195,8 @@ int dim(Terminal &t, int argc, const char *argv[])
 	if (argc == 1) {
 		Dimmer *d = Dimmers;
 		while (d) {
-			t.printf("%s %5u (%3d%%)\n",d->name,d->duty_cur,(int)rintf((float)(d->duty_cur*1000)/DIM_MAX/10));
+			float cur = d->env->get();
+			t.printf("%-12s %5u (%3d%%)\n",d->name,(unsigned)(cur/100.0*DIM_MAX),(unsigned)(cur));
 			d = d->next;
 		}
 		return 0;
@@ -165,7 +205,8 @@ int dim(Terminal &t, int argc, const char *argv[])
 	if (d == 0)
 		return arg_invalid(t,argv[1]);
 	if (argc == 2) {
-		t.printf("%s %5u (%3d%%)\n",d->name,d->duty_cur,(int)rintf((float)(d->duty_cur*1000)/DIM_MAX/10));
+		duty_t cur = d->invert ? DIM_MAX-d->duty : d->duty;
+		t.printf("%-12s %5u (%3d%%)\n",d->name,cur,(int)rintf((float)(cur*1000)/DIM_MAX/10));
 		return 0;
 	}
 	if (!strcmp(argv[2],"max"))
@@ -189,14 +230,77 @@ int dim(Terminal &t, int argc, const char *argv[])
 static void dimmer_off(void *p)
 {
 	Dimmer *d = (Dimmer *)p;
-	d->duty_set = 0;
+	d->env->set(0);
+}
+
+
+static void dimmers_off(void *p)
+{
+	Dimmer *d = Dimmers;
+	while (d) {
+		d->env->set(0);
+		d = d->next;
+	}
+}
+
+
+static void dimmers_backup(void *p)
+{
+	Dimmer *d = Dimmers;
+	while (d) {
+		if (d->backup == 0)
+			d->backup = d->env->get();
+		log_dbug(TAG,"%s backup %f",d->name,d->backup);
+		d = d->next;
+	}
+}
+
+
+static void dimmer_backup(void *p)
+{
+	Dimmer *d = (Dimmer *)p;
+	d->backup = d->env->get();
+	store_nvs_float(d->name,d->backup);
+	log_dbug(TAG,"%s backup %f",d->name,d->backup);
+}
+
+
+static void dimmers_restore(void *)
+{
+	Dimmer *d = Dimmers;
+	while (d) {
+		log_dbug(TAG,"%s restore %f",d->name,d->backup);
+		d->env->set(d->backup);
+		d = d->next;
+	}
 }
 
 
 static void dimmer_on(void *p)
 {
 	Dimmer *d = (Dimmer *)p;
-	d->duty_set = DIM_MAX;
+	d->env->set(100);
+}
+
+
+static void dimmer_restore(void *p)
+{
+	Dimmer *d = (Dimmer *)p;
+	d->env->set(d->backup);
+}
+
+
+static void dimmer_dec(void *p)
+{
+	Dimmer *d = (Dimmer *)p;
+	d->env->set(d->env->get() - DIM_INC);
+}
+
+
+static void dimmer_inc(void *p)
+{
+	Dimmer *d = (Dimmer *)p;
+	d->env->set(d->env->get() + DIM_INC);
 }
 #endif
 
@@ -247,17 +351,22 @@ int dimmer_setup()
 		dim->next = Dimmers;
 		Dimmers = dim;
 		dim->gpio = (gpio_num_t)conf.gpio();
-		dim->channel = (ledc_channel_t) conf.pwm_ch();
-		dim->json = RTData->add(conf.name().c_str(),0.0);
+		dim->env = RTData->add(conf.name().c_str(),0.0,0,"%3.0f");
+		dim->duty = 0;
+		dim->invert = (conf.config() & 1) != 0;
 		if (conf.has_name())
 			dim->name = strdup(conf.name().c_str());
 		else
 			asprintf((char**)&dim->name,"dimmer@%u",dim->gpio);
+		dim->backup = read_nvs_float(dim->name,0);
 #ifdef CONFIG_IDF_TARGET_ESP8266
 		pins[nch] = dim->gpio;
+		dim->channel = nch;
 		duties[nch] = (conf.config() & 1) ? DIM_MAX : 0;
+		dim->duty = duties[nch];
 		++nch;
 #elif defined CONFIG_IDF_TARGET_ESP32
+		dim->channel = (ledc_channel_t) conf.pwm_ch();
 		gpio_set_direction(dim->gpio,GPIO_MODE_OUTPUT);
 		if (esp_err_t e = ledc_set_pin(dim->gpio,LEDC_HIGH_SPEED_MODE,dim->channel)) {
 			log_error(TAG,"ledc pin %x",e);
@@ -278,11 +387,27 @@ int dimmer_setup()
 #else
 #error missing implementation
 #endif
+		log_dbug(TAG,"channel %u, gpio %u",dim->channel,dim->gpio);
 #ifdef CONFIG_AT_ACTIONS
 		action_add(concat(dim->name,"!on"),dimmer_on,dim,"turn on with PWM ramp");
 		action_add(concat(dim->name,"!off"),dimmer_off,dim,"turn off with PWM ramp");
+		action_add(concat(dim->name,"!dec"),dimmer_dec,dim,"decrement dimmer value");
+		action_add(concat(dim->name,"!inc"),dimmer_inc,dim,"increment dimmer value");
+		action_add(concat(dim->name,"!backup"),dimmer_backup,dim,"increment dimmer value");
+		action_add(concat(dim->name,"!restore"),dimmer_restore,dim,"increment dimmer value");
+#endif
+#ifdef CONFIG_MQTT
+		char topic[strlen(dim->name)+5] = "set_";
+		strcpy(topic+4,dim->name);
+		log_dbug(TAG,"subscribe %s",topic);
+		mqtt_sub(topic,mqtt_callback);
 #endif
 	}
+#ifdef CONFIG_AT_ACTIONS
+	action_add("all_dimmers!backup",dimmers_backup,0,"backup dimmer and fade off");
+	action_add("all_dimmers!off",dimmers_off,0,"backup dimmer and fade off");
+	action_add("all_dimmers!restore",dimmers_restore,0,"restore dimmer from backup");
+#endif
 #ifdef CONFIG_IDF_TARGET_ESP8266
 	if (esp_err_t e = pwm_init(Period,duties,nch,pins)) {
 		log_error(TAG,"pwm_init %x",e);
@@ -290,7 +415,8 @@ int dimmer_setup()
 	}
 	for (int i = 0; i < nch; ++i)
 		pwm_set_phase(i,0);
-	pwm_start();
+	if (esp_err_t e = pwm_start())
+		log_warn(TAG,"pwm start %d",e);
 #endif
 	cyclic_add_task("dimmer",dimmer_fade);
 	return err;

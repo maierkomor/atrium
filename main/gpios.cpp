@@ -55,54 +55,6 @@ static const char *PullStr[] = {
 	"pull-updown",
 };
 
-
-static uint32_t read_iomux_conf(unsigned io)
-{
-	switch (io) {
-	case 0: return *(uint32_t *)GPIO_PIN_REG_0;
-	case 1: return *(uint32_t *)GPIO_PIN_REG_1;
-	case 2: return *(uint32_t *)GPIO_PIN_REG_2;
-	case 3: return *(uint32_t *)GPIO_PIN_REG_3;
-	case 4: return *(uint32_t *)GPIO_PIN_REG_4;
-	case 5: return *(uint32_t *)GPIO_PIN_REG_5;
-	case 6: return *(uint32_t *)GPIO_PIN_REG_6;
-	case 7: return *(uint32_t *)GPIO_PIN_REG_7;
-	case 8: return *(uint32_t *)GPIO_PIN_REG_8;
-	case 9: return *(uint32_t *)GPIO_PIN_REG_9;
-	case 10: return *(uint32_t *)GPIO_PIN_REG_10;
-	case 11: return *(uint32_t *)GPIO_PIN_REG_11;
-	case 12: return *(uint32_t *)GPIO_PIN_REG_12;
-	case 13: return *(uint32_t *)GPIO_PIN_REG_13;
-	case 14: return *(uint32_t *)GPIO_PIN_REG_14;
-	case 15: return *(uint32_t *)GPIO_PIN_REG_15;
-	case 16: return *(uint32_t *)GPIO_PIN_REG_16;
-	case 17: return *(uint32_t *)GPIO_PIN_REG_17;
-	case 18: return *(uint32_t *)GPIO_PIN_REG_18;
-	case 19: return *(uint32_t *)GPIO_PIN_REG_19;
-//	case 20: return *(uint32_t *)GPIO_PIN_REG_20;
-	case 21: return *(uint32_t *)GPIO_PIN_REG_21;
-	case 22: return *(uint32_t *)GPIO_PIN_REG_22;
-	case 23: return *(uint32_t *)GPIO_PIN_REG_23;
-//	case 24: return *(uint32_t *)GPIO_PIN_REG_24;
-	case 25: return *(uint32_t *)GPIO_PIN_REG_25;
-	case 26: return *(uint32_t *)GPIO_PIN_REG_26;
-	case 27: return *(uint32_t *)GPIO_PIN_REG_27;
-//	case 28: return *(uint32_t *)GPIO_PIN_REG_28;
-//	case 29: return *(uint32_t *)GPIO_PIN_REG_29;
-//	case 30: return *(uint32_t *)GPIO_PIN_REG_30;
-//	case 31: return *(uint32_t *)GPIO_PIN_REG_31;
-	case 32: return *(uint32_t *)GPIO_PIN_REG_32;
-	case 33: return *(uint32_t *)GPIO_PIN_REG_33;
-	case 34: return *(uint32_t *)GPIO_PIN_REG_34;
-	case 35: return *(uint32_t *)GPIO_PIN_REG_35;
-	case 36: return *(uint32_t *)GPIO_PIN_REG_36;
-	case 37: return *(uint32_t *)GPIO_PIN_REG_37;
-	case 38: return *(uint32_t *)GPIO_PIN_REG_38;
-	case 39: return *(uint32_t *)GPIO_PIN_REG_39;
-	default:
-		return 0xffffffff;
-	}
-}
 #endif
 
 
@@ -251,7 +203,8 @@ void Gpio::isr_handler(void *arg)
 #ifdef CONFIG_IDF_TARGET_ESP32
 void esp32_gpio_status(Terminal &term, gpio_num_t gpio)
 {
-	uint32_t iomux = read_iomux_conf(gpio);
+//	uint32_t iomux = read_iomux_conf(gpio);
+	uint32_t iomux = REG_READ(GPIO_PIN_MUX_REG[gpio]);
 	uint32_t gpiopc = *(uint32_t*)GPIO_REG(gpio);	// pin configuration @0x88+4*n
 	bool level;
 	if (gpio < 32) 
@@ -391,7 +344,8 @@ int gpio(Terminal &term, int argc, const char *args[])
 			term.printf("no gpio %ld\n",pin);
 			return 1;
 		}
-		uint32_t iomux = read_iomux_conf(pin);
+//		uint32_t iomux = read_iomux_conf(pin);
+		uint32_t iomux = REG_READ(GPIO_PIN_MUX_REG[pin]);
 		uint32_t gpiopc = *(uint32_t*)GPIO_REG(pin);	// pin configuration @0x88+4*n
 		bool level;
 		if (pin < 32) 

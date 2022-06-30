@@ -8,6 +8,9 @@ clear   : clear config or given field
 erase   : erase complete NVS
 xxd     : xxd in memory config
 nvsxxd  : xxd in config in NVS
+parsexxd: parse xxd input to RAM
+clearbuf: clear parse buffer
+writebuf: write parsed xxd buffer to NVS
 show    : ASCII output of config
 size    : print size of config
 backup  : create a backup of the config in NVS

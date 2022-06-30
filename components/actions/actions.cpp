@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2017-2021, Thomas Maier-Komor
+ *  Copyright (C) 2017-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -91,6 +91,10 @@ void Action::activate(void *a)
 
 Action *action_get(const char *name)
 {
+	if (strchr(name,' '))  {
+		log_warn(TAG,"invalid action in search: '%s'",name);
+		return 0;
+	}
 	Action x(name);
 	auto i = Actions.find(x);
 	if (i == Actions.end())
@@ -108,7 +112,7 @@ int action_exists(const char *name)
 Action *action_add(const char *name, void (*func)(void *), void *arg, const char *text)
 {
 	if (action_get(name)) {
-		log_error(TAG,"action %s already exists",name);
+		log_warn(TAG,"duplicated action %s",name);
 		return 0;
 	}
 	log_dbug(TAG,"add %s",name);
@@ -121,7 +125,7 @@ int action_activate(const char *name)
 	Action x(name);
 	set<Action,less<Action>>::iterator i = Actions.find(x);
 	if (i == Actions.end()) {
-		log_warn(TAG,"unable to execute unknown action '%s'",name);
+		log_warn(TAG,"unknown action '%s'",name);
 		return 1;
 	}
 	log_dbug(TAG,"triggered action %s",name);
@@ -136,7 +140,7 @@ int action_activate_arg(const char *name, void *arg)
 	Action x(name);
 	set<Action,less<Action>>::iterator i = Actions.find(x);
 	if (i == Actions.end()) {
-		log_warn(TAG,"unable to execute unknown action '%s'",name);
+		log_warn(TAG,"unknown action '%s'",name);
 		if (arg)
 			free(arg);
 		return 1;

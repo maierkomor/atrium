@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021, Thomas Maier-Komor
+ *  Copyright (C) 2021-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -36,6 +36,9 @@ struct APDS9930 : public I2CDevice
 
 	int init();
 	void attach(class EnvObject *);
+#ifdef CONFIG_I2C_XCMD
+	int exeCmd(struct Terminal &, int argc, const char **argv) override;
+#endif
 
 	protected:
 	static void trigger(void *);

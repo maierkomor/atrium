@@ -25,7 +25,7 @@
 class HT16K33 : public LedCluster, public I2CDevice
 {
 	public:
-	static unsigned create(uint8_t);
+	static void create(uint8_t,uint8_t);
 
 	int setOn(bool);
 	int setOffset(unsigned);

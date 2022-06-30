@@ -205,7 +205,7 @@ if [ "$IDF_ESP32" == "" ]; then
 	pushd $installdir > /dev/null
 	git clone https://github.com/espressif/esp-idf.git idf-esp32 || exit 1
 	cd idf-esp32
-	git checkout v3.3.5	# was v3.3.5
+	git checkout v3.3.6	# was v3.3.5
 	git submodule update --init
 	IDF_PATH=`pwd` pip install -r requirements.txt
 	IDF_PATH=`pwd` bash install.sh

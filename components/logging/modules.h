@@ -38,27 +38,27 @@ typedef enum logmod_e {
 	logmod_cam            =   8,
 	logmod_ccs811b        =   9,
 	logmod_cfg            =  10,
-	logmod_clock          =  11,
-	logmod_con            =  12,
-	logmod_cyclic         =  13,
-	logmod_dht            =  14,
-	logmod_dim            =  15,
-	logmod_disp           =  16,
-	logmod_ds18b20        =  17,
-	logmod_event          =  18,
-	logmod_fs             =  19,
-	logmod_ftpd           =  20,
-	logmod_func           =  21,
-	logmod_gpio           =  22,
-	logmod_hcsr04         =  23,
-	logmod_hd44780u       =  24,
-	logmod_hdc1000        =  25,
-	logmod_ht16k33        =  26,
-	logmod_http           =  27,
-	logmod_i2c            =  28,
-	logmod_inetd          =  29,
-	logmod_influx         =  30,
-	logmod_init           =  31,
+	logmod_con            =  11,
+	logmod_cyclic         =  12,
+	logmod_dht            =  13,
+	logmod_dim            =  14,
+	logmod_disp           =  15,
+	logmod_ds18b20        =  16,
+	logmod_event          =  17,
+	logmod_fs             =  18,
+	logmod_ftpd           =  19,
+	logmod_func           =  20,
+	logmod_gpio           =  21,
+	logmod_hcsr04         =  22,
+	logmod_hd44780u       =  23,
+	logmod_hdc1000        =  24,
+	logmod_ht16k33        =  25,
+	logmod_http           =  26,
+	logmod_i2c            =  27,
+	logmod_inetd          =  28,
+	logmod_influx         =  29,
+	logmod_init           =  30,
+	logmod_led            =  31,
 	logmod_ledc           =  32,
 	logmod_ledstrip       =  33,
 	logmod_log            =  34,
@@ -70,28 +70,30 @@ typedef enum logmod_e {
 	logmod_ns             =  40,
 	logmod_ota            =  41,
 	logmod_owb            =  42,
-	logmod_pcf8574        =  43,
-	logmod_relay          =  44,
-	logmod_romfs          =  45,
-	logmod_sgp30          =  46,
-	logmod_shell          =  47,
-	logmod_signal         =  48,
-	logmod_sntp           =  49,
-	logmod_ssd1306        =  50,
-	logmod_status         =  51,
-	logmod_telnet         =  52,
-	logmod_ti             =  53,
-	logmod_timefuse       =  54,
-	logmod_tlc5916        =  55,
-	logmod_tlc5947        =  56,
-	logmod_tp             =  57,
-	logmod_uart           =  58,
-	logmod_udns           =  59,
-	logmod_udpctrl        =  60,
-	logmod_wlan           =  61,
-	logmod_ws2812         =  62,
-	logmod_www            =  63,
-	logmod_xio            =  64,
+	logmod_pca9685        =  43,
+	logmod_pcf8574        =  44,
+	logmod_relay          =  45,
+	logmod_romfs          =  46,
+	logmod_screen         =  47,
+	logmod_sgp30          =  48,
+	logmod_shell          =  49,
+	logmod_signal         =  50,
+	logmod_sm             =  51,
+	logmod_sntp           =  52,
+	logmod_ssd1306        =  53,
+	logmod_telnet         =  54,
+	logmod_ti             =  55,
+	logmod_timefuse       =  56,
+	logmod_tlc5916        =  57,
+	logmod_tlc5947        =  58,
+	logmod_tp             =  59,
+	logmod_uart           =  60,
+	logmod_udns           =  61,
+	logmod_udpctrl        =  62,
+	logmod_wlan           =  63,
+	logmod_ws2812         =  64,
+	logmod_www            =  65,
+	logmod_xio            =  66,
 } logmod_t;
 
 // module defines
@@ -105,7 +107,6 @@ typedef enum logmod_e {
 #define MODULE_CAM             logmod_cam
 #define MODULE_CCS811B         logmod_ccs811b
 #define MODULE_CFG             logmod_cfg
-#define MODULE_CLOCK           logmod_clock
 #define MODULE_CON             logmod_con
 #define MODULE_CYCLIC          logmod_cyclic
 #define MODULE_DHT             logmod_dht
@@ -126,6 +127,7 @@ typedef enum logmod_e {
 #define MODULE_INETD           logmod_inetd
 #define MODULE_INFLUX          logmod_influx
 #define MODULE_INIT            logmod_init
+#define MODULE_LED             logmod_led
 #define MODULE_LEDC            logmod_ledc
 #define MODULE_LEDSTRIP        logmod_ledstrip
 #define MODULE_LOG             logmod_log
@@ -137,15 +139,17 @@ typedef enum logmod_e {
 #define MODULE_NS              logmod_ns
 #define MODULE_OTA             logmod_ota
 #define MODULE_OWB             logmod_owb
+#define MODULE_PCA9685         logmod_pca9685
 #define MODULE_PCF8574         logmod_pcf8574
 #define MODULE_RELAY           logmod_relay
 #define MODULE_ROMFS           logmod_romfs
+#define MODULE_SCREEN          logmod_screen
 #define MODULE_SGP30           logmod_sgp30
 #define MODULE_SHELL           logmod_shell
 #define MODULE_SIGNAL          logmod_signal
+#define MODULE_SM              logmod_sm
 #define MODULE_SNTP            logmod_sntp
 #define MODULE_SSD1306         logmod_ssd1306
-#define MODULE_STATUS          logmod_status
 #define MODULE_TELNET          logmod_telnet
 #define MODULE_TI              logmod_ti
 #define MODULE_TIMEFUSE        logmod_timefuse
@@ -159,8 +163,8 @@ typedef enum logmod_e {
 #define MODULE_WS2812          logmod_ws2812
 #define MODULE_WWW             logmod_www
 #define MODULE_XIO             logmod_xio
-#define MAX_MODULE_ID           64
-#define NUM_MODULES             65
+#define MAX_MODULE_ID           66
+#define NUM_MODULES             67
 
 #ifdef USE_MODULE
 #define TAG USE_MODULE

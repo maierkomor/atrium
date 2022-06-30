@@ -100,7 +100,7 @@ void HttpResponse::setContentType(const char *t)
 
 void HttpResponse::setContentLength(unsigned s)
 {
-	m_header += "Content-Length: ";
+	m_header += "Content-Length:";
 	char buf[16];
 	sprintf(buf,"%u",s);
 	m_header += buf;
@@ -170,7 +170,7 @@ void HttpResponse::writeContent(const char *fmt, ...)
 		if (m_con == 0) {
 			m_content.append(buf,n);
 		} else if (-1 == m_con->write(buf,n)) {
-			log_error(TAG,"error sending content: %s",m_con->error());
+			log_error(TAG,"error sending: %s",m_con->error());
 		}
 	} else {
 		if (m_con != 0)
@@ -179,7 +179,7 @@ void HttpResponse::writeContent(const char *fmt, ...)
 		m_content.resize(s + n, 0);
 		vsprintf((char*)m_content.data()+s,fmt,val);
 		if ((m_con != 0) && (-1 == m_con->write(m_content.data(),s+n)))
-			log_warn(TAG,"error sending content: %s",m_con->error());
+			log_warn(TAG,"error sending: %s",m_con->error());
 	}
 	va_end(val);
 }
@@ -211,10 +211,10 @@ bool HttpResponse::senddata(LwTcp *con, int fd)
 		n = snprintf(msg,sizeof(msg),"HTTP/1.1 %s\r\n%s",m_result,m_header.empty() ? CRNL : "");
 	}
 	if (n > sizeof(msg)) {
-		log_error(TAG,"temporary buffer too small");
+		log_error(TAG,"buffer too small");
 		return false;
 	}
-	log_dbug(TAG,"sending:>>\n%s\n<<",msg);
+//	log_local(TAG,"sending:>>\n%s\n<<",msg);
 	int r = con->write(msg,n);
 	if (-1 == r) {
 //		log_error(TAG,"error sending: %s",strerror(errno));
@@ -238,7 +238,7 @@ bool HttpResponse::senddata(LwTcp *con, int fd)
 				memset(buf,0,bs);
 			if (-1 == con->write(buf,bs)) {
 				free(buf);
-				log_error(TAG,"error sending content: %s",con->error());
+				log_error(TAG,"error sending: %s",con->error());
 				return false;
 			}
 		}

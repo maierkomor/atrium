@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020, Thomas Maier-Komor
+ *  Copyright (C) 2020-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -42,9 +42,9 @@ static int ow_scan()
 		uint64_t id = d->getId();
 		for (const auto &cfg : *owdevs) {
 			if (cfg.id() == id) {
+				exist = true;
 				if (cfg.has_name())
 					d->setName(cfg.name().c_str());
-				exist = true;
 				break;
 			}
 		}
@@ -52,6 +52,7 @@ static int ow_scan()
 			OwDeviceConfig *c = Config.add_owdevices();
 			c->set_name(d->getName());
 			c->set_id(id);
+			d->attach(RTData);
 		}
 		d = d->getNext();
 	}
@@ -65,7 +66,8 @@ int ow_setup()
 		log_dbug(TAG,"not configured");
 		return 0;
 	}
-	OneWire::create(HWConf.onewire().gpio(),HWConf.onewire().pullup());
+	const OneWireConfig &cfg = HWConf.onewire();
+	OneWire::create(cfg.gpio(),cfg.pullup(),cfg.power());
 	auto *owdevs = Config.mutable_owdevices();
 	for (const auto &cfg : *owdevs) {
 		if (cfg.has_name()) {

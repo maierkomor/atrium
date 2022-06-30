@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021, Thomas Maier-Komor
+ *  Copyright (C) 2021-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -25,6 +25,7 @@
 #include "cyclic.h"
 #include "event.h"
 #include "log.h"
+#include "terminal.h"
 #include "env.h"
 
 #define REG_ENABLE	0x80
@@ -136,6 +137,8 @@ int APDS9930::init()
 	};
 	m_near = event_register(m_name,"`close");
 	m_far = event_register(m_name,"`far");
+	m_lux = new EnvNumber("illuminance","lux","%4.0f");
+	m_prox = new EnvNumber("proximity","","%4.0f");
 	return i2c_write(m_bus,cmd,sizeof(cmd),1,1);
 }
 
@@ -143,8 +146,8 @@ int APDS9930::init()
 void APDS9930::attach(EnvObject *root)
 {
 	log_dbug(TAG,"attach");
-	m_lux = root->add("lux",NAN,"");
-	m_prox = root->add("prox",NAN,"");
+	root->add(m_lux);
+	root->add(m_prox);
 	cyclic_add_task(m_name,cycle,this,0);
 	action_add(concat(m_name,"!sample"),trigger,(void*)this,"ADPS9930 sample data");
 	action_add(concat(m_name,"!poweroff"),trigger,(void*)this,"ADPS9930 sample data");
@@ -261,6 +264,82 @@ void APDS9930::poweroff(void *arg)
 	if (dev->m_state == st_idle)
 		dev->m_state = st_poweroff;
 }
+
+
+#ifdef CONFIG_I2C_XCMD
+int APDS9930::exeCmd(Terminal &t, int argc, const char **argv)
+{
+	if (0 == argc) {
+		t.println(
+			"ailt: ALS interrupt low threshold\n"
+			"aiht: ALS interrupt high threshold\n"
+			"pilt: proximity interrupt low threshold\n"
+			"piht: proximity interrupt high threshold\n"
+		);
+		return 0;
+	}
+	char *e = 0;
+	long l = 0;
+	if (argc > 1)
+		l = strtol(argv[1],&e,0);
+
+	if (0 == strcmp(argv[0],"ailt")) {
+		if (argc == 1) {
+			uint8_t d[2];
+			if (i2c_w1rd(m_bus,m_addr,REG_AILTL,d,sizeof(d)))
+				return 1;
+			uint16_t v = (d[1] << 8) | d[0];
+			t.printf("%u\n",v);
+		} else if (e && (*e == 0) && (l >= 0) & (l <= UINT16_MAX)) {
+			uint8_t data[] = { m_addr, REG_AILTL, (uint8_t) (l & 0xff), (uint8_t)(l>>8) };
+			if (i2c_write(m_bus,data,sizeof(data),1,1))
+				return 1;
+		} else
+			return arg_invalid(t,argv[1]);
+	} else if (0 == strcmp(argv[0],"aiht")) {
+		if (argc == 1) {
+			uint8_t d[2];
+			if (i2c_w1rd(m_bus,m_addr,REG_AIHTL,d,sizeof(d)))
+				return 1;
+			uint16_t v = (d[1] << 8) | d[0];
+			t.printf("%u\n",v);
+		} else if (e && (*e == 0) && (l >= 0) & (l <= UINT16_MAX)) {
+			uint8_t data[] = { m_addr, REG_AIHTL, (uint8_t) (l & 0xff), (uint8_t)(l>>8) };
+			if (i2c_write(m_bus,data,sizeof(data),1,1))
+				return 1;
+		} else
+			return arg_invalid(t,argv[1]);
+	} else if (0 == strcmp(argv[0],"pilt")) {
+		if (argc == 1) {
+			uint8_t d[2];
+			if (i2c_w1rd(m_bus,m_addr,REG_PILTL,d,sizeof(d)))
+				return 1;
+			uint16_t v = (d[1] << 8) | d[0];
+			t.printf("%u\n",v);
+		} else if (e && (*e == 0) && (l >= 0) & (l <= UINT16_MAX)) {
+			uint8_t data[] = { m_addr, REG_PILTL, (uint8_t) (l & 0xff), (uint8_t)(l>>8) };
+			if (i2c_write(m_bus,data,sizeof(data),1,1))
+				return 1;
+		} else
+			return arg_invalid(t,argv[1]);
+	} else if (0 == strcmp(argv[0],"piht")) {
+		if (argc == 1) {
+			uint8_t d[2];
+			if (i2c_w1rd(m_bus,m_addr,REG_PIHTL,d,sizeof(d)))
+				return 1;
+			uint16_t v = (d[1] << 8) | d[0];
+			t.printf("%u\n",v);
+		} else if (e && (*e == 0) && (l >= 0) & (l <= UINT16_MAX)) {
+			uint8_t data[] = { m_addr, REG_PIHTL, (uint8_t) (l & 0xff), (uint8_t)(l>>8) };
+			if (i2c_write(m_bus,data,sizeof(data),1,1))
+				return 1;
+		} else
+			return arg_invalid(t,argv[1]);
+	} else
+		return arg_invalid(t,argv[0]);
+	return 0;
+}
+#endif
 
 
 int apds9930_scan(uint8_t bus)

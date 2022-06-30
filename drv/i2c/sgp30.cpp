@@ -70,8 +70,8 @@ void SGP30::attach(EnvObject *r)
 {
 	log_dbug(TAG,"attach");
 	m_root = r;
-	m_tvoc = r->add("TVOC",NAN,"ppb");
-	m_co2 = r->add("CO2",NAN,"ppm");
+	r->add(m_tvoc);
+	r->add(m_co2);
 }
 
 
@@ -160,6 +160,8 @@ int SGP30::init()
 		m_state = selftest;
 	else
 		m_state = error;
+	m_tvoc = new EnvNumber("TVOC","ppb","%4.0f");
+	m_co2 = new EnvNumber("CO2","ppm");
 	return cyclic_add_task("sgp30",SGP30::cyclic,this,220);
 }
 

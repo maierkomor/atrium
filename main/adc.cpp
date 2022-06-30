@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2021, Thomas Maier-Komor
+ *  Copyright (C) 2020-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -20,6 +20,7 @@
 
 #include "actions.h"
 #include "dataflow.h"
+#include "env.h"
 #include "event.h"
 #include "globals.h"
 #include "hwcfg.h"
@@ -31,10 +32,13 @@
 #define TAG MODULE_ADC
 
 #if defined CONFIG_IDF_TARGET_ESP32
-struct AdcSignal : public IntSignal
+#include <driver/rtc_io.h>
+#include <soc/sens_reg.h>
+
+struct AdcSignal : public EnvNumber
 {
 	AdcSignal(const char *name, adc_unit_t u, adc_channel_t ch)
-	: IntSignal(name)
+	: EnvNumber(name)
 	, unit(u)
 	, channel(ch)
 	{
@@ -47,25 +51,28 @@ struct AdcSignal : public IntSignal
 
 static unsigned NumAdc = 0;
 static AdcSignal **Adcs = 0;
-static IntSignal *Hall = 0;
+static EnvNumber *Hall = 0;
 static adc_bits_width_t U2Width;
 
 static void hall_sample(void *)
 {
 	if (Hall) {
 		int32_t v = hall_sensor_read();
-		Hall->setValue(v);
+		Hall->set(v);
 	}
 }
 
 
 int hall_setup()
 {
+	if (!HWConf.has_adc() || HWConf.adc().hall_name().empty())
+		return 0;
 	if (esp_err_t e = adc1_config_width(ADC_WIDTH_BIT_12)) {
 		log_error(TAG,"set hall sensor to 12bits: %s",esp_err_to_name(e));
 		return 1;
 	} else {
-		Hall = new IntSignal("hall");
+		Hall = new EnvNumber(HWConf.adc().hall_name().c_str());
+		RTData->add(Hall);
 		action_add("hall!sample",hall_sample,Hall,"take an hall-sensor sample");
 	}
 	return 0;
@@ -79,7 +86,7 @@ int hall(Terminal &term, int argc, const char *args[])
 		return 1;
 	}
 	if (argc == 1) {
-		term.printf("%lld\n",Hall->getValue());
+		term.printf("%g\n",Hall->get());
 		return 0;
 	}
 	if (!strcmp(args[1],"sample")) {
@@ -93,16 +100,19 @@ int hall(Terminal &term, int argc, const char *args[])
 static void adc_sample_cb(void *arg)
 {
 	AdcSignal *s = (AdcSignal*)arg;
-	int sample;
-	if (s->unit == 1)
+	int sample = 0;
+	if (s == 0)
+		return;
+	else if (s->unit == 1)
 		sample = adc1_get_raw((adc1_channel_t)s->channel);
 	else if (s->unit == 2) {
 		if (esp_err_t e = adc2_get_raw((adc2_channel_t)s->channel,U2Width,&sample)) {
-			log_warn(TAG,"error reading adc2, channel %u: %s",esp_err_to_name(e));
+			log_warn(TAG,"error reading adc2, channel %u: %s",s->channel,esp_err_to_name(e));
 			return;
 		}
 	}
-	s->setValue(sample);
+	log_dbug(TAG,"sample %s: %u",s->name(),sample);
+	s->set(sample);
 }
 
 
@@ -113,7 +123,7 @@ static AdcSignal *getAdc(const char *arg)
 	if (e == arg) {
 		unsigned x = 0;
 		AdcSignal *s = Adcs[x];
-		while (s && strcmp(s->signalName(),arg)) {
+		while (s && strcmp(s->name(),arg)) {
 			++x;
 			if (x == NumAdc)
 				return 0;
@@ -137,9 +147,13 @@ static int adc_print(Terminal &t, const char *arg)
 			t.printf("unknown adc %s",arg);
 			return 1;
 		}
-		t.printf("%-16s: %5lld\n",s->signalName(),s->getValue());
-	} else for (unsigned i = 0; i < NumAdc; ++i)
-		t.printf("%-16s: %5lld\n",Adcs[i]->signalName(),Adcs[i]->getValue());
+		t.printf("%-16s: %5d\n",s->name(),(int)s->get());
+	} else for (unsigned i = 0; i < NumAdc; ++i) {
+		if (Adcs[i])
+			t.printf("%-16s: %5d\n",Adcs[i]->name(),(int)Adcs[i]->get());
+		else
+			t.printf("%u not initialized\n",i);
+	}
 	return 0;
 }
 
@@ -161,8 +175,7 @@ static int adc_sample(Terminal &t, const char *arg)
 
 int adc_setup()
 {
-	if (Adcs)
-		return 1;
+	assert(Adcs == 0);
 	if (!HWConf.has_adc())
 		return 0;
 	const auto &conf = HWConf.adc();
@@ -173,31 +186,67 @@ int adc_setup()
 	if (conf.has_adc2_bits()) {
 		if (esp_err_t e = adc_set_data_width(ADC_UNIT_2,(adc_bits_width_t)conf.adc2_bits()))
 			log_warn(TAG,"set adc2 data width %dbits: %s",conf.adc2_bits()+9,esp_err_to_name(e));
-		U2Width = (adc_bits_width_t)conf.adc2_bits();
+		else
+			U2Width = (adc_bits_width_t)conf.adc2_bits();
 	} else
 		U2Width = ADC_WIDTH_BIT_12;
 	NumAdc = conf.channels_size();
+	log_info(TAG,"%u channels",NumAdc);
 	Adcs = (AdcSignal **) malloc(sizeof(AdcSignal*)*NumAdc);
 	bzero(Adcs,sizeof(AdcSignal*)*NumAdc);
 	for (unsigned x = 0; x < NumAdc; ++x) {
 		const AdcChannel &c = conf.channels(x);
-		if (!c.has_name() || !c.has_ch() || !c.has_unit())
+		if (!c.has_ch() || !c.has_unit())
 			continue;
+		char name[8];
 		unsigned u = c.unit();
+		if ((u == 0) || (u > 2)) {
+			log_error(TAG,"invalid unit %u",u);
+			continue;
+		}
 		unsigned ch = c.ch();
 		if (((u == 1) && (ch >= ADC1_CHANNEL_MAX)) || ((u == 2) && (ch >= ADC2_CHANNEL_MAX))) {
 			log_error(TAG,"invalid channel %u",ch);
 			continue;
 		}
 		const char *n = c.name().c_str();
+		if (n[0] == 0) {
+			sprintf(name,"adc%u.%u",u,ch);
+			n = strdup(name);
+		}
+		if (u == 2) {
+			// ADC2 is used by WiFi 
+			// i.e. it is normally not usable
+			// consult the IDF docu for details
+			if (adc2_config_channel_atten((adc2_channel_t)ch,ADC_ATTEN_DB_0))
+				log_warn(TAG,"unit 2 channel %u init failed",ch);
+			/*
+			gpio_num_t gpio = (gpio_num_t)(10+ch);
+			//REG_WRITE(0x10+(gpio * 4), 0x300);
+			//REG_WRITE(GPIO_FUNC0_OUT_SEL_CFG_REG + (num * 4), SIG_GPIO_OUT_IDX);
+			if (rtc_gpio_init(gpio))
+				log_warn(TAG,"init gpio %u of ADC",gpio);
+			else if (rtc_gpio_isolate(gpio))
+				log_warn(TAG,"gpio %u isolate failed",gpio);
+			*/
+		} else if (esp_err_t e = adc_gpio_init(ADC_UNIT_1,(adc_channel_t)ch)) {
+			log_error(TAG,"unable to init channel %u of adc%u: %s",ch,u,esp_err_to_name(e));
+			continue;
+		} else if (u == 1) {
+			if (esp_err_t e = adc1_config_channel_atten((adc1_channel_t)ch,(adc_atten_t)c.atten())) {
+				log_warn(TAG,"set adc[%u] atten: %s",ch,esp_err_to_name(e));
+				continue;
+			}
+		} else if (u == 2) {
+			if (esp_err_t e = adc2_config_channel_atten((adc2_channel_t)ch,(adc_atten_t)c.atten())) {
+				log_warn(TAG,"set adc[%u] atten: %s",ch,esp_err_to_name(e));
+				continue;
+			}
+		}
 		Adcs[x] = new AdcSignal(n,(adc_unit_t)u,(adc_channel_t)ch);
-		if (esp_err_t e = adc_gpio_init((adc_unit_t)u,(adc_channel_t)ch))
-			log_error(TAG,"unable to init channel %u of adc%u",ch,u,ch,esp_err_to_name(e));
-		if (esp_err_t e = adc1_config_channel_atten((adc1_channel_t)ch,(adc_atten_t)c.atten()))
-			log_warn(TAG,"set adc[%u] atten: %s",ch,esp_err_to_name(e));
-		if (esp_err_t e = adc1_config_channel_atten((adc1_channel_t)ch,(adc_atten_t)c.atten()))
-			log_warn(TAG,"set adc[%u] atten: %s",ch,esp_err_to_name(e));
+		RTData->add(Adcs[x]);
 		action_add(concat(n,"!sample"),adc_sample_cb,Adcs[x],"take an ADC sample");
+		log_info(TAG,"initialized ADC%u.%u",u,ch);
 	}
 
 	return 0;
@@ -210,6 +259,13 @@ int adc(Terminal &term, int argc, const char *args[])
 		term.printf("adc is %sinitialized\n",Adcs ? "" : "not ");
 		return 0;
 	}
+#if 0 // for debugging purposes
+	term.printf("read ctrl 0x%lx\n",REG_READ(SENS_SAR_READ_CTRL_REG));
+	term.printf("sar start 0x%lx\n",REG_READ(SENS_SAR_START_FORCE_REG));
+	term.printf("meas st1  0x%lx\n",REG_READ(SENS_SAR_MEAS_START1_REG));
+	term.printf("read ctrl2 0x%lx\n",REG_READ(SENS_SAR_READ_CTRL2_REG));
+	term.printf("meas st2  0x%lx\n",REG_READ(SENS_SAR_MEAS_START2_REG));
+#endif
 	if (!strcmp(args[1],"init")) {
 		if (term.getPrivLevel() == 0) {
 			term.printf("Access denied.\n");

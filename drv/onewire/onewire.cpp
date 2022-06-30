@@ -86,15 +86,20 @@ uint8_t OneWire::crc8(const uint8_t *in, size_t len)
 }
 
 
-OneWire::OneWire(xio_t bus)
+OneWire::OneWire(xio_t bus, xio_t pwr)
 : m_bus(bus)
+, m_pwr(pwr)
 {
 	Instance = this;
 	log_info(TAG,"bus at %u",bus);
+	if (pwr != XIO_INVALID) {
+		log_info(TAG,"power at %u",pwr);
+		setPower(true);
+	}
 }
 
 
-OneWire *OneWire::create(unsigned bus, bool pullup)
+OneWire *OneWire::create(unsigned bus, bool pullup, int8_t pwr)
 {
 	assert(Instance == 0);
 	// idle bus is output, high!
@@ -109,7 +114,17 @@ OneWire *OneWire::create(unsigned bus, bool pullup)
 		log_warn(TAG,"cannot set hi %u",bus);
 		return 0;
 	}
-	return new OneWire((xio_t)bus);
+	xio_t p = XIO_INVALID;
+	if (pwr != -1) {
+		cfg.cfg_io = xio_cfg_io_od;
+		cfg.cfg_pull = xio_cfg_pull_none;
+		if (0 > xio_config((xio_t)pwr,cfg)) {
+			log_warn(TAG,"failed to config power xio%u",bus);
+		} else {
+			p = (xio_t) pwr;
+		}
+	}
+	return new OneWire((xio_t)bus,p);
 }
 
 
@@ -129,6 +144,16 @@ int OneWire::addDevice(uint64_t id)
 }
 
 
+void OneWire::setPower(bool on)
+{
+	if (m_pwr != XIO_INVALID) {
+		xio_lvl_t l = (on ? xio_lvl_0 : xio_lvl_hiz);
+		xio_set_lvl(m_pwr,l);
+		m_pwron = on;
+	}
+}
+
+
 int OneWire::scanBus()
 {
 	//log_dbug(TAG,"scanBus(%llx)",id);
@@ -138,7 +163,7 @@ int OneWire::scanBus()
 		log_dbug(TAG,"searchRom(" IDFMT ",%d)",IDARG(id),collisions.size());
 		int e = searchRom(id,collisions);
 		if (e > 0) {
-			log_error(TAG,"searchRom(" IDFMT ",%d):%d",IDARG(id),collisions.size(),e);
+			log_warn(TAG,"searchRom(" IDFMT ",%d):%d",IDARG(id),collisions.size(),e);
 			return 1;	// error occured
 		}
 		if (e < 0)
@@ -173,6 +198,7 @@ int OneWire::searchRom(uint64_t &id, vector<uint64_t> &coll)
 	int r = 0;
 	unsigned nc = 0;
 	ENTER_CRITICAL();
+	setPower(false);
 	for (unsigned b = 0; b < 64; ++b) {
 		uint8_t t0 = xmitBit(1);
 		uint8_t t1 = xmitBit(1);
@@ -198,6 +224,7 @@ int OneWire::searchRom(uint64_t &id, vector<uint64_t> &coll)
 		} else
 			xmitBit(t0);
 	}
+	setPower(true);
 	EXIT_CRITICAL();
 	while (nc) {
 		uint64_t c = coll[coll.size()-nc];
@@ -243,7 +270,9 @@ int OneWire::readRom()
 int OneWire::resetBus(void)
 {
 	log_dbug(TAG,"reset");
+	assert(m_pwron == true);
 	ENTER_CRITICAL();
+	setPower(false);
 	xio_set_lvl(m_bus,xio_lvl_0);
 	ets_delay_us(500);
 	xio_set_lvl(m_bus,xio_lvl_hiz);
@@ -256,9 +285,10 @@ int OneWire::resetBus(void)
 		ets_delay_us(10);
 	}
 	ets_delay_us(220);
+	setPower(true);
 	EXIT_CRITICAL();
 	if (r)
-		log_error(TAG,"reset: no response");
+		log_warn(TAG,"reset: no response");
 	return r;
 }
 
@@ -291,11 +321,13 @@ unsigned OneWire::xmitBit(uint8_t b)
 uint8_t OneWire::writeByte(uint8_t byte)
 {
 	ENTER_CRITICAL();
+	setPower(false);
 	uint8_t r = 0;
 	for (uint8_t b = 1; b; b<<=1) {
 		if (xmitBit(byte & b))
 			r |= b;
 	}
+	setPower(true);
 	EXIT_CRITICAL();
 //	no debug here, as writeByte is used in timinig critical sections!
 	return r;
@@ -304,7 +336,7 @@ uint8_t OneWire::writeByte(uint8_t byte)
 
 uint8_t OneWire::readByte()
 {
-	// read by sending 0xff (a dontcare?)
+	// read by sending 0xff
 	uint8_t r = writeByte(0xFF);
 	log_dbug(TAG,"readByte() = 0x%02x",r);
 	return r;

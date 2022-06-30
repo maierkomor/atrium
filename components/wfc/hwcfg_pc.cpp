@@ -10,7 +10,7 @@
  * Copyright: 2018-2021
  * Author   : Thomas Maier-Komor
  * 
- * Code generated on 2022-02-26, 11:54:10 (CET).
+ * Code generated on 2022-06-30, 21:08:34 (CET).
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -190,16 +190,30 @@ const char *dht_model_t_str(dht_model_t e)
 }
 
 static const char *i2cdrv_t_names[] = {
+	"i2cdrv_ht16k33",
 	"i2cdrv_invalid",
 	"i2cdrv_mcp2300x",
 	"i2cdrv_mcp2301x",
+	"i2cdrv_pca9685",
+	"i2cdrv_pca9685_npn",
+	"i2cdrv_pca9685_pnp",
+	"i2cdrv_pca9685_xclk",
+	"i2cdrv_pca9685_xclk_npn",
+	"i2cdrv_pca9685_xclk_pnp",
 	"i2cdrv_pcf8574",
 };
 
 static i2cdrv_t i2cdrv_t_values[] = {
+	i2cdrv_ht16k33,
 	i2cdrv_invalid,
 	i2cdrv_mcp2300x,
 	i2cdrv_mcp2301x,
+	i2cdrv_pca9685,
+	i2cdrv_pca9685_npn,
+	i2cdrv_pca9685_pnp,
+	i2cdrv_pca9685_xclk,
+	i2cdrv_pca9685_xclk_npn,
+	i2cdrv_pca9685_xclk_pnp,
 	i2cdrv_pcf8574,
 };
 
@@ -3768,9 +3782,6 @@ void I2CConfig::toASCII(std::ostream &o, size_t indent) const
 		o << (unsigned) devices_addr(i);
 		o << ';';
 		ascii_indent(o,indent);
-		o << ".scanaddr = " ;
-		o << (devices_scanaddr(i) ? "true;" : "false;");
-		ascii_indent(o,indent);
 		o << ".drv = " ;
 		o << i2cdrv_t_str(devices_drv(i));
 		o << ';';
@@ -4246,12 +4257,6 @@ int I2CConfig::setByName(const char *name, const char *value)
 			if (!strcmp("addr",idxe)) {
 				if (eptr != value) {
 					set_devices_addr(x,(uint8_t)ull);
-					return 0;
-				}
-			}
-			if (!strcmp("scanaddr",idxe)) {
-				if (eptr != value) {
-					set_devices_scanaddr(x,(bool)ull);
 					return 0;
 				}
 			}

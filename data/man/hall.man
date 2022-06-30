@@ -1,0 +1,5 @@
+synopsis: hall [<cmd>]
+valid <cmd> are:
+sample: sample a value
+
+Without <cmd> the last sampled value will be printed.

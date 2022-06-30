@@ -22,12 +22,12 @@
 #include <event.h>
 #include "xio.h"
 
-#define BUTTON_SHORT_START	40
-#define BUTTON_SHORT_END	350
+#define BUTTON_SHORT_START	20
+#define BUTTON_SHORT_END	300
 #define BUTTON_MED_START	600
-#define BUTTON_MED_END		1000
-#define BUTTON_LONG_START	1500
-#define BUTTON_LONG_END		3000
+#define BUTTON_MED_END		1500
+#define BUTTON_LONG_START	3000
+#define BUTTON_LONG_END		6000
 
 
 class Button

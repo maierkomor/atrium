@@ -28,7 +28,7 @@
 class OneWire
 {
 	public:
-	static OneWire *create(unsigned bus, bool pullup);
+	static OneWire *create(unsigned bus, bool pullup, int8_t pwr = -1);
 
 	int sendCommand(uint64_t id, uint8_t command);
 	uint8_t readByte();
@@ -37,6 +37,7 @@ class OneWire
 	int scanBus();
 	int readRom();
 	unsigned xmitBit(uint8_t);
+	void setPower(bool);
 
 	static OneWire *getInstance()
 	{ return Instance; }
@@ -44,11 +45,12 @@ class OneWire
 	static uint8_t crc8(const uint8_t *in, size_t len);
 
 	private:
-	explicit OneWire(xio_t bus);
+	OneWire(xio_t bus, xio_t pwr);
 	int addDevice(uint64_t);
 	int searchRom(uint64_t &id, std::vector<uint64_t> &collisions);
 
 	xio_t m_bus, m_pwr;
+	bool m_pwron = false;
 
 	static OneWire *Instance;
 };

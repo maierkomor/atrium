@@ -89,8 +89,7 @@ int cyclic_add_task(const char *name, unsigned (*loop)(void*), void *arg, unsign
 {
 	log_info(TAG,"add subtask %s",name);
 	SubTask *n = new SubTask(name,loop,arg,esp_timer_get_time()+initdelay*1000);
-	if (pdFALSE == xSemaphoreTake(Mtx,MUTEX_ABORT_TIMEOUT))
-		abort_on_mutex(Mtx,__FUNCTION__);
+	Lock lock(Mtx);
 	SubTask *s = SubTasks;
 	while (s) {
 		if (0 == strcmp(s->name,name)) {
@@ -103,15 +102,14 @@ int cyclic_add_task(const char *name, unsigned (*loop)(void*), void *arg, unsign
 	}
 	n->next = SubTasks;
 	SubTasks = n;
-	xSemaphoreGive(Mtx);
 	return 0;
 }
 
 
 int cyclic_rm_task(const char *name)
 {
-	if (pdFALSE == xSemaphoreTake(Mtx,MUTEX_ABORT_TIMEOUT))
-		abort_on_mutex(Mtx,__FUNCTION__);
+	unsigned r = 1;
+	MLock lock(Mtx);
 	SubTask *s = SubTasks, *p = 0;
 	while (s) {
 		if (!strcmp(name,s->name)) {
@@ -119,16 +117,16 @@ int cyclic_rm_task(const char *name)
 				p->next = s->next;
 			else
 				SubTasks = s->next;
-			xSemaphoreGive(Mtx);
+			lock.unlock();
 			delete s;
 			log_info(TAG,"removed subtask %s",name);
-			return 0;
+			r = 0;
+			break;
 		}
 		p = s;
 		s = s->next;
 	}
-	xSemaphoreGive(Mtx);
-	return 1;
+	return r;
 }
 
 
@@ -167,10 +165,27 @@ unsigned cyclic_execute()
 }
 
 
+#ifdef CONFIG_IDF_TARGET_ESP32
+static void cyclic_task(void *)
+{
+	for (;;) {
+		unsigned d = cyclic_execute();
+		vTaskDelay(d * portTICK_PERIOD_MS);
+	}
+}
+#endif
+
+
 void cyclic_setup()
 {
 	Mtx = xSemaphoreCreateMutex();
-	// cyclic_execute is called from the inted
+#ifdef CONFIG_IDF_TARGET_ESP32
+	BaseType_t r = xTaskCreatePinnedToCore(cyclic_task, "cyclic", 4096, (void*)0, 20, NULL, 1);
+	if (r != pdPASS)
+		log_error(TAG,"create task: %d",r);
+#else
+	// cyclic_execute is called from the event task
+#endif
 }
 
 

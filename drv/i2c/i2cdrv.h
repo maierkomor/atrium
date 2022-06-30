@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021, Thomas Maier-Komor
+ *  Copyright (C) 2021-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -19,6 +19,7 @@
 #ifndef I2CDRV_H
 #define I2CDRV_H
 
+#include <sdkconfig.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -51,6 +52,11 @@ class I2CDevice
 
 	uint8_t getAddr() const
 	{ return m_addr >> 1; }
+	
+#ifdef CONFIG_I2C_XCMD
+	virtual int exeCmd(struct Terminal &, int argc, const char **argv)
+	{ return -1; }
+#endif
 
 	static bool hasInstance(const char *);
 
@@ -75,11 +81,13 @@ int i2c_init(uint8_t bus, uint8_t sda, uint8_t scl, unsigned freq, uint8_t xpull
 int i2c_read0(uint8_t port, uint8_t addr, uint8_t *d, uint8_t n);
 int i2c_read(uint8_t bus, uint8_t addr, uint8_t *d, uint8_t n);
 int i2c_read2(uint8_t port, uint8_t addr, uint8_t reg0, uint8_t reg1, uint8_t *d, uint8_t n);
+int i2c_write0(uint8_t port, uint8_t addr);
 int i2c_write1(uint8_t bus, uint8_t addr, uint8_t r);
 int i2c_write2(uint8_t bus, uint8_t addr, uint8_t r, uint8_t v);
 int i2c_write4(uint8_t bus, uint8_t addr, uint8_t r0, uint8_t v0, uint8_t r1, uint8_t v1);
 int i2c_writen(uint8_t bus, uint8_t addr, uint8_t *d, unsigned n);
 int i2c_write(uint8_t bus, uint8_t *d, unsigned n, uint8_t stop, uint8_t start);
+int i2c_write_nack(uint8_t port, uint8_t *d, unsigned n, uint8_t stop, uint8_t start);
 int i2c_w1rd(uint8_t port, uint8_t addr, uint8_t w, uint8_t *d, uint8_t n);
 int i2c_bus_valid(uint8_t bus);
 

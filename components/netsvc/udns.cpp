@@ -1004,7 +1004,7 @@ static err_t sendSelfQuery()
 	pbuf_free(p);
 //	log_gen(e?ll_warn:ll_debug,TAG,"send self query %.*s.local: %s",HostnameLen,Hostname,strlwiperr(e));
 	if (e)
-		log_warn(TAG,"send self query %.*s.local: %s",HostnameLen,Hostname,strlwiperr(e));
+		log_dbug(TAG,"send self query %.*s.local: %s",HostnameLen,Hostname,strlwiperr(e));
 	else
 		log_dbug(TAG,"send self query %.*s.local",HostnameLen,Hostname);
 	return e;

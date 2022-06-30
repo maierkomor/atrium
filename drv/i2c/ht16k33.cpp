@@ -50,36 +50,23 @@
 typedef enum { disp_off, disp_on, blink_05hz, blink_1hz, blink_2hz } disp_t;
 
 
-unsigned HT16K33::create(uint8_t bus)
+void HT16K33::create(uint8_t bus, uint8_t addr)
 {
-	unsigned r = 0;
-	for (uint8_t a = DEV_ADDR_MIN; a < DEV_ADDR_MAX; ++a) {
-		bool idUsed = false;
-		I2CDevice *d = I2CDevice::getFirst();
-		while (d) {
-			if ((d->getBus() == bus) && (d->getAddr() == a)) {
-				idUsed = true;
-				break;
-			}
-			d = d->getNext();
+	if (addr == 0) {
+		for (uint8_t a = DEV_ADDR_MIN; a <= DEV_ADDR_MAX; ++a)
+			create(bus,a);
+	} else if ((addr < DEV_ADDR_MIN) || (addr > DEV_ADDR_MAX)) {
+		log_warn(TAG,"invalid address 0x%x",(unsigned)addr);
+	} else {
+		addr <<= 1;
+		if (i2c_write1(bus,addr,CMD_SYS_ON)) {
+			log_warn(TAG,"no HT16k33 at %u,0x%x",bus,(unsigned)addr);
+		} else {
+			log_info(TAG,"found at 0x%x",(unsigned)addr>>1);
+			HT16K33 *dev = new HT16K33(bus,addr);
+			dev->init();
 		}
-		if (idUsed) {
-			log_dbug(TAG,"ignoring id 0x%x",a);
-			continue;
-		}
-		// a BMP280 may be misrecognized as HT16K33 with this
-		// init code. This happens if the BMx280 is booted with
-		// SDA tied low. So the easy workaround is to tie SDA
-		// high. The workaround above ignores already taken IDs.
-		uint8_t cmd[] = { (uint8_t)(a<<1) , CMD_SYS_ON };
-		if (i2c_write(bus,cmd,sizeof(cmd),true,true))
-			continue;
-		log_info(TAG,"found at 0x%x",(unsigned)a);
-		HT16K33 *dev = new HT16K33(bus,a<<1);
-		dev->init();
-		++r;
 	}
-	return r;
 }
 
 
@@ -194,10 +181,5 @@ int HT16K33::setNumDigits(unsigned n)
 	return -1;
 }
 
-
-unsigned ht16k33_scan(uint8_t bus)
-{
-	return HT16K33::create(bus) != 0;
-}
 
 #endif

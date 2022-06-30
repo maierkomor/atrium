@@ -44,6 +44,13 @@
 #define TAG MODULE_BH1750
 
 
+BH1750::BH1750(uint8_t b, uint8_t a)
+: I2CDevice(b,a,"bh1750")
+, m_lux(new EnvNumber("illuminance","lx","%4.0f"))
+, m_st(st_idle)
+{ }
+
+
 BH1750 *BH1750::create(uint8_t bus, uint8_t addr)
 {
 	addr <<= 1;
@@ -51,27 +58,41 @@ BH1750 *BH1750::create(uint8_t bus, uint8_t addr)
 		log_warn(TAG,"invalid address 0x%x",addr);
 		return 0;
 	}
-	esp_err_t e = i2c_write1(bus,addr,CMD_POWER_ON);
-	if (ESP_ERR_TIMEOUT == e) {
-		log_dbug(TAG,"%u,0x%x timeout",bus,addr>>1);
+	esp_err_t e;
+#ifdef CONFIG_IDF_TARGET_ESP32
+	int count = 0;
+	// The timeout retry-logic is for handling an esp32-idf v3.3
+	// init-bug, which has a work-around in the atrium i2c init
+	// code.
+	do {
+		if (++count > 2)
+			return 0;
 		e = i2c_write1(bus,addr,CMD_POWER_ON);
-	}
+		if (e && (e != ESP_ERR_TIMEOUT)) {
+			log_dbug(TAG,"%u,0x%x not responding: %s",bus,addr>>1,esp_err_to_name(e));
+			return 0;
+		}
+	} while (e == ESP_ERR_TIMEOUT);
+#else
+	e = i2c_write1(bus,addr,CMD_POWER_ON);
 	if (e) {
 		log_dbug(TAG,"%u,0x%x not responding: %s",bus,addr>>1,esp_err_to_name(e));
 		return 0;
 	}
-	if (int e = i2c_write1(bus,addr,CMD_RESET)) {
+#endif
+	e = i2c_write1(bus,addr,CMD_RESET);
+	if (e) {
 		log_warn(TAG,"%u,0x%x not responding: %s",bus,addr>>1,esp_err_to_name(e));
 		return 0;
 	}
-	log_info(TAG,"found devce at %u,0x%x",bus,addr>>1);
+	log_info(TAG,"device at %u,0x%x",bus,addr>>1);
 	return new BH1750(bus,addr);
 }
 
 
 void BH1750::attach(EnvObject *root)
 {
-	m_lux = root->add("illuminance",NAN,"lx");
+	root->add(m_lux);
 	cyclic_add_task(m_name,cyclic,this,0);
 	action_add(concat(m_name,"!sample"),sample,(void*)this,"BH1750 sample data (120ms,0.5lx)");
 	action_add(concat(m_name,"!qsample"),qsample,(void*)this,"BH1750 quick sample data (16ms,4lx)");
@@ -89,35 +110,44 @@ unsigned BH1750::cyclic(void *arg)
 	case st_idle:
 		switch (dev->m_rq) {
 		case rq_sample:
-			if (i2c_write1(dev->m_bus,dev->m_addr,CMD_ONCE_HRES)) {
+			if (esp_err_t e = i2c_write1(dev->m_bus,dev->m_addr,CMD_ONCE_HRES)) {
+				log_dbug(TAG,"hres: %s",esp_err_to_name(e));
 				dev->m_lux->set(NAN);
 				dev->m_st = st_err;
 			} else {
+				log_dbug(TAG,"hres-once ok");
 				dev->m_st = st_sampling;
 				dev->m_rq = rq_none;
-				return 130;
+				return 185;
 			}
 			break;
 		case rq_qsample:
-			if (i2c_write1(dev->m_bus,dev->m_addr,CMD_ONCE_LRES)) {
+			if (esp_err_t e = i2c_write1(dev->m_bus,dev->m_addr,CMD_ONCE_LRES)) {
+				log_dbug(TAG,"lres: %s",esp_err_to_name(e));
 				dev->m_lux->set(NAN);
 				dev->m_st = st_err;
 			} else {
+				log_dbug(TAG,"lres-once ok");
 				dev->m_st = st_sampling;
+				return 40;
 			}
 			break;
 		case rq_reset:
-			if (i2c_write1(dev->m_bus,dev->m_addr,CMD_RESET)) {
+			if (esp_err_t e = i2c_write1(dev->m_bus,dev->m_addr,CMD_RESET)) {
+				log_dbug(TAG,"reset: %s",esp_err_to_name(e));
 				dev->m_st = st_err;
 			} else {
+				log_dbug(TAG,"reset ok");
 				dev->m_st = st_idle;
 			}
 			dev->m_lux->set(NAN);
 			break;
 		case rq_off:
-			if (i2c_write1(dev->m_bus,dev->m_addr,CMD_POWER_OFF)) {
+			if (esp_err_t e = i2c_write1(dev->m_bus,dev->m_addr,CMD_POWER_OFF)) {
+				log_dbug(TAG,"power-off: %s",esp_err_to_name(e));
 				dev->m_st = st_err;
 			} else {
+				log_dbug(TAG,"power-off");
 				dev->m_st = st_off;
 			}
 			dev->m_lux->set(NAN);
@@ -132,30 +162,41 @@ unsigned BH1750::cyclic(void *arg)
 		break;
 	case st_off:
 		if (dev->m_rq == rq_on) {
-			if (i2c_write1(dev->m_bus,dev->m_addr,CMD_POWER_ON))
+			if (esp_err_t e = i2c_write1(dev->m_bus,dev->m_addr,CMD_POWER_ON)) {
+				log_dbug(TAG,"power-on: %s",esp_err_to_name(e));
 				dev->m_st = st_err;
-			else
+			} else {
+				log_dbug(TAG,"power-on");
 				dev->m_st = st_idle;
+			}
 		}
 		// discard any other requests
 		dev->m_rq = rq_none;
 		break;
 	case st_sampling:
-		if (i2c_read(dev->m_bus,dev->m_addr,data,sizeof(data))) {
+		if (esp_err_t e = i2c_read(dev->m_bus,dev->m_addr,data,sizeof(data))) {
+			log_dbug(TAG,"read data: %s",esp_err_to_name(e));
 			dev->m_lux->set(NAN);
 			dev->m_st = st_err;
 		} else {
+			log_dbug(TAG,"data: %02x %02x",data[0],data[1]);
 			dev->m_lux->set(((float)(data[0]<<8|data[1]))/1.2);
 			dev->m_st = st_idle;
 		}
 		break;
 	case st_err:
 		if (dev->m_rq == rq_reset) {
-			if (0 == i2c_write1(dev->m_bus,dev->m_addr,CMD_RESET))
+			if (esp_err_t e = i2c_write1(dev->m_bus,dev->m_addr,CMD_RESET))
+				log_dbug(TAG,"reset: %s",esp_err_to_name(e));
+			else
 				dev->m_st = st_idle;
 		} else if (dev->m_rq == rq_off) {
-			if (0 == i2c_write1(dev->m_bus,dev->m_addr,CMD_POWER_OFF))
+			if (esp_err_t e = i2c_write1(dev->m_bus,dev->m_addr,CMD_POWER_OFF)) {
+				log_dbug(TAG,"power-off: %s",esp_err_to_name(e));
+			} else {
+				log_dbug(TAG,"power-off");
 				dev->m_st = st_off;
+			}
 		}
 		dev->m_rq = rq_none;
 		break;
@@ -228,10 +269,11 @@ void BH1750::reset(void *arg)
 
 int bh1750_scan(uint8_t bus)
 {
+	// auto-scan does not work reliable
 	unsigned ret = 0;
-	if (BH1750::create(bus,0b1011100))
-		++ret;
 	if (BH1750::create(bus,0b0100011))
+		++ret;
+	if (BH1750::create(bus,0b1011100))
 		++ret;
 	return ret;
 }

@@ -1,0 +1,10 @@
+synopsis:
+	sm
+	sm add <machine> [<state>]
+	sm on <machine>:<state> <event> <action> [<argument>]
+Description:
+Without arguments "sm" lists information on defined state-machines and
+their states.
+The first variant can be used to add a new state-machine or state.
+The second variant defines an event-action binding with an optional
+argument that is only active, if the state is active.
