@@ -79,7 +79,7 @@ esptool write_flash 0xf0000 s20@0xf0000.bin
 ```
 For ESP32 app images no address is given, as they can be flashed to any
 partition. The default ESP32 partition layout has partition `ota_0` at
-0x100000. Boot is always at 0x0000, and the ptable always at 0x8000.
+0x100000. Boot is always at 0x1000, and the ptable always at 0x8000.
 
 3) Configure the device via the offline tool bin/atriumcfg or via the
 serial console (hardware only if supported by the app-image)
