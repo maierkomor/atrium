@@ -20,11 +20,11 @@
 
 #ifdef CONFIG_I2C
 
-#include "bh1750.h"
 #include "globals.h"
 #include "hwcfg.h"
 #include "ht16k33.h"
 #include "i2cdrv.h"
+#include "ina2xx.h"
 #include "pca9685.h"
 #include "pcf8574.h"
 #include "log.h"
@@ -83,6 +83,11 @@ static inline void i2c_scan_device(uint8_t bus, uint8_t addr, i2cdrv_t drv)
 		break;
 	case i2cdrv_pca9685_xclk_pnp:
 		PCA9685::create(bus,addr,true,true,true);
+		break;
+#endif
+#ifdef CONFIG_INA2XX
+	case i2cdrv_ina219:
+		INA219::create(bus,addr);
 		break;
 #endif
 	default:

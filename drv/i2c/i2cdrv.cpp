@@ -43,6 +43,7 @@ extern int ti_scan(uint8_t);
 extern int apds9930_scan(uint8_t);
 extern int pcf8574_scan(uint8_t);
 extern int ssd1306_scan(uint8_t);
+extern int si7021_scan(uint8_t);
 extern int bh1750_scan(uint8_t);
 
 I2CDevice *I2CDevice::m_first = 0;
@@ -441,6 +442,10 @@ int i2c_init(uint8_t port, uint8_t sda, uint8_t scl, unsigned freq, uint8_t xpul
 #ifdef CONFIG_SSD1306
 	log_info(TAG,"search ssd1306");
 	n += ssd1306_scan(port);
+#endif
+#ifdef CONFIG_SI7021
+	log_info(TAG,"search si7021");
+	n += si7021_scan(port);
 #endif
 	return n;
 }

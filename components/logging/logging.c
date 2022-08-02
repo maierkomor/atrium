@@ -256,6 +256,12 @@ void log_direct(log_level_t ll, logmod_t m, const char *f, ...)
 }
 
 
+void log_directv(log_level_t ll, logmod_t m, const char *f, va_list val)
+{
+	log_common(ll,m,f,val);
+}
+
+
 void log_fatal(logmod_t m, const char *f, ...)
 {
 	va_list val;

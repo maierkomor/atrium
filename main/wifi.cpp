@@ -609,7 +609,7 @@ void wifi_wps_start(void *)
 	esp_wps_config_t config;
 	bzero(&config,sizeof(config));
 	config.wps_type = WPS_TYPE_PBC;
-#if 0 //def CONFIG_IDF_TARGET_ESP32
+#ifdef CONFIG_IDF_TARGET_ESP32
 	config.crypto_funcs = &g_wifi_default_wps_crypto_funcs;
 #endif
 	const SystemConfig &cfg = HWConf.system();

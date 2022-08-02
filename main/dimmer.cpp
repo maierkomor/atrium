@@ -52,12 +52,14 @@
 #ifdef CONFIG_IDF_TARGET_ESP8266
 #define DIM_MAX Period
 #define PWM_BITS 16
-#define DIM_INC	5
+#define DIM_INC	16
+#define DIM_STEP 32
 typedef uint8_t ledc_channel_t;
 #else
 #define DIM_MAX 1023
 #define PWM_BITS 10
-#define DIM_INC	5
+#define DIM_INC	4
+#define DIM_STEP 8
 #endif
 
 #if PWM_BITS <= 8
@@ -121,6 +123,45 @@ int dimmer_set(const char *name, float v)
 }
 
 
+void dim_set(void *arg)
+{
+	const char *str = (const char *) arg;
+	const char *s = strchr(str,':');
+	if (s == 0)
+		s = strchr(str,'=');
+	if (s)
+		++s;
+	char *e;
+	float f = strtof(s?s:str,&e);
+	if ((e != s) && (f >= 0)) {
+		float v = DIM_MAX;
+		if ('%' == *e) {
+			if (f < 100)
+				v = (f*(float)DIM_MAX)/100.0;
+		} else if (f < DIM_MAX) {
+			v = f;
+		}
+		if (s) {
+			char name[s-str];
+			memcpy(name,str,s-str);
+			name[s-str-1] = 0;
+			log_dbug(TAG,"set %s %2.1f%%",name,v);
+			if (Dimmer *d = get_dimmer(name))
+				d->env->set(v);
+		} else {
+			log_dbug(TAG,"set %2.1f%%",v);
+			Dimmer *d = Dimmers;
+			while (d) {
+				d->env->set(v);
+				d = d->next;
+			}
+		}
+	} else {
+		log_warn(TAG,"action dim!set invalid arg %s",str);
+	}
+}
+
+
 
 #ifdef CONFIG_MQTT
 static void mqtt_callback(const char *topic, const void *data, size_t len)
@@ -147,14 +188,14 @@ unsigned dimmer_fade(void *)
 	Dimmer *d = Dimmers;
 	while (d) {
 		float set = d->env->get();
-		if (set > 100) {
-			set = 100;
-			d->env->set(100);
+		if (set > DIM_MAX) {
+			set = DIM_MAX;
+			d->env->set(set);
 		} else if (set < 0) {
 			set = 0;
 			d->env->set(0);
 		}
-		duty_t nv = set * DIM_MAX / 100.0;
+		duty_t nv = (duty_t) set;
 		if (nv == d->duty) {
 			d = d->next;
 			continue;
@@ -164,10 +205,10 @@ unsigned dimmer_fade(void *)
 		} else {
 			if (s < ret)
 				ret = s;
-			if (nv > d->duty+DIM_MAX/100.0)
-				d->duty += DIM_MAX/100.0;
-			else if (nv < d->duty-DIM_MAX/100.0)
-				d->duty -= DIM_MAX/100.0;
+			if (nv > d->duty+DIM_STEP)
+				d->duty += DIM_STEP;
+			else if (nv < d->duty-DIM_STEP)
+				d->duty -= DIM_STEP;
 			else
 				d->duty = nv;
 		}
@@ -196,33 +237,38 @@ int dim(Terminal &t, int argc, const char *argv[])
 		Dimmer *d = Dimmers;
 		while (d) {
 			float cur = d->env->get();
-			t.printf("%-12s %5u (%3d%%)\n",d->name,(unsigned)(cur/100.0*DIM_MAX),(unsigned)(cur));
+			t.printf("%-12s %5u (%4.1f%%)\n",d->name,(unsigned)cur,(int)(cur*100.0)/(float)DIM_MAX);
 			d = d->next;
 		}
 		return 0;
 	}
-	Dimmer *d = get_dimmer(argv[1]);
-	if (d == 0)
-		return arg_invalid(t,argv[1]);
+	if (argc > 3)
+		return arg_invnum(t);
+	const char *arg = argc == 2 ? argv[1] : argv[2];
+	char *eptr;
+	float f = strtof(arg,&eptr);
+	if (eptr == arg) {
+		if (strcmp(arg,"max"))
+			return arg_invalid(t,arg);
+		f = DIM_MAX;
+	}
+	if (*eptr == '%') {
+		f = ((float)DIM_MAX * f) / 100;
+	} else if (*eptr != 0) {
+		if (0 == strcmp(arg,"max"))
+			f = DIM_MAX;
+		else
+			return arg_invalid(t,arg);
+	}
 	if (argc == 2) {
-		duty_t cur = d->invert ? DIM_MAX-d->duty : d->duty;
-		t.printf("%-12s %5u (%3d%%)\n",d->name,cur,(int)rintf((float)(cur*1000)/DIM_MAX/10));
+		Dimmer *d = Dimmers;
+		while (d) {
+			d->env->set(f);
+			d = d->next;
+		}
 		return 0;
 	}
-	if (!strcmp(argv[2],"max"))
-		return dimmer_set_value(argv[1],DIM_MAX);
-	char *eptr;
-	long l = strtol(argv[2],&eptr,0);
-	if (*eptr == '%')
-		l = (DIM_MAX * l) / 100;
-	else if (*eptr != 0)
-		return arg_invalid(t,argv[2]);
-	if ((l < 0) || (l > DIM_MAX)) {
-		t.printf("invalid argument - valid range: 0-%u\n",DIM_MAX);
-		return 1;
-	}
-	t.printf("set %ld\n",l);
-	return dimmer_set_value(argv[1],l);
+	return dimmer_set_value(argv[1],f);
 }
 
 
@@ -286,6 +332,7 @@ static void dimmer_on(void *p)
 static void dimmer_restore(void *p)
 {
 	Dimmer *d = (Dimmer *)p;
+	log_dbug(TAG,"%s restore %f",d->name,d->backup);
 	d->env->set(d->backup);
 }
 
@@ -407,6 +454,7 @@ int dimmer_setup()
 	action_add("all_dimmers!backup",dimmers_backup,0,"backup dimmer and fade off");
 	action_add("all_dimmers!off",dimmers_off,0,"backup dimmer and fade off");
 	action_add("all_dimmers!restore",dimmers_restore,0,"restore dimmer from backup");
+	action_add("dim!set",dim_set,0,"set dimmer(s) <d> to value <v>: arg = [<d>:]<v>");
 #endif
 #ifdef CONFIG_IDF_TARGET_ESP8266
 	if (esp_err_t e = pwm_init(Period,duties,nch,pins)) {

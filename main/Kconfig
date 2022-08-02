@@ -22,8 +22,15 @@ config APP_PARAMS
 
 config SIGNAL_PROC
 	bool "signal processing infrastructure (Buggy, ALPHA!)"
+	default false
 	help
 		infrastructure for dynamic signal definition and processing
+
+config THRESHOLDS
+	bool "support high/low schmitt-trigger thresholds on float variables"
+	default true
+	help
+		support high/low schmitt-trigger thresholds on float variables, that trigger associated events
 
 config UART_CONSOLE
 	bool "serial console to configure and operate target device"
@@ -303,6 +310,13 @@ config SGP30
 	help
 		I2C driver for SGP30 sensor (TVOC,CO2)
 
+config SI7021
+	depends on I2C
+	bool "SI7021"
+	default true
+	help
+		I2C driver for HTU21/SI7021/SI7020/SI7013 (temperature,humidity)
+
 config CCS811B
 	depends on I2C
 	bool "CCS811B"
@@ -340,9 +354,17 @@ config MCP2301X
 
 config BH1750
 	bool "bh1750"
+	depends on I2C
 	default true
 	help
 		I2C driver for BH1750 (illuminance sensor)
+
+config INA2XX
+	bool "ina219"
+	depends on I2C
+	default true
+	help
+		I2C driver for INA219 (current/voltage sensor)
 
 config HCSR04
 	bool "HC-SR04"

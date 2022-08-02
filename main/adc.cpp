@@ -249,6 +249,8 @@ int adc_setup()
 		log_info(TAG,"initialized ADC%u.%u",u,ch);
 	}
 
+	if (esp_err_t e = adc_set_data_inv(ADC_UNIT_1,true))
+		log_warn(TAG,"set non-inverting mode on ADC1: %s",esp_err_to_name(e));
 	return 0;
 }
 

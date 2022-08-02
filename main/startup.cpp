@@ -22,6 +22,9 @@
 #include <freertos/task.h>
 #include <freertos/event_groups.h>
 
+extern "C" {
+#include <esp_clk.h>
+}
 #include <esp_system.h>
 #include <esp_ota_ops.h>
 #include <esp_wifi.h>
@@ -34,6 +37,9 @@
 
 #ifdef CONFIG_IDF_TARGET_ESP8266
 #include <spi_flash.h>
+#include <driver/rtc.h>
+#elif defined CONFIG_IDF_TARGET_ESP32
+#include <soc/rtc.h>
 #endif
 
 #include <sdkconfig.h>
@@ -116,19 +122,45 @@ void settings_setup();
 
 static void system_info()
 {
+	int f = esp_clk_cpu_freq();
+	unsigned mhz;
+	switch (f) {
+	case RTC_CPU_FREQ_80M:
+		mhz = 80;
+		break;
+	case RTC_CPU_FREQ_160M:
+		mhz = 160;
+		break;
+
+#ifdef CONFIG_IDF_TARGET_ESP32
+	case RTC_CPU_FREQ_XTAL:
+		mhz = rtc_clk_xtal_freq_get();
+		break;
+	case RTC_CPU_FREQ_240M:
+		mhz = 240;
+		break;
+	case RTC_CPU_FREQ_2M:
+		mhz = 2;
+		break;
+#endif
+	default:
+		mhz = f/1000000;
+	}
 	esp_chip_info_t ci;
 	esp_chip_info(&ci);
-	log_info(TAG,"ESP%u, revision %d"
-#if IDF_VERSION >= 32
-		", %dkB %s flash"
-#endif
+	log_info(TAG,"ESP%u (rev %d) with %d core%s @ %uMHz%s%s%s%s"
 		, ci.model ? 32 : 8266
 		, ci.revision
-#if IDF_VERSION >= 32
-		, spi_flash_get_chip_size() >> 10
-		, (ci.features & CHIP_FEATURE_EMB_FLASH) ? "embedded" : "external"
-#endif
+		, ci.cores
+		, ci.cores > 1 ? "s" : ""
+		, mhz
+		, ci.features & CHIP_FEATURE_WIFI_BGN ? ", WiFi" : ""
+		, ci.features & CHIP_FEATURE_BT ?  ", BT" : ""
+		, ci.features & CHIP_FEATURE_BLE ?  ", BT/LE" : ""
+		, ci.features & CHIP_FEATURE_EMB_FLASH ?  ", flash" : ""
 		);
+	if (uint32_t spiram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM))
+		log_info(TAG,"%ukB SPI RAM",spiram>>10);
 	log_info(TAG,"%s reset",ResetReasons[(int)esp_reset_reason()]);
 
 #ifdef ESP_IF_ETH
@@ -211,13 +243,12 @@ void app_main()
 	log_info(TAG,"Copyright 2019-2022, Thomas Maier-Komor, License: GPLv3");
 	log_info(TAG,"Version %s",Version);
 	log_info(TAG,"IDF: %s",esp_get_idf_version());
+	system_info();
 
 	action_setup();
 	settings_setup();
 	uart_setup();		// init configured uarts, set diag uart
 	cyclic_setup();
-
-	system_info();
 
 	gpio_setup();
 #ifdef CONFIG_I2C

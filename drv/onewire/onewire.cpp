@@ -270,7 +270,7 @@ int OneWire::readRom()
 int OneWire::resetBus(void)
 {
 	log_dbug(TAG,"reset");
-	assert(m_pwron == true);
+	assert((m_pwr == XIO_INVALID) || (m_pwron == true));
 	ENTER_CRITICAL();
 	setPower(false);
 	xio_set_lvl(m_bus,xio_lvl_0);

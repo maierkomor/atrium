@@ -28,6 +28,8 @@
 // - no checking for invalid characters
 // - no string escape sequences
 
+#include "event.h"
+
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -138,8 +140,9 @@ class EnvNumber : public EnvElement
 	EnvNumber *toNumber() override
 	{ return this; }
 
-	void set(double v)
-	{ m_value = v; }
+	void set(double v);
+
+	int setThresholds(float lo, float hi);
 
 	void writeValue(stream &) const;
 
@@ -156,9 +159,18 @@ class EnvNumber : public EnvElement
 	const char *getFormat() const
 	{ return m_fmt; }
 
+	float getHigh() const
+	{ return m_high; }
+
+	float getLow() const
+	{ return m_low; }
+
 	protected:
 	// must be double to be conforming to JSON spec
 	double m_value;
+	float m_high = NAN, m_low = NAN;
+	event_t m_evhi = 0, m_evlo = 0;
+	int8_t m_tst = 0;
 	const char *m_fmt = "%4.1f";
 };
 
@@ -205,6 +217,7 @@ class EnvObject : public EnvElement
 	{ m_childs.push_back(e); }
 	void remove(EnvElement *e);
 	EnvElement *get(const char *) const;
+	EnvElement *getChild(const char *n) const;
 	int getOffset(const char *) const;
 	EnvElement *find(const char *) const;
 	EnvElement *getChild(unsigned i) const

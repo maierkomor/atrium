@@ -55,45 +55,48 @@ typedef enum logmod_e {
 	logmod_ht16k33        =  25,
 	logmod_http           =  26,
 	logmod_i2c            =  27,
-	logmod_inetd          =  28,
-	logmod_influx         =  29,
-	logmod_init           =  30,
-	logmod_led            =  31,
-	logmod_ledc           =  32,
-	logmod_ledstrip       =  33,
-	logmod_log            =  34,
-	logmod_lwtcp          =  35,
-	logmod_max7219        =  36,
-	logmod_mcp230xx       =  37,
-	logmod_mqtt           =  38,
-	logmod_nightsky       =  39,
-	logmod_ns             =  40,
-	logmod_ota            =  41,
-	logmod_owb            =  42,
-	logmod_pca9685        =  43,
-	logmod_pcf8574        =  44,
-	logmod_relay          =  45,
-	logmod_romfs          =  46,
-	logmod_screen         =  47,
-	logmod_sgp30          =  48,
-	logmod_shell          =  49,
-	logmod_signal         =  50,
-	logmod_sm             =  51,
-	logmod_sntp           =  52,
-	logmod_ssd1306        =  53,
-	logmod_telnet         =  54,
-	logmod_ti             =  55,
-	logmod_timefuse       =  56,
-	logmod_tlc5916        =  57,
-	logmod_tlc5947        =  58,
-	logmod_tp             =  59,
-	logmod_uart           =  60,
-	logmod_udns           =  61,
-	logmod_udpctrl        =  62,
-	logmod_wlan           =  63,
-	logmod_ws2812         =  64,
-	logmod_www            =  65,
-	logmod_xio            =  66,
+	logmod_ina219         =  28,
+	logmod_inetd          =  29,
+	logmod_influx         =  30,
+	logmod_init           =  31,
+	logmod_led            =  32,
+	logmod_ledc           =  33,
+	logmod_ledstrip       =  34,
+	logmod_log            =  35,
+	logmod_lua            =  36,
+	logmod_lwtcp          =  37,
+	logmod_max7219        =  38,
+	logmod_mcp230xx       =  39,
+	logmod_mqtt           =  40,
+	logmod_nightsky       =  41,
+	logmod_ns             =  42,
+	logmod_ota            =  43,
+	logmod_owb            =  44,
+	logmod_pca9685        =  45,
+	logmod_pcf8574        =  46,
+	logmod_relay          =  47,
+	logmod_romfs          =  48,
+	logmod_screen         =  49,
+	logmod_sgp30          =  50,
+	logmod_shell          =  51,
+	logmod_si7021         =  52,
+	logmod_signal         =  53,
+	logmod_sm             =  54,
+	logmod_sntp           =  55,
+	logmod_ssd1306        =  56,
+	logmod_telnet         =  57,
+	logmod_ti             =  58,
+	logmod_timefuse       =  59,
+	logmod_tlc5916        =  60,
+	logmod_tlc5947        =  61,
+	logmod_tp             =  62,
+	logmod_uart           =  63,
+	logmod_udns           =  64,
+	logmod_udpctrl        =  65,
+	logmod_wlan           =  66,
+	logmod_ws2812         =  67,
+	logmod_www            =  68,
+	logmod_xio            =  69,
 } logmod_t;
 
 // module defines
@@ -124,6 +127,7 @@ typedef enum logmod_e {
 #define MODULE_HT16K33         logmod_ht16k33
 #define MODULE_HTTP            logmod_http
 #define MODULE_I2C             logmod_i2c
+#define MODULE_INA219          logmod_ina219
 #define MODULE_INETD           logmod_inetd
 #define MODULE_INFLUX          logmod_influx
 #define MODULE_INIT            logmod_init
@@ -131,6 +135,7 @@ typedef enum logmod_e {
 #define MODULE_LEDC            logmod_ledc
 #define MODULE_LEDSTRIP        logmod_ledstrip
 #define MODULE_LOG             logmod_log
+#define MODULE_LUA             logmod_lua
 #define MODULE_LWTCP           logmod_lwtcp
 #define MODULE_MAX7219         logmod_max7219
 #define MODULE_MCP230XX        logmod_mcp230xx
@@ -146,6 +151,7 @@ typedef enum logmod_e {
 #define MODULE_SCREEN          logmod_screen
 #define MODULE_SGP30           logmod_sgp30
 #define MODULE_SHELL           logmod_shell
+#define MODULE_SI7021          logmod_si7021
 #define MODULE_SIGNAL          logmod_signal
 #define MODULE_SM              logmod_sm
 #define MODULE_SNTP            logmod_sntp
@@ -163,8 +169,8 @@ typedef enum logmod_e {
 #define MODULE_WS2812          logmod_ws2812
 #define MODULE_WWW             logmod_www
 #define MODULE_XIO             logmod_xio
-#define MAX_MODULE_ID           66
-#define NUM_MODULES             67
+#define MAX_MODULE_ID           69
+#define NUM_MODULES             70
 
 #ifdef USE_MODULE
 #define TAG USE_MODULE

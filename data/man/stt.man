@@ -1,0 +1,5 @@
+synopsis: stt [<variable> [<low> <high>]]
+Wtihout further arguments all shmitt-trigger thresholds are listed.
+If only a variable is given, its thresholds are printed.
+If variable and low and high value are given the threshold values 
+are updated accodingly (life and  config).

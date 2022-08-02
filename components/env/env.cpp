@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2021, Thomas Maier-Komor
+ *  Copyright (C) 2020-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -20,6 +20,7 @@
 #include "stream.h"
 
 #include <assert.h>
+#include <float.h>
 #include <math.h>
 #include <algorithm>
 
@@ -60,6 +61,44 @@ void EnvBool::writeValue(stream &o) const
 		o.write("true",4);
 	else
 		o.write("false",5);
+}
+
+
+void EnvNumber::set(double v)
+{
+	m_value = v;
+	if (m_evhi) {
+		if (m_tst < 0) {
+			if (v > m_high) {
+				event_trigger(m_evhi);
+				m_tst = 1;
+			}
+		} else if (m_tst > 0) {
+			if (v < m_low) {
+				event_trigger(m_evlo);
+				m_tst = -1;
+			}
+		} else {
+			if (v > m_high)
+				m_tst = 1;
+			else if (v < m_low)
+				m_tst = -1;
+		}
+	}
+}
+
+
+int EnvNumber::setThresholds(float l, float h)
+{
+	if ((l+FLT_EPSILON >= h) || (l == h))
+		return 1;
+	if (m_evhi == 0) {
+		m_evhi = event_register(m_name,"`high");
+		m_evlo = event_register(m_name,"`low");
+	}
+	m_low = l;
+	m_high = h;
+	return 0;
 }
 
 
@@ -163,6 +202,20 @@ EnvElement *EnvObject::get(const char *n) const
 			}
 		} else if (EnvObject *o = e->toObject()) {
 			if (EnvElement *c = o->get(n))
+				return c;
+		}
+	}
+	return 0;
+}
+
+
+EnvElement *EnvObject::getChild(const char *n) const
+{
+	for (EnvElement *e : m_childs) {
+		if (0 == strcmp(e->name(),n)) {
+			return e;
+		} else if (EnvObject *o = e->toObject()) {
+			if (EnvElement *c = o->getChild(n))
 				return c;
 		}
 	}

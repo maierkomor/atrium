@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2017-2021, Thomas Maier-Komor
+ *  Copyright (C) 2017-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -28,7 +28,6 @@ extern "C" {
 unsigned cyclic_execute();
 int cyclic_add_task(const char *name, unsigned (*loop)(void *), void * = 0, unsigned = 0);
 int cyclic_rm_task(const char *name);
-uint64_t cyclic_time();
 
 #ifdef __cplusplus
 }

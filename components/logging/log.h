@@ -187,6 +187,7 @@ void log_hex(logmod_t m, const void *d, unsigned n, const char *f, ...);
 void log_local(logmod_t m, const char *f, ...);
 void log_gen(log_level_t, logmod_t m, const char *f, ...);
 void log_direct(log_level_t ll, logmod_t m, const char *f, ...);
+void log_directv(log_level_t ll, logmod_t m, const char *f, va_list val);
 
 struct timeval;
 void log_syslog(log_level_t lvl, logmod_t m, const char *msg, size_t ml, struct timeval *);

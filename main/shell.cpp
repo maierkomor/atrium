@@ -44,6 +44,7 @@
 #include "env.h"
 #include "wifi.h"
 
+#include <float.h>
 #include <sstream>
 
 #include <esp_image_format.h>
@@ -288,13 +289,6 @@ static int event(Terminal &t, int argc, const char *args[])
 				for (const auto &c : h->callbacks)
 					t.printf("\t%s (%s)%s\n", c.action->name, c.arg ? c.arg : "", c.enabled ? "" : " [disabled]");
 			}
-			uint64_t ct = cyclic_time();
-			const char *p = "num kM";
-			while (ct > 30000) {
-				ct /= 1000;
-				++p;
-			}
-			t.printf("subtasks (%lu%cs)\n",(unsigned long)ct,*p);
 		} else {
 			return arg_invalid(t,args[1]);
 		}
@@ -1000,6 +994,8 @@ static int hwconf(Terminal &term, int argc, const char *args[])
 		HWConf.toMemory(buf,s);
 		print_hex(term,buf,s);
 		free(buf);
+	} else if (!strcmp("print",args[1])) {
+		HWConf.toASCII(term);
 	} else if (!strcmp("show",args[1])) {
 		HWConf.toASCII(term);
 	} else if (!strcmp("json",args[1])) {
@@ -1039,7 +1035,9 @@ static int hwconf(Terminal &term, int argc, const char *args[])
 		hwcfgbuf.clear();
 	} else if (!strcmp("xxdbuf",args[1])) {
 		print_hex(term,hwcfgbuf.data(),hwcfgbuf.size());
-	} 
+	} else {
+		return arg_invalid(term,args[1]);
+	}
 	return 0;
 }
 
@@ -2027,6 +2025,93 @@ done:
 }
 
 
+#ifdef CONFIG_THRESHOLDS
+static void print_thresholds(Terminal &t, EnvObject *o, int indent)
+{
+	unsigned c = 0;
+	while (EnvElement *e = o->getChild(c++)) {
+		const char *name = e->name();
+		if (0 == strcmp(name,"mqtt"))
+			continue;
+		if (EnvObject *c = e->toObject()) {
+			for (int i = 0; i < indent; ++i)
+				t << "    ";
+			t << name;
+			t << ":\n";
+			print_thresholds(t,c,indent+1);
+		} else if (EnvNumber *n = e->toNumber()) {
+			for (int i = 0; i < indent; ++i)
+				t << "    ";
+			t << name;
+			t << ": ";
+			float lo = n->getLow();
+			if (isnan(lo)) {
+				t << "<no thresholds>\n";
+			} else {
+				t << lo;
+				t << ',';
+				t << n->getHigh();
+				t << '\n';
+			}
+		}
+	}
+}
+
+
+static int thresholds(Terminal &term, int argc, const char *args[])
+{
+	if (argc == 1) {
+		print_thresholds(term,RTData,0);
+	} else if (argc == 2) {
+		if (EnvElement *e = RTData->find(args[1])) {
+			if (EnvNumber *n = e->toNumber()) {
+				term << n->name() << ": " << n->getLow() << ", " << n->getHigh() << '\n';
+				return 0;
+			}
+		}
+		return arg_invalid(term,args[1]);
+	} else if (argc == 4) {
+		char *x;
+		float lo = strtof(args[2],&x);
+		if (*x != 0)
+			return arg_invalid(term,args[2]);
+		float hi = strtof(args[3],&x);
+		if (*x != 0)
+			return arg_invalid(term,args[3]);
+		if (hi <= lo + FLT_EPSILON)
+			return 1;
+		if (EnvElement *e = RTData->find(args[1])) {
+			if (EnvNumber *n = e->toNumber()) {
+				n->setThresholds(lo,hi);
+			} else {
+				return arg_invalid(term,args[1]);
+			}
+		} else {
+			return arg_invalid(term,args[1]);
+		}
+		bool updated = false;
+		for (auto t : *Config.mutable_thresholds()) {
+			if (t.name() == args[1]) {
+				t.set_low(lo);
+				t.set_high(hi);
+				updated = true;
+				break;
+			}
+		}
+		if (!updated) {
+			ThresholdConfig *t = Config.add_thresholds();
+			t->set_name(args[1]);
+			t->set_high(hi);
+			t->set_low(lo);
+		}
+	} else {
+		return arg_invnum(term);
+	}
+	return 0;
+}
+#endif
+
+
 /*
 static int flashtest(Terminal &term, int argc, const char *args[])
 {
@@ -2147,6 +2232,7 @@ extern int mqtt(Terminal &term, int argc, const char *args[]);
 extern int nightsky(Terminal &term, int argc, const char *args[]);
 extern int prof(Terminal &term, int argc, const char *args[]);
 extern int process(Terminal &term, int argc, const char *args[]);
+extern int readelf(Terminal &term, int argc, const char *args[]);
 extern int relay(Terminal &term, int argc, const char *args[]);
 extern int shell_format(Terminal &term, int argc, const char *args[]);
 extern int sm_cmd(Terminal &term, int argc, const char *args[]);
@@ -2268,6 +2354,9 @@ ExeName ExeNames[] = {
 	{"prof",0,prof,"profiling information",0},
 #endif
 	//{"process",1,process,"define and modify processing objects",0},
+#ifdef CONFIG_ELF_LOADER
+	{"readelf",0,readelf,"read ELF information from file",0},
+#endif
 	{"reboot",1,shell_reboot,"reboot system",0},
 #ifdef CONFIG_RELAY
 	{"relay",0,relay,"relay status/operation",relay_man},
@@ -2295,6 +2384,9 @@ ExeName ExeNames[] = {
 #endif
 	{"sntp",0,sntp,"simple NTP client settings",sntp_man},
 	{"station",1,station,"WiFi station settings",station_man},
+#ifdef CONFIG_THRESHOLDS
+	{"stt",0,thresholds,"view/set schmitt-trigger thresholds",stt_man},
+#endif
 	{"su",2,su,"set user privilege level",su_man},
 	{"subtasks",0,subtasks,"statistics of cyclic subtasks",0},
 #ifdef CONFIG_TERMSERV

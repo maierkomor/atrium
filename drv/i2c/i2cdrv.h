@@ -78,7 +78,6 @@ extern "C" {
 #endif
 
 int i2c_init(uint8_t bus, uint8_t sda, uint8_t scl, unsigned freq, uint8_t xpullup);
-int i2c_read0(uint8_t port, uint8_t addr, uint8_t *d, uint8_t n);
 int i2c_read(uint8_t bus, uint8_t addr, uint8_t *d, uint8_t n);
 int i2c_read2(uint8_t port, uint8_t addr, uint8_t reg0, uint8_t reg1, uint8_t *d, uint8_t n);
 int i2c_write0(uint8_t port, uint8_t addr);

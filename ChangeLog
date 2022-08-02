@@ -1,3 +1,12 @@
+R2207:
+======
+- added driver for INA219 current sensor
+- added support for SI7021/HTU21 temperature/humidity sensor
+- dimmer enhancements
+- introduce threshold events for float variables
+- fix 1-wire regression: assertion fails when power pin is not set
+- fix transient invalid report of total time in subtasks command
+
 R2206:
 ======
 - new runtime-define state-machine concept for binding event-action

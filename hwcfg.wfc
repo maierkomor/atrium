@@ -224,6 +224,7 @@ enum i2cdrv_t {
 	i2cdrv_pca9685_xclk_npn = 8;
 	i2cdrv_pca9685_xclk_pnp = 9;
 	i2cdrv_ht16k33 = 10;
+	i2cdrv_ina219 = 11;
 }
 
 

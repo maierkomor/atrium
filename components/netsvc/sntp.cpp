@@ -226,7 +226,9 @@ int sntp_set_server(const char *server)
 			SPCB = 0;
 			LWIP_UNLOCK();
 		}
+		return 0;
 	}
+	log_info(TAG,"sntp %s",server);
 	err_t e = query_host(server,0,sntp_connect,0);
 	if (e < 0) {
 		log_warn(TAG,"query host: %d",e);

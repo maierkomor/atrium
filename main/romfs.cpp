@@ -18,8 +18,6 @@
 
 #include <sdkconfig.h>
 
-// CONFIG_ENABLE_FLASH_MMAP is unsupported on ESP8266 due to HW limitations
-
 #include "romfs.h"
 
 #include <assert.h>
@@ -73,7 +71,7 @@ using namespace std;
 #define TAG MODULE_ROMFS
 static RomEntry *Entries = 0;
 static unsigned NumEntries = 0;
-uint32_t RomfsBaseAddr = 0, RomfsSpace = 0;
+uint32_t RomfsBaseAddr = 0, RomfsSpace = 0, RomfsBaseInstr;
 
 
 uint32_t romfs_get_base(const char *pn)
@@ -126,7 +124,7 @@ const char *romfs_name(int i)
 }
 
 
-#ifdef CONFIG_ENABLE_FLASH_MMAP
+#ifdef CONFIG_IDF_TARGET_ESP32
 void *romfs_mmap(int i)
 {
 	if ((i < 0) || (i >= NumEntries))
@@ -163,7 +161,7 @@ int romfs_read_at(int i, char *buf, size_t n, size_t o)
 	uint32_t off = Entries[i].offset;
 	log_dbug(TAG,"read %s at %u",Entries[i].name,off);
 	assert(((uint32_t)buf & 3) == 0);
-#ifdef CONFIG_ENABLE_FLASH_MMAP
+#ifdef CONFIG_IDF_TARGET_ESP32
 	memcpy(buf,(void*)(RomfsBaseAddr+off+o),n);
 #else
 	if (auto e = spi_flash_read(RomfsBaseAddr+off+o,buf,n)) {
@@ -205,10 +203,33 @@ void romfs_setup()
 		uint8_t magic[8];
 		spi_flash_read(p->address,magic,sizeof(magic));
 		log_hex(TAG,magic,sizeof(magic),"partition %s",p->label);
-		if (0 == memcmp(magic,ROMFS_MAGIC,sizeof(magic)))
+		if (0 == memcmp(magic,ROMFS_MAGIC,sizeof(magic))) {
+			log_info(TAG,"%s has ROMFS",p->label);
 			break;
+		}
+		log_dbug(TAG,"%s has no ROMFS",p->label);
 		pi = esp_partition_next(pi);
+		p = 0;
 	}
+#if 0 // maybe needed in the future
+	if (p == 0) {
+		auto pi = esp_partition_find(ESP_PARTITION_TYPE_APP,ESP_PARTITION_SUBTYPE_ANY,0);
+		log_dbug(TAG,"looking for " ROMFS_MAGIC);
+		while (pi != 0) {
+			p = esp_partition_get(pi);
+			uint8_t magic[8];
+			spi_flash_read(p->address,magic,sizeof(magic));
+			log_hex(TAG,magic,sizeof(magic),"partition %s",p->label);
+			if (0 == memcmp(magic,ROMFS_MAGIC,sizeof(magic))) {
+				log_info(TAG,"%s has ROMFS",p->label);
+				break;
+			}
+			log_dbug(TAG,"%s has no ROMFS",p->label);
+			pi = esp_partition_next(pi);
+			p = 0;
+		}
+	}
+#endif
 	if (p == 0) {
 		log_dbug(TAG,"no romfs found");
 		return;
@@ -217,13 +238,17 @@ void romfs_setup()
 
 	RomfsBaseAddr = p->address;
 	RomfsSpace = p->size;
-#ifdef CONFIG_ENABLE_FLASH_MMAP
+#ifdef CONFIG_IDF_TARGET_ESP32
 	spi_flash_mmap_handle_t handle;
 	if (esp_err_t e = spi_flash_mmap(p->address,p->size,SPI_FLASH_MMAP_DATA,(const void**)&RomfsBaseAddr,&handle)) {
 		log_error(TAG,"mmap failed: %s",esp_err_to_name(e));
 		NumEntries = 0;
 		return;
 	}
+	if (esp_err_t e = spi_flash_mmap(p->address,p->size,SPI_FLASH_MMAP_INST,(const void**)&RomfsBaseInstr,&handle))
+		log_warn(TAG,"mmap instr failed: %s",esp_err_to_name(e));
+	else
+		log_info(TAG,"romfs execution mmaped to %p",RomfsBaseInstr);
 	Entries = (RomEntry*)(RomfsBaseAddr+8);
 	RomEntry *e = Entries;
 	while ((e->size != 0) && (e->offset != 0))

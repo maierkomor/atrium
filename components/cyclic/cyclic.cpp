@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2017-2021, Thomas Maier-Komor
+ *  Copyright (C) 2017-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -82,7 +82,7 @@ struct SubTaskCmp
 
 static SubTask *SubTasks;
 static SemaphoreHandle_t Mtx = 0;
-static uint64_t TimeSpent = 0;
+static volatile uint64_t TimeSpent = 0;
 
 
 int cyclic_add_task(const char *name, unsigned (*loop)(void*), void *arg, unsigned initdelay)
@@ -134,7 +134,7 @@ unsigned cyclic_execute()
 {
 	MLock lock(Mtx,__FUNCTION__);
 	int64_t start = esp_timer_get_time();
-	TimeSpent -= start;
+	int64_t begin = start;
 	unsigned delay = 100;
 	SubTask *t = SubTasks;
 	while (t) {
@@ -160,7 +160,7 @@ unsigned cyclic_execute()
 		t = t->next;
 	}
 	int64_t end = esp_timer_get_time();
-	TimeSpent += end;
+	TimeSpent += end-begin;
 	return delay;
 }
 
@@ -180,7 +180,7 @@ void cyclic_setup()
 {
 	Mtx = xSemaphoreCreateMutex();
 #ifdef CONFIG_IDF_TARGET_ESP32
-	BaseType_t r = xTaskCreatePinnedToCore(cyclic_task, "cyclic", 4096, (void*)0, 20, NULL, 1);
+	BaseType_t r = xTaskCreatePinnedToCore(cyclic_task, "cyclic", 8192, (void*)0, 20, NULL, 1);
 	if (r != pdPASS)
 		log_error(TAG,"create task: %d",r);
 #else
@@ -189,26 +189,35 @@ void cyclic_setup()
 }
 
 
-uint64_t cyclic_time()
-{
-	uint64_t r;
-//	would require recursive lock - should be ok like this, too
-//	if (pdFALSE == xSemaphoreTake(Mtx,MUTEX_ABORT_TIMEOUT))
-//		abort_on_mutex(Mtx,__FUNCTION__);
-	r = TimeSpent;
-//	xSemaphoreGive(Mtx);
-	return r;
-}
-
-
 int subtasks(Terminal &term, int argc, const char *args[])
 {
-	term.printf("%8s  %8s  %10s  %s\n","calls","peak","total","name");
+	term.printf("%8s  %9s  %7s  %s\n","calls","peak","total","name");
 	SubTask *s = SubTasks;
+	const char *p = "num kM";
 	while (s) {
-		term.printf("%8u  %8u  %10lu  %s\n",s->calls,s->peaktime,s->cputime,s->name);
+		auto pt = s->peaktime;
+		auto ct = s->cputime;
+		uint8_t pd = 0, cd = 0;
+		while (ct > 30000) {
+			ct /= 1000;
+			++cd;
+		}
+		while (pt > 30000) {
+			pt /= 1000;
+			++pd;
+		}
+		term.printf("%8u  %8u%c  %6lu%c  %s\n",s->calls,pt,p[pd],ct,p[cd],s->name);
 		s = s->next;
 	}
+	MLock lock(Mtx,__FUNCTION__);
+	auto tt = TimeSpent;
+	lock.unlock();
+	uint8_t d = 0;
+	while (tt > 30000) {
+		tt /= 1000;
+		++d;
+	}
+	term.printf("total %u%cs\n",(unsigned)tt,p[d]);
 	return 0;
 }
 

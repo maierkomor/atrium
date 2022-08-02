@@ -396,7 +396,6 @@ int cfg_set_hostname(const char *hn)
 {
 	if (hn == 0)
 		return 1;
-	log_info(TAG,"hostname %s",hn);
 	EnvString *n = static_cast<EnvString*>(RTData->get("node"));
 	if (n == 0) {
 		n = RTData->add("node",hn);
@@ -532,7 +531,7 @@ static void initNodename()
 	if (ESP_OK != e)
 		e = esp_wifi_get_mac(WIFI_IF_AP,mac);
 	if (ESP_OK != e) {
-		log_warn(TAG,"no MAC address");
+		log_warn(TAG,"no MAC address: %s",esp_err_to_name(e));
 		uint32_t r = esp_random();
 		mac[0] = r & 0xff;
 		mac[1] = (r >> 8) & 0xff;
@@ -600,18 +599,24 @@ int cfg_store_hwcfg()
 {
 	HWConf.set_magic(0xAE54EDCB);
 	size_t s = HWConf.calcSize();
-	uint8_t buf[s];
+	uint8_t *buf = (uint8_t *) malloc(s);
+	assert(buf);
 	HWConf.toMemory(buf,s);
-	return writeNVM("hw.cfg",buf,s);
+	int r = writeNVM("hw.cfg",buf,s);
+	free(buf);
+	return r;
 }
 
 
 int cfg_store_nodecfg()
 {
 	size_t s = Config.calcSize();
-	uint8_t buf[s];
+	uint8_t *buf = (uint8_t *) malloc(s);
+	assert(buf);
 	Config.toMemory(buf,s);
-	return writeNVM("node.cfg",buf,s);
+	int r = writeNVM("node.cfg",buf,s);
+	free(buf);
+	return r;
 }
 
 
@@ -656,7 +661,7 @@ int cfg_read_nodecfg()
 		initNodename();
 	const auto &nn = Config.nodename();
 	RTData->add("node",nn.c_str());
-	sethostname(nn.data(),nn.size());
+	cfg_set_hostname(nn.c_str());
 #ifdef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 	for (const auto &m : Config.debugs())
 		log_module_enable(m.c_str());
@@ -764,12 +769,12 @@ void initDns()
 
 static void sntp_start()
 {
-	if (Config.has_sntp_server())
-		sntp_set_server(Config.sntp_server().c_str());
 	sntp_bc_init();
 #ifdef CONFIG_LWIP_IGMP
 	sntp_mc_init();
 #endif
+	if (Config.has_sntp_server())
+		sntp_set_server(Config.sntp_server().c_str());
 }
 
 
@@ -893,6 +898,25 @@ void cfg_activate_actions()
 void cfg_activate_triggers()
 {
 	PROFILE_FUNCTION();
+#ifdef CONFIG_THRESHOLDS
+	for (const auto &t : Config.thresholds()) {
+		const char *name = t.name().c_str();
+		if (!t.has_low() || !t.has_high()) {
+			log_warn(TAG,"both thresholds for %s need to be set",name);
+		} else if (EnvElement *e = RTData->getChild(name)) {
+			if (EnvNumber *n = e->toNumber()) {
+				if (n->setThresholds(t.low(),t.high()))
+					log_warn(TAG,"invalid thresholds [%f,%f]",t.low(),t.high());
+				else
+					log_info(TAG,"thresholds for %s [%f,%f]",name,t.low(),t.high());
+			} else {
+				log_warn(TAG,"cannot set thresholds on %s: not a number",name);
+			}
+		} else {
+			log_warn(TAG,"cannot find %s to set thresholds",name);
+		}
+	}
+#endif
 	for (const auto &t : Config.triggers()) {
 		const char *en = t.event().c_str();
 		event_t e = event_id(en);

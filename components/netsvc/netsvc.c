@@ -314,9 +314,11 @@ int sethostname(const char *h, size_t l)
 	}
 	if ((l < 3) || (l > 63))
 		return -EINVAL;
+	if ((Hostname != 0) && (0 == memcmp(h,Hostname,l)) && (Hostname[l] == '.'))
+		return 0;
 	const char *x = h, *e = h + l;
 	// no hyphen at beginning or end of hostname
-	if ((*x == '-') || (h[l-1] == '-'))
+	if ((*x == '-') || (e[-1] == '-'))
 		return -EINVAL;
 	char c;
 	do {

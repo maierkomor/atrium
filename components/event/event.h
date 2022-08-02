@@ -20,11 +20,14 @@
 #define EVENTS_H
 
 #include <stdint.h>
-#include <vector>
 
 typedef uint16_t event_t;
+typedef uint32_t trigger_t;
+
 
 #ifdef __cplusplus
+#include <vector>
+
 class Action;
 
 struct Callback
@@ -54,20 +57,20 @@ struct EventHandler
 };
 
 
-typedef uint32_t trigger_t;
-
 trigger_t event_callback(event_t e, Action *a);
 trigger_t event_callback_arg(event_t e, Action *a, char *arg);
+int event_cb_set_en(event_t e, Action *a, bool en);
+int event_cba_set_en(event_t e, Action *a, const char *, bool en);
 int event_detach(event_t e, Action *a);
 event_t event_register(const char *cat, const char *type = 0);
 const EventHandler *event_handler(event_t);
 extern "C" {
+#else
+typedef unsigned char bool;
 #endif // __cplusplus
 
 trigger_t event_callback(const char *e, const char *a);
 trigger_t event_callback_arg(const char *e, const char *a, char *arg);
-int event_cb_set_en(event_t e, Action *a, bool en);
-int event_cba_set_en(event_t e, Action *a, const char *, bool en);
 int event_detach(const char *e, const char *a);
 int event_start(void);
 void event_init(void);
