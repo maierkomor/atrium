@@ -626,9 +626,7 @@ static err_t handle_connect(void *arg, struct tcp_pcb *pcb, err_t x)
 
 static int mqtt_pub_int(const char *t, const char *v, int len, int retain, int qos, bool needlock)
 {
-	if (Client == 0)
-		return 1;
-	if (Client->state != running)
+	if ((Client == 0) || (Client->state != running))
 		return 1;
 	if ((len == 0) && (v != 0))
 		len = strlen(v);
@@ -797,7 +795,6 @@ static void mqtt_pub_rtdata(void *)
 	}
 	mqtt_pub_uptime();
 	rtd_lock();
-	rtd_update();
 	for (EnvElement *e : RTData->getChilds()) {
 		const char *n = e->name();
 		if (!strcmp(n,"node") || !strcmp(n,"version") || !strcmp(n,"reset_reason") || !strcmp(n,"mqtt")) {
@@ -1006,10 +1003,10 @@ static void update_signal(const char *t, const void *d, size_t s)
 }
 
 
-int mqtt(Terminal &term, int argc, const char *args[])
+const char *mqtt(Terminal &term, int argc, const char *args[])
 {
 	if (argc > 3)
-		return arg_invnum(term);
+		return "Invalid number of arguments.";
 	MQTT *m = Config.mutable_mqtt();
 	if ((argc == 1) || (!strcmp(args[1],"status"))) {
 		if (Config.has_mqtt()) {
@@ -1023,7 +1020,7 @@ int mqtt(Terminal &term, int argc, const char *args[])
 				, m->enable() ? "en" : "dis"
 				, States[Client ? Client->state : 0]);
 		} else {
-			term.printf("not configured\n");
+			return "Not configured.";
 		}
 		return 0;
 	}
@@ -1031,21 +1028,21 @@ int mqtt(Terminal &term, int argc, const char *args[])
 		if (argc == 3)
 			m->set_uri(args[2]);
 		else
-			return arg_invalid(term,args[1]);
+			return "Invalid argument #1.";
 	} else if (!strcmp(args[1],"user")) {
 		if (argc == 3)
 			m->set_username(args[2]);
 		else if (argc == 2)
 			m->clear_username();
 		else
-			return arg_invalid(term,args[1]);
+			return "Invalid argument #1.";
 	} else if (!strcmp(args[1],"pass")) {
 		if (argc == 3)
 			m->set_password(args[2]);
 		else if (argc == 2)
 			m->clear_password();
 		else
-			return arg_invalid(term,args[1]);
+			return "Invalid argument #1.";
 	} else if (!strcmp(args[1],"enable")) {
 		m->set_enable(true);
 	} else if (!strcmp(args[1],"disable")) {
@@ -1059,22 +1056,21 @@ int mqtt(Terminal &term, int argc, const char *args[])
 		mqtt_stop();
 	} else if (!strcmp(args[1],"sub")) {
 		if (Client == 0) {
-			term.println("not initialized");
-			return 1;
+			return "Not initialized.";
 		}
 		if (argc == 2) {
 			for (const auto &s : Client->subscriptions) 
 				term.printf("%s: %s\n",s.first.c_str(),Client->values[s.first]->get());
 		} else {
 			if (Client->subscriptions.find(args[2]) != Client->subscriptions.end()) {
-				term.println("already subscribed");
-				return 1;
+				return "Already subscribed.";
 			}
 			m->add_subscribtions(args[2]);
-			return Client->subscribe(args[2],update_signal);
+			Client->subscribe(args[2],update_signal);
+			return 0;
 		}
 	} else {
-		return arg_invalid(term,args[1]);
+		return "Invalid argument #1.";
 	}
 	return 0;
 }

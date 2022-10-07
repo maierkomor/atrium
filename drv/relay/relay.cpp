@@ -18,8 +18,10 @@
 
 
 #include "actions.h"
+#include "env.h"
 #include "event.h"
 #include "log.h"
+#include "nvm.h"
 #include "relay.h"
 
 #include <freertos/semphr.h>
@@ -68,13 +70,20 @@ Relay::Relay(const char *name, xio_t gpio, uint32_t minitv, bool onlvl)
 , m_onlvl(onlvl)
 {
 	m_tmr = xTimerCreate(name,pdMS_TO_TICKS(m_minitv),false,(void*)this,timerCallback);
-	if (char *an = concat(name,"!on"))
-		action_add(an,relay_turn_on,this,"turn on");
-	if (char *an = concat(name,"!off"))
-		action_add(an,relay_turn_off,this,"turn off");
-	if (char *an = concat(name,"!toggle"))
-		action_add(an,relay_toggle,this,"toggle relay");
+	action_add(concat(name,"!on"),relay_turn_on,this,"turn on");
+	action_add(concat(name,"!off"),relay_turn_off,this,"turn off");
+	action_add(concat(name,"!toggle"),relay_toggle,this,"toggle relay");
 	Relays = this;
+}
+
+
+void Relay::attach(class EnvObject *root)
+{
+	EnvObject *o = root->add(m_name);
+	m_envon = o->add("on",0.0);
+	m_envst = o->add("state","init");
+	m_envlon = o->add("laston","");
+	m_envloff = o->add("lastoff","");
 }
 
 
@@ -85,8 +94,10 @@ Relay *Relay::create(const char *name, xio_t gpio, uint32_t minitv, bool onlvl)
 	xSemaphoreTake(Mtx,portMAX_DELAY);
 	xio_cfg_t cfg = XIOCFG_INIT;
 	cfg.cfg_io = xio_cfg_io_out;
-	if (xio_config(gpio,cfg))
+	if (0 > xio_config(gpio,cfg)) {
+		log_warn(TAG,"config %s at %u failed",name,gpio);
 		return 0;
+	}
 	Relays = new Relay(name,gpio,minitv,onlvl);
 	xSemaphoreGive(Mtx);
 	return Relays;
@@ -148,6 +159,7 @@ void Relay::set(bool o)
 }
 
 
+const char *localtimestr(char *s);
 void Relay::sync()
 {
 	// assumption: mutex is locked
@@ -158,8 +170,21 @@ void Relay::sync()
 			// state=on, onlvl=low, !(s^o) = 0
 			// state=off, onlvl=low, !(s^o) = 1
 		xio_set_lvl(m_gpio,(m_state^m_onlvl)?xio_lvl_0:xio_lvl_1);
-		m_cb(this);
+		if (m_persistent)
+			nvm_store_u8(m_name,m_state);
+		char ltime[40];
+		localtimestr(ltime);
+		if (m_state) {
+			m_envst->set("on");
+			m_envon->set(1);
+			m_envlon->set(ltime);
+		} else {
+			m_envst->set("off");
+			m_envon->set(-1);
+			m_envloff->set(ltime);
+		}
 		m_tlt = esp_timer_get_time() / 1000;
+		m_cb(this);
 		event_trigger(m_state ? m_onev : m_offev);
 		event_trigger(m_changedev);
 	}

@@ -24,11 +24,11 @@
 #ifdef __cplusplus
 class Terminal;
 
-int perform_ota(Terminal &t, char *source, bool changeboot);
-int update_romfs(Terminal &t, char *source);
-int update_part(Terminal &t, char *source, const char *dest);
-int http_download(Terminal &t, char *addr, const char *fn);
-int boot(Terminal &t, int argc, const char *args[]);
+const char *perform_ota(Terminal &t, char *source, bool changeboot);
+const char *update_romfs(Terminal &t, char *source);
+const char *update_part(Terminal &t, char *source, const char *dest);
+const char *http_download(Terminal &t, char *addr, const char *fn);
+const char *boot(Terminal &t, int argc, const char *args[]);
 #endif
 
 #endif

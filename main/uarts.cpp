@@ -204,6 +204,12 @@ void uart_setup()
 			log_error(TAG,"uart%d driver: %s",port,esp_err_to_name(e));
 	}
 #endif
+	if (HWConf.system().has_diag_uart()) {
+		uint8_t diag = HWConf.system().diag_uart();
+		log_set_uart(diag);
+		log_info(TAG,"diag on uart %u",diag);
+	}
+#ifdef CONFIG_TERMSERV
 	uint8_t rx_used = 0, tx_used = 0;
 	int crx = HWConf.system().console_rx();
 	int ctx = HWConf.system().console_tx();
@@ -211,12 +217,6 @@ void uart_setup()
 		rx_used = 1<<crx;
 	if (ctx != -1)
 		tx_used = 1<<ctx;
-	if (HWConf.system().has_diag_uart()) {
-		uint8_t diag = HWConf.system().diag_uart();
-		log_set_uart(diag);
-		log_info(TAG,"diag on uart %u",diag);
-	}
-#ifdef CONFIG_TERMSERV
 	for (auto &c : Config.terminal()) {
 		int8_t rx = c.uart_rx();
 		int8_t tx = c.uart_tx();
@@ -301,10 +301,10 @@ static void handle_input(con_st_t &state, char c, uart_port_t tx)
 }
 
 
-int uart_termcon(Terminal &term, int argc, const char *args[])
+const char *uart_termcon(Terminal &term, int argc, const char *args[])
 {
 	if (argc > 2)
-		return arg_invnum(term);
+		return "Invalid number of arguments.";
 	if (0 == strcmp("-l",args[1])) {
 		Term *t = Terminals;
 		while (t) {
@@ -319,7 +319,7 @@ int uart_termcon(Terminal &term, int argc, const char *args[])
 			int con = args[1][0] - '0';
 			while (con) {
 				if (t == 0)
-					return arg_invalid(term,args[1]);
+					return "Invalid argument #1.";
 				t = t->next;
 				--con;
 			}
@@ -329,12 +329,10 @@ int uart_termcon(Terminal &term, int argc, const char *args[])
 		}
 	}
 	if (t == 0) {
-		term.println("no such terminal");
-		return 1;
+		return "No such terminal.";
 	}
 	if (t->connected) {
-		term.println("already connected");
-		return 1;
+		return "Already connected.";
 	}
 	t->connected = true;
 	uart_port_t rx = (uart_port_t) t->rx;
@@ -345,26 +343,26 @@ int uart_termcon(Terminal &term, int argc, const char *args[])
 	uint8_t *buf = (uint8_t *) malloc(CON_BUF_SIZE);
 	if (buf == 0) {
 		t->connected = false;
-		return err_oom(term);
+		return "Out of memory.";
 	}
 	bool crnl = term.get_crnl();
 	term.set_crnl(false);
-	int r = 0;
+	const char *r = 0;
 	while (1) {
 		size_t a = 0;
 		if (rx >= 0) {
 			if (esp_err_t e = uart_get_buffered_data_len(rx,&a)) {
 				term.printf("uart error: %s\n",esp_err_to_name(e));
-				r = 1;
+				r = "";
 				break;
 			}
 			log_dbug(TAG,"recv %u",a);
 			if (a > 0) {
 				//log_dbug(TAG,"%u bytes av",a);
-				int r = uart_read_bytes(rx, buf, a < CON_BUF_SIZE ? a : CON_BUF_SIZE, 0);
-				if (r > 0) {
+				int n = uart_read_bytes(rx, buf, a < CON_BUF_SIZE ? a : CON_BUF_SIZE, 0);
+				if (n > 0) {
 					//log_dbug(TAG,"%u bytes wr",a);
-					term.write((const char*)buf,r);
+					term.write((const char*)buf,n);
 				}
 			}
 		}
@@ -375,7 +373,7 @@ int uart_termcon(Terminal &term, int argc, const char *args[])
 			if (state == con_fin)
 				break;
 		} else if ((i == -1) && term.error()) {
-			r = 1;
+			r = "Terminal error.";
 			const char *e = term.error();
 			log_info(TAG,"read error: %s", e ? e : "<null>");
 			break;

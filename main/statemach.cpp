@@ -265,7 +265,7 @@ void StateMachine::switch_state(const char *nst)
 }
 
 
-int sm_cmd(Terminal &term, int argc, const char *args[])
+const char *sm_cmd(Terminal &term, int argc, const char *args[])
 {
 	if (argc == 1) {
 		StateMachine *m = StateMachine::first();
@@ -282,43 +282,43 @@ int sm_cmd(Terminal &term, int argc, const char *args[])
 	}
 	if (0 == strcmp(args[1],"add")) {
 		if (0 == term.getPrivLevel())
-			return arg_priv(term);
+			return "Access denied.";
 		if (argc == 2)
-			return arg_invnum(term);
+			return "Invalid number of arguments.";
 		StateMachine *m = StateMachine::get(args[2]);
 		if (argc == 3) {
 			if (m || strchr(args[2],':'))
-				return arg_invalid(term,args[2]);
+				return "Invalid argument #2.";
 			new StateMachine(args[2]);
 			Config.add_statemachs()->set_name(args[2]);
 		} else if (argc == 4) {
 			if ((m == 0) || (m->getState(args[3])))
-				return arg_invalid(term,args[2]);
+				return "Invalid argument #2.";
 			m->addState(args[3]);
 		} else {
-			return arg_invalid(term,args[2]);
+			return "Invalid argument #2.";
 		}
 	} else if (0 == strcmp(args[1],"on")) {
 		if (0 == term.getPrivLevel())
-			return arg_priv(term);
+			return "Access denied.";
 		if ((argc < 5) || (argc > 6))
-			return arg_invnum(term);
+			return "Invalid number of arguments.";
 		char *c = strchr(args[2],':');
 		if (c == 0)
-			return arg_invalid(term,args[2]);
+			return "Invalid argument #2.";
 		*c = 0;
 		StateMachine *m = StateMachine::get(args[2]);
 		if (m == 0)
-			return arg_invalid(term,args[2]);
+			return "Invalid argument #2.";
 		State *s = m->getState(c+1);
 		if (s == 0)
-			return arg_invalid(term,c+1);
+			return "Unknown state.";
 		event_t e = event_id(args[3]);
 		if (e == 0)
-			return arg_invalid(term,args[3]);
+			return "Invalid argument #3.";
 		Action *a = action_get(args[4]);
 		if (a == 0)
-			return arg_invalid(term,args[4]);
+			return "Invalid argument #4.";
 		char arg[strlen(args[4]) + argc == 5 ? strlen(args[5]) : 0 + 2];
 		trigger_t t;
 		if (argc == 5)
@@ -350,10 +350,9 @@ int sm_cmd(Terminal &term, int argc, const char *args[])
 				return 0;
 			}
 		}
-		term.println("config update failed");
-		return 1;
+		return "Config update failed.";
 	} else {
-		return arg_invalid(term,args[1]);
+		return "Invalid argument #1.";
 	}
 	return 0;
 }

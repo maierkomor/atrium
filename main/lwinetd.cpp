@@ -29,7 +29,7 @@
 #include <assert.h>
 #include <string.h>
 
-int inetadm(Terminal &term, int argc, const char *args[])
+const char *inetadm(Terminal &term, int argc, const char *args[])
 {
 	LwTcpListener *l = LwTcpListener::getFirst();
 	if (argc == 2) {
@@ -42,10 +42,10 @@ int inetadm(Terminal &term, int argc, const char *args[])
 			}
 			return 0;
 		}
-		return arg_invalid(term,args[1]);;
+		return "Invalid argument #1.";;
 	}
 	if (argc != 3)
-		return arg_invnum(term);
+		return "Invalid number of arguments.";
 	long p = strtol(args[2],0,0);
 	while (l) {
 		if ((l->getPort() == p) || (!strcmp(l->getName(),args[2])))
@@ -53,12 +53,11 @@ int inetadm(Terminal &term, int argc, const char *args[])
 		 l = l->getNext();
 	}
 	if (l == 0)
-		return arg_invalid(term,args[2]);;
+		return "Invalid argument #2.";;
 	bool e = l->isEnabled();
 	if (!strcmp(args[1],"-e")) {
 		if (e) {
-			term.printf("already enabled\n");
-			return 1;
+			return "Already enabled.";
 		}
 		l->enable(true);
 		term.printf("enabled service\n");
@@ -66,14 +65,13 @@ int inetadm(Terminal &term, int argc, const char *args[])
 	}
 	if (!strcmp(args[1],"-d")) {
 		if (!e) {
-			term.printf("already disabled\n");
-			return 1;
+			return "Already disabled.";
 		}
 		l->enable(false);
-		term.printf("disabled service\n");
+		term.println("disabled service");
 		return 0;
 	}
-	return arg_invalid(term,args[1]);;
+	return "Invalid argument #1.";;
 }
 
 #endif

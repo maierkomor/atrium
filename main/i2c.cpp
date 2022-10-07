@@ -27,6 +27,7 @@
 #include "ina2xx.h"
 #include "pca9685.h"
 #include "pcf8574.h"
+#include "si7021.h"
 #include "log.h"
 #include "terminal.h"
 #include "env.h"
@@ -90,6 +91,11 @@ static inline void i2c_scan_device(uint8_t bus, uint8_t addr, i2cdrv_t drv)
 		INA219::create(bus,addr);
 		break;
 #endif
+#ifdef CONFIG_SI7021
+	case i2cdrv_si7021:
+		SI7021::create(bus,addr);
+		break;
+#endif
 	default:
 		log_warn(TAG,"request to look for unknown i2c device %d at address %u,0x%x",drv,bus,addr);
 	}
@@ -131,7 +137,7 @@ int i2c_setup(void)
 }
 
 
-int i2c(Terminal &term, int argc, const char *args[])
+const char *i2c(Terminal &term, int argc, const char *args[])
 {
 	I2CDevice *s = I2CDevice::getFirst();
 	if (argc == 1) {
@@ -145,10 +151,10 @@ int i2c(Terminal &term, int argc, const char *args[])
 #ifdef CONFIG_I2C_XCMD
 	while (s) {
 		if (0 == strcmp(s->getName(),args[1]))
-			return s->exeCmd(term,argc-2,args+2);
+			return s->exeCmd(term,argc-2,args+2) ? "Failed." : 0;
 		s = s->getNext();
 	}
 #endif
-	return arg_invalid(term,args[1]);;
+	return "Invalid argument #1.";;
 }
 #endif

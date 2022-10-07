@@ -1,0 +1,3 @@
+synopsis: mem [-c|-d]
+With -c a heap check is performed. (esp32 only)
+With -d the heap structures are dumped. (esp32 only, crashes on WDT)

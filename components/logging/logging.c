@@ -104,6 +104,7 @@ void con_print(const char *str)
 			abort_on_mutex(UartLock,__FUNCTION__);
 		uart_write_bytes(LogUart,str,s);
 		uart_write_bytes(LogUart,"\r\n",2);
+//		uart_wait_tx_done((uart_port_t)LogUart,portMAX_DELAY);
 		xSemaphoreGive(UartLock);
 	}
 #endif

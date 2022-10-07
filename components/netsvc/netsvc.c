@@ -270,6 +270,7 @@ const char *strneterr(int socket)
 
 int setdomainname(const char *dn, size_t l)
 {
+	assert(Hostname);
 	if (l == 0) {
 		l = strlen(dn);
 		if (l == 0)
@@ -297,8 +298,7 @@ int setdomainname(const char *dn, size_t l)
 	memcpy(nh+HostnameLen+1,dn,l+1);
 	Domainname = nh+HostnameLen+1;
 	DomainnameLen = l;
-	if (Hostname)
-		free(Hostname);
+	free(Hostname);
 	Hostname = nh;
 	log_info(TAG,"domainname %s",Domainname);
 	return 0;

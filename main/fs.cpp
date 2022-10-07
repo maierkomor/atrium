@@ -22,6 +22,7 @@
 #include "globals.h"
 #include "hwcfg.h"
 #include "log.h"
+#include "nvm.h"
 #include "terminal.h"
 #include "settings.h"
 #include "swcfg.h"
@@ -64,11 +65,11 @@ static void init_spiffs()
 }
 
 
-static int shell_format_spiffs(Terminal &term, const char *arg)
+static const char *shell_format_spiffs(Terminal &term, const char *arg)
 {
 	if (esp_err_t r = esp_spiffs_format(arg)) {
 		term.println(esp_err_to_name(r));
-		return 1;
+		return "Failed.";
 	}
 	return 0;
 }
@@ -137,7 +138,7 @@ static void init_hwconf()
 		return;
 	}
 	romfs_read_at(fd,buf,s,0);
-	if(0 == writeNVM("hw.cfg",(uint8_t*)buf,s))
+	if(0 == nvm_store_blob("hw.cfg",(uint8_t*)buf,s))
 		log_info(TAG,"wrote hw.cfg to NVM");
 	free(buf);
 }
@@ -153,31 +154,31 @@ static void init_romfs()
 
 
 #if defined CONFIG_FATFS || defined CONFIG_SPIFFS
-int shell_format(Terminal &term, int argc, const char *args[])
+const char *shell_format(Terminal &term, int argc, const char *args[])
 {
 #if defined CONFIG_FATFS && defined CONFIG_SPIFFS
 	if (argc != 3)
-		return arg_missing(term);
+		return "Missing argument.";
 	if ((argc == 3) && (!strcmp("spiffs",args[2]))) {
 #if defined CONFIG_SPIFFS
-		return shell_format_spiffs(term,args[1]);
+		return shell_format_spiffs(term,args[1]) ? "Failed." : 0;
 #endif
 	} else if ((argc == 3) && (!strcmp("fatfs",args[2]))) {
 #if defined CONFIG_FATFS
-		return shell_format_fatfs(term,args[1]);
+		return shell_format_fatfs(term,args[1]) ? "Failed." : 0;
 #endif
 	}
 #else
 	if (argc != 2)
-		return arg_missing(term);
+		return "Missing argument.";
 #if defined CONFIG_SPIFFS
-	return shell_format_spiffs(term,args[1]);
+	return shell_format_spiffs(term,args[1]) ? "Failed." : 0;
 #endif
 #if defined CONFIG_FATFS
-	return shell_format_fatfs(term,args[1]);
+	return shell_format_fatfs(term,args[1]) ? "Failed." : 0;
 #endif
 #endif
-	return 1;
+	return "Failed.";
 }
 #endif
 

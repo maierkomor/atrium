@@ -1,3 +1,15 @@
+R2209:
+======
+- added Lua interpreter
+- fix dim help page not integrated
+- fix dim set value on command line scales incorrectly
+- fix IPv6 buffer overflow
+- fix init regressions on relay and gpio related to XIO infrastructure
+- change SI7021 to manual configuration to avoid misdetections
+- make INA219 calibration persistent
+- ADC infrastructure update for sliding windows and continuous sampling
+- docu updates
+
 R2207:
 ======
 - added driver for INA219 current sensor

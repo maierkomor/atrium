@@ -584,10 +584,10 @@ int influx_setup()
 }
 
 
-int influx(Terminal &term, int argc, const char *args[])
+const char *influx(Terminal &term, int argc, const char *args[])
 {
 	if (argc > 3)
-		return arg_invnum(term);
+		return "Invalid nunber of arguments.";
 	if (argc == 1) {
 		if (Config.has_influx()) {
 			const Influx &i = Config.influx();
@@ -610,45 +610,45 @@ int influx(Terminal &term, int argc, const char *args[])
 				term.println(mode);
 			}
 		} else {
-			term.printf("not configured\n");
+			return "Not configured.";
 		}
 	} else if (argc == 2) {
 		if (!strcmp("init",args[1])) {
 			if (State == stopped)
 				State = offline;
-			return action_dispatch("influx!init",0);
+			return action_dispatch("influx!init",0) ? "Failed." : 0;
 		} else if (0 == strcmp(args[1],"clear")) {
 			Config.clear_influx();
 		} else if (0 == strcmp(args[1],"stop")) {
 			State = stopped;
 			return 0;
 		} else {
-			return arg_invalid(term,args[1]);
+			return "Invalid argument #1.";
 		}
 	} else if (argc == 3) {
 		Influx *i = Config.mutable_influx();
 		if (0 == strcmp(args[1],"clear"))
-			return Config.mutable_influx()->setByName(args[2],0);
+			return Config.mutable_influx()->setByName(args[2],0) ? "Failed." : 0;
 		if (0 == strcmp(args[1],"config")) {
 			const char *c = strchr(args[2],':');
 			if (c == 0) {
 				term.printf("'%c' missing\n",':');
-				return 1;
+				return "";
 			}
 			const char *s = strchr(c+1,'/');
 			if (s == 0) {
 				term.printf("'%c' missing\n",'/');
-				return 1;
+				return "";
 			}
 			long l = strtol(c+1,0,0);
 			if ((l <= 0) || (l >= UINT16_MAX))
-				return arg_range(term,c+1);
+				return "Value out of range.";
 			i->set_hostname(args[2],c-args[2]);
 			i->set_port(l);
 			i->set_measurement(s+1);
 			return 0;
 		}
-		return i->setByName(args[1],args[2]);
+		return i->setByName(args[1],args[2]) ? "Failed." : 0;
 	}
 	return 0;
 }

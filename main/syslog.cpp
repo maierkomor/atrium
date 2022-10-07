@@ -344,25 +344,24 @@ void log_syslog(log_level_t lvl, logmod_t module, const char *msg, size_t ml, st
 }
 
 
-int dmesg(Terminal &term, int argc, const char *args[])
+const char *dmesg(Terminal &term, int argc, const char *args[])
 {
 	if (argc > 2)
-		return arg_invnum(term);;
+		return "Invalid number of arguments.";;
 	if (argc == 2) {
 		char *eptr;
 		long l = strtol(args[1],&eptr,0);
 		if ((eptr == args[1]) || (l < 0)) {
-			return arg_invalid(term,args[1]);
+			return "Invalid argument #1.";
 		}
 		if (((l > 0) && (l < 512)) || (l > UINT16_MAX))
-			return arg_invalid(term,args[1]);
+			return "Invalid argument #1.";
 		Config.set_dmesg_size(l);
 		dmesg_resize(l);
 		return 0;
 	}
 	if (Ctx == 0) {
-		term.printf("dmesg is inactive\n");
-		return 1;
+		return "dmesg is inactive";
 	}
 	Lock lock(Mtx,__FUNCTION__);		// would need a recursive lock to support execution with debug on lwtcp
 	LogMsg *at = Ctx->msgs+Ctx->at;

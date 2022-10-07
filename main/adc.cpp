@@ -19,17 +19,25 @@
 #include <sdkconfig.h>
 
 #include "actions.h"
+#include "cyclic.h"
 #include "dataflow.h"
 #include "env.h"
 #include "event.h"
 #include "globals.h"
 #include "hwcfg.h"
 #include "log.h"
+#include "ringbuf.h"
 #include "terminal.h"
 
 #include <driver/adc.h>
 
 #define TAG MODULE_ADC
+
+struct AdcConversion
+{
+	uint16_t raw;
+	float scale, offset;
+};
 
 #if defined CONFIG_IDF_TARGET_ESP32
 #include <driver/rtc_io.h>
@@ -45,9 +53,21 @@ struct AdcSignal : public EnvNumber
 
 	}
 
+	AdcSignal(const char *name, adc_unit_t u, adc_channel_t ch, unsigned w)
+	: EnvNumber(name)
+	, unit(u)
+	, channel(ch)
+	, ringbuf(new SlidingWindow<uint16_t>(w))
+	{
+
+	}
+
 	adc_unit_t unit;
 	adc_channel_t channel;
+	unsigned itv = 0;
+	SlidingWindow<uint16_t> *ringbuf = 0;
 };
+
 
 static unsigned NumAdc = 0;
 static AdcSignal **Adcs = 0;
@@ -79,11 +99,10 @@ int hall_setup()
 }
 
 
-int hall(Terminal &term, int argc, const char *args[])
+const char *hall(Terminal &term, int argc, const char *args[])
 {
 	if (Hall == 0) {
-		term.printf("not initialized\n");
-		return 1;
+		return "Not initialized.";
 	}
 	if (argc == 1) {
 		term.printf("%g\n",Hall->get());
@@ -93,7 +112,7 @@ int hall(Terminal &term, int argc, const char *args[])
 		hall_sample(0);
 		return 0;
 	}
-	return 1;
+	return "Invalid argument #1.";
 }
 
 
@@ -101,18 +120,32 @@ static void adc_sample_cb(void *arg)
 {
 	AdcSignal *s = (AdcSignal*)arg;
 	int sample = 0;
-	if (s == 0)
-		return;
-	else if (s->unit == 1)
+	assert(s);
+	if (s->unit == 1) {
 		sample = adc1_get_raw((adc1_channel_t)s->channel);
-	else if (s->unit == 2) {
+	} else if (s->unit == 2) {
 		if (esp_err_t e = adc2_get_raw((adc2_channel_t)s->channel,U2Width,&sample)) {
 			log_warn(TAG,"error reading adc2, channel %u: %s",s->channel,esp_err_to_name(e));
 			return;
 		}
 	}
-	log_dbug(TAG,"sample %s: %u",s->name(),sample);
-	s->set(sample);
+	if (s->ringbuf) {
+		s->ringbuf->put(sample);
+		float a = s->ringbuf->avg();
+		log_dbug(TAG,"sample %s: %u, average %f, sum %u",s->name(),sample,a,s->ringbuf->sum());
+		s->set(a);
+	} else {
+		log_dbug(TAG,"sample %s: %u",s->name(),sample);
+		s->set(sample);
+	}
+}
+
+
+static unsigned adc_cyclic_cb(void *arg)
+{
+	AdcSignal *s = (AdcSignal*)arg;
+	adc_sample_cb(arg);
+	return s->itv;
 }
 
 
@@ -137,15 +170,15 @@ static AdcSignal *getAdc(const char *arg)
 }
 
 
-static int adc_print(Terminal &t, const char *arg)
+static const char *adc_print(Terminal &t, const char *arg)
 {
 	if (Adcs == 0)
-		return 1;
+		return "No ADCs configured.";
 	if (arg) {
 		AdcSignal *s = getAdc(arg);
 		if (s == 0) {
 			t.printf("unknown adc %s",arg);
-			return 1;
+			return "";
 		}
 		t.printf("%-16s: %5d\n",s->name(),(int)s->get());
 	} else for (unsigned i = 0; i < NumAdc; ++i) {
@@ -158,7 +191,7 @@ static int adc_print(Terminal &t, const char *arg)
 }
 
 
-static int adc_sample(Terminal &t, const char *arg)
+static const char *adc_sample(Terminal &t, const char *arg)
 {
 	if (arg == 0) {
 		for (int i = 0; i < NumAdc; ++i)
@@ -166,8 +199,7 @@ static int adc_sample(Terminal &t, const char *arg)
 	} else if (AdcSignal *s = getAdc(arg)) {
 		adc_sample_cb(s);
 	} else {
-		t.printf("invalid argument");
-		return 1;
+		return "Invalid argument.";
 	}
 	return adc_print(t,arg);
 }
@@ -243,9 +275,18 @@ int adc_setup()
 				continue;
 			}
 		}
-		Adcs[x] = new AdcSignal(n,(adc_unit_t)u,(adc_channel_t)ch);
+		if (auto w = c.window()) {
+			Adcs[x] = new AdcSignal(n,(adc_unit_t)u,(adc_channel_t)ch,w);
+		} else {
+			Adcs[x] = new AdcSignal(n,(adc_unit_t)u,(adc_channel_t)ch);
+		}
 		RTData->add(Adcs[x]);
-		action_add(concat(n,"!sample"),adc_sample_cb,Adcs[x],"take an ADC sample");
+		if (auto i = c.interval()) {
+			Adcs[x]->itv = i;
+			cyclic_add_task(concat("adc_sample_",n), adc_cyclic_cb, Adcs[x], 0);
+		} else {
+			action_add(concat(n,"!sample"),adc_sample_cb,Adcs[x],"take an ADC sample");
+		}
 		log_info(TAG,"initialized ADC%u.%u",u,ch);
 	}
 
@@ -255,7 +296,7 @@ int adc_setup()
 }
 
 
-int adc(Terminal &term, int argc, const char *args[])
+const char *adc(Terminal &term, int argc, const char *args[])
 {
 	if (argc == 1) {
 		term.printf("adc is %sinitialized\n",Adcs ? "" : "not ");
@@ -270,17 +311,15 @@ int adc(Terminal &term, int argc, const char *args[])
 #endif
 	if (!strcmp(args[1],"init")) {
 		if (term.getPrivLevel() == 0) {
-			term.printf("Access denied.\n");
-			return 1;
+			return "Access denied.";
 		}
-		return adc_setup();
+		return adc_setup() ? "Failed." : 0;
 	}
 	if (!strcmp(args[1],"print"))
 		return adc_print(term,(argc > 2) ? args[2] : 0);
 	if (!strcmp(args[1],"sample"))
 		return adc_sample(term,(argc > 2) ? args[2] : 0);
-	term.printf("invalid argument\n");
-	return 1;
+	return "Invalid argument #1.";
 }
 
 

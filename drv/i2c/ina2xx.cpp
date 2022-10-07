@@ -26,8 +26,11 @@
 #include "cyclic.h"
 #include "env.h"
 #include "ina2xx.h"
+#include "nvm.h"
 #include "log.h"
 #include "terminal.h"
+
+#include <esp_err.h>
 
 
 #define INA_REG_CONF	0x00
@@ -66,7 +69,7 @@ static uint8_t ConvTimes[] = {2,2,3,5,9,18,35,70};
 INA219::INA219(uint8_t bus, uint8_t addr)
 : I2CDevice(bus,addr,"ina219")
 , m_volt(new EnvNumber("bus","V","%4.1f"))
-, m_amp(new EnvNumber("current","A","%4.3f"))
+, m_amp(new EnvNumber("current","A","%4.4f"))
 , m_shunt(new EnvNumber("shunt","mV","%4.3f"))
 , m_conf(INA_CONF_RESET_VALUE)
 , m_st(st_cont)
@@ -105,6 +108,17 @@ INA219 *INA219::create(uint8_t bus, uint8_t addr)
 		if (rv != INA_CONF_RESET_VALUE)
 			return 0;
 	}
+	char nvsn[32]; 
+	sprintf(nvsn,"ina219@%u,%x.cfg",bus,addr);
+	uint16_t cfgv = nvm_read_u16(nvsn,0x399f);
+	uint8_t cfg[] = {addr,INA_REG_CONF,(uint8_t)(cfgv>>8),(uint8_t)cfgv};
+	if (esp_err_t e = i2c_write(bus,cfg,sizeof(cfg),1,1))
+		log_warn(TAG,"config failed: %s",esp_err_to_name(e));
+	sprintf(nvsn,"ina219@%u,%x.cal",bus,addr);
+	uint16_t cal = nvm_read_u16(nvsn,0x5000);
+	uint8_t data[] = { addr, INA_REG_CALIB, (uint8_t)(cal >> 8), (uint8_t)(cal >> 0) };
+	if (esp_err_t e = i2c_write(bus,data,sizeof(data),1,1))
+		log_warn(TAG,"calibration failed: %s",esp_err_to_name(e));
 	return new INA219(bus,addr);
 }
 
@@ -203,7 +217,7 @@ static int sample_cfg(long l)
 
 
 #ifdef CONFIG_I2C_XCMD
-int INA219::exeCmd(Terminal &term, int argc, const char **args)
+const char *INA219::exeCmd(Terminal &term, int argc, const char **args)
 {
 	if ((argc == 0) || (0 == strcmp(args[0],"-h"))) {
 		term.println(
@@ -221,7 +235,7 @@ int INA219::exeCmd(Terminal &term, int argc, const char **args)
 	uint16_t v;
 	if (esp_err_t e = i2c_w1rd(m_bus,m_addr,INA_REG_CONF,data,sizeof(data))) {
 		term.printf("com error: %s\n",esp_err_to_name(e));
-		return 1;
+		return "";
 	}
 	v = (data[0] << 8) | data[1];
 	m_conf = v;
@@ -229,9 +243,9 @@ int INA219::exeCmd(Terminal &term, int argc, const char **args)
 		if (0 == strcmp(args[0],"cal")) {
 			if (esp_err_t e = i2c_w1rd(m_bus,m_addr,INA_REG_CALIB,(uint8_t*)&v,sizeof(v))) {
 				term.printf("com error: %s\n",esp_err_to_name(e));
-				return 1;
+				return "";
 			}
-			term.printf("calib %d\n",v);
+			term.printf("calib %d\n",(uint16_t)(v>>8)|(uint16_t)(v<<8));
 		} else if (0 == strcmp(args[0],"conf")) {
 			term.printf("conf 0x%x\n",v);
 		} else if (0 == strcmp(args[0],"brng")) {
@@ -257,11 +271,11 @@ int INA219::exeCmd(Terminal &term, int argc, const char **args)
 				term.printf("mode off\n");
 		} else if (0 == strcmp(args[0],"reset")) {
 			uint8_t data[] = { m_addr, INA_REG_CONF, 0x80, 0x00 };
-			if (i2c_write(m_bus,data,sizeof(data),1,1))
-				return 1;
+			if (esp_err_t e = i2c_write(m_bus,data,sizeof(data),1,1))
+				return esp_err_to_name(e);
 			m_conf = INA_CONF_RESET_VALUE;
 		} else {
-			return arg_invalid(term,args[0]);
+			return "Invalid argument #1.";
 		}
 	} else if (argc == 2) {
 		char *e;
@@ -272,7 +286,7 @@ int INA219::exeCmd(Terminal &term, int argc, const char **args)
 			} else if (l == 32) {
 				v |= CONF_BRNG;
 			} else {
-				return arg_invalid(term,args[2]);
+				return "Invalid argument #2.";
 			}
 		} else if (0 == strcmp(args[0],"pg")) {
 			v &= ~CONF_PG;
@@ -285,13 +299,13 @@ int INA219::exeCmd(Terminal &term, int argc, const char **args)
 			} else if ((l == 8) || (l == 320)) {
 				v |= (3 << CONF_BIT_PG);
 			} else {
-				return arg_invalid(term,args[1]);
+				return "Invalid argument #2.";
 			}
 		} else if (0 == strcmp(args[0],"badc")) {
 			v &= ~CONF_BADC;
 			int x = sample_cfg(l);
 			if (x < 0)
-				return arg_invalid(term,args[1]);
+				return "Invalid argument #2.";
 			v |= x << CONF_BIT_BADC;
 			m_badc = x;
 			updateDelay();
@@ -299,15 +313,20 @@ int INA219::exeCmd(Terminal &term, int argc, const char **args)
 			v &= ~CONF_SADC;
 			int x = sample_cfg(l);
 			if (x < 0)
-				return arg_invalid(term,args[1]);
+				return "Invalid argument #2.";
 			v |= x << CONF_BIT_SADC;
 			m_sadc = x;
 			updateDelay();
 		} else if (0 == strcmp(args[0],"cal")) {
 			if ((l < 0) || (l > UINT16_MAX)) 
-				return arg_invalid(term,args[2]);
-			uint8_t data[] = {m_addr,INA_REG_CALIB,(uint8_t)(l>>8),(uint8_t)l};
-			return i2c_write(m_bus,data,sizeof(data),1,1);
+				return "Invalid argument #2.";
+			char nvsn[32]; 
+			sprintf(nvsn,"ina219@%u,%x.cal",m_bus,m_addr);
+			nvm_store_u16(nvsn,l);
+			uint8_t data[] = {m_addr,INA_REG_CALIB,(uint8_t)(l>>8),(uint8_t)(l)};
+			if (esp_err_t e = i2c_write(m_bus,data,sizeof(data),1,1))
+				return esp_err_to_name(e);
+			return 0;
 		} else if (0 == strcmp(args[0],"mode")) {
 			if (0 == strcmp(args[1],"off")) {
 				m_conf &= ~CONF_MODE;
@@ -321,21 +340,24 @@ int INA219::exeCmd(Terminal &term, int argc, const char **args)
 				m_conf &= ~CONF_MODE;
 				m_conf |= CONF_MODE_CONT | CONF_MODE_BUS | CONF_MODE_SHUNT;
 			} else {
-				return arg_invalid(term,args[2]);
+				return "Invalid argument #2.";
 			}
 			updateDelay();
 			v = m_conf;
 		} else {
-			return arg_invalid(term,args[1]);
+			return "Invalid argument #2.";
 		}
+		char nvsn[32]; 
+		sprintf(nvsn,"ina219@%u,%x.cfg",m_bus,m_addr);
+		nvm_store_u16(nvsn,v);
 		uint8_t data[] = {m_addr,INA_REG_CONF,(uint8_t)(v>>8),(uint8_t)v};
 		if (esp_err_t e = i2c_write(m_bus,data,sizeof(data),1,1)) {
 			term.printf("com error: %s\n",esp_err_to_name(e));
-			return 1;
+			return "";
 		}
 		m_conf = v;
 	} else {
-		return arg_invnum(term);
+		return "Invalid number of arguments.";
 	}
 	return 0;
 }

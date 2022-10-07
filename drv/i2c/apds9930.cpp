@@ -267,7 +267,7 @@ void APDS9930::poweroff(void *arg)
 
 
 #ifdef CONFIG_I2C_XCMD
-int APDS9930::exeCmd(Terminal &t, int argc, const char **argv)
+const char *APDS9930::exeCmd(Terminal &t, int argc, const char **argv)
 {
 	if (0 == argc) {
 		t.println(
@@ -286,57 +286,57 @@ int APDS9930::exeCmd(Terminal &t, int argc, const char **argv)
 	if (0 == strcmp(argv[0],"ailt")) {
 		if (argc == 1) {
 			uint8_t d[2];
-			if (i2c_w1rd(m_bus,m_addr,REG_AILTL,d,sizeof(d)))
-				return 1;
+			if (esp_err_t e = i2c_w1rd(m_bus,m_addr,REG_AILTL,d,sizeof(d)))
+				return esp_err_to_name(e);
 			uint16_t v = (d[1] << 8) | d[0];
 			t.printf("%u\n",v);
 		} else if (e && (*e == 0) && (l >= 0) & (l <= UINT16_MAX)) {
 			uint8_t data[] = { m_addr, REG_AILTL, (uint8_t) (l & 0xff), (uint8_t)(l>>8) };
-			if (i2c_write(m_bus,data,sizeof(data),1,1))
-				return 1;
+			if (esp_err_t e = i2c_write(m_bus,data,sizeof(data),1,1))
+				return esp_err_to_name(e);
 		} else
-			return arg_invalid(t,argv[1]);
+			return "Invalid argument #2.";
 	} else if (0 == strcmp(argv[0],"aiht")) {
 		if (argc == 1) {
 			uint8_t d[2];
-			if (i2c_w1rd(m_bus,m_addr,REG_AIHTL,d,sizeof(d)))
-				return 1;
+			if (esp_err_t e = i2c_w1rd(m_bus,m_addr,REG_AIHTL,d,sizeof(d)))
+				return esp_err_to_name(e);
 			uint16_t v = (d[1] << 8) | d[0];
 			t.printf("%u\n",v);
 		} else if (e && (*e == 0) && (l >= 0) & (l <= UINT16_MAX)) {
 			uint8_t data[] = { m_addr, REG_AIHTL, (uint8_t) (l & 0xff), (uint8_t)(l>>8) };
-			if (i2c_write(m_bus,data,sizeof(data),1,1))
-				return 1;
+			if (esp_err_t e = i2c_write(m_bus,data,sizeof(data),1,1))
+				return esp_err_to_name(e);
 		} else
-			return arg_invalid(t,argv[1]);
+			return "Invalid argument #2.";
 	} else if (0 == strcmp(argv[0],"pilt")) {
 		if (argc == 1) {
 			uint8_t d[2];
-			if (i2c_w1rd(m_bus,m_addr,REG_PILTL,d,sizeof(d)))
-				return 1;
+			if (esp_err_t e = i2c_w1rd(m_bus,m_addr,REG_PILTL,d,sizeof(d)))
+				return esp_err_to_name(e);
 			uint16_t v = (d[1] << 8) | d[0];
 			t.printf("%u\n",v);
 		} else if (e && (*e == 0) && (l >= 0) & (l <= UINT16_MAX)) {
 			uint8_t data[] = { m_addr, REG_PILTL, (uint8_t) (l & 0xff), (uint8_t)(l>>8) };
-			if (i2c_write(m_bus,data,sizeof(data),1,1))
-				return 1;
+			if (esp_err_t e = i2c_write(m_bus,data,sizeof(data),1,1))
+				return esp_err_to_name(e);
 		} else
-			return arg_invalid(t,argv[1]);
+			return "Invalid argument #2.";
 	} else if (0 == strcmp(argv[0],"piht")) {
 		if (argc == 1) {
 			uint8_t d[2];
-			if (i2c_w1rd(m_bus,m_addr,REG_PIHTL,d,sizeof(d)))
-				return 1;
+			if (esp_err_t e = i2c_w1rd(m_bus,m_addr,REG_PIHTL,d,sizeof(d)))
+				return esp_err_to_name(e);
 			uint16_t v = (d[1] << 8) | d[0];
 			t.printf("%u\n",v);
 		} else if (e && (*e == 0) && (l >= 0) & (l <= UINT16_MAX)) {
 			uint8_t data[] = { m_addr, REG_PIHTL, (uint8_t) (l & 0xff), (uint8_t)(l>>8) };
-			if (i2c_write(m_bus,data,sizeof(data),1,1))
-				return 1;
+			if (esp_err_t e = i2c_write(m_bus,data,sizeof(data),1,1))
+				return esp_err_to_name(e);
 		} else
-			return arg_invalid(t,argv[1]);
+			return "Invalid argument #2.";
 	} else
-		return arg_invalid(t,argv[0]);
+		return "Invalid argument #1.";
 	return 0;
 }
 #endif

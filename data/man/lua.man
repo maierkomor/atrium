@@ -1,0 +1,25 @@
+synopsis: lua <script>
+Executes <script> using the Lua interpreter.
+Available functions in Lua:
+newvar(<name>,<value>[,<dimension>)
+	creates a variable with <name> and value, with optional dimension
+setvar(<name>,<value>)
+	sets the value of variable with <name> to <value>
+getvar(<name>)
+	gets the value of variable with <name>
+Following math functions are supported:
+- sin(<number>)
+- log(<number>)
+- cos(<number>)
+- tan(<number>)
+- sqrt(<number>)
+- newvar(<string>)
+- getvar(<string>)
+- setvar(<string>,[<string>,<number>,<bool>])
+- action_activate(<string>)
+- event_trigger(<string>)
+- uptime()
+- con_print(<string>)
+- log_dbug(<string>)
+- log_info(<string>)
+- log_warn(<string>)

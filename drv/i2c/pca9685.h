@@ -36,7 +36,7 @@ class PCA9685 : public I2CDevice
 	int setCh(int8_t led, uint16_t duty, uint16_t off = 0);	// duty=0..4096
 
 #ifdef CONFIG_I2C_XCMD
-	int exeCmd(struct Terminal &, int argc, const char **argv) override;
+	const char *exeCmd(struct Terminal &, int argc, const char **argv) override;
 #endif
 
 	PCA9685 *getNext() const

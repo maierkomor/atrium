@@ -128,6 +128,7 @@ int Terminal::readInput(char *buf, size_t l, bool echo)
 }
 
 
+/*
 int arg_invnum(Terminal &t)
 {
 	t.println("invalid number of arguments");
@@ -168,3 +169,4 @@ int err_oom(Terminal &t)
 	t.println("Out of memory.");
 	return -2;
 }
+*/

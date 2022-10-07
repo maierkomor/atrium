@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2017-2021, Thomas Maier-Komor
+ *  Copyright (C) 2017-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -25,13 +25,26 @@
 #ifdef __cplusplus
 class Terminal;
 int exe_flags(char *cmd);
-int shellexe(Terminal &, char *cmd);
+const char *shellexe(Terminal &, char *cmd);
 void shell(Terminal &term, bool prompt = true);
-int help_cmd(Terminal &term, const char *arg);
+const char *help_cmd(Terminal &term, const char *arg);
 
 extern "C"
 #endif
 const char *getpwd();
+
+typedef enum cmd_ret_e {
+	RET_OK = 0,
+	RET_FAILED,
+	RET_INV_NUMARG,
+	RET_INV_ARG_1,
+	RET_INV_ARG_2,
+	RET_INV_ARG_3,
+	RET_INV_ARG_4,
+	RET_OOM,		// out of memory
+	RET_PERM,		// access denied
+	RET_ERRNO,
+} cmd_ret_t;
 
 
 #endif

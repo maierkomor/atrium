@@ -722,7 +722,7 @@ err_t LwTcpListener::handle_accept(void *arg, struct tcp_pcb *pcb, err_t x)
 			log_warn(TAG,"cannot create session %s",name);
 			return 1;
 		}
-		log_localx(TAG,"sevice %s for %s:%d",P->m_name,inet_ntoa(pcb->remote_ip),(int)pcb->remote_port);
+		log_localx(TAG,"service %s for %s:%d",P->m_name,inet_ntoa(pcb->remote_ip),(int)pcb->remote_port);
 	}
 	return 0;
 }

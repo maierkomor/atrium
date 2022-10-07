@@ -158,8 +158,8 @@ unsigned SI7021::cyclic(void *arg)
 int SI7021::setHeater(bool on)
 {
 	uint8_t v;
-	if (i2c_w1rd(m_bus,SI7021_ADDR,CMD_RD_UR1,&v,sizeof(v))) 
-		return 1;
+	if (esp_err_t e = i2c_w1rd(m_bus,SI7021_ADDR,CMD_RD_UR1,&v,sizeof(v))) 
+		return e;
 	if (on)
 		v |= HEATER_BIT;
 	else
@@ -175,7 +175,7 @@ int SI7021::reset()
 }
 
 
-int SI7021::exeCmd(struct Terminal &term, int argc, const char **args)
+const char *SI7021::exeCmd(struct Terminal &term, int argc, const char **args)
 {
 	static const uint8_t tres[] = {12,8,10,11};
 	static const uint8_t hres[] = {14,12,13,11};
@@ -194,8 +194,7 @@ int SI7021::exeCmd(struct Terminal &term, int argc, const char **args)
 			if (m_combined) {
 				uint8_t heat;
 				if (esp_err_t e = i2c_w1rd(m_bus,SI7021_ADDR,CMD_RD_HCR,&heat,sizeof(heat))) {
-					term.printf("com error: %s\n",esp_err_to_name(e));
-					return 1;
+					return esp_err_to_name(e);
 				}
 				float heat_ma = 3.09 + 6.09 * heat;
 				term.printf("set to %gmA (o%s)\n",heat_ma,m_uc1&4?"n":"ff");
@@ -206,14 +205,18 @@ int SI7021::exeCmd(struct Terminal &term, int argc, const char **args)
 					"humidity   : %ubit\n"
 					,tres[res],hres[res]);
 		} else {
-			return arg_invalid(term,args[0]);
+			return "Invalid argument #1.";
 		}
 	} else if (argc == 2) {
 		if (0 == strcmp(args[0],"heat")) {
 			if (0 == strcmp(args[1],"on")) {
-				return setHeater(true);
+				if (esp_err_t e = setHeater(true))
+					return esp_err_to_name(e);
+				return 0;
 			} else if (0 == strcmp(args[1],"off")) {
-				return setHeater(false);
+				if (esp_err_t e = setHeater(false))
+					return esp_err_to_name(e);
+				return 0;
 			} else {
 				char *e;
 				float f = strtof(args[1],&e);
@@ -223,19 +226,19 @@ int SI7021::exeCmd(struct Terminal &term, int argc, const char **args)
 				}
 				f = rintf(f);
 				if ((f < 0) || (f > 15))
-					return arg_invalid(term,args[0]);
+					return "Invalid argument #1.";
 				uint8_t v = (uint8_t) f;
 				uint8_t data[] = {SI7021_ADDR,CMD_WR_HCR,v};
 				if (esp_err_t e = i2c_write(m_bus,data,sizeof(data),1,1)) {
 					term.printf("com error: %s\n",esp_err_to_name(e));
-					return 1;
+					return "";
 				}
 			}
 		} else if (0 == strcmp(args[0],"tres")) {
 			char *e;
 			long l = strtol(args[1],&e,0);
 			if (*e || (l < 10) || (l > 12))
-				return arg_invalid(term,args[1]);
+				return "Invalid argument #2.";
 			int i = 0;
 			while (i < sizeof(tres)) {
 				if (tres[i] == l)
@@ -250,12 +253,15 @@ int SI7021::exeCmd(struct Terminal &term, int argc, const char **args)
 				uc |= 1;
 			m_uc1 = uc;
 			uint8_t data[] = { SI7021_ADDR, CMD_WR_UR1, uc };
-			return i2c_write(m_bus,data,sizeof(data),1,1);
+			if (esp_err_t e = i2c_write(m_bus,data,sizeof(data),1,1)) {
+				term.printf("com error: %s\n",esp_err_to_name(e));
+				return "";
+			}
 		} else if (0 == strcmp(args[0],"hres")) {
 			char *e;
 			long l = strtol(args[1],&e,0);
 			if (*e || (l < 12) || (l > 14))
-				return arg_invalid(term,args[1]);
+				return "Invalid argument #2.";
 			int i = 0;
 			while (i < sizeof(tres)) {
 				if (hres[i] == l)
@@ -270,12 +276,12 @@ int SI7021::exeCmd(struct Terminal &term, int argc, const char **args)
 				uc |= 1;
 			m_uc1 = uc;
 			uint8_t data[] = { SI7021_ADDR, CMD_WR_UR1, uc };
-			return i2c_write(m_bus,data,sizeof(data),1,1);
+			if (esp_err_t e = i2c_write(m_bus,data,sizeof(data),1,1))
+				return esp_err_to_name(e);
 		} else {
-			return arg_invalid(term,args[0]);
+			return "Invalid argument #1.";
 		}
 	}
-
 	return 0;
 }
 
@@ -300,7 +306,7 @@ void SI7021::triggert(void *arg)
 }
 
 
-int si7021_scan(uint8_t bus)
+SI7021 *SI7021::create(uint8_t bus, uint8_t addr)
 {
 	uint8_t data[] = { SI7021_ADDR, 0xfa, 0x0f };
 	if (esp_err_t e = i2c_write(bus,data,sizeof(data),0,1)) {
@@ -360,8 +366,7 @@ int si7021_scan(uint8_t bus)
 		log_info(TAG,"found %s with id 0x%02x%02x, version %x",typ,id0[0],id0[1],fwver);
 	else
 		log_info(TAG,"found %s",typ);
-	new SI7021(bus,typ,combined);
-	return 1;
+	return new SI7021(bus,typ,combined);
 }
 
 #endif

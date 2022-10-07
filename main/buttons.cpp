@@ -43,7 +43,7 @@ using namespace std;
 int button_setup()
 {
 	for (auto &c : *HWConf.mutable_button()) {
-		if (!c.has_name() || !c.has_gpio())
+		if (!c.has_name())
 			continue;
 		int8_t gpio = c.gpio();
 		if (gpio < 0)

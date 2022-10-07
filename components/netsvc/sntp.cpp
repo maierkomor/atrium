@@ -71,6 +71,7 @@ static sys_sem_t LwipSem = 0;
 static inline void sntp_req_fn(void *arg)
 {
 	struct pbuf *pb = pbuf_alloc(PBUF_TRANSPORT,SNTP_PKT_SIZE,PBUF_RAM);
+	assert(pb->len == pb->tot_len);
 	bzero(pb->payload,pb->len);
 	sntp_pckt *p = (sntp_pckt *) pb->payload;
 	p->mode = (4 << 3) | (3 << 0);
@@ -81,6 +82,8 @@ static inline void sntp_req_fn(void *arg)
 //	log_hex(TAG,pb->payload,SNTP_PKT_SIZE,"send req");
 	if (err_t e = udp_send(SPCB,pb))
 		log_warn(TAG,"send req %s",strlwiperr(e));
+	else
+		log_dbug(TAG,"send req");
 	pbuf_free(pb);
 #ifndef CONFIG_IDF_TARGET_ESP8266
 	if (pdTRUE != xSemaphoreGive(LwipSem))

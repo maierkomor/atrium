@@ -226,27 +226,24 @@ int PCA9685::setPrescale(uint8_t ps)
 
 
 #ifdef CONFIG_I2C_XCMD
-int PCA9685::exeCmd(Terminal &term, int argc, const char **args)
+const char *PCA9685::exeCmd(Terminal &term, int argc, const char **args)
 {
-	if (argc == 0) {
-		return -1;
-	}
 	if (argc == 2) {
 		char *e;
 		long v = strtol(args[1],&e,0);
 		if (0 == strcmp("prescale",args[0])) {
 			if (*e || (v < 3))
-				return 1;
-			return setPrescale(v);
+				return "Invalid argument #1.";
+			return setPrescale(v) ? "Failed." : 0;
 		}
 		if (*e || (v < 0) || (v > 4096))
-			return 1;
+			return "Value out of range.";
 		long l = strtol(args[0],&e,0);
 		if (*e || (l < -1) || (l > 15))
-			return 1;
-		return setCh(l,v);
+			return "Value out of range.";
+		return setCh(l,v) ? "Failed." : 0;
 	}
-	return -1;
+	return "Invalid number of arguments.";
 }
 #endif
 

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2021, Thomas Maier-Komor
+ *  Copyright (C) 2018-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -37,14 +37,14 @@
 #include <freertos/semphr.h>
 
 using namespace std;
-extern const char *Weekdays_de[];
 
-/*
+#ifndef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 // requires ~ 512B ROM
-class Uptime : public EnvElement
+
+class EnvUptime : public EnvElement
 {
 	public:
-	Uptime()
+	EnvUptime()
 	: EnvElement("uptime")
 	{ }
 
@@ -55,10 +55,10 @@ class Uptime : public EnvElement
 };
 
 
-struct LocalTime : public EnvElement
+struct EnvLocalTime : public EnvElement
 {
 	public:
-	LocalTime()
+	EnvLocalTime()
 	: EnvElement("ltime")
 	{ }
 
@@ -68,7 +68,7 @@ struct LocalTime : public EnvElement
 		s << localtimestr(now);
 	}
 };
-*/
+#endif
 
 
 const char ResetReasons[][12] = {
@@ -85,6 +85,9 @@ const char ResetReasons[][12] = {
 	"sdio",
 };
 
+const char *Weekdays_en[] = { "Su", "Mo", "Tu", "We", "Th", "Fr", "Sa", "wd", "we", "ed", "hd" };
+const char *Weekdays_de[] = { "So", "Mo", "Di", "Mi", "Do", "Fr", "Sa", "wt", "we", "jt", "ft" };
+
 extern "C" const char Version[] = VERSION;
 NodeConfig Config;
 HardwareConfig HWConf;
@@ -94,8 +97,13 @@ EnvObject *RTData = 0;
 #ifdef CONFIG_OTA
 EnvString *UpdateState = 0;
 #endif
+#ifdef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 EnvString *Localtime = 0;
 EnvNumber *Uptime = 0;
+#else
+EnvUptime *Uptime = 0;
+EnvLocalTime *Localtime = 0;
+#endif
 
 
 #define TAG MODULE_SNTP
@@ -113,14 +121,16 @@ void globals_setup()
 #if LWIP_TCPIP_CORE_LOCKING != 1
 	LwipMtx  = xSemaphoreCreateMutex();
 #endif
-//	RTData->add(new Uptime);
-//	RTData->add(new LocalTime);
+#ifdef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 	Localtime = RTData->add("ltime","");
 	Uptime = RTData->add("uptime",0.0);
+#else
+	RTData->add(new EnvUptime);
+	RTData->add(new EnvLocalTime);
+#endif
 }
 
 
-/*
 const char *localtimestr(char *s)
 {
 	uint8_t h,m,d;
@@ -132,13 +142,18 @@ const char *localtimestr(char *s)
 		s[0] = 0;
 	return s;
 }
-*/
 
 
 void rtd_lock()
 {
 	if (pdTRUE != xSemaphoreTake(Mtx,MUTEX_ABORT_TIMEOUT))
 		abort_on_mutex(Mtx,"rtd");
+#ifdef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
+	Uptime->set((double)timestamp()/1000000.0);
+	char now[32];
+	localtimestr(now);
+	Localtime->set(now);
+#endif
 }
 
 
@@ -149,18 +164,10 @@ void rtd_unlock()
 }
 
 
-void rtd_update()
-{
-//	Uptime->set((double)timestamp()*1E-6);
-	Uptime->set((double)timestamp()/1000000.0);
-}
-
-
 void runtimedata_to_json(stream &json)
 {
 	PROFILE_FUNCTION();
 	rtd_lock();
-	rtd_update();
 	RTData->toStream(json);
 	rtd_unlock();
 }

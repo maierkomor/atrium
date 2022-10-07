@@ -32,6 +32,7 @@ class Relay
 	public:
 	static Relay *create(const char *, xio_t gpio, uint32_t minitv, bool onlvl);
 
+	void attach(class EnvObject *);
 	void set(bool);
 	void turn_on();
 	void turn_off();
@@ -80,6 +81,8 @@ class Relay
 	Relay *m_next = 0, *m_interlock = 0;
 	const char *m_name;
 	void (*m_cb)(Relay *) = 0;
+	class EnvNumber *m_envon = 0;
+	class EnvString *m_envlon = 0, *m_envloff = 0, *m_envst = 0;
 	TimerHandle_t m_tmr;
 	uint32_t m_tlt = 0		// time of last toggle
 		, m_minitv = 0;		// minimum toggle interval

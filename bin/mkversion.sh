@@ -27,6 +27,8 @@ elif [ -d $PROJECT_ROOT/.hg ]; then
 	if [ "tip" = "$VER" ]; then
 		# Then create versions based on latest tag, tag distance, and modification indicator.
 		VER=$TAGV
+	elif [ "" = "$VER" ]; then
+		VER=$TAGV
 	fi
 	# Check if we have modified, removed, added or deleted files.
 	hg_st=`hg st -mard`

@@ -20,6 +20,7 @@
 
 #ifdef CONFIG_AT_ACTIONS
 #include "actions.h"
+#include "alarms.h"
 #include "swcfg.h"
 #include "cyclic.h"
 #include "event.h"
@@ -49,8 +50,6 @@
 
 using namespace std;
 
-const char *Weekdays_en[] = { "Su", "Mo", "Tu", "We", "Th", "Fr", "Sa", "wd", "we", "ed", "hd" };
-const char *Weekdays_de[] = { "So", "Mo", "Di", "Mi", "Do", "Fr", "Sa", "wt", "we", "jt", "ft" };
 #define TAG MODULE_ALARMS
 static EnvBool *Enabled = 0;
 
@@ -93,9 +92,6 @@ static unsigned alarms_loop(void *)
 	get_time_of_day(&h,&m,&s,&d,&md,&mon,&y);
 	if ((h > 23) || (m == last_m) || (y == 1970))
 		return 300;
-	char now[32];
-	sprintf(now,"%s, %u:%02u",Weekdays_de[d],h,m);
-	Localtime->set(now);
 	last_m = m;
 	if (!Config.actions_enable())
 		return 2000;
@@ -187,14 +183,14 @@ static int parse_date(const char *arg, unsigned *d)
 }
 
 
-int holiday(Terminal &t, int argc, const char *args[])
+const char *holiday(Terminal &t, int argc, const char *args[])
 {
 	if ((argc == 1) || (argc > 3))
-		return arg_invnum(t);
+		return "Invalid number of arguments.";
 	if ((argc == 3) && (!strcmp(args[1],"-D"))) {
 		long l = strtol(args[2],0,10);
 		if ((l < 0) || (l >= (long)Config.holidays_size()))
-			return arg_range(t,args[2]);
+			return "Argument out of range.";
 		if (!strcmp(args[2],"all"))
 			Config.clear_holidays();
 		else
@@ -232,7 +228,7 @@ int holiday(Terminal &t, int argc, const char *args[])
 	unsigned date[3];
 	int n = parse_date(args[1],date);
 	if (n < 2)
-		return arg_invalid(t,args[1]);
+		return "Invalid argument #1.";
 	Date h;
 	h.set_month(date[1]);
 	h.set_day(date[0]);
@@ -246,7 +242,7 @@ int holiday(Terminal &t, int argc, const char *args[])
 		if (n < 2) {
 			n = sscanf(args[1],"%d-%d-%d",&y,&m,&d);
 			if (n < 3)
-				return arg_invalid(t,args[1]);
+				return "Invalid argument #1.";
 		}
 	}
 	if ((m <= 0) || (m > 12)) {
@@ -268,7 +264,7 @@ int holiday(Terminal &t, int argc, const char *args[])
 		unsigned enddate[3];
 		n = parse_date(args[2],enddate);
 		if (n < 2)
-			return arg_invalid(t,args[2]);
+			return "Invalid argument #2.";
 		h.set_endday(enddate[0]);
 		h.set_endmonth(enddate[1]);
 		h.set_endyear(enddate[2]-h.year());
@@ -303,10 +299,10 @@ int holiday(Terminal &t, int argc, const char *args[])
 #endif
 
 
-int at(Terminal &t, int argc, const char *args[])
+const char *at(Terminal &t, int argc, const char *args[])
 {
 	if (argc > 4)
-		return arg_invnum(t);
+		return "Invalid number of arguments.";
 	if (argc == 1) {
 		return help_cmd(t,args[0]);
 	}
@@ -345,7 +341,7 @@ int at(Terminal &t, int argc, const char *args[])
 			}
 			t.print("]}\n");
 		} else {
-			return arg_invalid(t,args[1]);
+			return "Invalid argument #1.";
 		}
 		return 0;
 	}
@@ -355,7 +351,7 @@ int at(Terminal &t, int argc, const char *args[])
 		if ((id == 0) && ((args[2][0] < '0') || (args[2][0] > '9')))
 			id = all ? 0 : -1;
 		if ((id >= (long)Config.at_actions_size()) || (id < 0))
-			return arg_invalid(t,args[2]);
+			return "Invalid argument #2.";
 		if (!strcmp(args[1],"-e") || !strcmp(args[1],"-d")) {
 			bool enable = args[1][1] == 'e';
 			if (!all) {
@@ -371,13 +367,13 @@ int at(Terminal &t, int argc, const char *args[])
 			else
 				Config.mutable_at_actions()->erase(Config.mutable_at_actions()->begin()+id);
 		} else {
-			return arg_invalid(t,args[1]);
+			return "Invalid argument #1.";
 		}
 		return 0;
 	}
 	bool have_day = false;
 	WeekDay wd;
-	for (size_t i = 0; i < sizeof(Weekdays_de)/sizeof(Weekdays_de[0]); ++i) {
+	for (size_t i = 0; i < weekdays_max; ++i) {
 		if (0 == strcasecmp(Weekdays_de[i],args[1])) {
 			wd = (WeekDay)i;
 			have_day = true;
@@ -385,7 +381,7 @@ int at(Terminal &t, int argc, const char *args[])
 		}
 	}
 	if (!have_day) {
-		for (size_t i = 0; i < sizeof(Weekdays_en)/sizeof(Weekdays_en[0]); ++i) {
+		for (size_t i = 0; i < weekdays_max; ++i) {
 			if (0 == strcmp(Weekdays_en[i],args[1])) {
 				wd = (WeekDay)i;
 				have_day = true;
@@ -393,15 +389,15 @@ int at(Terminal &t, int argc, const char *args[])
 			}
 		}
 		if (!have_day)
-			return arg_invalid(t,args[1]);
+			return "Invalid argument #1.";
 	}
 	int h,m;
 	int n = sscanf(args[2],"%d:%d",&h,&m);
 	if ((2 != n) || (h < 0) || (h > 23) || (m < 0) || (m > 59)) {
-		return arg_invalid(t,args[2]);
+		return "Invalid argument #2.";
 	}
 	if (0 == action_exists(args[3]))
-		return arg_invalid(t,args[3]);
+		return "Invalid argument #3.";
 	AtAction *a = Config.add_at_actions();
 	a->set_min_of_day(h*60+m);
 	a->set_action(args[3]);

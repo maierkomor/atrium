@@ -70,33 +70,34 @@ typedef enum logmod_e {
 	logmod_mqtt           =  40,
 	logmod_nightsky       =  41,
 	logmod_ns             =  42,
-	logmod_ota            =  43,
-	logmod_owb            =  44,
-	logmod_pca9685        =  45,
-	logmod_pcf8574        =  46,
-	logmod_relay          =  47,
-	logmod_romfs          =  48,
-	logmod_screen         =  49,
-	logmod_sgp30          =  50,
-	logmod_shell          =  51,
-	logmod_si7021         =  52,
-	logmod_signal         =  53,
-	logmod_sm             =  54,
-	logmod_sntp           =  55,
-	logmod_ssd1306        =  56,
-	logmod_telnet         =  57,
-	logmod_ti             =  58,
-	logmod_timefuse       =  59,
-	logmod_tlc5916        =  60,
-	logmod_tlc5947        =  61,
-	logmod_tp             =  62,
-	logmod_uart           =  63,
-	logmod_udns           =  64,
-	logmod_udpctrl        =  65,
-	logmod_wlan           =  66,
-	logmod_ws2812         =  67,
-	logmod_www            =  68,
-	logmod_xio            =  69,
+	logmod_nvm            =  43,
+	logmod_ota            =  44,
+	logmod_owb            =  45,
+	logmod_pca9685        =  46,
+	logmod_pcf8574        =  47,
+	logmod_relay          =  48,
+	logmod_romfs          =  49,
+	logmod_screen         =  50,
+	logmod_sgp30          =  51,
+	logmod_shell          =  52,
+	logmod_si7021         =  53,
+	logmod_signal         =  54,
+	logmod_sm             =  55,
+	logmod_sntp           =  56,
+	logmod_ssd1306        =  57,
+	logmod_telnet         =  58,
+	logmod_ti             =  59,
+	logmod_timefuse       =  60,
+	logmod_tlc5916        =  61,
+	logmod_tlc5947        =  62,
+	logmod_tp             =  63,
+	logmod_uart           =  64,
+	logmod_udns           =  65,
+	logmod_udpctrl        =  66,
+	logmod_wlan           =  67,
+	logmod_ws2812         =  68,
+	logmod_www            =  69,
+	logmod_xio            =  70,
 } logmod_t;
 
 // module defines
@@ -142,6 +143,7 @@ typedef enum logmod_e {
 #define MODULE_MQTT            logmod_mqtt
 #define MODULE_NIGHTSKY        logmod_nightsky
 #define MODULE_NS              logmod_ns
+#define MODULE_NVM             logmod_nvm
 #define MODULE_OTA             logmod_ota
 #define MODULE_OWB             logmod_owb
 #define MODULE_PCA9685         logmod_pca9685
@@ -169,8 +171,8 @@ typedef enum logmod_e {
 #define MODULE_WS2812          logmod_ws2812
 #define MODULE_WWW             logmod_www
 #define MODULE_XIO             logmod_xio
-#define MAX_MODULE_ID           69
-#define NUM_MODULES             70
+#define MAX_MODULE_ID           70
+#define NUM_MODULES             71
 
 #ifdef USE_MODULE
 #define TAG USE_MODULE

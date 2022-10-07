@@ -14,6 +14,10 @@ config FUNCTION_TIMING
 	help
 		enable for performance analysis only - negative impact for general use
 
+config VERIFY_HEAP
+	bool "verify heap"
+	depends on IDF_TARGET_ESP32
+
 config APP_PARAMS
 	bool "application specific parameters"
 	default false
@@ -25,6 +29,12 @@ config SIGNAL_PROC
 	default false
 	help
 		infrastructure for dynamic signal definition and processing
+
+config LUA
+	bool "support Lua scripts processing"
+	default true
+	help
+		Lua language and scripting support
 
 config THRESHOLDS
 	bool "support high/low schmitt-trigger thresholds on float variables"

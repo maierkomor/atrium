@@ -47,6 +47,7 @@ Hardware drivers:
 - transparent I/O multiplexer support
 - button support with debouncing
 - relay control support
+- ADC with sliding window
 - displays: SSD1360 (OLED), HD44780U (LCD), 7-/14-segmend LEDs (e.g. HT16K33, MAX7219)
 - BMP280 and HDC1000 temperature/pressure sensor
 - BME280 temperature/humidity/pressure sensor
@@ -330,6 +331,62 @@ To flash an S20 device, do the following steps:
 
 Now the device is ready to go. So reassemble it before connecting it to a power socket. Future updates can be done with the OTA procedure.
 
+
+MQTT support:
+=============
+Atrium has been tested with the Mosquitto MQTT server running on an
+Raspi. Once Atrium has an MQTT server configured and is enabled, it will
+auto connect to the MQTT server. Publishing of the runtime data is
+triggered using the `mqtt!pub_rtdata` action. It is recommended to bind
+this action to a custom timer with an interval time that matches your
+application. E.g. the following command sequence will configure the MQTT
+client to connect to the MQTT server named `mqttserver` on port 1883,
+create a timer that is fired every 5000ms and triggers the MQTT
+publication of the runtime data that can be listed using the `env`
+command.
+```
+mqtt uri mqtt://mqttserver:1883
+mqtt enable
+timer -c mqtttmr 5000 true true
+event -a mqtttmr`timeout mqtt!pub_rtdata
+config write
+```
+
+MQTT subscribes per default to the `action` topic. Like this you can
+trigger remotely any kind of action on your target node. E.g. using the
+mosquitto publish command line tool.
+```
+mosquitto_pub -h mqtt-server -t node/action -m 'led!set status:fast'
+```
+
+For relays there is also an addtional dedicated subscription consisting
+of the relayname preceded by `set_`. So following command will toggle
+the state of a relay called `mainrelay`:
+```
+mosquitto_pub -h mqtt-server -t node/set_mainrelay -m toggle
+```
+
+
+A/D Converters:
+===============
+A/D converter can be sampled via an action on ESP8266 and on ESP32 via
+an action or continuously by specifying a sampling interval.
+Additionally, a threshold configuration can be used to specify upper
+and lower threshold that fire events when being crossed in a hysteresis
+behavior. Thresholds can be applied to any variable, not only ADC
+values.
+
+
+Relays:
+=======
+Relays can be attached to any GPIO or extended GPIO that are provided by
+supported I/O extenders. Additionally, a minimum switch interval can be
+specified in milliseconds to make sure the relay is not being damaged by
+fast switching. Furthermore, a interlock mechanism can interlock two
+relays against eachother, making sure that only either one of both is
+getting turned on.
+
+
 Onewire/1-wire support:
 =======================
 Generic 1-wire support is provided by Atrium. Currently, this stack only
@@ -360,6 +417,27 @@ action.
 
 Parasite power is supported and is enabled if you configure the
 related gpio. 
+
+
+Lua support:
+============
+Atrium includes support for the execution of Lua scripts. This can be
+used to implement custom controls without having to work on the Atrium
+sources. The integration includes some functions to trigger events or
+execute actions directly, and to create and manipulate variables that
+are globally accessible via the `env` command.
+
+For compiling Lua files the `luac` command can be used which crates a
+function named by the basename of the file, which can be executed using
+the `lua` command.
+
+Lua integration provides also the `lua!run` and `lua!file` actions.
+`lua!run` directly interprets its argument as a lua script, whlie the
+`lua!file` action parses a file and provides the included function in
+the Lua environment as callable functions. 
+
+Using the `lua!run` action any of those functions can be triggered and
+also be bound to e.g. timer events.
 
 
 Buliding Atrium yourself:

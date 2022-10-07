@@ -54,8 +54,8 @@ class I2CDevice
 	{ return m_addr >> 1; }
 	
 #ifdef CONFIG_I2C_XCMD
-	virtual int exeCmd(struct Terminal &, int argc, const char **argv)
-	{ return -1; }
+	virtual const char *exeCmd(struct Terminal &, int argc, const char **argv)
+	{ return "Not supported."; }
 #endif
 
 	static bool hasInstance(const char *);

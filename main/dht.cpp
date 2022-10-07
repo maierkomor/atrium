@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2021, Thomas Maier-Komor
+ *  Copyright (C) 2018-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -60,18 +60,17 @@ static void gatherData(void *)
 }
 
 
-int dht(Terminal &term, int argc, const char *args[])
+const char *dht(Terminal &term, int argc, const char *args[])
 {
 	if (argc > 2)
-		return arg_invnum(term);
+		return "Invalid number of arguments.";
 	if (argc == 2) {
 		if (!strcmp(args[1],"sample"))
 			gatherData(0);
 		else
-			return arg_invalid(term,args[1]);
+			return "Invalid argument #1.";
 	} else if (Dht == 0) {
-		term.println("no DHT found");
-		return 1;
+		return "No DHT found.";
 	} else {
 		char buf[12];
 		float_to_str(buf,Dht->getTemperature());

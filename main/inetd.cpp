@@ -277,7 +277,7 @@ int inetd_setup(void)
 }
 
 
-int inetadm(Terminal &term, int argc, const char *args[])
+const char *inetadm(Terminal &term, int argc, const char *args[])
 {
 	if (argc == 2) {
 		if (!strcmp(args[1],"-l")) {
@@ -289,10 +289,10 @@ int inetadm(Terminal &term, int argc, const char *args[])
 			}
 			return 0;
 		}
-		return arg_invalid(term,args[1]);;
+		return "Invalid argument #1.";;
 	}
 	if (argc != 3)
-		return arg_invnum(term);
+		return "Invalid number of arguments.";
 	long l = strtol(args[2],0,0);
 	InetArg *p = Ports;
 	while (p) {
@@ -301,11 +301,10 @@ int inetadm(Terminal &term, int argc, const char *args[])
 		p = p->next;
 	}
 	if (p == 0)
-		return arg_invalid(term,args[1]);;
+		return "Invalid argument #1.";;
 	if (!strcmp(args[1],"-e")) {
 		if (p->sock != -1) {
-			term.printf("already enabled\n");
-			return 1;
+			return "Already enabled.";
 		}
 		init_port(p);
 		return 0;
@@ -313,8 +312,7 @@ int inetadm(Terminal &term, int argc, const char *args[])
 	if (!strcmp(args[1],"-d")) {
 		term.printf("disable service\n");
 		if (p->sock == -1) {
-			term.printf("already disabled\n");
-			return 1;
+			return "Already disabled.";
 		}
 		FD_CLR(p->sock,&PortFDs);
 		close(p->sock);
@@ -325,7 +323,7 @@ int inetadm(Terminal &term, int argc, const char *args[])
 #endif
 		return 0;
 	}
-	return arg_invalid(term,args[1]);;
+	return "Invalid argument #1.";;
 }
 
 #endif

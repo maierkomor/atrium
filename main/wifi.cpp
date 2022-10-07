@@ -138,7 +138,7 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
 		log_info(TAG,"unhandled esp event %x/%x",event_base,event_id);
 }
 
-#else
+#else	// IDF_VERSION < 40
 
 static esp_err_t wifi_event_handler(system_event_t *event)
 {
@@ -153,18 +153,18 @@ static esp_err_t wifi_event_handler(system_event_t *event)
 		system_event_sta_start_handle_default(event);	// IDF
 		break;
 	case SYSTEM_EVENT_AP_START:
-		log_info(TAG,"system event ap start");
+		log_info(TAG,"ap start");
 		Status |= STATUS_WIFI_UP | STATUS_SOFTAP_UP;
 		system_event_ap_start_handle_default(event);	// IDF
 		break;
 	case SYSTEM_EVENT_AP_STOP:
-		log_info(TAG,"system event ap stop");
+		log_info(TAG,"ap stop");
 		Status &= ~(STATUS_WIFI_UP | STATUS_SOFTAP_UP);
 		system_event_ap_stop_handle_default(event);	// IDF
 		break;
 	case SYSTEM_EVENT_STA_STOP:
 	case SYSTEM_EVENT_STA_LOST_IP:
-		log_info(TAG,"station stopped");
+		log_info(TAG,"station stop");
 		Status &= ~(STATUS_WIFI_UP | STATUS_STATION_UP);
 		StationMode = station_stopped;
 		if (0 == StationDownTS)
@@ -270,19 +270,19 @@ static esp_err_t wifi_event_handler(system_event_t *event)
 			conf->set_ssid((char*)wifi_config.sta.ssid);
 			conf->set_pass((char*)wifi_config.sta.password);
 			conf->set_activate(true);
-			log_info(TAG,"connected to: ssid=%s, pass=%s",wifi_config.sta.ssid,wifi_config.sta.password);
+			log_info(TAG,"connected to: ssid=%s",wifi_config.sta.ssid);
 		}
 		Status |= STATUS_WPS_TERM;
 		break;
 	case SYSTEM_EVENT_STA_WPS_ER_FAILED:
 		log_info(TAG,"WPS failed");
 		if (esp_err_t e = esp_wifi_wps_disable()) 
-			log_warn(TAG,"WPS disable returned %s",esp_err_to_name(e));
+			log_warn(TAG,"WPS disable: %s",esp_err_to_name(e));
 		break;
 	case SYSTEM_EVENT_STA_WPS_ER_TIMEOUT:
 		log_info(TAG,"WPS timeout");
 		if (esp_err_t e = esp_wifi_wps_disable()) 
-			log_warn(TAG,"wps disable returned %s",esp_err_to_name(e));
+			log_warn(TAG,"wps disable: %s",esp_err_to_name(e));
 		Status |= STATUS_WPS_TERM;
 		break;
 	case SYSTEM_EVENT_STA_WPS_ER_PIN:

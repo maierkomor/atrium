@@ -34,7 +34,7 @@ struct INA219 : public I2CDevice
 //	int init() override;
 	void attach(class EnvObject *) override;
 #ifdef CONFIG_I2C_XCMD
-	int exeCmd(struct Terminal &, int argc, const char **argv) override;
+	const char *exeCmd(struct Terminal &, int argc, const char **argv) override;
 #endif
 
 	protected:
@@ -62,7 +62,7 @@ struct INA226 : public I2CDevice
 	int init();
 	void attach(class EnvObject *);
 #ifdef CONFIG_I2C_XCMD
-	int exeCmd(struct Terminal &, int argc, const char **argv) override;
+	const char *exeCmd(struct Terminal &, int argc, const char **argv) override;
 #endif
 
 	protected:

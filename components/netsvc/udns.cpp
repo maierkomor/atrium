@@ -276,7 +276,7 @@ static void cache_add(const char *hn, size_t hl, ip_addr_t *ip, uint32_t ttl)
 		cache_remove_head();
 	}
 	if (Modules[0] || Modules[TAG]) {
-		char ipstr[32];
+		char ipstr[40];
 		ip2str_r(ip,ipstr,sizeof(ipstr));
 		log_dbug(TAG,"cache add %.*s: %s",hl,hn,ipstr);
 	}
@@ -484,6 +484,7 @@ static inline void sendOwnIp(uint8_t *q, uint16_t ql, uint16_t id, const ip_addr
 	size_t bsize = SIZEOF_HEADER+SIZEOF_IP4ANSW+HostnameLen+8;
 	uint16_t numans = 1;
 	struct pbuf *p = pbuf_alloc(PBUF_TRANSPORT,bsize,PBUF_RAM);
+	assert(p->len == p->tot_len);
 	Header *h = (Header*) p->payload;
 	bzero(h,SIZEOF_HEADER);
 	h->id = id;
@@ -508,6 +509,7 @@ static inline void sendOwnIp(uint8_t *q, uint16_t ql, uint16_t id, const ip_addr
 	assert(pkt-(uint8_t*)p->payload == p->len);
 	err_t r;
 	struct pbuf *p2 = pbuf_alloc(PBUF_TRANSPORT,bsize,PBUF_RAM);
+	assert(p2->len == p2->tot_len);
 	pbuf_copy(p2,p);
 	r = udp_send(MPCB,p2);
 	if (r)
@@ -538,6 +540,7 @@ static inline void sendOwnIp6(uint8_t *q, uint16_t ql, uint16_t id, const ip_add
 	size_t numans = 1;
 	size_t bsize = SIZEOF_HEADER+(SIZEOF_IP6ANSW+HostnameLen+8)*numans;
 	struct pbuf *p = pbuf_alloc(PBUF_TRANSPORT,bsize,PBUF_RAM);
+	assert(p->len == p->tot_len);
 	Header *h = (Header*) p->payload;
 	bzero(h,SIZEOF_HEADER);
 	h->id = id;
@@ -587,6 +590,7 @@ static void sendOwnHostname(uint8_t *q, uint16_t ql, uint16_t id)
 {
 	log_dbug(TAG,"send own hostname");
 	struct pbuf *p = pbuf_alloc(PBUF_TRANSPORT,SIZEOF_HEADER+HostnameLen+DomainnameLen+2,PBUF_RAM);
+	assert(p->len == p->tot_len);
 	Header *h = (Header*) p->payload;
 	bzero(h,SIZEOF_HEADER);
 	h->id = id;
@@ -628,6 +632,7 @@ static void sendHostInfo(uint8_t *q, uint16_t ql, uint16_t id)
 #error unknown IDF and CPU
 #endif
 	struct pbuf *p = pbuf_alloc(PBUF_TRANSPORT,SIZEOF_HEADER+sizeof(cpu)+sizeof(os)+2,PBUF_RAM);
+	assert(p->len == p->tot_len);
 	Header *h = (Header*) p->payload;
 	bzero(h,SIZEOF_HEADER);
 	h->id = id;
@@ -659,6 +664,7 @@ static void sendPtrInfo(uint8_t *q, uint16_t ql, uint16_t id)
 	log_dbug(TAG,"send PTR info");
 	size_t l = Ptr ? strlen(Ptr) : 0;
 	struct pbuf *p = pbuf_alloc(PBUF_TRANSPORT,SIZEOF_HEADER+l+2,PBUF_RAM);
+	assert(p->len == p->tot_len);
 	Header *h = (Header*) p->payload;
 	bzero(h,SIZEOF_HEADER);
 	h->id = id;
@@ -747,7 +753,7 @@ static void recv_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p, const 
 {
 //	log_hex(TAG,p->payload,p->len,"packet from %s",ip2str(ip));
 	if (Modules[0] || Modules[TAG]) {
-		char ipstr[32];
+		char ipstr[40];
 		ip2str_r(ip,ipstr,sizeof(ipstr));
 		log_direct(ll_debug,TAG,"packet from %s",ipstr);
 	}
@@ -984,6 +990,7 @@ static err_t sendSelfQuery()
 		return -1;
 	}
 	struct pbuf *p = pbuf_alloc(PBUF_TRANSPORT,SIZEOF_HEADER+HostnameLen+8+4,PBUF_RAM);
+	assert(p->len == p->tot_len);
 	bzero(p->payload,SIZEOF_HEADER);
 	Header *hdr = (Header *)p->payload;
 	hdr->qcnt = htons(1);
@@ -1171,7 +1178,6 @@ static void mdns_init(void *)
 #else
 	mdns_init_fn(0);
 #endif
-	log_dbug(TAG,"init triggered");
 }
 
 
@@ -1286,7 +1292,7 @@ int dns_setserver(uint8_t idx, const ip_addr_t *addr)
 		if (ip_addr_cmp(&ns,addr))
 			return 0;
 		if (ip_addr_isany(&ns)) {
-			char ipstr[32];
+			char ipstr[40];
 			log_info(TAG,"add nameserver %s",ip2str_r(addr,ipstr,sizeof(ipstr)));
 			ns = *addr;
 			return 0;
@@ -1330,7 +1336,7 @@ err_t dns_gethostbyname(const char *hostname, ip4_addr_t *addr, dns_found_callba
 int udns(Terminal &t, int argc, const char *argv[])
 {
 	t.print("name server:");
-	char ipstr[32];
+	char ipstr[40];
 	for (const auto &ns : NameServer) {
 		if (!ip_addr_isany(&ns)) {
 			t.printf(" %s",ip2str_r(&ns,ipstr,sizeof(ipstr)));
@@ -1348,7 +1354,7 @@ int udns(Terminal &t, int argc, const char *argv[])
 	e = CacheS;
 	while (e) {
 		if (IP_IS_V6(&e->ip))
-			t.printf("%-32s %s\n",ip6addr_ntoa_r(ip_2_ip6(&e->ip),ipstr,sizeof(ipstr)),e->host);
+			t.printf("%-40s %s\n",ip6addr_ntoa_r(ip_2_ip6(&e->ip),ipstr,sizeof(ipstr)),e->host);
 		e = e->next;
 	}
 #endif

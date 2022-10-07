@@ -32,14 +32,21 @@ extern "C" {
 
 #include <driver/uart.h>
 #include <driver/gpio.h>
-#include <nvs.h>
-#include <nvs_flash.h>
+//#include <nvs.h>
+//#include <nvs_flash.h>
 
 #ifdef CONFIG_IDF_TARGET_ESP8266
 #include <spi_flash.h>
 #include <driver/rtc.h>
 #elif defined CONFIG_IDF_TARGET_ESP32
 #include <soc/rtc.h>
+#endif
+
+#ifdef CONFIG_VERIFY_HEAP
+//#define verify_heap() if (!heap_caps_check_integrity_all(true)){printf("corrupt heap\n");heap_caps_dump_all();}
+#define verify_heap() assert(heap_caps_check_integrity_all(true))
+#else
+#define verify_heap()
 #endif
 
 #include <sdkconfig.h>
@@ -51,6 +58,7 @@ extern "C" {
 #include "leds.h"
 #include "log.h"
 #include "netsvc.h"
+#include "nvm.h"
 #include "ota.h"
 #include "settings.h"
 #include "support.h"
@@ -113,6 +121,7 @@ int sm_setup();
 int telnet_setup();
 int touchpads_setup();
 void udns_setup();
+void xlua_setup();
 int udpctrl_setup();
 int webcam_setup();
 int xio_setup();
@@ -228,16 +237,28 @@ static void env_setup()
 }
 
 
+#ifdef CONFIG_VERIFY_HEAP
+unsigned cyclic_check_heap(void *)
+{
+	assert(heap_caps_check_integrity_all(true));
+	return 5000;
+}
+#endif
+
+
 extern "C"
 void app_main()
 {
+	verify_heap();
 	log_setup();		// init CONFIG_CONSOLE_UART_NUM, logging mutex, etc
 	event_init();		// event mutex, etc
 #ifdef CONFIG_SYSLOG
 	dmesg_setup();		// syslog buffer, using syslog`msg event
 #endif
 	globals_setup();	// init HWConf, Config, RTData with defaults
-	nvs_setup();		// read HWConf
+	if (0 == nvm_setup())		// read HWConf
+		cfg_read_hwcfg();
+	verify_heap();
 
 	log_info(TAG,"Atrium Firmware for ESP based systems");
 	log_info(TAG,"Copyright 2019-2022, Thomas Maier-Komor, License: GPLv3");
@@ -247,19 +268,26 @@ void app_main()
 
 	action_setup();
 	settings_setup();
+	verify_heap();
 	uart_setup();		// init configured uarts, set diag uart
 	cyclic_setup();
+	verify_heap();
+#ifdef CONFIG_VERIFY_HEAP
+	cyclic_add_task("check_heap",cyclic_check_heap,0);
+#endif
 
 	gpio_setup();
 #ifdef CONFIG_I2C
 	i2c_setup();	// must be befor gpio_setup to provide io-cluster
 #endif
 	xio_setup();
+	verify_heap();
 	adc_setup();
 #ifdef CONFIG_IDF_TARGET_ESP32
 	hall_setup();
 #endif
 
+	verify_heap();
 #ifdef CONFIG_AT_ACTIONS
 	alarms_setup();	// must be bevore status_setup, as status reads alarm info
 #endif
@@ -271,6 +299,7 @@ void app_main()
 #ifdef CONFIG_UART_CONSOLE
 	console_setup();
 #endif
+	verify_heap();
 
 	event_start();
 #ifdef CONFIG_RELAY
@@ -294,21 +323,27 @@ void app_main()
 #ifdef CONFIG_ONEWIRE
 	ow_setup();
 #endif
+	verify_heap();
 
 #ifdef CONFIG_UDNS
 	udns_setup();
 #endif
+	verify_heap();
 	wifi_setup();
+	verify_heap();
 	cfg_activate();
+	verify_heap();
 #ifdef CONFIG_UDNS
 	mdns_setup();
 #endif
+	verify_heap();
 #ifdef CONFIG_MQTT
 	mqtt_setup();	// in case of no subscriptions
 #endif
 #ifdef CONFIG_INFLUX
 	influx_setup();
 #endif
+	verify_heap();
 	env_setup();
 	sntp_setup();
 
@@ -341,6 +376,9 @@ void app_main()
 	// otherwise this step will fail
 	cfg_activate_actions();
 
+#ifdef CONFIG_LUA
+	xlua_setup();
+#endif
 #ifdef CONFIG_SIGNAL_PROC
 	cfg_init_functions();
 #endif

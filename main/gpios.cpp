@@ -155,7 +155,7 @@ void Gpio::init(unsigned config)
 	cfg.cfg_io = (xio_cfg_io_t)((config & 0x3));
 	cfg.cfg_intr = (xio_cfg_intr_t)(((config >> 2) & 0x3));
 	cfg.cfg_pull = (xio_cfg_pull_t)(((config >> 7) & 3) + 1);
-	if (xio_config(m_gpio,cfg)) {
+	if (0 > xio_config(m_gpio,cfg)) {
 		log_warn(TAG,"config gpio %u failed",m_gpio);
 		return;
 	}
@@ -239,7 +239,7 @@ void esp32_gpio_status(Terminal &term, gpio_num_t gpio)
 #endif
 
 
-int gpio(Terminal &term, int argc, const char *args[])
+const char *gpio(Terminal &term, int argc, const char *args[])
 {
 #ifdef CONFIG_IOEXTENDERS
 	if (argc == 1) {
@@ -264,11 +264,11 @@ int gpio(Terminal &term, int argc, const char *args[])
 	char *e;
 	long l = strtol(args[1],&e,0);
 	if ((*e) || (l < 0))
-		return arg_invalid(term,args[1]);
+		return "Invalid argument #1.";
 	if (argc == 2) {
 		int r = xio_get_lvl(l);
 		if (r < 0)
-			return -1;
+			return "Failed.";
 		int d = xio_get_dir(l);
 		const char *dir = (d < 0) ? "unknown" : GpioDirStr[d];
 		XioCluster *c = XioCluster::getCluster(l);
@@ -282,9 +282,9 @@ int gpio(Terminal &term, int argc, const char *args[])
 	xio_cfg_t cfg = XIOCFG_INIT;
 	if (argc == 3) {
 		if (!strcmp(args[2],"0"))
-			return xio_set_lo(l);
+			return xio_set_lo(l) ? "Failed." : 0;
 		else if (!strcmp(args[2],"1"))
-			return xio_set_hi(l);
+			return xio_set_hi(l) ? "Failed." : 0;
 		else if (!strcmp(args[2],"in"))
 			cfg.cfg_io = xio_cfg_io_in;
 		else if (!strcmp(args[2],"out"))
@@ -298,7 +298,7 @@ int gpio(Terminal &term, int argc, const char *args[])
 		else if (!strcmp(args[2],"flags"))
 			;	// explicitly do nothing
 		else
-			return arg_invalid(term,args[2]);
+			return "Invalid argument #2.";
 	}
 	if (argc == 4) {
 		if (!strcmp(args[2],"pull")) {
@@ -313,12 +313,12 @@ int gpio(Terminal &term, int argc, const char *args[])
 			else if (!strcmp(args[3],"none"))
 				cfg.cfg_pull = xio_cfg_pull_none;
 			else
-				return arg_invalid(term,args[3]);
+				return "Invalid argument #3.";
 		}
 	}
 	int r = xio_config(l,cfg);
 	if (r == -1)
-		return -1;
+		return "Failed.";
 	if (r == 0)
 		term.println("none");
 	if (r & xio_cap_pullup)
@@ -341,8 +341,7 @@ int gpio(Terminal &term, int argc, const char *args[])
 	} else if ((argc == 2) && (args[1][0] >= '0') && (args[1][0] <= '9')) {
 		long pin = strtol(args[1],0,0);
 		if (!GPIO_IS_VALID_GPIO(pin)) {
-			term.printf("no gpio %ld\n",pin);
-			return 1;
+			return "Invalid argument #1.";
 		}
 //		uint32_t iomux = read_iomux_conf(pin);
 		uint32_t iomux = REG_READ(GPIO_PIN_MUX_REG[pin]);
@@ -377,11 +376,11 @@ int gpio(Terminal &term, int argc, const char *args[])
 			,GpioIntrTriggerStr[(gpiopc>>7)&0x7]
 			);
 	} else {
-		return arg_invalid(term,args[1]);
+		return "Invalid argument #1.";
 	}
 #elif defined CONFIG_IDF_TARGET_ESP8266
 	if (argc > 3)
-		return arg_invnum(term);
+		return "Invalid number of arguments.";
 	if (argc == 1) {
 		uint32_t dir = GPIO_REG_READ(GPIO_ENABLE_ADDRESS);
 		for (int p = 0; p <= 16; ++p ) {
@@ -403,7 +402,7 @@ int gpio(Terminal &term, int argc, const char *args[])
 		if (argc == 3) {
 			long l = strtol(args[2],0,0);
 			if (l <= 0)
-				return arg_invalid(term,args[2]);
+				return "Invalid argument #2.";
 			n = l;
 		}
 		uint32_t g0 = GPIO.in;
@@ -422,7 +421,7 @@ int gpio(Terminal &term, int argc, const char *args[])
 		if (argc == 3) {
 			long l = strtol(args[2],0,0);
 			if (l <= 0)
-				return arg_invalid(term,args[2]);
+				return "Invalid argument #2.";
 			n = l;
 		}
 		uint32_t g0 = GPIO.out;
@@ -439,7 +438,7 @@ int gpio(Terminal &term, int argc, const char *args[])
 	} else if ((args[1][0] >= '0') && (args[1][0] <= '9')) {
 		long l = strtol(args[1],0,0);
 		if ((l > 16) || (l < 0))
-			return arg_invalid(term,args[1]);
+			return "Invalid argument #1.";
 		if (argc == 2) {
 			term.printf("%d",xio_get_lvl((xio_t)l));
 		} else if (argc == 3) {
@@ -456,14 +455,13 @@ int gpio(Terminal &term, int argc, const char *args[])
 			else if ((0 == strcmp(args[2],"1")) || (0 == strcmp(args[2],"on")))
 				e = xio_set_hi((xio_t)l);
 			else
-				return arg_invalid(term,args[2]);
+				return "Invalid argument #2.";
 			if (e != 0) {
-				term.println(esp_err_to_name(e));
-				return 1;
+				return esp_err_to_name(e);
 			}
 		}
 	} else {
-		return arg_invalid(term,args[1]);
+		return "Invalid argument #1.";
 	}
 #else
 #error unknwon target

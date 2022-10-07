@@ -29,6 +29,7 @@
 #include "hwcfg.h"
 #include "leds.h"
 #include "log.h"
+#include "nvm.h"
 #include "ota.h"
 #include "memfiles.h"
 #include "netsvc.h"
@@ -142,15 +143,13 @@ struct ExeName
 {
 	char name[15];
 	uint8_t flags;	// 0 = no priviliges required, 1 = user admin required
-	int (*function)(Terminal &term, int argc, const char *arg[]);
+	const char *(*function)(Terminal &term, int argc, const char *arg[]);
 	const char *descr;
 	const char *help;
 };
 
 static estring PWD;
 static const char PW[] = "password:", NotSet[] = "<not set>";
-
-int help_cmd(Terminal &term, const char *arg);
 
 extern "C"
 const char *getpwd()
@@ -179,16 +178,16 @@ static void action_perf(void *p, const Action *a)
 }
 
 
-static int action(Terminal &t, int argc, const char *args[])
+static const char *action(Terminal &t, int argc, const char *args[])
 {
 	if (argc == 1)
 		return help_cmd(t,args[0]);
 	if (argc == 3) {
 		char *arg = strdup(args[2]);
 		if (action_activate_arg(args[1],arg))
-			return arg_invalid(t,args[1]);
+			return "Invalid argument #1.";
 	} else if (argc != 2) {
-		return arg_invnum(t);
+		return "Invalid number of arguments.";
 	} else if (0 == strcmp(args[1],"-l")) {
 		action_iterate(action_print,(void*)&t);
 	} else if (0 == strcmp(args[1],"-p")) {
@@ -196,14 +195,14 @@ static int action(Terminal &t, int argc, const char *args[])
 		action_iterate(action_perf,(void*)&t);
 	} else if (!strcmp(args[1],"-F")) {
 		if (0 == t.getPrivLevel())
-			return arg_priv(t);
+			return "Access denied.";
 		Config.set_actions_enable(Config.actions_enable()|2);
 	} else if (!strcmp(args[1],"-f")) {
 		if (0 == t.getPrivLevel())
-			return arg_priv(t);
+			return "Access denied.";
 		Config.set_actions_enable(Config.actions_enable()&~2);
 	} else if (action_activate(args[1])) {
-		return arg_invalid(t,args[1]);
+		return "Invalid argument #1.";
 	}
 	return 0;
 }
@@ -211,7 +210,7 @@ static int action(Terminal &t, int argc, const char *args[])
 
 static void print_mac(Terminal &t, const char *i, uint8_t mac[])
 {
-	t.printf("%s mac:%02x:%02x:%02x:%02x:%02x:%02x\n",i,mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
+	t.printf("%-8s: %02x:%02x:%02x:%02x:%02x:%02x\n",i,mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
 }
 
 
@@ -258,17 +257,16 @@ static void print_obj(Terminal &t, EnvObject *o, int indent)
 }
 
 
-static int env(Terminal &t, int argc, const char *args[])
+static const char *env(Terminal &t, int argc, const char *args[])
 {
 	rtd_lock();
-	rtd_update();
 	print_obj(t,RTData,0); 
 	rtd_unlock();
 	return 0;
 }
 
 
-static int event(Terminal &t, int argc, const char *args[])
+static const char *event(Terminal &t, int argc, const char *args[])
 {
 	if (argc == 1) {
 		return help_cmd(t,args[0]);
@@ -290,28 +288,25 @@ static int event(Terminal &t, int argc, const char *args[])
 					t.printf("\t%s (%s)%s\n", c.action->name, c.arg ? c.arg : "", c.enabled ? "" : " [disabled]");
 			}
 		} else {
-			return arg_invalid(t,args[1]);
+			return "Invalid argument #1.";
 		}
 		return 0;
 	} else if (argc == 3) {
 		if (!strcmp(args[1],"-t")) {
-			if (event_t e = event_id(args[2]))
+			if (event_t e = event_id(args[2])) {
 				event_trigger(e);
-			else
-				return arg_invalid(t,args[2]);
-		} else {
-			return arg_invalid(t,args[1]);
+				return 0;
+			}
 		}
-		return 0;
 	} else if (argc == 4) {
 		if (0 == t.getPrivLevel())
-			return arg_priv(t);
+			return "Access denied.";
 		Action *a = action_get(args[3]);
 		if (a == 0)
-			return arg_invalid(t,args[3]);
+			return "Invalid argument #3.";
 		event_t e = event_id(args[2]);
 		if (e == 0) {
-			return arg_invalid(t,args[2]);
+			return "Invalid argument #2.";
 		} else if (!strcmp(args[1],"-a")) {
 			event_callback(e,a);
 			for (auto &t : *Config.mutable_triggers()) {
@@ -341,19 +336,19 @@ static int event(Terminal &t, int argc, const char *args[])
 					}
 				}
 			}
-			return r;
+			return r ? "Failed." : 0;
 		} else {
-			return arg_invalid(t,args[1]);
+			return "Invalid argument #1.";
 		} 
 	} else if (argc == 5) {
 		if (0 == t.getPrivLevel())
-			return arg_priv(t);
+			return "Access denied.";
 		Action *a = action_get(args[3]);
 		if (a == 0)
-			return arg_invalid(t,args[3]);
+			return "Invalid argument #3.";
 		event_t e = event_id(args[2]);
 		if (e == 0) {
-			return arg_invalid(t,args[2]);
+			return "Invalid argument #2.";
 		} else if (!strcmp(args[1],"-a")) {
 			size_t cl = strlen(args[3]);
 			char *arg = (char*) malloc(cl+strlen(args[4])+2);
@@ -372,20 +367,20 @@ static int event(Terminal &t, int argc, const char *args[])
 			t->add_action(arg);
 			return 0;
 		} else {
-			return arg_invalid(t,args[1]);
+			return "Invalid argument #1.";
 		} 
 	} else {
-		return arg_invnum(t);
+		return "Invalid number of arguments.";
 	}
-	return 1;
+	return "Invalid argument.";
 }
 
 
 #ifdef CONFIG_IDF_TARGET_ESP32
-static int shell_cd(Terminal &term, int argc, const char *args[])
+static const char *shell_cd(Terminal &term, int argc, const char *args[])
 {
 	if (argc > 2)
-		return arg_invnum(term);
+		return "Invalid number of arguments.";
 	if (argc == 1) {
 		term.println(PWD.c_str());
 		return 0;
@@ -402,11 +397,11 @@ static int shell_cd(Terminal &term, int argc, const char *args[])
 
 
 #ifdef HAVE_FS
-static int shell_rm(Terminal &term, int argc, const char *args[])
+static const char *shell_rm(Terminal &term, int argc, const char *args[])
 {
 	if (argc != 2)
-		return arg_invnum(term);
-	int err = 0;
+		return "Invalid number of arguments.";
+	const char *err = 0;
 	int a = 1;
 	while (a < argc) {
 		estring fn;
@@ -414,8 +409,7 @@ static int shell_rm(Terminal &term, int argc, const char *args[])
 			fn = PWD;
 		fn += args[a];
 		if (-1 == unlink(fn.c_str())) {
-			term.println(strerror(errno));
-			err = 1;
+			err = strerror(errno);
 		}
 		++a;
 	}
@@ -425,42 +419,40 @@ static int shell_rm(Terminal &term, int argc, const char *args[])
 
 
 #ifdef CONFIG_FATFS
-static int shell_mkdir(Terminal &term, int argc, const char *args[])
+static const char *shell_mkdir(Terminal &term, int argc, const char *args[])
 {
 	if (argc != 2)
-		return arg_invnum(term);
+		return "Invalid number of arguments.";
 	estring dn;
 	if (args[1][0] != '/')
 		dn = PWD;
 	dn += args[1];
 	if (-1 == mkdir(dn.c_str(),0777)) {
-		term.println(strerror(errno));
-		return 1;
+		return strerror(errno);
 	}
 	return 0;
 }
 
 
-static int shell_rmdir(Terminal &term, int argc, const char *args[])
+static const char *shell_rmdir(Terminal &term, int argc, const char *args[])
 {
 	if (argc != 2)
-		return arg_invnum(term);
+		return "Invalid number of arguments.";
 	estring dn;
 	if (args[1][0] != '/')
 		dn = PWD;
 	dn += args[1];
 	if (-1 == rmdir(dn.c_str())) {
-		term.println(strerror(errno));
-		return 1;
+		return strerror(errno);
 	}
 	return 0;
 }
 
 
-static int shell_mv(Terminal &term, int argc, const char *args[])
+static const char *shell_mv(Terminal &term, int argc, const char *args[])
 {
 	if (argc != 3)
-		return arg_invnum(term);
+		return "Invalid number of arguments.";
 	estring fn0,fn1;
 	if (args[1][0] != '/')
 		fn0 = PWD;
@@ -472,23 +464,20 @@ static int shell_mv(Terminal &term, int argc, const char *args[])
 	if (r == 0)
 		return 0;
 	if ((r == -1) && (errno != ENOTSUP)) {
-		term.printf("failed to rename '%s' to '%s': %s\n",args[1],args[2],strerror(errno));
-		return 1;
+		return strerror(errno);
 	}
 	if (-1 == link(args[1],args[2])) {
-		term.printf("failed to link '%s' to '%s': %s\n",args[1],args[2],strerror(errno));
-		return 1;
+		return strerror(errno);
 	}
 	if (-1 == unlink(args[1])) {
-		term.printf("failed to unlink '%s': %s\n",args[1],strerror(errno));
-		return 1;
+		return strerror(errno);
 	}
 	return 0;
 }
 #endif
 
 
-static int shell_ls(Terminal &term, int argc, const char *args[])
+static const char *shell_ls(Terminal &term, int argc, const char *args[])
 {
 #if defined CONFIG_ROMFS
 	if (unsigned n = romfs_num_entries()) {
@@ -509,8 +498,7 @@ static int shell_ls(Terminal &term, int argc, const char *args[])
 			pwd.resize(pwd.size()-1);
 		DIR *d = opendir(pwd.c_str());
 		if (d == 0) {
-			term.println(strerror(errno));
-			return 1;
+			return strerror(errno);
 		}
 		while (struct dirent *e = readdir(d))
 			term.println(e->d_name);
@@ -518,7 +506,6 @@ static int shell_ls(Terminal &term, int argc, const char *args[])
 		return 0;
 	}
 	bool nlst = false;
-	int ret = 0;
 	int a = 1;
 	if (!strcmp(args[1],"-1")) {
 		++a;
@@ -535,7 +522,6 @@ static int shell_ls(Terminal &term, int argc, const char *args[])
 		DIR *d = opendir(dir.c_str());
 		if (d == 0) {
 			term.printf("unable to open dir %s: %s\n",dir.c_str(),strerror(errno));
-			ret = 1;
 			continue;
 		}
 		if (dir.c_str()[dir.size()-1] != '/')
@@ -559,15 +545,14 @@ static int shell_ls(Terminal &term, int argc, const char *args[])
 		}
 		closedir(d);
 	}
-	return ret;
+	return 0;
 #else
-	term.printf("no filesystem\n");
-	return 1;
+	return "no filesystem";
 #endif
 }
 
 
-static int shell_cat1(Terminal &term, const char *arg)
+static const char *shell_cat1(Terminal &term, const char *arg)
 {
 #ifdef CONFIG_ROMFS
 	const char *fn = arg;
@@ -598,7 +583,7 @@ static int shell_cat1(Terminal &term, const char *arg)
 		size_t a = strlen(arg);
 		filename = (char *) malloc(a+p+1);
 		if (filename == 0)
-			return 1;
+			return "Out of memory.";
 		memcpy(filename,PWD.data(),p);
 		memcpy(filename+p,arg,a+1);
 	}
@@ -606,19 +591,21 @@ static int shell_cat1(Terminal &term, const char *arg)
 	if (filename != arg)
 		free(filename);
 	if (fd < 0)
-		return 1;
+		return strerror(errno);
 	struct stat st;
 	if (0 != fstat(fd,&st)) {
+		int e = errno;
 		close(fd);
-		return 1;
+		return strerror(e);
 	}
 	char buf[512];
 	int t = 0;
 	do {
 		int n = read(fd,buf,sizeof(buf));
 		if (n == -1) {
+			int e = errno;
 			close(fd);
-			return 1;
+			return strerror(e);
 		}
 		t += n;
 		term.print(buf,n);
@@ -626,18 +613,18 @@ static int shell_cat1(Terminal &term, const char *arg)
 	close(fd);
 	return 0;
 #else
-	return 1;
+	return "No filesystem.";
 #endif
 }
 
-static int shell_cat(Terminal &term, int argc, const char *args[])
+static const char *shell_cat(Terminal &term, int argc, const char *args[])
 {
 	if (argc == 1)
-		return arg_missing(term);
+		return "Missing argument.";
 	int r = 0;
 	for (int i = 1; i < argc; ++i)
-		r |= shell_cat1(term,args[i]);
-	return r;
+		r |= shell_cat1(term,args[i]) != 0;
+	return r ? "Failed." : 0;
 }
 
 
@@ -663,10 +650,10 @@ void print_hex(Terminal &term, uint8_t *b, size_t s, size_t off = 0)
 
 
 #ifdef HAVE_FS
-static int shell_touch(Terminal &term, int argc, const char *args[])
+static const char *shell_touch(Terminal &term, int argc, const char *args[])
 {
 	if (argc != 2) {
-		return arg_invnum(term);
+		return "Invalid number of arguments.";
 	}
 	int fd;
 	if (args[1][0] == '/') {
@@ -679,29 +666,26 @@ static int shell_touch(Terminal &term, int argc, const char *args[])
 		free(path);
 	}
 	if (fd == -1) {
-		term.printf("failed: %s\n",args[1],strerror(errno));
-		return 1;
+		return strerror(errno);
 	}
 	close(fd);
 	return 0;
 }
 
 
-static int shell_xxd(Terminal &term, int argc, const char *args[])
+static const char *shell_xxd(Terminal &term, int argc, const char *args[])
 {
 	if (argc != 2) {
-		return arg_invnum(term);
+		return "Invalid number of arguments.";
 	}
 	int fd = open(args[1],O_RDONLY);
 	if (fd == -1) {
-		term.printf("open %s: %s\n",args[1],strerror(errno));
-		return 1;
+		return strerror(errno);
 	}
 	struct stat st;
 	if (-1 == fstat(fd,&st)) {
 		close(fd);
-		term.printf("stat %s: %s\n",args[1],strerror(errno));
-		return 1;
+		return strerror(errno);
 	}
 	uint8_t buf[64];
 	int n = read(fd,buf,sizeof(buf));
@@ -717,20 +701,20 @@ static int shell_xxd(Terminal &term, int argc, const char *args[])
 #endif
 
 
-static int shell_reboot(Terminal &term, int argc, const char *args[])
+static const char *shell_reboot(Terminal &term, int argc, const char *args[])
 {
 	if (argc != 1)
-		return arg_invnum(term);
+		return "Invalid number of arguments.";
 	esp_restart();
 	return 0;
 }
 
 
 #if defined CONFIG_SPIFFS || defined CONFIG_FATFS
-static int shell_df(Terminal &term, int argc, const char *args[])
+static const char *shell_df(Terminal &term, int argc, const char *args[])
 {
 	if (argc != 1)
-		return arg_invnum(term);
+		return "Invalid number of arguments.";
 #ifdef CONFIG_SPIFFS
 	size_t total = 0, used = 0;
 	esp_err_t ret = esp_spiffs_info("storage", &total, &used);
@@ -749,30 +733,28 @@ static int shell_df(Terminal &term, int argc, const char *args[])
 	}
 	term.printf("error: %d\n",err);
 #endif
-	return 1;
+	return "No filesystem.";
 }
 #endif
 
 
-static int part(Terminal &term, int argc, const char *args[])
+static const char *part(Terminal &term, int argc, const char *args[])
 {
 	if (argc == 3) {
 		if (strcmp(args[1],"erase"))
-			return arg_invalid(term,args[1]);
-		esp_partition_iterator_t i = esp_partition_find(ESP_PARTITION_TYPE_DATA,ESP_PARTITION_SUBTYPE_ANY,args[2]);
-		if (i == 0)
-			return arg_invalid(term,args[2]);
-		const esp_partition_t *p = esp_partition_get(i);
-		if (p == 0)
-			return arg_invalid(term,args[2]);
-		if (esp_err_t e = spi_flash_erase_range(p->address,p->size)) {
-			term.println(esp_err_to_name(e));
-			return 1;
+			return "Invalid argument #1.";
+		if (esp_partition_iterator_t i = esp_partition_find(ESP_PARTITION_TYPE_DATA,ESP_PARTITION_SUBTYPE_ANY,args[2])) {
+			if (const esp_partition_t *p = esp_partition_get(i)) {
+				if (esp_err_t e = spi_flash_erase_range(p->address,p->size)) {
+					return esp_err_to_name(e);
+				}
+				return 0;
+			}
 		}
-		return 0;
+		return "Invalid argument #2.";
 	}
 	if (argc != 1)
-		return arg_invnum(term);
+		return "Invalid number of arguments.";
 	esp_partition_iterator_t i = esp_partition_find(ESP_PARTITION_TYPE_APP,ESP_PARTITION_SUBTYPE_ANY,0);
 	while (i) {
 		const esp_partition_t *p = esp_partition_get(i);
@@ -798,7 +780,7 @@ static int part(Terminal &term, int argc, const char *args[])
 }
 
 
-static int mem(Terminal &term, int argc, const char *args[])
+static const char *mem(Terminal &term, int argc, const char *args[])
 {
 	term.printf(
 		"32bit mem   : %u\n"
@@ -812,11 +794,19 @@ static int mem(Terminal &term, int argc, const char *args[])
 	term.printf("SPI  mem    : %u\n",heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
 	term.printf("internal mem: %u\n",heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
 #endif
+#ifdef CONFIG_VERIFY_HEAP
+	if (0 == strcmp(args[1],"-c")) {
+		return false == heap_caps_check_integrity_all(true) ? "Failed." : 0;
+	}
+	if (0 == strcmp(args[1],"-d")) {
+		heap_caps_dump_all();
+	}
+#endif
 	return 0;
 }
 
 
-int mac(Terminal &term, int argc, const char *args[])
+const char *mac(Terminal &term, int argc, const char *args[])
 {
 	uint8_t mac[6];
 	if (argc == 1) {
@@ -831,7 +821,7 @@ int mac(Terminal &term, int argc, const char *args[])
 		}
 	}
 	if (0 == term.getPrivLevel())
-		return arg_priv(term);
+		return "Access denied.";
 	// priveleged commands
 	if (argc == 2) {
 		if (!strcmp("-c",args[1])) {
@@ -842,10 +832,10 @@ int mac(Terminal &term, int argc, const char *args[])
 	} else if (argc == 3) {
 		unsigned inp[6];
 		if (6 != sscanf(args[2],"%x:%x:%x:%x:%x:%x",inp+0,inp+1,inp+2,inp+3,inp+4,inp+5))
-			return arg_invalid(term,args[2]);
+			return "Invalid argument #2.";
 		for (int i = 0; i < 6; ++i) {
 			if (inp[i] > 0xff)
-				return arg_invalid(term,args[2]);
+				return "Invalid argument #2.";
 			mac[i] = inp[i];
 		}
 		wifi_interface_t w;
@@ -857,15 +847,14 @@ int mac(Terminal &term, int argc, const char *args[])
 			w = WIFI_IF_AP;
 			Config.mutable_softap()->set_mac(mac,6);
 		} else {
-			return arg_invalid(term,args[1]);
+			return "Invalid argument #1.";
 		}
 		if (esp_err_t e = esp_wifi_set_mac(w,mac)) {
-			term.printf("error setting mac: %s",esp_err_to_name(e));
-			return 1;
+			return esp_err_to_name(e);
 		}
 		return 0;
 	}
-	return 1;
+	return "Invalid argument #1.";
 }
 
 
@@ -884,32 +873,32 @@ static int set(Terminal &t, int argc, const char *args[])
 			return update_setting(t,args[2],0);
 		return update_setting(t,args[1],args[2]);
 	} else
-		return arg_invnum(t);
-	return arg_invalid(t,args[1]);
+		return "Invalid number of arguments.";
+	return "Invalid argument #1.";
 }
 #endif
 
 
-static int hostname(Terminal &term, int argc, const char *args[])
+static const char *hostname(Terminal &term, int argc, const char *args[])
 {
 	if (argc > 2) {
-		return arg_invnum(term);
+		return "Invalid number of arguments.";
 	}
 	if (argc == 1) {
-		term.printf("nodename: %s\n",Config.has_nodename() ? Config.nodename().c_str() : "<unset>");
+//		term.printf("%.*s.%.*s\n",HostnameLen,Hostname,DomainnameLen,Domainname);
+		term.println(Hostname);
 		return 0;
 	}
 	if (0 == term.getPrivLevel())
-		return arg_priv(term);
-	if (int e = sethostname(args[1],0))
-		return e;
+		return "Access denied.";
+	if (cfg_set_hostname(args[1]))
+		return "Failed.";
 	Config.set_nodename(args[1]);
-	cfg_set_hostname(args[1]);
 	return 0;
 }
 
 
-static int parse_xxd(Terminal &term, vector<uint8_t> &buf)
+static const char *parse_xxd(Terminal &term, vector<uint8_t> &buf)
 {
 	uint8_t b = 0, x = 0;
 	bool nl = false;
@@ -934,7 +923,7 @@ static int parse_xxd(Terminal &term, vector<uint8_t> &buf)
 			b |= (c-'A')+10;
 		} else {
 			term.printf("invalid input 0x%x\n",c);
-			return 1;
+			return "";
 		}
 		if (++x == 2) {
 			buf.push_back(b);
@@ -946,7 +935,7 @@ static int parse_xxd(Terminal &term, vector<uint8_t> &buf)
 }
 
 
-static int hwconf(Terminal &term, int argc, const char *args[])
+static const char *hwconf(Terminal &term, int argc, const char *args[])
 {
 	static vector<uint8_t> hwcfgbuf;
 	if (argc == 1) {
@@ -970,22 +959,22 @@ static int hwconf(Terminal &term, int argc, const char *args[])
 #ifdef CONFIG_HWCONF_DYNAMIC
 	} else if (!strcmp("add",args[1])) {
 		if (argc < 3)
-			return arg_missing(term);
+			return "Missing argument.";
 		char arrayname[strlen(args[2])+4];
 		strcpy(arrayname,args[2]);
 		strcat(arrayname,"[+]");
-		return HWConf.setByName(arrayname,0) < 0;
+		return HWConf.setByName(arrayname,0) < 0 ? "Failed" : 0;
 	} else if (!strcmp("set",args[1])) {
 		if (argc < 4)
-			return arg_missing(term);
-		return (0 > HWConf.setByName(args[2],args[3]));
+			return "Missing argument.";
+		return (0 > HWConf.setByName(args[2],args[3])) ? "Failed" : 0;
 	} else if (!strcmp("reset",args[1])) {
-		return cfg_read_hwcfg() >= 0;
+		return cfg_read_hwcfg() >= 0 ? "Failed" : 0;
 	} else if (!strcmp("clear",args[1])) {
 		if (argc == 3)
-			return HWConf.setByName(args[2],0) < 0;
+			return HWConf.setByName(args[2],0) < 0 ? "Failed" : 0;
 		if (argc != 2)
-			return arg_invnum(term);
+			return "Invalid number of arguments.";
 		HWConf.clear();
 		HWConf.set_magic(0xAE54EDCB);
 	} else if (!strcmp("xxd",args[1])) {
@@ -1001,42 +990,41 @@ static int hwconf(Terminal &term, int argc, const char *args[])
 	} else if (!strcmp("json",args[1])) {
 		HWConf.toJSON(term);
 	} else if (!strcmp("write",args[1])) {
-		return cfg_store_hwcfg();
+		return cfg_store_hwcfg() ? "Failed" : 0;
 #else
 	} else if (!strcmp("clear",args[1])) {
 		if (argc != 2)
-			return arg_invnum(term);
+			return "Invalid number of arguments.";
 		HWConf.clear();
 		HWConf.set_magic(0xAE54EDCB);
 #endif
 	} else if (!strcmp("nvxxd",args[1])) {
 		size_t s;
 		uint8_t *buf = 0;
-		if (int e = readNVconfig("hw.cfg",&buf,&s)) {
-			term.println(esp_err_to_name(e));
-			return 1;
+		if (int e = nvm_read_blob("hw.cfg",&buf,&s)) {
+			return esp_err_to_name(e);
 		}
 		print_hex(term,buf,s);
 		free(buf);
 	} else if (!strcmp("parsexxd",args[1])) {
 		if (parse_xxd(term,hwcfgbuf))
-			return 1;
+			return "Invalid hex input.";
 		term.printf("parsing %u bytes\n",hwcfgbuf.size());
 		HardwareConfig nc;
 		int e = nc.fromMemory(hwcfgbuf.data(),hwcfgbuf.size());
 		if (0 >= e) {
 			term.printf("parser error: %d\n",e);
-			return 1;
+			return "";
 		}
 		HWConf = nc;
 	} else if (!strcmp("writebuf",args[1])) {
-		return writeNVM("hw.cfg",hwcfgbuf.data(),hwcfgbuf.size());
+		return nvm_store_blob("hw.cfg",hwcfgbuf.data(),hwcfgbuf.size()) ? "Failed." : 0;
 	} else if (!strcmp("clearbuf",args[1])) {
 		hwcfgbuf.clear();
 	} else if (!strcmp("xxdbuf",args[1])) {
 		print_hex(term,hwcfgbuf.data(),hwcfgbuf.size());
 	} else {
-		return arg_invalid(term,args[1]);
+		return "Invalid argument #1.";
 	}
 	return 0;
 }
@@ -1093,10 +1081,10 @@ static void ms_to_timestr(char *buf, unsigned long ms)
 }
 
 
-static int timefuse(Terminal &term, int argc, const char *args[])
+static const char *timefuse(Terminal &term, int argc, const char *args[])
 {
 	if (argc == 1)
-		return arg_invnum(term);
+		return "Invalid number of arguments.";
 	if (argc == 2) {
 		if (!strcmp("-l",args[1])) {
 			timefuse_t t = timefuse_iterator();
@@ -1114,15 +1102,15 @@ static int timefuse(Terminal &term, int argc, const char *args[])
 			}
 			return 0;
 		}
-		return arg_invalid(term,args[1]);
+		return "Invalid argument #1.";
 	}
 	if (0 == term.getPrivLevel())
-		return arg_priv(term);
+		return "Access denied.";
 	if (argc == 3) {
 		if (!strcmp("-s",args[1]))
-			return timefuse_start(args[2]);
+			return timefuse_start(args[2]) ? "Failed." : 0;
 		if (!strcmp("-t",args[1]))
-			return timefuse_stop(args[2]);
+			return timefuse_stop(args[2]) ? "Failed." : 0;
 		if (!strcmp("-d",args[1])) {
 			/*
 			 * Deletes only from config.
@@ -1136,10 +1124,10 @@ static int timefuse(Terminal &term, int argc, const char *args[])
 					return 0;
 				}
 			}
-			return 1;
+			return "No such timer.";
 			// return timefuse_delete(args[2]);	-- incomplete
 		}
-		return arg_invalid(term,args[1]);
+		return "Invalid argument #1.";
 	}
 	// argc >= 4
 	if (!strcmp("-r",args[1])) {
@@ -1153,7 +1141,7 @@ static int timefuse(Terminal &term, int argc, const char *args[])
 				return 0;
 			}
 		}
-		return arg_invalid(term,args[2]);
+		return "Invalid argument #1.";
 	}
 	if (!strcmp("-a",args[1])) {
 		for (EventTimer &t : *Config.mutable_timefuses()) {
@@ -1166,17 +1154,17 @@ static int timefuse(Terminal &term, int argc, const char *args[])
 				return 0;
 			}
 		}
-		return arg_invalid(term,args[2]);
+		return "Invalid argument #1.";
 	}
 	char *e;
 	long ms = strtol(args[3],&e,10);
 	if ((e == args[3]) || (ms <= 0))
-		return arg_invalid(term,args[3]);
+		return "Invalid argument #3.";
 	if (*e == ' ')
 		++e;
 	switch (*e) {
 	default:
-		return arg_invalid(term,args[3]);
+		return "Invalid argument #3.";
 	case 'h':
 		ms *= 60*60*1000;
 		break;
@@ -1186,7 +1174,7 @@ static int timefuse(Terminal &term, int argc, const char *args[])
 		else if (e[1] == 0)
 			ms *= 60000;
 		else
-			return arg_invalid(term,args[3]);
+			return "Invalid argument #3.";
 		break;
 	case 's':
 		ms *= 1000;
@@ -1197,13 +1185,13 @@ static int timefuse(Terminal &term, int argc, const char *args[])
 		for (auto &t : *Config.mutable_timefuses()) {
 			if (t.name() == args[2]) {
 				t.set_time(ms);
-				return timefuse_interval_set(args[2],ms);
+				return timefuse_interval_set(args[2],ms) ? "Failed." : 0;
 			}
 		}
-		return arg_invalid(term,args[2]);
+		return "Invalid argument #1.";
 	}
 	if (strcmp("-c",args[1]))
-		return arg_invalid(term,args[1]);
+		return "Invalid argument #1.";
 	EventTimer *t = Config.add_timefuses();
 	t->set_name(args[2]);
 	t->set_time(ms);
@@ -1217,19 +1205,18 @@ static int timefuse(Terminal &term, int argc, const char *args[])
 	timefuse_t r = timefuse_create(t->name().c_str(),ms,config&1);
 	if ((r != 0) && (config & 2))
 		timefuse_start(r);
-	return (r == 0);
+	return (r == 0) ? "Failed." : 0;
 }
 
 
-static int wifi(Terminal &term, int argc, const char *args[])
+static const char *wifi(Terminal &term, int argc, const char *args[])
 {
 	if (argc > 2)
-		return arg_invnum(term);
+		return "Invalid number of arguments.";
 	term.printf("station mode %d\n",StationMode);
 	wifi_mode_t m = WIFI_MODE_NULL;
 	if (esp_err_t e = esp_wifi_get_mode(&m)) {
-		term.printf("error: %s\n",esp_err_to_name(e));
-		return 1;
+		return esp_err_to_name(e);
 	}
 	if (argc == 1) {
 		term.printf("wifi mode %u\n",m);
@@ -1257,7 +1244,7 @@ static int wifi(Terminal &term, int argc, const char *args[])
 		}
 		*/
 	} else
-		return arg_invalid(term,args[1]);
+		return "Invalid argument #1.";
 	if (ESP_OK != esp_wifi_set_mode(m)) {
 		term.println("error changing wifi mode");
 	}
@@ -1266,40 +1253,40 @@ static int wifi(Terminal &term, int argc, const char *args[])
 
 
 #ifdef CONFIG_SMARTCONFIG
-static int sc(Terminal &term, int argc, const char *args[])
+static const char *sc(Terminal &term, int argc, const char *args[])
 {
 	if (argc > 2)
-		return arg_invnum(term);
+		return "Invalid number of arguments.";
 	if (argc == 1)
 		term.printf("smartconfig is %srunning",smartconfig_running() ? "" : "not ");
 	else if (0 == strcmp(args[1],"start"))
-		return smartconfig_start();
+		return smartconfig_start() ? "Failed." : 0;
 	else if (0 == strcmp(args[1],"stop"))
 		smartconfig_stop();
 	else if (0 == strcmp(args[1],"version"))
 		term.println(esp_smartconfig_get_version());
 	else
-		return arg_invalid(term,args[1]);
+		return "Invalid argument #1.";
 	return 0;
 }
 #endif
 
 
 #ifdef CONFIG_WPS
-static int wps(Terminal &term, int argc, const char *args[])
+static const char *wps(Terminal &term, int argc, const char *args[])
 {
 	if (argc > 1)
-		return arg_invalid(term,args[1]);
+		return "Invalid argument #1.";
 	wifi_wps_start();
 	return 0;
 }
 #endif
 
 
-static int station(Terminal &term, int argc, const char *args[])
+static const char *station(Terminal &term, int argc, const char *args[])
 {
 	if (argc > 3)
-		return arg_invnum(term);
+		return "Invalid number of arguments.";
 	WifiConfig *s = Config.mutable_station();
 	if (argc == 1) {
 		term.printf("ssid: %s\npass: %s\nactive: %s\n"
@@ -1333,8 +1320,7 @@ static int station(Terminal &term, int argc, const char *args[])
 			wifi_start_station(s->ssid().c_str(),s->pass().c_str());
 			s->set_activate(true);
 		} else {
-			term.println("ssid and pass needed");
-			return 1;
+			return "ssid and pass needed";
 		}
 	} else if (!strcmp(args[1],"off")) {
 		s->set_activate(false);
@@ -1344,7 +1330,7 @@ static int station(Terminal &term, int argc, const char *args[])
 		wifi_stop_station();
 	} else if (!strcmp(args[1],"ip")) {
 		if (argc != 3) {
-			return arg_invnum(term);
+			return "Invalid number of arguments.";
 		}
 		if (!strcmp(args[2],"-c")) {
 			s->clear_addr4();
@@ -1354,29 +1340,29 @@ static int station(Terminal &term, int argc, const char *args[])
 		}
 		uint8_t x[5];
 		if (5 != get_ip(args[2],x))
-			return arg_invalid(term,args[2]);
+			return "Invalid argument #2.";
 		uint32_t ip = x[0] | (x[1]<<8) | (x[2]<<16) | (x[3]<<24);
 		s->set_addr4(ip);
 		s->set_netmask4(x[4]);
 	} else if (!strcmp(args[1],"gw")) {
 		if (argc != 3)
-			return arg_invnum(term);
+			return "Invalid number of arguments.";
 		uint8_t x[5];
 		if (4 != get_ip(args[2],x))
-			return arg_invalid(term,args[2]);
+			return "Invalid argument #2.";
 		uint32_t ip = x[0] | (x[1]<<8) | (x[2]<<16) | (x[3]<<24);
 		s->set_gateway4(ip);
 	} else {
-		return arg_invalid(term,args[1]);
+		return "Invalid argument #1.";
 	}
 	return 0;
 }
 
 
-static int accesspoint(Terminal &term, int argc, const char *args[])
+static const char *accesspoint(Terminal &term, int argc, const char *args[])
 {
 	if (argc > 3)
-		return arg_invnum(term);
+		return "Invalid number of arguments.";
 	WifiConfig *ap = Config.mutable_softap();
 	if (argc == 1) {
 		term.printf("ssid: %s\npass: %s\nactive: %s\n"
@@ -1392,15 +1378,14 @@ static int accesspoint(Terminal &term, int argc, const char *args[])
 	} else if (!strcmp(args[1],"pass")) {
 		ap->set_pass(args[2]);
 		if (!wifi_stop_softap())
-			return 1;
+			return "Failed.";
 	} else if ((!strcmp(args[1],"on")) || (!strcmp(args[1],"up"))) {
 		if (ap->has_ssid()) {
 			ap->set_activate(true);
 			if (!wifi_start_softap(ap->ssid().c_str(),ap->has_pass() ? ap->pass().c_str() : ""))
-				return 1;
+				return "Failed.";
 		} else {
-			term.println("ssid needed");
-			return 1;
+			return "ssid needed";
 		}
 	} else if (!strcmp(args[1],"off")) {
 		ap->set_activate(false);
@@ -1409,16 +1394,16 @@ static int accesspoint(Terminal &term, int argc, const char *args[])
 		Config.clear_softap();
 		wifi_stop_softap();
 	} else {
-		return arg_invalid(term,args[1]);
+		return "Invalid argument #1.";
 	}
 	return 0;
 }
 
 
-static int debug(Terminal &term, int argc, const char *args[])
+static const char *debug(Terminal &term, int argc, const char *args[])
 {
 	if (argc == 1)
-		return arg_invnum(term);
+		return "Invalid number of arguments.";
 	if (!strcmp("-a",args[1])) {
 		for (int m = 1; m < NUM_MODULES; ++m)
 			term.println(ModNames+ModNameOff[(logmod_t)m]);
@@ -1429,9 +1414,9 @@ static int debug(Terminal &term, int argc, const char *args[])
 		return 0;
 	}
 	if (0 == term.getPrivLevel())
-		return arg_priv(term);
+		return "Access denied.";
 	if (argc != 3) 
-		return arg_missing(term);
+		return "Missing argument.";
 	if (!strcmp("-d",args[1])) {
 		auto *d = Config.mutable_debugs();
 		for (auto i = d->begin(), e = d->end(); i != e; ++i) {
@@ -1440,41 +1425,38 @@ static int debug(Terminal &term, int argc, const char *args[])
 				break;
 			}
 		}
-		return log_module_disable(args[2]);
+		return log_module_disable(args[2]) ? "Failed." : 0;
 	}
 	if (!strcmp("-e",args[1])) {
 		if (log_module_enable(args[2]))
-			return arg_invalid(term,args[2]);
+			return "Invalid argument #2.";
 		Config.add_debugs(args[2]);
 		return 0;
 	}
-	return arg_invalid(term,args[1]);
+	return "Invalid argument #1.";
 }
 
 
 #if defined HAVE_FS && defined CONFIG_OTA
-static int download(Terminal &term, int argc, const char *args[])
+static const char *download(Terminal &term, int argc, const char *args[])
 {
 	if ((argc < 2) || (argc > 3)) {
-		return arg_invnum(term);
+		return "Invalid number of arguments.";
 	}
 	return http_download(term,(char*)args[1], (argc == 3) ? args[2] : 0);
 }
 #endif
 
 
-static int nslookup(Terminal &term, int argc, const char *args[])
+static const char *nslookup(Terminal &term, int argc, const char *args[])
 {
 	if (argc != 2) {
-		return arg_invnum(term);
+		return "Invalid number of arguments.";
 	}
 	ip_addr_t ip;
-	if (err_t e = resolve_hostname(args[1],&ip)) {
-		term.printf("error %s",strlwiperr(e));
-		return 1;
-	}
-	term.println(inet_ntoa(ip));
-	return 0;
+	if (err_t e = resolve_hostname(args[1],&ip))
+		return strlwiperr(e);
+	return inet_ntoa(ip);
 }
 
 
@@ -1488,10 +1470,10 @@ static int segv(Terminal &term, int argc, const char *args[])
 #endif
 
 
-static int sntp(Terminal &term, int argc, const char *args[])
+static const char *sntp(Terminal &term, int argc, const char *args[])
 {
 	if (argc > 3)
-		return arg_invnum(term);
+		return "Invalid number of arguments.";
 	if (argc == 1) {
 		if (Config.has_sntp_server())
 			term.printf("sntp server: %s\n",Config.sntp_server().c_str());
@@ -1519,25 +1501,25 @@ static int sntp(Terminal &term, int argc, const char *args[])
 		return 0;
 	}
 	if (0 == term.getPrivLevel())
-		return arg_priv(term);
+		return "Access denied.";
 	if (!strcmp(args[1],"clear")) {
 		Config.clear_sntp_server();
 		sntp_set_server(0);
 	} else if (!strcmp(args[1],"set")) {
 		if (argc != 3)
-			return arg_invnum(term);
+			return "Invalid number of arguments.";
 		Config.set_sntp_server(args[2]);
 		sntp_set_server(args[2]);
 	} else
-		return arg_invalid(term,args[1]);
+		return "Invalid argument #1.";
 	return 0;
 }
 
 
-static int timezone(Terminal &term, int argc, const char *args[])
+static const char *timezone(Terminal &term, int argc, const char *args[])
 {
 	if ((argc != 1) && (argc != 2)) {
-		return arg_invnum(term);
+		return "Invalid number of arguments.";
 	}
 	if (argc == 1) {
 		if (const char *tz = Config.timezone().c_str())
@@ -1546,16 +1528,16 @@ static int timezone(Terminal &term, int argc, const char *args[])
 			term.println("timezone not set");
 		return 0;
 	}
-	return update_setting(term,"timezone",args[1]);
+	return update_setting(term,"timezone",args[1]) ? "Failed." : 0;
 }
 
 
-static int xxdSettings(Terminal &t)
+static const char *xxdSettings(Terminal &t)
 {
 	size_t s = Config.calcSize();
 	uint8_t *buf = (uint8_t *)malloc(s);
 	if (buf == 0)
-		return 1;
+		return "Out of memory.";
 	Config.toMemory(buf,s);
 	print_hex(t,buf,s);
 	free(buf);
@@ -1563,7 +1545,7 @@ static int xxdSettings(Terminal &t)
 }
 
 
-static int config(Terminal &term, int argc, const char *args[])
+static const char *config(Terminal &term, int argc, const char *args[])
 {
 	static vector<uint8_t> rtcfgbuf;
 	if (argc == 1) {
@@ -1579,29 +1561,29 @@ static int config(Terminal &term, int argc, const char *args[])
 #endif
 	} else if (!strcmp("add",args[1])) {
 		if (argc < 3)
-			return arg_missing(term);
+			return "Missing argument.";
 		char arrayname[strlen(args[2])+4];
 		strcpy(arrayname,args[2]);
 		strcat(arrayname,"[+]");
-		return Config.setByName(arrayname,0) < 0;
+		return Config.setByName(arrayname,0) < 0 ? "Failed." : 0;
 	} else if (!strcmp("set",args[1])) {
 		if (argc == 4) {
 			if (0 > Config.setByName(args[2],args[3]))
-				return 1;
+				return "Failed.";
 		} else if (argc == 5) {
 			char tmp[strlen(args[3])+strlen(args[4])+2];
 			strcpy(tmp,args[3]);
 			strcat(tmp," ");
 			strcat(tmp,args[4]);
 			if (0 > Config.setByName(args[2],tmp))
-				return 1;
+				return "Failed.";
 		} else
-			return arg_missing(term);
+			return "Missing argument.";
 		return 0;
 	} else if (!strcmp(args[1],"write")) {
-		return cfg_store_nodecfg();
+		return cfg_store_nodecfg() ? "Failed." : 0;
 	} else if (!strcmp(args[1],"read")) {
-		return cfg_read_nodecfg();
+		return cfg_read_nodecfg() ? "Failed." : 0;
 	} else if (!strcmp(args[1],"size")) {
 		term << Config.calcSize() << '\n';
 		return 0;
@@ -1610,30 +1592,30 @@ static int config(Terminal &term, int argc, const char *args[])
 	} else if (!strcmp(args[1],"activate")) {
 		cfg_activate();
 	} else if (!strcmp(args[1],"backup")) {
-		return cfg_backup_create();
+		return nvm_copy_blob("node.cfg.bak","node.cfg") ? "Failed." : 0;
 	} else if (!strcmp(args[1],"restore")) {
-		return cfg_backup_restore();
+		return nvm_copy_blob("node.cfg","node.cfg.bak") ? "Failed." : 0;
 	} else if (!strcmp(args[1],"clear")) {
 		if (argc != 2)
-			return Config.setByName(args[2],0) < 0;
+			return Config.setByName(args[2],0) < 0 ? "Failed." : 0;
 		cfg_clear_nodecfg();
 	} else if (!strcmp(args[1],"erase")) {
 		if (argc != 2)
-			return arg_invnum(term);
-		return cfg_erase_nvs();
+			return "Invalid number of arguments.";
+		nvm_erase_key("node.cfg");
 	} else if (!strcmp("parsexxd",args[1])) {
 		if (parse_xxd(term,rtcfgbuf))
-			return 1;
+			return "Invalid hex input";
 		term.printf("parsing %u bytes\n",rtcfgbuf.size());
 		NodeConfig nc;
 		int e = nc.fromMemory(rtcfgbuf.data(),rtcfgbuf.size());
 		if (0 >= e) {
 			term.printf("parser error: %d\n",e);
-			return 1;
+			return "";
 		}
 		Config = nc;
 	} else if (!strcmp("writebuf",args[1])) {
-		return writeNVM("hw.cfg",rtcfgbuf.data(),rtcfgbuf.size());
+		return nvm_store_blob("hw.cfg",rtcfgbuf.data(),rtcfgbuf.size()) ? "Failed." : 0;
 	} else if (!strcmp("clearbuf",args[1])) {
 		rtcfgbuf.clear();
 	} else if (!strcmp("xxdbuf",args[1])) {
@@ -1643,12 +1625,12 @@ static int config(Terminal &term, int argc, const char *args[])
 	} else if (!strcmp(args[1],"nvxxd")) {
 		size_t s;
 		uint8_t *buf = 0;
-		if (int e = readNVconfig("node.cfg",&buf,&s))
-			return e;
+		if (int e = nvm_read_blob("node.cfg",&buf,&s))
+			return e ? "Failed." : 0;
 		print_hex(term,buf,s);
 		free(buf);
 	} else {
-		return 1;
+		return "Invalid argument #1.";
 	}
 	return 0;
 }
@@ -1657,15 +1639,15 @@ static int config(Terminal &term, int argc, const char *args[])
 // requires configUSE_TRACE_FACILITY in FreeRTOSConfig.h
 #if configUSE_TRACE_FACILITY == 1
 const char taskstates[] = "XRBSDI";
-int ps(Terminal &term, int argc, const char *args[])
+const char *ps(Terminal &term, int argc, const char *args[])
 {
 	if (argc != 1) {
-		return arg_invnum(term);
+		return "Invalid number of arguments.";
 	}
 	unsigned nt = uxTaskGetNumberOfTasks();
 	TaskStatus_t *st = (TaskStatus_t*) malloc(nt*sizeof(TaskStatus_t));
 	if (st == 0)
-		return err_oom(term);
+		return "Out of memory.";
 	nt = uxTaskGetSystemState(st,nt,0);
 #ifdef CONFIG_FREERTOS_VTASKLIST_INCLUDE_COREID
 	term.println(" ID ST PRIO       TIME STACK CPU NAME");
@@ -1695,10 +1677,10 @@ int ps(Terminal &term, int argc, const char *args[])
 #endif
 
 
-static int print_data(Terminal &term, int argc, const char *args[])
+static const char *print_data(Terminal &term, int argc, const char *args[])
 {
 	if (argc != 1) {
-		return arg_invnum(term);
+		return "Invalid number of arguments.";
 	}
 	runtimedata_to_json(term);
 	term.write("\n",1);
@@ -1710,7 +1692,7 @@ static int print_data(Terminal &term, int argc, const char *args[])
 //#ifdef close
 //#undef close
 //#endif
-static int update(Terminal &term, int argc, const char *args[])
+static const char *update(Terminal &term, int argc, const char *args[])
 {
 	if (argc == 1)
 		return help_cmd(term,args[0]);
@@ -1718,7 +1700,7 @@ static int update(Terminal &term, int argc, const char *args[])
 		term.println("WARNING: memory low!");
 	UBaseType_t p = uxTaskPriorityGet(0);
 	vTaskPrioritySet(0, 11);
-	int r = 1;
+	const char *r = 0;
 	if ((argc == 3) && (0 == strcmp(args[1],"-b"))) {
 		r = perform_ota(term,(char*)args[2],true);
 		if (r == 0) {
@@ -1736,7 +1718,7 @@ static int update(Terminal &term, int argc, const char *args[])
 	} else if (argc == 2) {
 		r = perform_ota(term,(char*)args[1],false);
 	} else {
-		return arg_invalid(term,args[1]);
+		return "Invalid argument #1.";
 	}
 	vTaskPrioritySet(0, p);
 	return r;
@@ -1744,10 +1726,10 @@ static int update(Terminal &term, int argc, const char *args[])
 #endif
 
 
-static int getuptime(Terminal &term, int argc, const char *args[])
+static const char *getuptime(Terminal &term, int argc, const char *args[])
 {
 	if (argc != 1) {
-		return arg_invnum(term);
+		return "Invalid number of arguments.";
 	}
 #ifdef _POSIX_MONOTONIC_CLOCK
 	struct timespec ts;
@@ -1768,10 +1750,10 @@ static int getuptime(Terminal &term, int argc, const char *args[])
 }
 
 
-static int cpu(Terminal &term, int argc, const char *args[])
+static const char *cpu(Terminal &term, int argc, const char *args[])
 {
 	if (argc > 2) {
-		return arg_invnum(term);
+		return "Invalid number of arguments.";
 	}
 	if (argc == 1) {
 		int f = esp_clk_cpu_freq();
@@ -1819,22 +1801,22 @@ static int cpu(Terminal &term, int argc, const char *args[])
 		return 0;
 	}
 	if (0 == term.getPrivLevel())
-		return arg_priv(term);
+		return "Access denied.";
 	errno = 0;
 	long l = strtol(args[1],0,0);
 	if ((l == 0) || (errno != 0))
-		return 1;
+		return "Invalid argument #1.";
 	if (0 != set_cpu_freq(l))
-		return arg_invalid(term,args[1]);
+		return "Failed.";
 	Config.set_cpu_freq(l);
 	return 0;
 }
 
 
-static int password(Terminal &term, int argc, const char *args[])
+static const char *password(Terminal &term, int argc, const char *args[])
 {
 	if (argc > 2) {
-		return arg_invnum(term);
+		return "Invalid number of arguments.";
 	}
 	if (argc == 1) {
 		return help_cmd(term,args[0]);
@@ -1850,7 +1832,7 @@ static int password(Terminal &term, int argc, const char *args[])
 		term.write(PW,sizeof(PW));
 		int n = term.readInput(buf,sizeof(buf),false);
 		if (n < 0)
-			return 1;
+			return "No input.";
 		buf[n] = 0;
 		setPassword(buf);
 		term.setPrivLevel(0);
@@ -1860,7 +1842,7 @@ static int password(Terminal &term, int argc, const char *args[])
 		term.write(PW,sizeof(PW));
 		int n = term.readInput(buf,sizeof(buf),false);
 		if (n < 0)
-			return 1;
+			return "No input.";
 		buf[n] = 0;
 		term.printf("%smatch\n", verifyPassword(buf) ? "" : "mis");
 	} else {
@@ -1871,7 +1853,7 @@ static int password(Terminal &term, int argc, const char *args[])
 
 
 #ifdef CONFIG_SIGNAL_PROC
-static int func(Terminal &term, int argc, const char *args[])
+static const char *func(Terminal &term, int argc, const char *args[])
 {
 	if (argc == 1) {
 		return help_cmd(term,args[0]);
@@ -1887,7 +1869,7 @@ static int func(Terminal &term, int argc, const char *args[])
 		return 0;
 	}
 	if (0 == term.getPrivLevel())
-		return arg_priv(term);
+		return "Access denied.";
 	if (!strcmp(args[1],"-a")) {
 		FunctionFactory *f = FunctionFactory::first();
 		while (f) {
@@ -1898,19 +1880,19 @@ static int func(Terminal &term, int argc, const char *args[])
 	}
 	if (!strcmp(args[1],"-x")) {
 		if (argc != 3) 
-			return arg_missing(term);
+			return "Missing argument.";
 		Function *f = Function::getInstance(args[2]);
 		if (f == 0)
-			return arg_invalid(term,args[2]);
+			return "Invalid argument #2.";
 		f->operator() (0);
 		return 0;
 	}
 	if (!strcmp(args[1],"-c")) {
 		if (argc < 4) 
-			return arg_missing(term);
+			return "Missing argument.";
 		Function *f = FunctionFactory::create(args[3],args[2]);
 		if (0 == f)
-			return 1;
+			return "Function not found.";
 		FunctionConfig *c = Config.add_functions();
 		c->set_name(args[2]);
 		c->set_func(args[3]);
@@ -1925,15 +1907,14 @@ static int func(Terminal &term, int argc, const char *args[])
 		}
 		return 0;
 	}
-	return arg_invalid(term,args[1]);
+	return "Invalid argument #1.";
 }
 
 
-static int signal(Terminal &term, int argc, const char *args[])
+static const char *signal(Terminal &term, int argc, const char *args[])
 {
-	if (argc == 1) {
+	if (argc == 1)
 		return help_cmd(term,args[0]);
-	}
 	if (!strcmp("-l",args[1])) {
 		DataSignal *s = DataSignal::first();
 		while (s) {
@@ -1946,29 +1927,29 @@ static int signal(Terminal &term, int argc, const char *args[])
 		return 0;
 	}
 	if (0 == term.getPrivLevel())
-		return arg_priv(term);
+		return "Access denied.";
 	if (!strcmp("-c",args[1])) {
 		if ((argc != 5) && (argc != 4))
-			return arg_invnum(term);
+			return "Invalid number of arguments.";
 		DataSignal *s = 0;
 		if (!strcmp(args[2],"int")) {
 			s = new IntSignal(strdup(args[3]));
 		} else if (!strcmp(args[2],"float")) {
 			s = new FloatSignal(strdup(args[3]));
 		} else {
-			return arg_invalid(term,args[2]);
+			return "Invalid argument #2.";
 		}
 		if (argc == 4)
 			return 0;
-		return s->initFrom(args[4]);
+		return s->initFrom(args[4]) ? "Failed." : 0;
 	}
 	if (!strcmp("-s",args[1])) {
 		if (argc != 4)
-			return arg_missing(term);
+			return "Missing argument.";
 		DataSignal *s = DataSignal::getSignal(args[2]);
 		if (0 == s)
-			return arg_invalid(term,args[2]);
-		return s->initFrom(args[3]);
+			return "Invalid argument #2.";
+		return s->initFrom(args[3]) ? "Failed." : 0;
 	}
 	if (!strcmp("-f",args[1])) {
 		FunctionFactory *f = FunctionFactory::first();
@@ -1980,43 +1961,42 @@ static int signal(Terminal &term, int argc, const char *args[])
 	}
 	if (!strcmp("-a",args[1])) {
 		if (argc != 4)
-			return arg_invnum(term);
+			return "Invalid number of arguments.";
 		DataSignal *s = DataSignal::getSignal(args[2]);
 		if (s == 0)
-			return arg_invalid(term,args[2]);
+			return "Invalid argument #2.";
 		Function *f = Function::getInstance(args[3]);
 		if (f == 0)
-			return arg_invalid(term,args[3]);
+			return "Invalid argument #3.";
 		s->addFunction(f);
 		return 0;
 	}
-	return arg_invalid(term,args[1]);
+	return "Invalid argument #1.";
 }
 #endif
 
 
-static int su(Terminal &term, int argc, const char *args[])
+static const char *su(Terminal &term, int argc, const char *args[])
 {
 	if (argc == 1)
 		goto done;
-	if (argc > 2) {
+	if (argc > 2)
 		return help_cmd(term,args[0]);
-	}
 	if (!strcmp(args[1],"0")) {
 		term.setPrivLevel(0);
 		goto done;
 	}
 	if (strcmp(args[1],"1"))
-		return arg_invalid(term,args[1]);
+		return "Invalid argument #1.";
 	if (!Config.pass_hash().empty()) {
 		char buf[32];
 		term.write(PW,sizeof(PW));
 		int n = term.readInput(buf,sizeof(buf)-1,false);
 		if (n < 0)
-			return 1;
+			return "input error";
 		buf[n] = 0;
 		if (!verifyPassword(buf))
-			return 1;
+			return "access denied";
 	}
 	term.setPrivLevel(1);
 done:
@@ -2058,7 +2038,7 @@ static void print_thresholds(Terminal &t, EnvObject *o, int indent)
 }
 
 
-static int thresholds(Terminal &term, int argc, const char *args[])
+static const char *thresholds(Terminal &term, int argc, const char *args[])
 {
 	if (argc == 1) {
 		print_thresholds(term,RTData,0);
@@ -2069,25 +2049,25 @@ static int thresholds(Terminal &term, int argc, const char *args[])
 				return 0;
 			}
 		}
-		return arg_invalid(term,args[1]);
+		return "Invalid argument #1.";
 	} else if (argc == 4) {
 		char *x;
 		float lo = strtof(args[2],&x);
 		if (*x != 0)
-			return arg_invalid(term,args[2]);
+			return "Invalid argument #2.";
 		float hi = strtof(args[3],&x);
 		if (*x != 0)
-			return arg_invalid(term,args[3]);
+			return "Invalid argument #3.";
 		if (hi <= lo + FLT_EPSILON)
-			return 1;
+			return "Invalid arguments.";
 		if (EnvElement *e = RTData->find(args[1])) {
 			if (EnvNumber *n = e->toNumber()) {
 				n->setThresholds(lo,hi);
 			} else {
-				return arg_invalid(term,args[1]);
+				return "Invalid argument #1.";
 			}
 		} else {
-			return arg_invalid(term,args[1]);
+			return "Invalid argument #1.";
 		}
 		bool updated = false;
 		for (auto t : *Config.mutable_thresholds()) {
@@ -2105,7 +2085,7 @@ static int thresholds(Terminal &term, int argc, const char *args[])
 			t->set_low(lo);
 		}
 	} else {
-		return arg_invnum(term);
+		return "Invalid number of arguments.";
 	}
 	return 0;
 }
@@ -2174,10 +2154,10 @@ static void print_ipinfo(Terminal &t, const char *itf, tcpip_adapter_ip_info_t *
 }
 
 
-static int ifconfig(Terminal &term, int argc, const char *args[])
+static const char *ifconfig(Terminal &term, int argc, const char *args[])
 {
 	if (argc != 1) {
-		return arg_invnum(term);
+		return "Invalid number of arguments.";
 	}
 	tcpip_adapter_ip_info_t ipconfig;
 	if (ESP_OK == tcpip_adapter_get_ip_info(TCPIP_ADAPTER_IF_STA, &ipconfig))
@@ -2198,10 +2178,10 @@ static int ifconfig(Terminal &term, int argc, const char *args[])
 }
 
 
-static int version(Terminal &term, int argc, const char *args[])
+static const char *version(Terminal &term, int argc, const char *args[])
 {
 	if (argc != 1)
-		return arg_invnum(term);
+		return "Invalid number of arguments.";
 	term.printf("Atrium Version %s\n"
 		"build on " __DATE__ ", " __TIME__ "\n"
 		"IDF version: %s\n"
@@ -2212,40 +2192,40 @@ static int version(Terminal &term, int argc, const char *args[])
 }
 
 
-extern int adc(Terminal &term, int argc, const char *args[]);
-extern int at(Terminal &term, int argc, const char *args[]);
-extern int bme(Terminal &term, int argc, const char *args[]);
-extern int dht(Terminal &term, int argc, const char *args[]);
-extern int dim(Terminal &term, int argc, const char *args[]);
-extern int dim(Terminal &t, int argc, const char *argv[]);
-extern int distance(Terminal &term, int argc, const char *args[]);
-extern int dmesg(Terminal &term, int argc, const char *args[]);
-extern int gpio(Terminal &term, int argc, const char *args[]);
-extern int hall(Terminal &term, int argc, const char *args[]);
-extern int holiday(Terminal &term, int argc, const char *args[]);
-extern int i2c(Terminal &term, int argc, const char *args[]);
-extern int inetadm(Terminal &term, int argc, const char *args[]);
-extern int influx(Terminal &term, int argc, const char *args[]);
-extern int led_set(Terminal &term, int argc, const char *args[]);
-extern int lightctrl(Terminal &term, int argc, const char *args[]);
-extern int mqtt(Terminal &term, int argc, const char *args[]);
-extern int nightsky(Terminal &term, int argc, const char *args[]);
-extern int prof(Terminal &term, int argc, const char *args[]);
-extern int process(Terminal &term, int argc, const char *args[]);
-extern int readelf(Terminal &term, int argc, const char *args[]);
-extern int relay(Terminal &term, int argc, const char *args[]);
-extern int shell_format(Terminal &term, int argc, const char *args[]);
-extern int sm_cmd(Terminal &term, int argc, const char *args[]);
-extern int sntp(Terminal &term, int argc, const char *args[]);
-extern int subtasks(Terminal &term, int argc, const char *args[]);
-extern int touchpad(Terminal &term, int argc, const char *args[]);
-extern int uart_termcon(Terminal &term, int argc, const char *args[]);
-extern int udns(Terminal &term, int argc, const char *args[]);
-extern int udpc_stats(Terminal &term, int argc, const char *args[]);
-extern int udp_stats(Terminal &term, int argc, const char *args[]);
-extern int onewire(Terminal &term, int argc, const char *args[]);
+extern const char *adc(Terminal &term, int argc, const char *args[]);
+extern const char *at(Terminal &term, int argc, const char *args[]);
+extern const char *bme(Terminal &term, int argc, const char *args[]);
+extern const char *dht(Terminal &term, int argc, const char *args[]);
+extern const char *dim(Terminal &term, int argc, const char *args[]);
+extern const char *distance(Terminal &term, int argc, const char *args[]);
+extern const char *dmesg(Terminal &term, int argc, const char *args[]);
+extern const char *gpio(Terminal &term, int argc, const char *args[]);
+extern const char *hall(Terminal &term, int argc, const char *args[]);
+extern const char *holiday(Terminal &term, int argc, const char *args[]);
+extern const char *i2c(Terminal &term, int argc, const char *args[]);
+extern const char *inetadm(Terminal &term, int argc, const char *args[]);
+extern const char *influx(Terminal &term, int argc, const char *args[]);
+extern const char *led_set(Terminal &term, int argc, const char *args[]);
+extern const char *lightctrl(Terminal &term, int argc, const char *args[]);
+extern const char *mqtt(Terminal &term, int argc, const char *args[]);
+extern const char *nightsky(Terminal &term, int argc, const char *args[]);
+extern const char *prof(Terminal &term, int argc, const char *args[]);
+extern const char *process(Terminal &term, int argc, const char *args[]);
+extern const char *readelf(Terminal &term, int argc, const char *args[]);
+extern const char *relay(Terminal &term, int argc, const char *args[]);
+extern const char *shell_format(Terminal &term, int argc, const char *args[]);
+extern const char *sm_cmd(Terminal &term, int argc, const char *args[]);
+extern const char *sntp(Terminal &term, int argc, const char *args[]);
+extern const char *subtasks(Terminal &term, int argc, const char *args[]);
+extern const char *touchpad(Terminal &term, int argc, const char *args[]);
+extern const char *uart_termcon(Terminal &term, int argc, const char *args[]);
+extern const char *udns(Terminal &term, int argc, const char *args[]);
+extern const char *udpc_stats(Terminal &term, int argc, const char *args[]);
+extern const char *udp_stats(Terminal &term, int argc, const char *args[]);
+extern const char *onewire(Terminal &term, int argc, const char *args[]);
+extern const char *xluac(Terminal &t, int argc, const char *args[]);
 
-static int help(Terminal &term, int argc, const char *args[]);
+static const char *help(Terminal &term, int argc, const char *args[]);
 
 
 ExeName ExeNames[] = {
@@ -2272,23 +2252,20 @@ ExeName ExeNames[] = {
 	{"config",1,config,"system configuration",config_man},
 	{"cpu",1,cpu,"CPU speed",0},
 	{"debug",0,debug,"enable debug logging (* for all)",debug_man},
-#ifdef CONFIG_DIMMER
-	{"dim",0,dim,"operate dimmer",0},
-#endif
 #if defined CONFIG_SPIFFS || defined CONFIG_FATFS
 	{"df",0,shell_df,"available storage",0},
-#endif
-#if CONFIG_SYSLOG
-	{"dmesg",0,dmesg,"system log",dmesg_man},
 #endif
 #ifdef CONFIG_DHT
 	{"dht",0,dht,"DHTxx family of sensors",dht_man},
 #endif
-#ifdef CONFIG_DIMMER_GPIO
-	{"dim",0,dim,"dimmer driver",dim_man},
+#ifdef CONFIG_DIMMER
+	{"dim",0,dim,"operate dimmer",dim_man},
 #endif
 #ifdef CONFIG_DIST
 	{"dist",0,distance,"hc_sr04 distance measurement",0},
+#endif
+#if CONFIG_SYSLOG
+	{"dmesg",0,dmesg,"system log",dmesg_man},
 #endif
 #if defined HAVE_FS && defined CONFIG_OTA
 	{"download",1,download,"http file download",0},
@@ -2326,8 +2303,12 @@ ExeName ExeNames[] = {
 	{"lightctrl",0,lightctrl,"light control APP settings",0},
 #endif
 	{"ls",0,shell_ls,"list storage",0},
+#ifdef CONFIG_LUA
+	{"lua",0,xluac,"run a lua script",lua_man},
+	{"luac",0,xluac,"compile lua script",luac_man},
+#endif
 	{"mac",0,mac,"MAC addresses",mac_man},
-	{"mem",0,mem,"RAM statistics",0},
+	{"mem",0,mem,"RAM statistics",mem_man},
 #ifdef CONFIG_FATFS
 	{"mkdir",1,shell_mkdir,"make directory",0},
 #endif
@@ -2347,13 +2328,12 @@ ExeName ExeNames[] = {
 #endif
 	{"part",0,part,"partition table",part_man},
 	{"passwd",3,password,"set password",passwd_man},
-#if configUSE_TRACE_FACILITY == 1
-	{"ps",0,ps,"task statistics",0},
-#endif
 #ifdef CONFIG_FUNCTION_TIMING
 	{"prof",0,prof,"profiling information",0},
 #endif
-	//{"process",1,process,"define and modify processing objects",0},
+#if configUSE_TRACE_FACILITY == 1
+	{"ps",0,ps,"task statistics",0},
+#endif
 #ifdef CONFIG_ELF_LOADER
 	{"readelf",0,readelf,"read ELF information from file",0},
 #endif
@@ -2370,9 +2350,6 @@ ExeName ExeNames[] = {
 #ifdef CONFIG_SMARTCONFIG
 	{"sc",1,sc,"SmargConfig actions",0},
 #endif
-#ifdef CONFIG_STATEMACHINES
-	{"sm",0,sm_cmd,"state-machine states and config",sm_man},
-#endif
 #if 0
 	{"segv",1,segv,"trigger a segmentation violation",0},
 #endif
@@ -2381,6 +2358,9 @@ ExeName ExeNames[] = {
 #endif
 #ifdef CONFIG_SIGNAL_PROC
 	{"signal",0,signal,"view/modify/connect signals",signal_man},
+#endif
+#ifdef CONFIG_STATEMACHINES
+	{"sm",0,sm_cmd,"state-machine states and config",sm_man},
 #endif
 	{"sntp",0,sntp,"simple NTP client settings",sntp_man},
 	{"station",1,station,"WiFi station settings",station_man},
@@ -2422,7 +2402,7 @@ ExeName ExeNames[] = {
 };
 
 
-int help_cmd(Terminal &term, const char *arg)
+const char *help_cmd(Terminal &term, const char *arg)
 {
 #ifdef CONFIG_INTEGRATED_HELP
 	for (int i = 0; i < sizeof(ExeNames)/sizeof(ExeName); ++i) {
@@ -2446,18 +2426,14 @@ int help_cmd(Terminal &term, const char *arg)
 	strcat(tmp,arg);
 	if (0 == shell_cat1(term,tmp))
 		return 0;
-	term.printf("no help page for %s\n",arg);
-	return 1;
+	return "help page not found";
 }
 
 
-static int help(Terminal &term, int argc, const char *args[])
+static const char *help(Terminal &term, int argc, const char *args[])
 {
 	if (argc == 1) {
-		term.print("help -l: list available commands\n"
-			"help <cmd>: print help for command <cmd>\n"
-			);
-	} else if (!strcmp("-l",args[1])) {
+		term.println("help <cmd>: print help for command <cmd>");
 		for (int i = 1; i < sizeof(ExeNames)/sizeof(ExeNames[0]); ++i) 
 			term.printf("%-14s %-5s  %s\n",ExeNames[i].name,ExeNames[i].flags&1?"admin":"user",ExeNames[i].descr);
 	} else {
@@ -2467,16 +2443,26 @@ static int help(Terminal &term, int argc, const char *args[])
 }
 
 
-int shellexe(Terminal &term, char *cmd)
+const char *xlua_exe(Terminal &t, const char *);
+
+
+const char *shellexe(Terminal &term, char *cmd)
 {
 	PROFILE_FUNCTION();
-	log_info(TAG,"execute '%s'",cmd);	// log_*() must not be used due to associated Mutexes
+	log_info(TAG,"execute '%s'",cmd);
 	char *args[8];
 	while ((*cmd == ' ') || (*cmd == '\t'))
 		++cmd;
+#ifdef CONFIG_LUA
+	if ((0 == memcmp("lua",cmd,3)) && ((cmd[3] == ' ') || (cmd[3] == '\t')))
+		return xlua_exe(term,cmd+4);
+#endif
 	char *at = cmd;
 	size_t n = 0;
 	do {
+		if (n == sizeof(args)/sizeof(args[0])) {
+			return "too many arguments";
+		}
 		args[n] = at;
 		at = strchr(at,' ');
 		while (at && (*at == ' ')) {
@@ -2484,19 +2470,14 @@ int shellexe(Terminal &term, char *cmd)
 			++at;
 		}
 		++n;
-		if (n == sizeof(args)/sizeof(args[0])) {
-			term.println("too many arguments");
-			return 1;
-		}
 	} while (at && *at);
 	for (int i = 0; i < sizeof(ExeNames)/sizeof(ExeNames[0]); ++i) {
 		if (0 == strcmp(args[0],ExeNames[i].name)) {
 			if ((ExeNames[i].flags & EXEFLAG_INTERACTIVE) && !term.isInteractive()) {
 				term.println("Cannot execute interactive command.");
-				return 1;
 			}
 			if (!Config.pass_hash().empty() && ((ExeNames[i].flags & 1) > term.getPrivLevel())) {
-				return arg_priv(term);
+				term.println("Access denied.");
 			}
 			if ((n == 2) && (0 == strcmp("-h",args[1])))
 				return help_cmd(term,args[0]);
@@ -2504,8 +2485,7 @@ int shellexe(Terminal &term, char *cmd)
 			return ExeNames[i].function(term,n,(const char **)args);
 		}
 	}
-	term.printf("'%s': command not found\n",args[0]);
-	return 1;
+	return "Command not found.";
 }
 
 
@@ -2549,10 +2529,10 @@ void shell(Terminal &term, bool prompt)
 		com[r] = 0;
 		if ((r == 4) && !memcmp(com,"exit",4))
 			break;
-		if (shellexe(term,com)) {
-			term.println("\nError.");
+		if (const char *msg = shellexe(term,com)) {
+			term.println(msg);
 		} else {
-			term.println("\nOK.");
+			term.println("OK.");
 		}
 		if (prompt) {
 			term.write("> ",2);

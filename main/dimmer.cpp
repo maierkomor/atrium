@@ -36,17 +36,18 @@
 
 #include "actions.h"
 #include "cyclic.h"
+#include "env.h"
 #include "event.h"
 #include "globals.h"
 #include "dimmer.h"
 #include "hwcfg.h"
 #include "log.h"
+#include "nvm.h"
 #include "mqtt.h"
 #include "settings.h"
 #include "support.h"
 #include "swcfg.h"
 #include "terminal.h"
-#include "env.h"
 
 
 #ifdef CONFIG_IDF_TARGET_ESP8266
@@ -99,19 +100,19 @@ static Dimmer *get_dimmer(const char *name)
 }
 
 
-int dimmer_set_value(const char *name, unsigned v)
+static const char *dimmer_set_value(const char *name, unsigned v)
 {
 	Dimmer *d = get_dimmer(name);
 	if (d == 0)
-		return 1;
+		return "Unknown dimmer.";
 	if (v > DIM_MAX)
 		v = DIM_MAX;
-	d->env->set((double)v/(double)DIM_MAX*100.0);
+	d->env->set(v);
 	return 0;
 }
 
 
-int dimmer_set(const char *name, float v)
+int dimmer_set_perc(const char *name, float v)
 {
 	if (Dimmer *d = get_dimmer(name)) {
 		if ((v >= 0) && (v <= 100)) {
@@ -175,8 +176,10 @@ static void mqtt_callback(const char *topic, const void *data, size_t len)
 	const char *text = (const char *)data;
 	char *ep = 0;
 	float f = strtof(text,&ep);
-	if (ep != text)
-		dimmer_set(sl+5,f);
+	if (*ep == '%')
+		dimmer_set_perc(sl+5,f);
+	else
+		dimmer_set_value(sl+5,f);
 }
 #endif
 
@@ -231,7 +234,7 @@ unsigned dimmer_fade(void *)
 }
 
 
-int dim(Terminal &t, int argc, const char *argv[])
+const char *dim(Terminal &t, int argc, const char *argv[])
 {
 	if (argc == 1) {
 		Dimmer *d = Dimmers;
@@ -243,32 +246,35 @@ int dim(Terminal &t, int argc, const char *argv[])
 		return 0;
 	}
 	if (argc > 3)
-		return arg_invnum(t);
+		return "Invalid number of arguments.";
 	const char *arg = argc == 2 ? argv[1] : argv[2];
 	char *eptr;
 	float f = strtof(arg,&eptr);
 	if (eptr == arg) {
 		if (strcmp(arg,"max"))
-			return arg_invalid(t,arg);
-		f = DIM_MAX;
+			return argc == 2 ? "Invalid argument #1." : "Invalid argument #2.";
+		f = 100;
 	}
-	if (*eptr == '%') {
+	if (*eptr == 0) {
+	} else if (*eptr == '%') {
 		f = ((float)DIM_MAX * f) / 100;
-	} else if (*eptr != 0) {
+	} else {
 		if (0 == strcmp(arg,"max"))
 			f = DIM_MAX;
 		else
-			return arg_invalid(t,arg);
+			return argc == 2 ? "Invalid argument #1." : "Invalid argument #2.";
 	}
-	if (argc == 2) {
-		Dimmer *d = Dimmers;
-		while (d) {
-			d->env->set(f);
-			d = d->next;
-		}
-		return 0;
+	t.printf("%g %s\n",f,eptr);
+	if ((f < 0) || (f > DIM_MAX))
+		return argc == 2 ? "Invalid argument #1." : "Invalid argument #2.";
+	if (argc == 3)
+		return dimmer_set_value(argv[1],f);
+	Dimmer *d = Dimmers;
+	while (d) {
+		d->env->set(f);
+		d = d->next;
 	}
-	return dimmer_set_value(argv[1],f);
+	return 0;
 }
 
 
@@ -306,7 +312,7 @@ static void dimmer_backup(void *p)
 {
 	Dimmer *d = (Dimmer *)p;
 	d->backup = d->env->get();
-	store_nvs_float(d->name,d->backup);
+	nvm_store_float(d->name,d->backup);
 	log_dbug(TAG,"%s backup %f",d->name,d->backup);
 }
 
@@ -405,7 +411,7 @@ int dimmer_setup()
 			dim->name = strdup(conf.name().c_str());
 		else
 			asprintf((char**)&dim->name,"dimmer@%u",dim->gpio);
-		dim->backup = read_nvs_float(dim->name,0);
+		dim->backup = nvm_read_float(dim->name,0);
 #ifdef CONFIG_IDF_TARGET_ESP8266
 		pins[nch] = dim->gpio;
 		dim->channel = nch;

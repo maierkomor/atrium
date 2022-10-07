@@ -10,7 +10,7 @@
  * Copyright: 2018-2021
  * Author   : Thomas Maier-Komor
  * 
- * Code generated on 2022-08-01, 00:43:58 (CET).
+ * Code generated on 2022-10-07, 14:15:34 (CET).
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -2962,6 +2962,130 @@ class ThresholdConfig
 };
 
 
+class LuaConfig
+{
+	public:
+	LuaConfig();
+	
+	bool operator == (const LuaConfig &r) const;
+	
+	//! Function for resetting all members to their default values.
+	void clear();
+	
+	/*!
+	* Calculates the required number of bytes for serializing this object.
+	* If member variables of the object are modified, the number of bytes
+	* needed for serialization may change, too.
+	* @return bytes needed for a serialized object representation
+	*/
+	size_t calcSize() const;
+	
+	/*!
+	* Function for parsing serialized data and update this object accordingly.
+	* Member variables that are not in the serialized data are not reset.
+	* @param b buffer of serialized data
+	* @param s number of bytes available in the buffer
+	* @return number of bytes successfully parsed (can be < s)
+	*         or a negative value indicating the error encountered
+	*/
+	ssize_t fromMemory(const void *b, ssize_t s);
+	
+	/*!
+	* Function for serializing the object to memory.
+	* @param b buffer to serialize the object to
+	* @param s number of bytes available in the buffer
+	* @return number of bytes successfully serialized
+	*/
+	ssize_t toMemory(uint8_t *, ssize_t) const;
+	
+	/*!
+	* Function for writing a JSON representation of this object to a stream.
+	* @param json stream object the JSON output shall be written to
+	* @indLvl current indention level
+	*/
+	void toJSON(stream &json, unsigned indLvl = 0) const;
+	
+	/*!
+	* Function for writing an ASCII representation of this object to a stream.
+	* @param o output stream
+	* @param indent initial indention level
+	*/
+	void toASCII(stream &o, size_t indent = 0) const;
+	
+	/*!
+	* Function for determining the maximum size that the object may need for
+	* its serialized representation
+	* @return maximum number of bytes or SIZE_MAX if no limit can be determined
+	*/
+	static size_t getMaxSize();
+	
+	//! Function for setting a parameter by its ASCII name using an ASCII representation of value.
+	//! @param param parameter name
+	//! @param value ASCII representation of the value
+	//! @return number of bytes parsed from value or negative value if an error occurs
+	int setByName(const char *param, const char *value);
+	
+	// repeated string init_scripts, id 1
+	//! Function get const-access to the elements of init_scripts.
+	const std::vector<estring> &init_scripts() const;
+	//! Function to get the number of elements in init_scripts.
+	size_t init_scripts_size() const;
+	/*!
+	* Function to append a element to init_scripts.
+	* @return point to newly added element.
+	*/
+	void add_init_scripts(const estring &v);
+	//! Function to append an element to init_scripts initialized by a C-string.
+	void add_init_scripts(const char*);
+	//! Function to reset init_scripts to its default/unset value.
+	void clear_init_scripts();
+	//! Get value of element x of init_scripts.
+	const estring &init_scripts(unsigned x) const;
+	//! Set init_scripts using a constant reference
+	void set_init_scripts(unsigned x, const estring &v);
+	/*!
+	* Provide mutable access to init_scripts.
+	* @return pointer to member variable of init_scripts.
+	*/
+	estring *mutable_init_scripts(unsigned x);
+	//! Function to get mutable access to all elements of init_scripts.
+	std::vector<estring> *mutable_init_scripts();
+	
+	// repeated string compile_files, id 2
+	//! Function get const-access to the elements of compile_files.
+	const std::vector<estring> &compile_files() const;
+	//! Function to get the number of elements in compile_files.
+	size_t compile_files_size() const;
+	/*!
+	* Function to append a element to compile_files.
+	* @return point to newly added element.
+	*/
+	void add_compile_files(const estring &v);
+	//! Function to append an element to compile_files initialized by a C-string.
+	void add_compile_files(const char*);
+	//! Function to reset compile_files to its default/unset value.
+	void clear_compile_files();
+	//! Get value of element x of compile_files.
+	const estring &compile_files(unsigned x) const;
+	//! Set compile_files using a constant reference
+	void set_compile_files(unsigned x, const estring &v);
+	/*!
+	* Provide mutable access to compile_files.
+	* @return pointer to member variable of compile_files.
+	*/
+	estring *mutable_compile_files(unsigned x);
+	//! Function to get mutable access to all elements of compile_files.
+	std::vector<estring> *mutable_compile_files();
+	
+	
+	protected:
+	//! string init_scripts, id 1
+	std::vector<estring> m_init_scripts;
+	//! string compile_files, id 2
+	std::vector<estring> m_compile_files;
+};
+
+
 class NodeConfig
 {
 	public:
@@ -3868,6 +3992,34 @@ class NodeConfig
 	std::vector<ThresholdConfig> *mutable_thresholds();
 	#endif // CONFIG_THRESHOLDS
 	
+	#ifdef CONFIG_LUA
+	// repeated string luafiles, id 42
+	//! Function get const-access to the elements of luafiles.
+	const std::vector<estring> &luafiles() const;
+	//! Function to get the number of elements in luafiles.
+	size_t luafiles_size() const;
+	/*!
+	* Function to append a element to luafiles.
+	* @return point to newly added element.
+	*/
+	void add_luafiles(const estring &v);
+	//! Function to append an element to luafiles initialized by a C-string.
+	void add_luafiles(const char*);
+	//! Function to reset luafiles to its default/unset value.
+	void clear_luafiles();
+	//! Get value of element x of luafiles.
+	const estring &luafiles(unsigned x) const;
+	//! Set luafiles using a constant reference
+	void set_luafiles(unsigned x, const estring &v);
+	/*!
+	* Provide mutable access to luafiles.
+	* @return pointer to member variable of luafiles.
+	*/
+	estring *mutable_luafiles(unsigned x);
+	//! Function to get mutable access to all elements of luafiles.
+	std::vector<estring> *mutable_luafiles();
+	#endif // CONFIG_LUA
+	
 	#ifdef CONFIG_ONEWIRE
 	// repeated OwDeviceConfig owdevices, id 50
 	//! Function get const-access to the elements of owdevices.
@@ -3993,6 +4145,10 @@ class NodeConfig
 	//! ThresholdConfig thresholds, id 41
 	std::vector<ThresholdConfig> m_thresholds;
 	#endif // CONFIG_THRESHOLDS
+	#ifdef CONFIG_LUA
+	//! string luafiles, id 42
+	std::vector<estring> m_luafiles;
+	#endif // CONFIG_LUA
 	#ifdef CONFIG_ONEWIRE
 	//! OwDeviceConfig owdevices, id 50
 	std::vector<OwDeviceConfig> m_owdevices;
@@ -6796,6 +6952,121 @@ inline void ThresholdConfig::set_high(float v)
 
 
 
+inline size_t LuaConfig::getMaxSize()
+{
+	// repeated string init_scripts, id 1 has unlimited size
+	// repeated string compile_files, id 2 has unlimited size
+	return SIZE_MAX;
+}
+
+inline const estring &LuaConfig::init_scripts(unsigned x) const
+{
+	return m_init_scripts[x];
+}
+
+inline const std::vector<estring> &LuaConfig::init_scripts() const
+{
+	return m_init_scripts;
+}
+
+/*!
+ * Function for clearing the associated member variable.
+ * It will reset the value to the default value.
+ */
+inline void LuaConfig::clear_init_scripts()
+{
+	m_init_scripts.clear();
+}
+
+inline estring *LuaConfig::mutable_init_scripts(unsigned x)
+{
+	if (x >= m_init_scripts.size())
+		m_init_scripts.resize(x+1);
+	return &m_init_scripts[x];
+}
+
+inline std::vector<estring> *LuaConfig::mutable_init_scripts()
+{
+	return &m_init_scripts;
+}
+
+inline void LuaConfig::add_init_scripts(const estring &v)
+{
+	m_init_scripts.push_back(v);
+}
+
+inline void LuaConfig::add_init_scripts(const char *s)
+{
+	m_init_scripts.push_back(s);
+}
+
+inline void LuaConfig::set_init_scripts(unsigned x, const estring &v)
+{
+	assert(x < m_init_scripts.size());
+	m_init_scripts[x] = v;
+}
+
+inline size_t LuaConfig::init_scripts_size() const
+{
+	return m_init_scripts.size();
+}
+
+
+
+inline const estring &LuaConfig::compile_files(unsigned x) const
+{
+	return m_compile_files[x];
+}
+
+inline const std::vector<estring> &LuaConfig::compile_files() const
+{
+	return m_compile_files;
+}
+
+/*!
+ * Function for clearing the associated member variable.
+ * It will reset the value to the default value.
+ */
+inline void LuaConfig::clear_compile_files()
+{
+	m_compile_files.clear();
+}
+
+inline estring *LuaConfig::mutable_compile_files(unsigned x)
+{
+	if (x >= m_compile_files.size())
+		m_compile_files.resize(x+1);
+	return &m_compile_files[x];
+}
+
+inline std::vector<estring> *LuaConfig::mutable_compile_files()
+{
+	return &m_compile_files;
+}
+
+inline void LuaConfig::add_compile_files(const estring &v)
+{
+	m_compile_files.push_back(v);
+}
+
+inline void LuaConfig::add_compile_files(const char *s)
+{
+	m_compile_files.push_back(s);
+}
+
+inline void LuaConfig::set_compile_files(unsigned x, const estring &v)
+{
+	assert(x < m_compile_files.size());
+	m_compile_files[x] = v;
+}
+
+inline size_t LuaConfig::compile_files_size() const
+{
+	return m_compile_files.size();
+}
+
+
+
 inline size_t NodeConfig::getMaxSize()
 {
 	// optional fixed32 magic, id 0 has maximum size 5
@@ -6835,6 +7106,7 @@ inline size_t NodeConfig::getMaxSize()
 	// optional unsigned pwm_freq, id 39 has maximum size 7
 	// repeated AppParam app_params, id 40 has unlimited size
 	// repeated ThresholdConfig thresholds, id 41 has unlimited size
+	// repeated string luafiles, id 42 has unlimited size
 	// repeated OwDeviceConfig owdevices, id 50 has unlimited size
 	return SIZE_MAX;
 }
@@ -8454,6 +8726,62 @@ inline size_t NodeConfig::thresholds_size() const
 }
 
 #endif // CONFIG_THRESHOLDS
+
+
+#ifdef CONFIG_LUA
+inline const estring &NodeConfig::luafiles(unsigned x) const
+{
+	return m_luafiles[x];
+}
+
+inline const std::vector<estring> &NodeConfig::luafiles() const
+{
+	return m_luafiles;
+}
+
+/*!
+ * Function for clearing the associated member variable.
+ * It will reset the value to the default value.
+ */
+inline void NodeConfig::clear_luafiles()
+{
+	m_luafiles.clear();
+}
+
+inline estring *NodeConfig::mutable_luafiles(unsigned x)
+{
+	if (x >= m_luafiles.size())
+		m_luafiles.resize(x+1);
+	return &m_luafiles[x];
+}
+
+inline std::vector<estring> *NodeConfig::mutable_luafiles()
+{
+	return &m_luafiles;
+}
+
+inline void NodeConfig::add_luafiles(const estring &v)
+{
+	m_luafiles.push_back(v);
+}
+
+inline void NodeConfig::add_luafiles(const char *s)
+{
+	m_luafiles.push_back(s);
+}
+
+inline void NodeConfig::set_luafiles(unsigned x, const estring &v)
+{
+	assert(x < m_luafiles.size());
+	m_luafiles[x] = v;
+}
+
+inline size_t NodeConfig::luafiles_size() const
+{
+	return m_luafiles.size();
+}
+
+#endif // CONFIG_LUA
 
 
 #ifdef CONFIG_ONEWIRE

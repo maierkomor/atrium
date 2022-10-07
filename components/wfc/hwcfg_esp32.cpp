@@ -10,7 +10,7 @@
  * Copyright: 2018-2021
  * Author   : Thomas Maier-Komor
  * 
- * Code generated on 2022-08-01, 00:43:58 (CET).
+ * Code generated on 2022-10-07, 14:15:34 (CET).
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -291,6 +291,7 @@ static const char *i2cdrv_t_names[] = {
 	"i2cdrv_pca9685_xclk_npn",
 	"i2cdrv_pca9685_xclk_pnp",
 	"i2cdrv_pcf8574",
+	"i2cdrv_si7021",
 };
 
 static i2cdrv_t i2cdrv_t_values[] = {
@@ -306,6 +307,7 @@ static i2cdrv_t i2cdrv_t_values[] = {
 	i2cdrv_pca9685_xclk_npn,
 	i2cdrv_pca9685_xclk_pnp,
 	i2cdrv_pcf8574,
+	i2cdrv_si7021,
 };
 #endif // !CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 
@@ -325,6 +327,7 @@ size_t parse_ascii_i2cdrv_t(i2cdrv_t *v, const char *s)
 		{ "i2cdrv_pca9685_xclk_npn", i2cdrv_pca9685_xclk_npn},
 		{ "i2cdrv_pca9685_xclk_pnp", i2cdrv_pca9685_xclk_pnp},
 		{ "i2cdrv_pcf8574", i2cdrv_pcf8574},
+		{ "i2cdrv_si7021", i2cdrv_si7021},
 	};
 	#endif // !CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 	char *e;
@@ -380,6 +383,8 @@ const char *i2cdrv_t_str(i2cdrv_t e)
 		return "i2cdrv_ht16k33";
 	case i2cdrv_ina219:
 		return "i2cdrv_ina219";
+	case i2cdrv_si7021:
+		return "i2cdrv_si7021";
 	}
 	#endif // !CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 	#ifdef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
@@ -4924,6 +4929,8 @@ AdcChannel::AdcChannel()
 , m_unit(0)
 , m_ch(-1)
 , m_atten(0)
+, m_interval(0)
+, m_window(0)
 , p_validbits(0)
 {
 }
@@ -4934,6 +4941,8 @@ void AdcChannel::clear()
 	m_unit = 0;
 	m_ch = -1;
 	m_atten = 0;
+	m_interval = 0;
+	m_window = 0;
 	p_validbits = 0;
 }
 
@@ -4945,6 +4954,8 @@ void AdcChannel::toASCII(stream &o, size_t indent) const
 	ascii_numeric(o, indent, "unit", (unsigned) m_unit);
 	ascii_numeric(o, indent, "ch", (signed) m_ch);
 	ascii_numeric(o, indent, "atten", (unsigned) m_atten);
+	ascii_numeric(o, indent, "interval", (unsigned) m_interval);
+	ascii_numeric(o, indent, "window", (unsigned) m_window);
 	--indent;
 	ascii_indent(o,indent);
 	o << '}';
@@ -5002,12 +5013,32 @@ ssize_t AdcChannel::fromMemory(const void *b, ssize_t s)
 				set_atten(v);
 			}
 			break;
+		case 0x28:	// interval id 5, type uint8_t, coding varint
+			{
+				varint_t v;
+				int n = read_varint(a,e-a,&v);
+				if (n <= 0)
+					return -260;
+				a += n;
+				set_interval(v);
+			}
+			break;
+		case 0x30:	// window id 6, type uint8_t, coding varint
+			{
+				varint_t v;
+				int n = read_varint(a,e-a,&v);
+				if (n <= 0)
+					return -261;
+				a += n;
+				set_window(v);
+			}
+			break;
 		default:
 			// unknown field (option unknown=skip)
 			{
 				ssize_t s = skip_content(a,e-a,fid&7);
 				if (s <= 0)
-					return -260;
+					return -262;
 				a += s;
 				break;
 			}
@@ -5015,7 +5046,7 @@ ssize_t AdcChannel::fromMemory(const void *b, ssize_t s)
 	}
 	assert((a-(const uint8_t *)b) == s);
 	if (a > e)
-		return -261;
+		return -263;
 	return a-(const uint8_t *)b;
 }
 
@@ -5028,13 +5059,13 @@ ssize_t AdcChannel::toMemory(uint8_t *b, ssize_t s) const
 	if (!m_name.empty()) {
 		// 'name': id=1, encoding=lenpfx, tag=0xa
 		if (a >= e)
-			return -262;
+			return -264;
 		*a++ = 0xa;
 		ssize_t name_s = m_name.size();
 		n = write_varint(a,e-a,name_s);
 		a += n;
 		if ((n <= 0) || ((e-a) < name_s))
-			return -263;
+			return -265;
 		memcpy(a,m_name.data(),name_s);
 		a += name_s;
 	}
@@ -5042,33 +5073,55 @@ ssize_t AdcChannel::toMemory(uint8_t *b, ssize_t s) const
 	if (m_unit != 0) {
 		// 'unit': id=2, encoding=varint, tag=0x10
 		if (a >= e)
-			return -264;
+			return -266;
 		*a++ = 0x10;
 		n = write_varint(a,e-a,m_unit);
 		if (n <= 0)
-			return -265;
+			return -267;
 		a += n;
 	}
 	// has ch?
 	if (m_ch != -1) {
 		// 'ch': id=3, encoding=varint, tag=0x18
 		if (a >= e)
-			return -266;
+			return -268;
 		*a++ = 0x18;
 		n = write_varint(a,e-a,sint_varint(m_ch));
 		if (n <= 0)
-			return -267;
+			return -269;
 		a += n;
 	}
 	// has atten?
 	if (0 != (p_validbits & ((uint8_t)1U << 0))) {
 		// 'atten': id=4, encoding=varint, tag=0x20
 		if (a >= e)
-			return -268;
+			return -270;
 		*a++ = 0x20;
 		n = write_varint(a,e-a,m_atten);
 		if (n <= 0)
-			return -269;
+			return -271;
+		a += n;
+	}
+	// has interval?
+	if (0 != (p_validbits & ((uint8_t)1U << 1))) {
+		// 'interval': id=5, encoding=varint, tag=0x28
+		if (a >= e)
+			return -272;
+		*a++ = 0x28;
+		n = write_varint(a,e-a,m_interval);
+		if (n <= 0)
+			return -273;
+		a += n;
+	}
+	// has window?
+	if (0 != (p_validbits & ((uint8_t)1U << 2))) {
+		// 'window': id=6, encoding=varint, tag=0x30
+		if (a >= e)
+			return -274;
+		*a++ = 0x30;
+		n = write_varint(a,e-a,m_window);
+		if (n <= 0)
+			return -275;
 		a += n;
 	}
 	assert(a <= e);
@@ -5094,6 +5147,14 @@ void AdcChannel::toJSON(stream &json, unsigned indLvl) const
 	if (has_atten()) {
 		fsep = json_indent(json,indLvl,fsep,"atten");
 		json << (unsigned) m_atten;
+	}
+	if (has_interval()) {
+		fsep = json_indent(json,indLvl,fsep,"interval");
+		json << (unsigned) m_interval;
+	}
+	if (has_window()) {
+		fsep = json_indent(json,indLvl,fsep,"window");
+		json << (unsigned) m_window;
 	}
 	if (fsep == '{')
 		json.put('{');
@@ -5125,6 +5186,14 @@ size_t AdcChannel::calcSize() const
 	if (0 != (p_validbits & ((uint8_t)1U << 0))) {
 		r += wiresize((varint_t)m_atten) + 1 /* tag(atten) 0x20 */;
 	}
+	// optional uint8 interval, id 5
+	if (0 != (p_validbits & ((uint8_t)1U << 1))) {
+		r += wiresize((varint_t)m_interval) + 1 /* tag(interval) 0x28 */;
+	}
+	// optional uint8 window, id 6
+	if (0 != (p_validbits & ((uint8_t)1U << 2))) {
+		r += wiresize((varint_t)m_window) + 1 /* tag(window) 0x30 */;
+	}
 	return r;
 }
 
@@ -5139,6 +5208,10 @@ bool AdcChannel::operator != (const AdcChannel &r) const
 	if (has_ch() && (m_ch != r.m_ch))
 		return true;
 	if (has_atten() && (m_atten != r.m_atten))
+		return true;
+	if (has_interval() && (m_interval != r.m_interval))
+		return true;
+	if (has_window() && (m_window != r.m_window))
 		return true;
 	return false;
 }
@@ -5194,7 +5267,27 @@ int AdcChannel::setByName(const char *name, const char *value)
 			p_validbits |= ((uint8_t)1U << 0);
 		return r;
 	}
-	return -270;
+	if (0 == strcmp(name,"interval")) {
+		if (value == 0) {
+			clear_interval();
+			return 0;
+		}
+		int r = parse_ascii_u8(&m_interval,value);
+		if (r > 0)
+			p_validbits |= ((uint8_t)1U << 1);
+		return r;
+	}
+	if (0 == strcmp(name,"window")) {
+		if (value == 0) {
+			clear_window();
+			return 0;
+		}
+		int r = parse_ascii_u8(&m_window,value);
+		if (r > 0)
+			p_validbits |= ((uint8_t)1U << 2);
+		return r;
+	}
+	return -276;
 }
 
 AdcConfig::AdcConfig()
@@ -5251,7 +5344,7 @@ ssize_t AdcConfig::fromMemory(const void *b, ssize_t s)
 		varint_t fid;
 		int fn = read_varint(a,e-a,&fid);
 		if (fn <= 0)
-			return -271;
+			return -277;
 		a += fn;
 		switch (fid) {
 		case 0xa:	// adc_name id 1, type estring, coding byte[]
@@ -5260,7 +5353,7 @@ ssize_t AdcConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -272;
+					return -278;
 				m_adc_name.assign((const char*)a,v);
 				a += v;
 			}
@@ -5270,7 +5363,7 @@ ssize_t AdcConfig::fromMemory(const void *b, ssize_t s)
 				varint_t v;
 				int n = read_varint(a,e-a,&v);
 				if (n <= 0)
-					return -273;
+					return -279;
 				a += n;
 				set_adc1_bits(v);
 			}
@@ -5280,7 +5373,7 @@ ssize_t AdcConfig::fromMemory(const void *b, ssize_t s)
 				varint_t v;
 				int n = read_varint(a,e-a,&v);
 				if (n <= 0)
-					return -274;
+					return -280;
 				a += n;
 				set_adc2_bits(v);
 			}
@@ -5291,7 +5384,7 @@ ssize_t AdcConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -275;
+					return -281;
 				m_hall_name.assign((const char*)a,v);
 				a += v;
 			}
@@ -5302,14 +5395,14 @@ ssize_t AdcConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -276;
+					return -282;
 				m_channels.emplace_back();
 				if (v != 0) {
 					n = m_channels.back().fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -277;
+						return -283;
 					a += v;
 				}
 			}
@@ -5319,7 +5412,7 @@ ssize_t AdcConfig::fromMemory(const void *b, ssize_t s)
 			{
 				ssize_t s = skip_content(a,e-a,fid&7);
 				if (s <= 0)
-					return -278;
+					return -284;
 				a += s;
 				break;
 			}
@@ -5327,7 +5420,7 @@ ssize_t AdcConfig::fromMemory(const void *b, ssize_t s)
 	}
 	assert((a-(const uint8_t *)b) == s);
 	if (a > e)
-		return -279;
+		return -285;
 	return a-(const uint8_t *)b;
 }
 
@@ -5340,13 +5433,13 @@ ssize_t AdcConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (!m_adc_name.empty()) {
 		// 'adc_name': id=1, encoding=lenpfx, tag=0xa
 		if (a >= e)
-			return -280;
+			return -286;
 		*a++ = 0xa;
 		ssize_t adc_name_s = m_adc_name.size();
 		n = write_varint(a,e-a,adc_name_s);
 		a += n;
 		if ((n <= 0) || ((e-a) < adc_name_s))
-			return -281;
+			return -287;
 		memcpy(a,m_adc_name.data(),adc_name_s);
 		a += adc_name_s;
 	}
@@ -5354,22 +5447,22 @@ ssize_t AdcConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint8_t)1U << 0))) {
 		// 'adc1_bits': id=2, encoding=varint, tag=0x10
 		if (a >= e)
-			return -282;
+			return -288;
 		*a++ = 0x10;
 		n = write_varint(a,e-a,m_adc1_bits);
 		if (n <= 0)
-			return -283;
+			return -289;
 		a += n;
 	}
 	// has adc2_bits?
 	if (0 != (p_validbits & ((uint8_t)1U << 1))) {
 		// 'adc2_bits': id=3, encoding=varint, tag=0x18
 		if (a >= e)
-			return -284;
+			return -290;
 		*a++ = 0x18;
 		n = write_varint(a,e-a,m_adc2_bits);
 		if (n <= 0)
-			return -285;
+			return -291;
 		a += n;
 	}
 	// 'mode' is unused. Therefore no data will be written.
@@ -5378,26 +5471,26 @@ ssize_t AdcConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (!m_hall_name.empty()) {
 		// 'hall_name': id=6, encoding=lenpfx, tag=0x32
 		if (a >= e)
-			return -286;
+			return -292;
 		*a++ = 0x32;
 		ssize_t hall_name_s = m_hall_name.size();
 		n = write_varint(a,e-a,hall_name_s);
 		a += n;
 		if ((n <= 0) || ((e-a) < hall_name_s))
-			return -287;
+			return -293;
 		memcpy(a,m_hall_name.data(),hall_name_s);
 		a += hall_name_s;
 	}
 	for (const auto &x : m_channels) {
 		// 'channels': id=7, encoding=lenpfx, tag=0x3a
 		if (a >= e)
-			return -288;
+			return -294;
 		*a++ = 0x3a;
 		ssize_t channels_ws = x.calcSize();
 		n = write_varint(a,e-a,channels_ws);
 		a += n;
 		if ((n <= 0) || (channels_ws > (e-a)))
-			return -289;
+			return -295;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == channels_ws);
@@ -5574,20 +5667,20 @@ int AdcConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+9,&idxe,0);
 				if (idxe[0] != ']')
-					return -290;
+					return -296;
 				if (m_channels.size() <= x)
-					return -291;
+					return -297;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_channels.erase(m_channels.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -292;
+				return -298;
 			return m_channels[x].setByName(idxe+2,value);
 		}
 	}
-	return -293;
+	return -299;
 }
 
 GpioConfig::GpioConfig()
@@ -5651,7 +5744,7 @@ ssize_t GpioConfig::fromMemory(const void *b, ssize_t s)
 		varint_t fid;
 		int fn = read_varint(a,e-a,&fid);
 		if (fn <= 0)
-			return -294;
+			return -300;
 		a += fn;
 		switch (fid) {
 		case 0xa:	// name id 1, type estring, coding byte[]
@@ -5660,7 +5753,7 @@ ssize_t GpioConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -295;
+					return -301;
 				m_name.assign((const char*)a,v);
 				a += v;
 			}
@@ -5671,7 +5764,7 @@ ssize_t GpioConfig::fromMemory(const void *b, ssize_t s)
 				varint_t v;
 				int n = read_varint(a,e-a,&v);
 				if (n <= 0)
-					return -296;
+					return -302;
 				a += n;
 				set_gpio(varint_sint(v));
 			}
@@ -5681,7 +5774,7 @@ ssize_t GpioConfig::fromMemory(const void *b, ssize_t s)
 				varint_t v;
 				int n = read_varint(a,e-a,&v);
 				if (n <= 0)
-					return -297;
+					return -303;
 				a += n;
 				set_config((gpiocfg_t) v);
 			}
@@ -5691,7 +5784,7 @@ ssize_t GpioConfig::fromMemory(const void *b, ssize_t s)
 			{
 				ssize_t s = skip_content(a,e-a,fid&7);
 				if (s <= 0)
-					return -298;
+					return -304;
 				a += s;
 				break;
 			}
@@ -5699,7 +5792,7 @@ ssize_t GpioConfig::fromMemory(const void *b, ssize_t s)
 	}
 	assert((a-(const uint8_t *)b) == s);
 	if (a > e)
-		return -299;
+		return -305;
 	return a-(const uint8_t *)b;
 }
 
@@ -5712,13 +5805,13 @@ ssize_t GpioConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint8_t)1U << 0))) {
 		// 'name': id=1, encoding=lenpfx, tag=0xa
 		if (a >= e)
-			return -300;
+			return -306;
 		*a++ = 0xa;
 		ssize_t name_s = m_name.size();
 		n = write_varint(a,e-a,name_s);
 		a += n;
 		if ((n <= 0) || ((e-a) < name_s))
-			return -301;
+			return -307;
 		memcpy(a,m_name.data(),name_s);
 		a += name_s;
 	}
@@ -5726,22 +5819,22 @@ ssize_t GpioConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (m_gpio != -1) {
 		// 'gpio': id=2, encoding=varint, tag=0x10
 		if (a >= e)
-			return -302;
+			return -308;
 		*a++ = 0x10;
 		n = write_varint(a,e-a,sint_varint(m_gpio));
 		if (n <= 0)
-			return -303;
+			return -309;
 		a += n;
 	}
 	// has config?
 	if (0 != (p_validbits & ((uint8_t)1U << 1))) {
 		// 'config': id=3, encoding=varint, tag=0x18
 		if (a >= e)
-			return -304;
+			return -310;
 		*a++ = 0x18;
 		n = write_varint(a,e-a,m_config);
 		if (n <= 0)
-			return -305;
+			return -311;
 		a += n;
 	}
 	assert(a <= e);
@@ -5866,7 +5959,7 @@ int GpioConfig::setByName(const char *name, const char *value)
 		}
 		#ifndef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 		if (*name++ != '.') {
-			return -306;
+			return -312;
 		} else if (!strcmp(name,"mode")) {
 			uint8_t tmp;
 			size_t r = parse_ascii_u8(&tmp,value);
@@ -5912,7 +6005,7 @@ int GpioConfig::setByName(const char *name, const char *value)
 		}
 		#endif // !CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 	}
-	return -307;
+	return -313;
 }
 
 DisplayConfig::DisplayConfig()
@@ -5958,7 +6051,7 @@ ssize_t DisplayConfig::fromMemory(const void *b, ssize_t s)
 		varint_t fid;
 		int fn = read_varint(a,e-a,&fid);
 		if (fn <= 0)
-			return -308;
+			return -314;
 		a += fn;
 		switch (fid) {
 		case 0x8:	// type id 1, type disp_t, coding varint
@@ -5966,7 +6059,7 @@ ssize_t DisplayConfig::fromMemory(const void *b, ssize_t s)
 				varint_t v;
 				int n = read_varint(a,e-a,&v);
 				if (n <= 0)
-					return -309;
+					return -315;
 				a += n;
 				set_type((disp_t) v);
 			}
@@ -5976,7 +6069,7 @@ ssize_t DisplayConfig::fromMemory(const void *b, ssize_t s)
 				varint_t v;
 				int n = read_varint(a,e-a,&v);
 				if (n <= 0)
-					return -310;
+					return -316;
 				a += n;
 				set_options(v);
 			}
@@ -5986,7 +6079,7 @@ ssize_t DisplayConfig::fromMemory(const void *b, ssize_t s)
 				varint_t v;
 				int n = read_varint(a,e-a,&v);
 				if (n <= 0)
-					return -311;
+					return -317;
 				a += n;
 				set_maxx(v);
 			}
@@ -5996,7 +6089,7 @@ ssize_t DisplayConfig::fromMemory(const void *b, ssize_t s)
 				varint_t v;
 				int n = read_varint(a,e-a,&v);
 				if (n <= 0)
-					return -312;
+					return -318;
 				a += n;
 				set_maxy(v);
 			}
@@ -6006,7 +6099,7 @@ ssize_t DisplayConfig::fromMemory(const void *b, ssize_t s)
 			{
 				ssize_t s = skip_content(a,e-a,fid&7);
 				if (s <= 0)
-					return -313;
+					return -319;
 				a += s;
 				break;
 			}
@@ -6014,7 +6107,7 @@ ssize_t DisplayConfig::fromMemory(const void *b, ssize_t s)
 	}
 	assert((a-(const uint8_t *)b) == s);
 	if (a > e)
-		return -314;
+		return -320;
 	return a-(const uint8_t *)b;
 }
 
@@ -6027,44 +6120,44 @@ ssize_t DisplayConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (m_type != dt_none) {
 		// 'type': id=1, encoding=varint, tag=0x8
 		if (a >= e)
-			return -315;
+			return -321;
 		*a++ = 0x8;
 		n = write_varint(a,e-a,m_type);
 		if (n <= 0)
-			return -316;
+			return -322;
 		a += n;
 	}
 	// has options?
 	if (0 != (p_validbits & ((uint8_t)1U << 0))) {
 		// 'options': id=2, encoding=varint, tag=0x10
 		if (a >= e)
-			return -317;
+			return -323;
 		*a++ = 0x10;
 		n = write_varint(a,e-a,m_options);
 		if (n <= 0)
-			return -318;
+			return -324;
 		a += n;
 	}
 	// has maxx?
 	if (0 != (p_validbits & ((uint8_t)1U << 1))) {
 		// 'maxx': id=3, encoding=varint, tag=0x18
 		if (a >= e)
-			return -319;
+			return -325;
 		*a++ = 0x18;
 		n = write_varint(a,e-a,m_maxx);
 		if (n <= 0)
-			return -320;
+			return -326;
 		a += n;
 	}
 	// has maxy?
 	if (0 != (p_validbits & ((uint8_t)1U << 2))) {
 		// 'maxy': id=4, encoding=varint, tag=0x20
 		if (a >= e)
-			return -321;
+			return -327;
 		*a++ = 0x20;
 		n = write_varint(a,e-a,m_maxy);
 		if (n <= 0)
-			return -322;
+			return -328;
 		a += n;
 	}
 	assert(a <= e);
@@ -6168,7 +6261,7 @@ int DisplayConfig::setByName(const char *name, const char *value)
 		disp_t v;
 		size_t r = parse_ascii_disp_t(&v,value);
 		if (r == 0)
-			return -323;
+			return -329;
 		set_type(v);
 		return r;
 	}
@@ -6202,7 +6295,7 @@ int DisplayConfig::setByName(const char *name, const char *value)
 			p_validbits |= ((uint8_t)1U << 2);
 		return r;
 	}
-	return -324;
+	return -330;
 }
 
 GpioCluster::GpioCluster()
@@ -6245,7 +6338,7 @@ ssize_t GpioCluster::fromMemory(const void *b, ssize_t s)
 		varint_t fid;
 		int fn = read_varint(a,e-a,&fid);
 		if (fn <= 0)
-			return -325;
+			return -331;
 		a += fn;
 		switch (fid) {
 		case 0xa:	// name id 1, type estring, coding byte[]
@@ -6254,7 +6347,7 @@ ssize_t GpioCluster::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -326;
+					return -332;
 				m_name.assign((const char*)a,v);
 				a += v;
 			}
@@ -6264,7 +6357,7 @@ ssize_t GpioCluster::fromMemory(const void *b, ssize_t s)
 				varint_t v;
 				int n = read_varint(a,e-a,&v);
 				if (n <= 0)
-					return -327;
+					return -333;
 				a += n;
 				set_base(v);
 			}
@@ -6274,7 +6367,7 @@ ssize_t GpioCluster::fromMemory(const void *b, ssize_t s)
 				varint_t v;
 				int n = read_varint(a,e-a,&v);
 				if (n <= 0)
-					return -328;
+					return -334;
 				a += n;
 				set_numio(v);
 			}
@@ -6284,7 +6377,7 @@ ssize_t GpioCluster::fromMemory(const void *b, ssize_t s)
 				varint_t v;
 				int n = read_varint(a,e-a,&v);
 				if (n <= 0)
-					return -329;
+					return -335;
 				a += n;
 				set_int_a(varint_sint(v));
 			}
@@ -6294,7 +6387,7 @@ ssize_t GpioCluster::fromMemory(const void *b, ssize_t s)
 				varint_t v;
 				int n = read_varint(a,e-a,&v);
 				if (n <= 0)
-					return -330;
+					return -336;
 				a += n;
 				set_int_b(varint_sint(v));
 			}
@@ -6304,7 +6397,7 @@ ssize_t GpioCluster::fromMemory(const void *b, ssize_t s)
 			{
 				ssize_t s = skip_content(a,e-a,fid&7);
 				if (s <= 0)
-					return -331;
+					return -337;
 				a += s;
 				break;
 			}
@@ -6312,7 +6405,7 @@ ssize_t GpioCluster::fromMemory(const void *b, ssize_t s)
 	}
 	assert((a-(const uint8_t *)b) == s);
 	if (a > e)
-		return -332;
+		return -338;
 	return a-(const uint8_t *)b;
 }
 
@@ -6325,13 +6418,13 @@ ssize_t GpioCluster::toMemory(uint8_t *b, ssize_t s) const
 	if (!m_name.empty()) {
 		// 'name': id=1, encoding=lenpfx, tag=0xa
 		if (a >= e)
-			return -333;
+			return -339;
 		*a++ = 0xa;
 		ssize_t name_s = m_name.size();
 		n = write_varint(a,e-a,name_s);
 		a += n;
 		if ((n <= 0) || ((e-a) < name_s))
-			return -334;
+			return -340;
 		memcpy(a,m_name.data(),name_s);
 		a += name_s;
 	}
@@ -6339,44 +6432,44 @@ ssize_t GpioCluster::toMemory(uint8_t *b, ssize_t s) const
 	if (m_base != 0) {
 		// 'base': id=2, encoding=varint, tag=0x10
 		if (a >= e)
-			return -335;
+			return -341;
 		*a++ = 0x10;
 		n = write_varint(a,e-a,m_base);
 		if (n <= 0)
-			return -336;
+			return -342;
 		a += n;
 	}
 	// has numio?
 	if (m_numio != 0) {
 		// 'numio': id=3, encoding=varint, tag=0x18
 		if (a >= e)
-			return -337;
+			return -343;
 		*a++ = 0x18;
 		n = write_varint(a,e-a,m_numio);
 		if (n <= 0)
-			return -338;
+			return -344;
 		a += n;
 	}
 	// has int_a?
 	if (m_int_a != -1) {
 		// 'int_a': id=4, encoding=varint, tag=0x20
 		if (a >= e)
-			return -339;
+			return -345;
 		*a++ = 0x20;
 		n = write_varint(a,e-a,sint_varint(m_int_a));
 		if (n <= 0)
-			return -340;
+			return -346;
 		a += n;
 	}
 	// has int_b?
 	if (m_int_b != -1) {
 		// 'int_b': id=5, encoding=varint, tag=0x28
 		if (a >= e)
-			return -341;
+			return -347;
 		*a++ = 0x28;
 		n = write_varint(a,e-a,sint_varint(m_int_b));
 		if (n <= 0)
-			return -342;
+			return -348;
 		a += n;
 	}
 	assert(a <= e);
@@ -6516,7 +6609,7 @@ int GpioCluster::setByName(const char *name, const char *value)
 		int r = parse_ascii_s8(&m_int_b,value);
 		return r;
 	}
-	return -343;
+	return -349;
 }
 
 HardwareConfig::HardwareConfig()
@@ -6759,12 +6852,12 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 		varint_t fid;
 		int fn = read_varint(a,e-a,&fid);
 		if (fn <= 0)
-			return -344;
+			return -350;
 		a += fn;
 		switch (fid) {
 		case 0x5:	// magic id 0, type uint32_t, coding 32bit
 			if ((a+3) >= e)
-				return -345;
+				return -351;
 			set_magic((uint32_t) read_u32(a));
 			a += 4;
 			break;
@@ -6774,13 +6867,13 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -346;
+					return -352;
 				if (v != 0) {
 					n = m_system.fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -347;
+						return -353;
 					a += v;
 				}
 			}
@@ -6792,14 +6885,14 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -348;
+					return -354;
 				m_uart.emplace_back();
 				if (v != 0) {
 					n = m_uart.back().fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -349;
+						return -355;
 					a += v;
 				}
 			}
@@ -6810,13 +6903,13 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -350;
+					return -356;
 				if (v != 0) {
 					n = m_adc.fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -351;
+						return -357;
 					a += v;
 				}
 			}
@@ -6828,13 +6921,13 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -352;
+					return -358;
 				if (v != 0) {
 					n = m_touchpad.fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -353;
+						return -359;
 					a += v;
 				}
 			}
@@ -6846,14 +6939,14 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -354;
+					return -360;
 				m_tp_channel.emplace_back();
 				if (v != 0) {
 					n = m_tp_channel.back().fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -355;
+						return -361;
 					a += v;
 				}
 			}
@@ -6864,14 +6957,14 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -356;
+					return -362;
 				m_gpio.emplace_back();
 				if (v != 0) {
 					n = m_gpio.back().fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -357;
+						return -363;
 					a += v;
 				}
 			}
@@ -6883,14 +6976,14 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -358;
+					return -364;
 				m_button.emplace_back();
 				if (v != 0) {
 					n = m_button.back().fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -359;
+						return -365;
 					a += v;
 				}
 			}
@@ -6903,14 +6996,14 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -360;
+					return -366;
 				m_relay.emplace_back();
 				if (v != 0) {
 					n = m_relay.back().fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -361;
+						return -367;
 					a += v;
 				}
 			}
@@ -6922,14 +7015,14 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -362;
+					return -368;
 				m_led.emplace_back();
 				if (v != 0) {
 					n = m_led.back().fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -363;
+						return -369;
 					a += v;
 				}
 			}
@@ -6941,13 +7034,13 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -364;
+					return -370;
 				if (v != 0) {
 					n = m_max7219.fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -365;
+						return -371;
 					a += v;
 				}
 			}
@@ -6961,13 +7054,13 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -366;
+					return -372;
 				if (v != 0) {
 					n = m_tlc5947.fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -367;
+						return -373;
 					a += v;
 				}
 			}
@@ -6981,13 +7074,13 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -368;
+					return -374;
 				if (v != 0) {
 					n = m_ws2812b.fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -369;
+						return -375;
 					a += v;
 				}
 			}
@@ -7001,13 +7094,13 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -370;
+					return -376;
 				if (v != 0) {
 					n = m_dht.fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -371;
+						return -377;
 					a += v;
 				}
 			}
@@ -7021,14 +7114,14 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -372;
+					return -378;
 				m_i2c.emplace_back();
 				if (v != 0) {
 					n = m_i2c.back().fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -373;
+						return -379;
 					a += v;
 				}
 			}
@@ -7041,14 +7134,14 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -374;
+					return -380;
 				m_hcsr04.emplace_back();
 				if (v != 0) {
 					n = m_hcsr04.back().fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -375;
+						return -381;
 					a += v;
 				}
 			}
@@ -7061,13 +7154,13 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -376;
+					return -382;
 				if (v != 0) {
 					n = m_onewire.fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -377;
+						return -383;
 					a += v;
 				}
 			}
@@ -7081,14 +7174,14 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -378;
+					return -384;
 				m_iocluster.emplace_back();
 				if (v != 0) {
 					n = m_iocluster.back().fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -379;
+						return -385;
 					a += v;
 				}
 			}
@@ -7101,13 +7194,13 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -380;
+					return -386;
 				if (v != 0) {
 					n = m_display.fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -381;
+						return -387;
 					a += v;
 				}
 			}
@@ -7119,7 +7212,7 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 			{
 				ssize_t s = skip_content(a,e-a,fid&7);
 				if (s <= 0)
-					return -382;
+					return -388;
 				a += s;
 				break;
 			}
@@ -7127,7 +7220,7 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 	}
 	assert((a-(const uint8_t *)b) == s);
 	if (a > e)
-		return -383;
+		return -389;
 	return a-(const uint8_t *)b;
 }
 
@@ -7140,10 +7233,10 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint16_t)1U << 0))) {
 		// 'magic': id=0, encoding=32bit, tag=0x5
 		if (5 > (e-a))
-			return -384;
+			return -390;
 		*a++ = 0x5;
 		if ((e-a) < 4)
-			return -385;
+			return -391;
 		write_u32(a,(uint32_t)m_magic);
 		a += 4;
 	}
@@ -7151,13 +7244,13 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint16_t)1U << 1))) {
 		// 'system': id=1, encoding=lenpfx, tag=0xa
 		if (a >= e)
-			return -386;
+			return -392;
 		*a++ = 0xa;
 		ssize_t system_ws = m_system.calcSize();
 		n = write_varint(a,e-a,system_ws);
 		a += n;
 		if ((n <= 0) || (system_ws > (e-a)))
-			return -387;
+			return -393;
 		n = m_system.toMemory(a,e-a);
 		a += n;
 		assert(n == system_ws);
@@ -7165,13 +7258,13 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_uart) {
 		// 'uart': id=3, encoding=lenpfx, tag=0x1a
 		if (a >= e)
-			return -388;
+			return -394;
 		*a++ = 0x1a;
 		ssize_t uart_ws = x.calcSize();
 		n = write_varint(a,e-a,uart_ws);
 		a += n;
 		if ((n <= 0) || (uart_ws > (e-a)))
-			return -389;
+			return -395;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == uart_ws);
@@ -7180,13 +7273,13 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint16_t)1U << 2))) {
 		// 'adc': id=4, encoding=lenpfx, tag=0x22
 		if (a >= e)
-			return -390;
+			return -396;
 		*a++ = 0x22;
 		ssize_t adc_ws = m_adc.calcSize();
 		n = write_varint(a,e-a,adc_ws);
 		a += n;
 		if ((n <= 0) || (adc_ws > (e-a)))
-			return -391;
+			return -397;
 		n = m_adc.toMemory(a,e-a);
 		a += n;
 		assert(n == adc_ws);
@@ -7195,13 +7288,13 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint16_t)1U << 3))) {
 		// 'touchpad': id=5, encoding=lenpfx, tag=0x2a
 		if (a >= e)
-			return -392;
+			return -398;
 		*a++ = 0x2a;
 		ssize_t touchpad_ws = m_touchpad.calcSize();
 		n = write_varint(a,e-a,touchpad_ws);
 		a += n;
 		if ((n <= 0) || (touchpad_ws > (e-a)))
-			return -393;
+			return -399;
 		n = m_touchpad.toMemory(a,e-a);
 		a += n;
 		assert(n == touchpad_ws);
@@ -7209,13 +7302,13 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_tp_channel) {
 		// 'tp_channel': id=6, encoding=lenpfx, tag=0x32
 		if (a >= e)
-			return -394;
+			return -400;
 		*a++ = 0x32;
 		ssize_t tp_channel_ws = x.calcSize();
 		n = write_varint(a,e-a,tp_channel_ws);
 		a += n;
 		if ((n <= 0) || (tp_channel_ws > (e-a)))
-			return -395;
+			return -401;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == tp_channel_ws);
@@ -7223,13 +7316,13 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_gpio) {
 		// 'gpio': id=7, encoding=lenpfx, tag=0x3a
 		if (a >= e)
-			return -396;
+			return -402;
 		*a++ = 0x3a;
 		ssize_t gpio_ws = x.calcSize();
 		n = write_varint(a,e-a,gpio_ws);
 		a += n;
 		if ((n <= 0) || (gpio_ws > (e-a)))
-			return -397;
+			return -403;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == gpio_ws);
@@ -7238,14 +7331,14 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_button) {
 		// 'button': id=16, encoding=lenpfx, tag=0x82
 		if (2 > (e-a))
-			return -398;
+			return -404;
 		*a++ = 0x82;
 		*a++ = 0x1;
 		ssize_t button_ws = x.calcSize();
 		n = write_varint(a,e-a,button_ws);
 		a += n;
 		if ((n <= 0) || (button_ws > (e-a)))
-			return -399;
+			return -405;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == button_ws);
@@ -7255,14 +7348,14 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_relay) {
 		// 'relay': id=17, encoding=lenpfx, tag=0x8a
 		if (2 > (e-a))
-			return -400;
+			return -406;
 		*a++ = 0x8a;
 		*a++ = 0x1;
 		ssize_t relay_ws = x.calcSize();
 		n = write_varint(a,e-a,relay_ws);
 		a += n;
 		if ((n <= 0) || (relay_ws > (e-a)))
-			return -401;
+			return -407;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == relay_ws);
@@ -7271,14 +7364,14 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_led) {
 		// 'led': id=18, encoding=lenpfx, tag=0x92
 		if (2 > (e-a))
-			return -402;
+			return -408;
 		*a++ = 0x92;
 		*a++ = 0x1;
 		ssize_t led_ws = x.calcSize();
 		n = write_varint(a,e-a,led_ws);
 		a += n;
 		if ((n <= 0) || (led_ws > (e-a)))
-			return -403;
+			return -409;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == led_ws);
@@ -7288,14 +7381,14 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint16_t)1U << 4))) {
 		// 'max7219': id=32, encoding=lenpfx, tag=0x102
 		if (2 > (e-a))
-			return -404;
+			return -410;
 		*a++ = 0x82;
 		*a++ = 0x2;
 		ssize_t max7219_ws = m_max7219.calcSize();
 		n = write_varint(a,e-a,max7219_ws);
 		a += n;
 		if ((n <= 0) || (max7219_ws > (e-a)))
-			return -405;
+			return -411;
 		n = m_max7219.toMemory(a,e-a);
 		a += n;
 		assert(n == max7219_ws);
@@ -7306,14 +7399,14 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint16_t)1U << 5))) {
 		// 'tlc5947': id=33, encoding=lenpfx, tag=0x10a
 		if (2 > (e-a))
-			return -406;
+			return -412;
 		*a++ = 0x8a;
 		*a++ = 0x2;
 		ssize_t tlc5947_ws = m_tlc5947.calcSize();
 		n = write_varint(a,e-a,tlc5947_ws);
 		a += n;
 		if ((n <= 0) || (tlc5947_ws > (e-a)))
-			return -407;
+			return -413;
 		n = m_tlc5947.toMemory(a,e-a);
 		a += n;
 		assert(n == tlc5947_ws);
@@ -7324,14 +7417,14 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint16_t)1U << 6))) {
 		// 'ws2812b': id=34, encoding=lenpfx, tag=0x112
 		if (2 > (e-a))
-			return -408;
+			return -414;
 		*a++ = 0x92;
 		*a++ = 0x2;
 		ssize_t ws2812b_ws = m_ws2812b.calcSize();
 		n = write_varint(a,e-a,ws2812b_ws);
 		a += n;
 		if ((n <= 0) || (ws2812b_ws > (e-a)))
-			return -409;
+			return -415;
 		n = m_ws2812b.toMemory(a,e-a);
 		a += n;
 		assert(n == ws2812b_ws);
@@ -7342,14 +7435,14 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint16_t)1U << 7))) {
 		// 'dht': id=35, encoding=lenpfx, tag=0x11a
 		if (2 > (e-a))
-			return -410;
+			return -416;
 		*a++ = 0x9a;
 		*a++ = 0x2;
 		ssize_t dht_ws = m_dht.calcSize();
 		n = write_varint(a,e-a,dht_ws);
 		a += n;
 		if ((n <= 0) || (dht_ws > (e-a)))
-			return -411;
+			return -417;
 		n = m_dht.toMemory(a,e-a);
 		a += n;
 		assert(n == dht_ws);
@@ -7359,14 +7452,14 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_i2c) {
 		// 'i2c': id=36, encoding=lenpfx, tag=0x122
 		if (2 > (e-a))
-			return -412;
+			return -418;
 		*a++ = 0xa2;
 		*a++ = 0x2;
 		ssize_t i2c_ws = x.calcSize();
 		n = write_varint(a,e-a,i2c_ws);
 		a += n;
 		if ((n <= 0) || (i2c_ws > (e-a)))
-			return -413;
+			return -419;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == i2c_ws);
@@ -7376,14 +7469,14 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_hcsr04) {
 		// 'hcsr04': id=37, encoding=lenpfx, tag=0x12a
 		if (2 > (e-a))
-			return -414;
+			return -420;
 		*a++ = 0xaa;
 		*a++ = 0x2;
 		ssize_t hcsr04_ws = x.calcSize();
 		n = write_varint(a,e-a,hcsr04_ws);
 		a += n;
 		if ((n <= 0) || (hcsr04_ws > (e-a)))
-			return -415;
+			return -421;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == hcsr04_ws);
@@ -7394,14 +7487,14 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint16_t)1U << 8))) {
 		// 'onewire': id=38, encoding=lenpfx, tag=0x132
 		if (2 > (e-a))
-			return -416;
+			return -422;
 		*a++ = 0xb2;
 		*a++ = 0x2;
 		ssize_t onewire_ws = m_onewire.calcSize();
 		n = write_varint(a,e-a,onewire_ws);
 		a += n;
 		if ((n <= 0) || (onewire_ws > (e-a)))
-			return -417;
+			return -423;
 		n = m_onewire.toMemory(a,e-a);
 		a += n;
 		assert(n == onewire_ws);
@@ -7411,14 +7504,14 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_iocluster) {
 		// 'iocluster': id=40, encoding=lenpfx, tag=0x142
 		if (2 > (e-a))
-			return -418;
+			return -424;
 		*a++ = 0xc2;
 		*a++ = 0x2;
 		ssize_t iocluster_ws = x.calcSize();
 		n = write_varint(a,e-a,iocluster_ws);
 		a += n;
 		if ((n <= 0) || (iocluster_ws > (e-a)))
-			return -419;
+			return -425;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == iocluster_ws);
@@ -7429,14 +7522,14 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint16_t)1U << 9))) {
 		// 'display': id=50, encoding=lenpfx, tag=0x192
 		if (2 > (e-a))
-			return -420;
+			return -426;
 		*a++ = 0x92;
 		*a++ = 0x3;
 		ssize_t display_ws = m_display.calcSize();
 		n = write_varint(a,e-a,display_ws);
 		a += n;
 		if ((n <= 0) || (display_ws > (e-a)))
-			return -421;
+			return -427;
 		n = m_display.toMemory(a,e-a);
 		a += n;
 		assert(n == display_ws);
@@ -7942,16 +8035,16 @@ int HardwareConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+5,&idxe,0);
 				if (idxe[0] != ']')
-					return -422;
+					return -428;
 				if (m_uart.size() <= x)
-					return -423;
+					return -429;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_uart.erase(m_uart.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -424;
+				return -430;
 			return m_uart[x].setByName(idxe+2,value);
 		}
 	}
@@ -7989,16 +8082,16 @@ int HardwareConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+11,&idxe,0);
 				if (idxe[0] != ']')
-					return -425;
+					return -431;
 				if (m_tp_channel.size() <= x)
-					return -426;
+					return -432;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_tp_channel.erase(m_tp_channel.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -427;
+				return -433;
 			return m_tp_channel[x].setByName(idxe+2,value);
 		}
 	}
@@ -8018,16 +8111,16 @@ int HardwareConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+5,&idxe,0);
 				if (idxe[0] != ']')
-					return -428;
+					return -434;
 				if (m_gpio.size() <= x)
-					return -429;
+					return -435;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_gpio.erase(m_gpio.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -430;
+				return -436;
 			return m_gpio[x].setByName(idxe+2,value);
 		}
 	}
@@ -8048,16 +8141,16 @@ int HardwareConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+7,&idxe,0);
 				if (idxe[0] != ']')
-					return -431;
+					return -437;
 				if (m_button.size() <= x)
-					return -432;
+					return -438;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_button.erase(m_button.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -433;
+				return -439;
 			return m_button[x].setByName(idxe+2,value);
 		}
 	}
@@ -8079,16 +8172,16 @@ int HardwareConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+6,&idxe,0);
 				if (idxe[0] != ']')
-					return -434;
+					return -440;
 				if (m_relay.size() <= x)
-					return -435;
+					return -441;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_relay.erase(m_relay.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -436;
+				return -442;
 			return m_relay[x].setByName(idxe+2,value);
 		}
 	}
@@ -8109,16 +8202,16 @@ int HardwareConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+4,&idxe,0);
 				if (idxe[0] != ']')
-					return -437;
+					return -443;
 				if (m_led.size() <= x)
-					return -438;
+					return -444;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_led.erase(m_led.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -439;
+				return -445;
 			return m_led[x].setByName(idxe+2,value);
 		}
 	}
@@ -8183,16 +8276,16 @@ int HardwareConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+4,&idxe,0);
 				if (idxe[0] != ']')
-					return -440;
+					return -446;
 				if (m_i2c.size() <= x)
-					return -441;
+					return -447;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_i2c.erase(m_i2c.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -442;
+				return -448;
 			return m_i2c[x].setByName(idxe+2,value);
 		}
 	}
@@ -8214,16 +8307,16 @@ int HardwareConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+7,&idxe,0);
 				if (idxe[0] != ']')
-					return -443;
+					return -449;
 				if (m_hcsr04.size() <= x)
-					return -444;
+					return -450;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_hcsr04.erase(m_hcsr04.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -445;
+				return -451;
 			return m_hcsr04[x].setByName(idxe+2,value);
 		}
 	}
@@ -8256,16 +8349,16 @@ int HardwareConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+10,&idxe,0);
 				if (idxe[0] != ']')
-					return -446;
+					return -452;
 				if (m_iocluster.size() <= x)
-					return -447;
+					return -453;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_iocluster.erase(m_iocluster.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -448;
+				return -454;
 			return m_iocluster[x].setByName(idxe+2,value);
 		}
 	}
@@ -8281,6 +8374,6 @@ int HardwareConfig::setByName(const char *name, const char *value)
 		}
 	}
 	#endif // CONFIG_DISPLAY
-	return -449;
+	return -455;
 }
 

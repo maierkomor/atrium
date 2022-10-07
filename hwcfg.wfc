@@ -225,6 +225,7 @@ enum i2cdrv_t {
 	i2cdrv_pca9685_xclk_pnp = 9;
 	i2cdrv_ht16k33 = 10;
 	i2cdrv_ina219 = 11;
+	i2cdrv_si7021 = 12;
 }
 
 
@@ -304,6 +305,13 @@ message AdcChannel
 
 	// adc_atten_t: 0 = 0dB, 1=2,5dB, 2=6dB, 3=11dB
 	uint8 atten = 4		[ default = 0 ];	
+	// 0: manual sampling, >0: sampling interval in ms
+	uint8 interval = 5	[ unset = 0 ];
+	uint8 window = 6	[ unset = 0 ];
+	/*
+	// sliding window requires window-size*2 bytes additional RAM
+	bool slide = 7		[ default = false ];
+	*/
 }
 
 

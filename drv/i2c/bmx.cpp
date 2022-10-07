@@ -142,7 +142,7 @@ void BME280::attach(EnvObject *root)
 
 
 #ifdef CONFIG_I2C_XCMD
-int BMP280::exeCmd(Terminal &term, int argc, const char **args)
+const char *BMP280::exeCmd(Terminal &term, int argc, const char **args)
 {
 	if ((argc == 0) || ((argc == 1) && (0 == strcmp(args[0],"-h")))) {
 		term.println(
@@ -161,17 +161,17 @@ int BMP280::exeCmd(Terminal &term, int argc, const char **args)
 			s = m_sampmod>>2;
 			s &= 7;
 		} else {
-			return arg_invalid(term,args[0]);
+			return "Invalid argument #1.";
 		}
 		term.printf("x%u\n",s != 0 ? 1<<--s : 0);
 		return 0;
 	}
 	if (argc != 2)
-		return arg_invnum(term);
+		return "Invalid number of arguments.";
 	char *e;
 	long v = strtol(args[1],&e,0);
 	if (*e)
-		return arg_invalid(term,args[1]);
+		return "Invalid argument #2.";
 	uint8_t x;
 	if ((v >= 0) && (v < 3))
 		x = v;
@@ -182,7 +182,7 @@ int BMP280::exeCmd(Terminal &term, int argc, const char **args)
 	else if (v == 16)
 		x = 5;
 	else
-		return arg_invalid(term,args[1]);
+		return "Invalid argument #2.";
 	if (0 == strcmp(args[0],"tos")) {
 		m_sampmod &= 0x1f;
 		m_sampmod |= x << 5;
@@ -190,13 +190,13 @@ int BMP280::exeCmd(Terminal &term, int argc, const char **args)
 		m_sampmod &= 0xe3;
 		m_sampmod |= x << 2;
 	} else {
-		return arg_invalid(term,args[0]);
+		return "Invalid argument #1.";
 	}
 	return 0;
 }
 
 
-int BME280::exeCmd(Terminal &term, int argc, const char **args)
+const char *BME280::exeCmd(Terminal &term, int argc, const char **args)
 {
 	if ((argc == 0) || ((argc == 1) && (0 == strcmp(args[0],"-h")))) {
 		BMP280::exeCmd(term,argc,args);
@@ -206,8 +206,8 @@ int BME280::exeCmd(Terminal &term, int argc, const char **args)
 	if (argc == 1) {
 		uint8_t s;
 		if (0 == strcmp(args[0],"hos")) {
-			if (i2c_w1rd(m_bus,m_addr,BME280_REG_CTRLHUM,&s,sizeof(s)))
-				return 1;
+			if (esp_err_t e = i2c_w1rd(m_bus,m_addr,BME280_REG_CTRLHUM,&s,sizeof(s)))
+				return esp_err_to_name(e);
 		} else {
 			return BMP280::exeCmd(term,argc,args);
 		}
@@ -215,11 +215,11 @@ int BME280::exeCmd(Terminal &term, int argc, const char **args)
 		return 0;
 	}
 	if (argc != 2)
-		return arg_invnum(term);
+		return "Invalid number of arguments.";
 	char *e;
 	long v = strtol(args[1],&e,0);
 	if (*e)
-		return arg_invalid(term,args[1]);
+		return "Invalid argument #2.";
 	uint8_t x;
 	if ((v >= 0) && (v < 3))
 		x = v;
@@ -230,7 +230,7 @@ int BME280::exeCmd(Terminal &term, int argc, const char **args)
 	else if (v == 16)
 		x = 5;
 	else
-		return arg_invalid(term,args[1]);
+		return "Invalid argument #2.";
 	if (0 == strcmp(args[0],"tos")) {
 		m_sampmod &= 0x1f;
 		m_sampmod |= x << 5;
@@ -238,9 +238,10 @@ int BME280::exeCmd(Terminal &term, int argc, const char **args)
 		m_sampmod &= 0xe3;
 		m_sampmod |= x << 2;
 	} else if (0 == strcmp(args[0],"hos")) {
-		return i2c_write2(m_bus, m_addr, BME280_REG_CTRLHUM, x);
+		if (esp_err_t e = i2c_write2(m_bus, m_addr, BME280_REG_CTRLHUM, x))
+			return esp_err_to_name(e);
 	} else {
-		return arg_invalid(term,args[0]);
+		return "Invalid argument #1.";
 	}
 	return 0;
 }

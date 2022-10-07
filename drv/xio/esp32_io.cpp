@@ -140,6 +140,7 @@ int CoreIO0::config(uint8_t num, xio_cfg_t cfg)
 #endif
 #if 1
 	if (cfg.cfg_io == xio_cfg_io_keep) {
+		log_dbug(TAG,"keep io %u",num);
 	} else if (cfg.cfg_io == xio_cfg_io_in) {
 //		PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[num]);
 //		GPIO.enable_w1tc = (1 << num);

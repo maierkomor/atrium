@@ -28,6 +28,7 @@
 #include "hwcfg.h"
 #include "env.h"
 #include "log.h"
+#include "nvm.h"
 #include "netsvc.h"
 #include "profiling.h"
 #include "settings.h"
@@ -61,8 +62,8 @@ void esp_yield(void);
 #endif
 
 
-#include <nvs.h>
-#include <nvs_flash.h>
+//#include <nvs.h>
+//#include <nvs_flash.h>
 #include <tcpip_adapter.h>
 #include <stdlib.h>
 #include <string.h>
@@ -369,18 +370,18 @@ pair<const char *, int (*)(Terminal &t, const char *)> SetFns[] = {
 };
 
 
-int update_setting(Terminal &t, const char *name, const char *value)
+const char *update_setting(Terminal &t, const char *name, const char *value)
 {
 	for (size_t i = 0; SetFns[i].first; ++i) {
 		if (0 == strcmp(name,SetFns[i].first))
-			return SetFns[i].second(t,value);
+			return SetFns[i].second(t,value) ? "Failed." : 0;
 	}
 	if (0 < Config.setByName(name,value))
 		return 0;
 #ifdef CONFIG_APP_PARAMS 
-	return cfg_set_param(name,value);
+	return cfg_set_param(name,value) ? "Failed." : 0;
 #else
-	return 1;
+	return "Failed.";
 #endif
 }
 
@@ -394,7 +395,7 @@ void list_settings(Terminal &t)
 
 int cfg_set_hostname(const char *hn)
 {
-	if (hn == 0)
+	if ((hn == 0) || (0 != sethostname(hn,0)))
 		return 1;
 	EnvString *n = static_cast<EnvString*>(RTData->get("node"));
 	if (n == 0) {
@@ -420,7 +421,6 @@ int cfg_set_hostname(const char *hn)
 	}
 	MDNS_up = true;
 #endif
-	sethostname(hn,0);
 	return 0;
 }
 
@@ -515,12 +515,7 @@ bool isValidBaudrate(long l)
 
 static void set_cfg_err(uint8_t v)
 {
-	if (NVS == 0)
-		log_warn(TAG,"set nvs/%s: not mounted",cfg_err);
-	else if (esp_err_t e = nvs_set_u8(NVS,cfg_err,v))
-		log_warn(TAG,"clear cfg_ok: %s",esp_err_to_name(e));
-	else
-		nvs_commit(NVS);
+	nvm_store_u8(cfg_err,v);
 }
 
 
@@ -564,34 +559,11 @@ void cfg_clear_nodecfg()
 }
 
 
-int cfg_erase_nvs()
-{
-	if (esp_err_t e = nvs_erase_all(NVS)) {
-		log_warn(TAG,"erase nvs/%s: %s",TAG,esp_err_to_name(e));
-		return 1;
-	}
-	return 0;
-}
-
-
 void cfg_factory_reset(void *)
 {
-	if (esp_err_t e = nvs_erase_all(NVS))
-		log_warn(TAG,"erase nvs/%s: %s",TAG,esp_err_to_name(e));
+	nvm_erase_all();
 	esp_wifi_restore();
 	esp_restart();
-}
-
-
-int writeNVM(const char *name, const uint8_t *buf, size_t s)
-{
-	if (esp_err_t e = nvs_set_blob(NVS,name,buf,s))
-		log_warn(TAG,"NVS write %s (%u bytes): %s",name,s,esp_err_to_name(e));
-	else if (esp_err_t e = nvs_commit(NVS))
-		log_warn(TAG,"commit %s: %s",name,esp_err_to_name(e));
-	else
-		return 0;
-	return 1;
 }
 
 
@@ -602,7 +574,7 @@ int cfg_store_hwcfg()
 	uint8_t *buf = (uint8_t *) malloc(s);
 	assert(buf);
 	HWConf.toMemory(buf,s);
-	int r = writeNVM("hw.cfg",buf,s);
+	int r = nvm_store_blob("hw.cfg",buf,s);
 	free(buf);
 	return r;
 }
@@ -614,28 +586,9 @@ int cfg_store_nodecfg()
 	uint8_t *buf = (uint8_t *) malloc(s);
 	assert(buf);
 	Config.toMemory(buf,s);
-	int r = writeNVM("node.cfg",buf,s);
+	int r = nvm_store_blob("node.cfg",buf,s);
 	free(buf);
 	return r;
-}
-
-
-int readNVconfig(const char *name, uint8_t **buf, size_t *len)
-{
-	size_t s = 0;
-	if (esp_err_t e = nvs_get_blob(NVS,name,0,&s)) {
-		return e;
-	}
-	uint8_t *b = (uint8_t*)malloc(s);
-	if (b == 0)
-		return ENOMEM;
-	if (esp_err_t e = nvs_get_blob(NVS,name,b,&s)) {
-		free(buf);
-		return e;
-	}
-	*buf = b;
-	*len = s;
-	return 0;
 }
 
 
@@ -645,7 +598,7 @@ int cfg_read_nodecfg()
 	const char *name = "node.cfg";
 	size_t s = 0;
 	uint8_t *buf = 0;
-	if (int e = readNVconfig(name,&buf,&s)) {
+	if (int e = nvm_read_blob(name,&buf,&s)) {
 		log_warn(TAG,"error reading %s: %s",name,esp_err_to_name(e));
 		return e;
 	}
@@ -672,45 +625,12 @@ int cfg_read_nodecfg()
 }
 
 
-static int cfg_copy(const char *to, const char *from)
-{
-	size_t s = 0;
-	uint8_t *buf = 0;
-	if (int e = readNVconfig(from,&buf,&s)) {
-		log_warn(TAG,"read nvs/%s: %s",from,esp_err_to_name(e));
-		return e;
-	}
-	esp_err_t e = nvs_set_blob(NVS,to,buf,s);
-	free(buf);
-	if (e)
-		log_warn(TAG,"NVS write %s (%u bytes): %s",to,s,esp_err_to_name(e));
-	else if (esp_err_t e = nvs_commit(NVS))
-		log_warn(TAG,"commit %s: %s",to,esp_err_to_name(e));
-	else
-		return 0;
-	return 1;
-
-}
-
-
-int cfg_backup_create()
-{
-	return cfg_copy("node.cfg.bak","node.cfg");
-}
-
-
-int cfg_backup_restore()
-{
-	return cfg_copy("node.cfg","node.cfg.bak");
-}
-
-
 int cfg_read_hwcfg()
 {
 	PROFILE_FUNCTION();
 	size_t s = 0;
 	uint8_t *buf = 0;
-	if (int e = readNVconfig("hw.cfg",&buf,&s)) {
+	if (int e = nvm_read_blob("hw.cfg",&buf,&s)) {
 		log_warn(TAG,"reading hw.cfg: %s",esp_err_to_name(e));
 		return e;
 	}
@@ -1067,99 +987,11 @@ void cfg_set_fvalue(const char *name, double f)
 #endif
 
 
-void nvs_setup()
-{
-	PROFILE_FUNCTION();
-	if (nvs_flash_init()) {
-		log_warn(TAG,"NVS init failed - erasing NVS");
-		if (esp_err_t e = nvs_flash_erase())
-			log_warn(TAG,"nvs erase %s",esp_err_to_name(e));
-		else if (esp_err_t e = nvs_flash_init())
-			log_warn(TAG,"nvs init %s",esp_err_to_name(e));
-	}
-	if (esp_err_t err = nvs_open("cfg",NVS_READWRITE,&NVS))
-		log_warn(TAG,"NVS open failed: %s",esp_err_to_name(err));
-	else 
-		cfg_read_hwcfg();
-}
-
-
-uint8_t read_nvs_u8(const char *id, uint8_t d)
-{
-	uint8_t v;
-	if (esp_err_t e = nvs_get_u8(NVS,id,&v)) {
-		log_warn(TAG,"get nvs/%s: %s",id,esp_err_to_name(e));
-		return d;
-	}
-	return v;
-}
-
-
-void store_nvs_u8(const char *id, uint8_t v)
-{
-	if (esp_err_t e = nvs_set_u8(NVS,id,v))
-		log_warn(TAG,"set nvs/%s to %u: %s",id,(unsigned)v,esp_err_to_name(e));
-	else if (esp_err_t e = nvs_commit(NVS))
-		log_warn(TAG,"commit %s: %s",id,esp_err_to_name(e));
-}
-
-
-uint32_t read_nvs_u32(const char *id, uint32_t d)
-{
-	uint32_t v;
-	if (esp_err_t e = nvs_get_u32(NVS,id,&v)) {
-		log_warn(TAG,"get nvs/%s: %s",id,esp_err_to_name(e));
-		return d;
-	}
-	return v;
-}
-
-
-void store_nvs_u32(const char *id, uint32_t v)
-{
-        if (esp_err_t e = nvs_set_u32(NVS,id,v))
-                log_warn(TAG,"set nvs/%s to %u: %s",id,(unsigned)v,esp_err_to_name(e));
-        else if (esp_err_t e = nvs_commit(NVS))
-                log_warn(TAG,"commit %s: %s",id,esp_err_to_name(e));
-}
-
-
-float read_nvs_float(const char *id, float d)
-{
-	float v;
-        if (esp_err_t e = nvs_get_u32(NVS,id,(uint32_t*)&v)) {
-                log_warn(TAG,"get nvs/%s: %s",id,esp_err_to_name(e));
-                return d;
-        }
-        return v;
-}
-
-
-void store_nvs_float(const char *id, float v)
-{
-	union {
-		float f;
-		uint32_t u;
-	} x;
-	x.f = v;
-        if (esp_err_t e = nvs_set_u32(NVS,id,x.u))
-                log_warn(TAG,"set nvs/%s to %f: %s",id,v,esp_err_to_name(e));
-        else if (esp_err_t e = nvs_commit(NVS))
-                log_warn(TAG,"commit %s: %s",id,esp_err_to_name(e));
-}
-
-
 void settings_setup()
 {
-	uint8_t setup = 0;
-	if (0 == nvs_get_u8(NVS,cfg_err,&setup)) {
-		if (setup)
-			log_warn(TAG,"%s: %u: ignoring configuration",cfg_err,setup);
-		else
-			log_dbug(TAG,"%s ok",cfg_err);
-	} else {
-		// variable was not set before - i.e. no setup problem
-	}
+	uint8_t setup = nvm_read_u8(cfg_err,0);
+	if (setup)
+		log_warn(TAG,"%s: %u: ignoring configuration",cfg_err,setup);
 	set_cfg_err(1);
 	if (setup == 0) {
 		if (cfg_read_nodecfg()) {

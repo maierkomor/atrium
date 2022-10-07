@@ -1,0 +1,4 @@
+Synopsis: luac {<file.lua>|-i|-l}
+Compiles file <file.lua> for usage with Lua interpreter.
+-i: list internal functions
+-l: list compiled functions

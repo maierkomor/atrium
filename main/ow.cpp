@@ -86,27 +86,26 @@ int ow_setup()
 }
 
 
-int onewire(Terminal &term, int argc, const char *args[])
+const char *onewire(Terminal &term, int argc, const char *args[])
 {
 	OneWire *ow = OneWire::getInstance();
 	if (ow == 0) {
-		term.println("not configured");
-		return 1;
+		return "Not configured.";
 	}
 	if (argc != 2)
-		return arg_invnum(term);;
+		return "Invalid number of arguments.";
 	if (!strcmp(args[1],"scan"))
-		return ow_scan();
+		return ow_scan() ? "Failed." : 0;
 	if (!strcmp(args[1],"read"))
-		return ow->readRom();
+		return ow->readRom() ? "Failed." : 0;
 	if (!strcmp(args[1],"reset"))
-		return ow->resetBus();
+		return ow->resetBus() ? "Failed." : 0;
 	if (!strcmp(args[1],"name")) {
 		if (argc != 4)
-			return arg_missing(term);
+			return "Invalid number of arguments.";
 		uint64_t id = strtoll(args[2],0,0);
 		if (id == 0)
-			return arg_invalid(term,args[2]);
+			return "Invalid argument #2.";
 		OwDevice *d = OwDevice::getDevice(id);
 		for (auto &c : *Config.mutable_owdevices()) {
 			if (c.id() == id) {
@@ -116,7 +115,7 @@ int onewire(Terminal &term, int argc, const char *args[])
 				return 0;
 			}
 		}
-		return 1;
+		return "Unknown id.";
 	}
 	if (!strcmp(args[1],"list")) {
 		OwDevice *d = OwDevice::firstDevice();
@@ -134,7 +133,7 @@ int onewire(Terminal &term, int argc, const char *args[])
 		term.printf("%02x\n",(unsigned)b);
 		return 0;
 	}
-	return arg_invalid(term,args[1]);
+	return "Invalid argument #1.";
 }
 
 #endif // CONFIG_ONEWIRE

@@ -29,6 +29,7 @@
 #include "inetd.h"
 #include "env.h"
 #include "log.h"
+#include "nvm.h"
 #include "lwtcp.h"
 #include "mem_term.h"
 #include "netsvc.h"
@@ -285,8 +286,8 @@ static void exeShell(HttpRequest *req)
 	if (verifyPassword(pass))
 		term.setPrivLevel(1);
 	ans.setContentType(CT_TEXT_HTML);
-	if (int r = shellexe(term,com))
-		log_dbug(TAG,"exeShell '%s': %d",com,r);
+	if (const char *r = shellexe(term,com))
+		log_dbug(TAG,"exeShell '%s': %s",com,r);
 	ans.setResult(HTTP_OK);
 	if (int s = term.getSize())
 		ans.addContent(term.getBuffer(),s);
@@ -320,6 +321,10 @@ static void updateFirmware(HttpRequest *r)
 		return;
 	}
 	*/
+	if (UpdateState == 0) {
+		UpdateState = new EnvString("update_state","initializing");
+		RTData->add(UpdateState);
+	}
 	ans.setResult(HTTP_OK);
 	ans.senddata(c);
 	size_t s0 = r->getAvailableLength();
@@ -378,7 +383,7 @@ static void updateFirmware(HttpRequest *r)
 		bool r = false;
 		if (s == s0) {
 			log_dbug(TAG,"updating NVS/%s",part);
-			if (0 == writeNVM(part,(uint8_t*)tmp,s))
+			if (0 == nvm_store_blob(part,(uint8_t*)tmp,s))
 				r = true;
 		}
 		UpdateState->set(r ? "success" : "failed");
@@ -386,36 +391,29 @@ static void updateFirmware(HttpRequest *r)
 		return;
 	} else {
 		auto p = esp_partition_find_first(ESP_PARTITION_TYPE_DATA,ESP_PARTITION_SUBTYPE_ANY,part);
+		addr = p->address;
+		const char *err = 0;
 		if (p == 0) {
 			sprintf(st,"no ROMFS partition '%s'",part);
-			UpdateState->set(st);
-			ans.addContent(st);
-			return;
-		}
-		// ROMFS/DATA partition
-		if (s > p->size) {
-			const char *err = "image too big";
-			UpdateState->set(err);
-			log_warn(TAG,err);
-			ans.addContent(err);
-			return;
-		}
-		addr = p->address;
-		if (esp_err_t e = spi_flash_erase_range(addr,p->size)) {
+			err = st;
+		} else if (s > p->size) {
+			// ROMFS/DATA partition
+			err = "image too big";
+		} else if (esp_err_t e = spi_flash_erase_range(addr,p->size)) {
 			sprintf(st,"erase failed %s",esp_err_to_name(e));
-			UpdateState->set(st);
-			ans.addContent(st);
-			return;
-		}
-		if (s0 > 0) {
+			err = st;
+		} else if (s0 > 0) {
 			if (esp_err_t e = spi_flash_write(p->address,r->getContent(),s0)) {
 				sprintf(st,"SPI write: %s",esp_err_to_name(e));
-				UpdateState->set(st);
-				ans.addContent(st);
-				return;
+				err = st;
 			}
 			addr += s0;
 			s -= s0;
+		}
+		if (err) {
+			UpdateState->set(err);
+			ans.addContent(st);
+			return;
 		}
 	}
 	char *buf = (char*)malloc(FLASHBUFSIZE);
@@ -501,9 +499,9 @@ static void postConfig(HttpRequest *r)
 		} else if (0 == strcmp(argname,"passwd")) {
 		} else {
 			NullTerminal t;
-			int x = update_setting(t,argname,r->arg(i).c_str());
-			log_dbug(TAG,"%s = %s: %s\n",argname,r->arg(i).c_str(),x ? "Error" : "OK");
-			ans.writeContent("%s = %s: %s\n",argname,r->arg(i).c_str(),x ? "Error" : "OK");
+			const char *x = update_setting(t,argname,r->arg(i).c_str());
+			log_dbug(TAG,"%s = %s: %s\n",argname,r->arg(i).c_str(),x);
+			ans.writeContent("%s = %s: %s\n",argname,r->arg(i).c_str(),x);
 		}
 	}
 	ans.senddata(r->getConnection());

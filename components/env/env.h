@@ -72,20 +72,16 @@ class EnvElement
 	const char *name() const
 	{ return m_name; }
 
-	void setDimension(const char *dim)
-	{ m_dim = dim; }
-
 	const char *getDimension() const
 	{ return m_dim; }
 
+	void setDimension(const char *dim);
+
 	protected:
-	explicit EnvElement(const char *n, const char *dim = 0)
-	: m_name(n ? strdup(n) : 0)
-	, m_dim(dim)
-	{ }
+	explicit EnvElement(const char *n, const char *dim = 0);
 
 	char *m_name;
-	const char *m_dim;
+	char *m_dim;
 
 	private:
 	EnvElement(const EnvElement &);		// intentionally not supported

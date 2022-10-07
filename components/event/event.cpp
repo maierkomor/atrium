@@ -310,7 +310,11 @@ void event_isr_trigger_arg(event_t id,void *arg)
 static void event_task(void *)
 {
 #ifdef CONFIG_IDF_TARGET_ESP32
-#define dt portMAX_DELAY
+	#ifdef CONFIG_VERIFY_HEAP
+	#define dt 100
+	#else
+	#define dt portMAX_DELAY
+	#endif // CONFIG_VERIFY_HEAP
 #else
 	unsigned d = 1;
 #define dt (d * portTICK_PERIOD_MS)
@@ -327,6 +331,9 @@ static void event_task(void *)
 			// timeout: process cyclic
 #ifdef CONFIG_IDF_TARGET_ESP32
 			// cyclic has its own task
+	#ifdef CONFIG_VERIFY_HEAP
+			heap_caps_check_integrity_all(true);
+	#endif
 #else
 			d = cyclic_execute();
 #endif

@@ -35,7 +35,7 @@ struct BMP280 : public I2CDevice
 	int init();
 	void attach(class EnvObject *);
 #ifdef CONFIG_I2C_XCMD
-	int exeCmd(struct Terminal &, int argc, const char **argv) override;
+	const char *exeCmd(struct Terminal &, int argc, const char **argv) override;
 #endif
 
 	protected:
@@ -77,7 +77,7 @@ struct BME280 : public BMP280
 	int init();
 	void attach(class EnvObject *);
 #ifdef CONFIG_I2C_XCMD
-	int exeCmd(struct Terminal &, int argc, const char **argv) override;
+	const char *exeCmd(struct Terminal &, int argc, const char **argv) override;
 #endif
 
 	protected:

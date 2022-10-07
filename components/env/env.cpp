@@ -26,9 +26,18 @@
 
 using namespace std;
 
+
+EnvElement::EnvElement(const char *n, const char *dim)
+: m_name(n ? strdup(n) : 0)
+, m_dim(dim ? strdup(dim) : 0)
+{ }
+
+
 EnvElement::~EnvElement()
 {
 	free(m_name);
+	if (m_dim)
+		free(m_dim);
 }
 
 
@@ -232,6 +241,12 @@ int EnvObject::getOffset(const char *n) const
 		++idx;
 	}
 	return -1;
+}
+
+
+void EnvElement::setDimension(const char *dim)
+{
+	m_dim = strdup(dim);
 }
 
 

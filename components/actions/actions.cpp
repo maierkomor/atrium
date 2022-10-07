@@ -111,6 +111,8 @@ int action_exists(const char *name)
 
 Action *action_add(const char *name, void (*func)(void *), void *arg, const char *text)
 {
+	if (name == 0)
+		return 0;
 	if (action_get(name)) {
 		log_warn(TAG,"duplicated action %s",name);
 		return 0;

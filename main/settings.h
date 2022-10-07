@@ -29,7 +29,7 @@ extern EventGroupHandle_t SysEvents;
 
 class Terminal;
 
-int update_setting(Terminal &t, const char *name, const char *value);
+const char *update_setting(Terminal &t, const char *name, const char *value);
 void list_settings(Terminal &t);
 
 extern "C" {
@@ -37,8 +37,6 @@ extern "C" {
 
 void cfg_activate_actions();
 void cfg_activate_triggers();
-int cfg_backup_create();
-int cfg_backup_restore();
 void cfg_init_functions();
 int cfg_get_uvalue(const char *name, unsigned *u, unsigned def = 0);
 int cfg_get_dvalue(const char *name, signed *u, signed def = 0);
@@ -53,8 +51,6 @@ void cfg_activate();
 void cfg_set_station(const uint8_t *ssid, const uint8_t *pass);
 const char *cfg_get_domainname();
 void initDns();
-int readNVconfig(const char *, uint8_t **, size_t *len);
-//int readSettings();
 int setPassword(const char *p);
 int cfg_read_nodecfg();
 int cfg_read_hwcfg();
@@ -65,19 +61,10 @@ int cfg_store_nodecfg();
 void cfg_factory_reset(void * = 0);
 int cfg_set_hostname(const char *hn);
 void cfg_clear_nodecfg();
-int cfg_erase_nvs();
 void cfg_sntp();
 void sntp_setup();
-void nvs_setup();
 int set_cpu_freq(unsigned mhz);
 int set_timezone(const char *v);
-void store_nvs_u8(const char *, uint8_t);
-uint8_t read_nvs_u8(const char *, uint8_t);
-void store_nvs_u32(const char *, uint32_t);
-uint32_t read_nvs_u32(const char *, uint32_t);
-void store_nvs_float(const char *, float);
-float read_nvs_float(const char *, float);
-int writeNVM(const char *name, const uint8_t *buf, size_t s);
 
 
 #ifdef __cplusplus

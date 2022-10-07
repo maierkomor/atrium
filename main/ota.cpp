@@ -288,8 +288,10 @@ done:
 static int socket_to_x(Terminal &t, LwTcp &P, int (*sink)(Terminal&,void*,char*,size_t), void *arg)
 {
 	char *buf = (char*)malloc(OTABUF_SIZE), *data;
-	if (buf == 0)
-		return err_oom(t);
+	if (buf == 0) {
+		t.println("Out of memory.");
+		return 1;
+	}
 	int ret = 1;
 	size_t numD = 0, contlen = 0;
 	bool ia = t.isInteractive();
@@ -361,8 +363,10 @@ static int file_to_flash(Terminal &t, int fd, esp_ota_handle_t ota)
 {
 	size_t numD = 0;
 	char *buf = (char*)malloc(OTABUF_SIZE);
-	if (buf == 0)
-		return err_oom(t);
+	if (buf == 0) {
+		t.println("Out of memory.");
+		return 1;
+	}
 	bool ia = t.isInteractive();
 	int r = 1;
 	for (;;) {
@@ -457,13 +461,13 @@ static int http_to(Terminal &t, char *addr, int (*sink)(Terminal &,void*,char*,s
 }
 
 
-int http_download(Terminal &t, char *addr, const char *fn)
+const char *http_download(Terminal &t, char *addr, const char *fn)
 {
 	if (fn == 0) {
 		 char *sl = strrchr(addr,'/');
 		 if (sl == 0) {
 			 t.printf("invalid address '%s'\n",addr);
-			 return false;
+			 return "Failed.";
 		 }
 		 fn = sl+1;
 	}
@@ -472,7 +476,7 @@ int http_download(Terminal &t, char *addr, const char *fn)
 		const char *pwd = getpwd();
 		size_t l = strlen(pwd)+strlen(fn)+1;
 		if (l > 128)
-			return -1;
+			return "Failed.";
 		char path[l];
 		strcpy(path,pwd);
 		strcat(path,fn);
@@ -481,13 +485,13 @@ int http_download(Terminal &t, char *addr, const char *fn)
 		fd = creat(fn,0666);
 	}
 	if (fd == -1) {
-		t.printf("error creating %s: %s\n",fn,strerror(errno));
-		return false;
+		t.printf("error creating %s\n",fn);
+		return strerror(errno);
 	}
 	t.printf("downloading to %s\n",fn);
 	int r = http_to(t,addr,to_fd,(void*)fd);
 	close(fd);
-	return r;
+	return r ? "Failed." : 0;
 }
 
 
@@ -510,14 +514,13 @@ static int to_part(Terminal &t, void *arg, char *buf, size_t s)
 }
 
 
-int update_part(Terminal &t, char *source, const char *dest)
+const char *update_part(Terminal &t, char *source, const char *dest)
 {
 	esp_partition_t *p = (esp_partition_t *) esp_partition_find_first(ESP_PARTITION_TYPE_DATA,ESP_PARTITION_SUBTYPE_ANY,dest);
 	if (p == 0) {
 		p = (esp_partition_t *) esp_partition_find_first(ESP_PARTITION_TYPE_APP,ESP_PARTITION_SUBTYPE_ANY,dest);
 		if (p == 0) {
-			t.printf("unknown partition '%s'\n",dest);
-			return 1;
+			return "unknown partition";
 		}
 	}
 	const esp_partition_t *b = esp_ota_get_running_partition();
@@ -539,8 +542,7 @@ int update_part(Terminal &t, char *source, const char *dest)
 	unsigned Ps = p->address;
 	unsigned Pe = p->address+p->size;
 	if (! ((Be <= Ps) || (Pe <= Bs))) {
-		t.println("cannot update active partition");
-		return 1;
+		return "cannot update active partition";
 	}
 	uint32_t addr = p->address;
 	uint32_t s = p->size;
@@ -548,17 +550,17 @@ int update_part(Terminal &t, char *source, const char *dest)
 	t.sync();
 	log_dbug(TAG,"erase");
 	if (esp_err_t e = spi_flash_erase_range(p->address,p->size)) {
-		t.printf("error erasing: %s\n",esp_err_to_name(e));
-		return 1;
+		t.println("error erasing");
+		return esp_err_to_name(e);
 	}
 	int r = http_to(t,source,to_part,(void*)p);
 	p->address = addr;
 	p->size = s;
-	return r;
+	return r ? "Failed." : 0;
 }
 
 
-int perform_ota(Terminal &t, char *source, bool changeboot)
+const char *perform_ota(Terminal &t, char *source, bool changeboot)
 {
 	statusled_set(ledmode_pulse_often);
 	vTaskPrioritySet(0,10);
@@ -575,7 +577,7 @@ int perform_ota(Terminal &t, char *source, bool changeboot)
 	if (updatep == 0) {
 		t.println("no OTA partition");
 		statusled_set(ledmode_pulse_seldom);
-		return 1;
+		return "Failed.";
 	}
 	if (ia) {
 		t.printf("erasing '%s' at 0x%08x\n",updatep->label,updatep->address);
@@ -587,7 +589,7 @@ int perform_ota(Terminal &t, char *source, bool changeboot)
 	if (err != ESP_OK) {
 		t.printf("esp_ota_begin failed: %s\n",esp_err_to_name(err));
 		statusled_set(ledmode_pulse_seldom);
-		return 1;
+		return "Failed.";
 	}
 
 	int result;
@@ -597,33 +599,33 @@ int perform_ota(Terminal &t, char *source, bool changeboot)
 		t.printf("open file %s\n",source);
 		int fd = open(source,O_RDONLY);
 		if (fd == -1) {
-			t.printf("open %s: %s\n",source,strerror(errno));
-			return 1;
+			t.printf("open %s\n",source);
+			return strerror(errno);
 		}
 		result = file_to_flash(t,fd,ota);
 		close(fd);
 	}
 	if (result)
-		return 1;
+		return "Failed.";
 	t.printf("verify ota\n");
 	t.sync();
 	if (esp_err_t e = esp_ota_end(ota)) {
 		log_warn(TAG,"esp_ota_end: %s\n",esp_err_to_name(e));
 		t.printf("ota verify: %s\n",esp_err_to_name(e));
 		statusled_set(ledmode_pulse_seldom);
-		return 1;
+		return "Failed.";
 	}
 	log_dbug(TAG,"verify=OK");
 	if (result) {
 		statusled_set(ledmode_pulse_seldom);
-		return 1;
+		return "Failed.";
 	}
 	if (changeboot && (bootp != updatep)) {
 		int err = esp_ota_set_boot_partition(updatep);
 		if (err != ESP_OK) {
 			t.printf("set boot failed: %s\n",esp_err_to_name(err));
 			statusled_set(ledmode_pulse_seldom);
-			return 1;
+			return "Failed.";
 		}
 	}
 	statusled_set(ledmode_off);
@@ -631,10 +633,10 @@ int perform_ota(Terminal &t, char *source, bool changeboot)
 }
 
 
-int boot(Terminal &term, int argc, const char *args[])
+const char *boot(Terminal &term, int argc, const char *args[])
 {
 	if (argc > 2)
-		return arg_invnum(term);
+		return "Invalid number of arguments.";
 	if (argc == 1) {
 		const esp_partition_t *b = esp_ota_get_boot_partition();
 		const esp_partition_t *r = esp_ota_get_running_partition();
@@ -646,10 +648,10 @@ int boot(Terminal &term, int argc, const char *args[])
 				, r ? r->label : "<error>"
 				, u ? u->label : "<error>"
 			   );
-		return b && r ? 0 : 1;
+		return b && r ? 0 : "Failed.";
 	}
 	if (0 == term.getPrivLevel())
-		return arg_priv(term);
+		return "Access denied.";
 	esp_partition_iterator_t i = esp_partition_find(ESP_PARTITION_TYPE_APP,ESP_PARTITION_SUBTYPE_ANY,0);
 	while (i) {
 		const esp_partition_t *p = esp_partition_get(i);
@@ -661,7 +663,7 @@ int boot(Terminal &term, int argc, const char *args[])
 		i = esp_partition_next(i);
 	}
 	printf("cannot boot %s\n",args[1]);
-	return 1;
+	return "Failed.";
 }
 
 #endif

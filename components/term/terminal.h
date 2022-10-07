@@ -91,11 +91,33 @@ class NullTerminal : public Terminal
 	{ return 0; }
 };
 
-int arg_missing(Terminal &t);
-int arg_invalid(Terminal &t, const char *a);
-int arg_invnum(Terminal &t);
-int arg_range(Terminal &t, const char *a);
-int arg_priv(Terminal &t);
-int err_oom(Terminal &t);
+/*
+typedef enum cmd_ret_e {
+	RET_OK = 0,
+	RET_INV_ARG_1,
+	RET_INV_ARG_2,
+	RET_INV_ARG_3,
+	RET_INV_ARG_4,
+	RET_INV_ARG_5,
+	RET_INV_ARG_6,
+	RET_INV_ARG_7,
+	RET_INV_ARG_8,
+	RET_INV_ARG_9,
+	RET_INV_ARG_10,
+	RET_INV_ARG_11,
+	RET_INV_ARG_12,
+	RET_INV_ARG_13,
+	RET_INV_ARG_14,
+	RET_INV_ARG_15,
+	RET_FAILED,
+	RET_RANGE,
+	RET_MISSING,
+	RET_INV_NUMARG,
+	RET_OOM,		// out of memory
+	RET_PERM,		// access denied
+	RET_ERRNO,
+} cmd_ret_t;
+*/
+
 
 #endif

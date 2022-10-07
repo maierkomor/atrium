@@ -184,8 +184,9 @@ int LedMode::set_mode(const char *m)
 {
 	for (int i = 0; i < sizeof(ModeNames)/sizeof(ModeNames[0]); ++i) {
 		if (0 == strcmp(ModeNames[i],m)) {
-			mode = (ledmode_t)i;
+			mode = ledmode_auto;
 			state = ModeOffset[i];
+			log_dbug(TAG,"led %s mode %s, offset %u",name,m,state);
 			update = 0;
 			return 0;
 		}
@@ -328,7 +329,7 @@ void statusled_set(ledmode_t m)
 }
 
 
-int led_set(Terminal &term, int argc, const char *args[])
+const char *led_set(Terminal &term, int argc, const char *args[])
 {
 	if (argc == 1) {
 		LedMode *m = LedMode::First;
@@ -348,13 +349,13 @@ int led_set(Terminal &term, int argc, const char *args[])
 		m = m->next;
 	}
 	if (m == 0)
-		return arg_invalid(term,args[1]);
+		return "Invalid argument #1.";
 	if (argc == 2) {
 		term.printf("%-12s %s\n",m->name,ModeNames[m->mode]);
 		return 0;
 	} else if (argc == 3) {
 		if (m->set_mode(args[2]))
-			return arg_invalid(term,args[2]);
+			return "Invalid argument #2.";
 		return 0;
 	}
 	/*
@@ -378,7 +379,7 @@ int led_set(Terminal &term, int argc, const char *args[])
 		}
 	}
 	*/
-	return arg_invalid(term,args[1]);
+	return "Invalid argument #1.";
 }
 
 #ifdef CONFIG_IDF_TARGET_ESP32

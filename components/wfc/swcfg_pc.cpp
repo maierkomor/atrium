@@ -10,7 +10,7 @@
  * Copyright: 2018-2021
  * Author   : Thomas Maier-Komor
  * 
- * Code generated on 2022-08-01, 00:43:58 (CET).
+ * Code generated on 2022-10-07, 14:15:34 (CET).
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -6134,6 +6134,332 @@ int ThresholdConfig::setByName(const char *name, const char *value)
 	return -267;
 }
 
+LuaConfig::LuaConfig()
+{
+}
+
+void LuaConfig::clear()
+{
+	m_init_scripts.clear();
+	m_compile_files.clear();
+}
+
+void LuaConfig::toASCII(std::ostream &o, size_t indent) const
+{
+	o << "LuaConfig {";
+	++indent;
+	ascii_indent(o,indent);
+	size_t s_init_scripts = m_init_scripts.size();
+	o << "init_scripts[" << s_init_scripts << "] = {";
+	++indent;
+	for (size_t i = 0, e = s_init_scripts; i != e; ++i) {
+		ascii_indent(o,indent);
+		o << i << ": ";
+		ascii_string(o,indent,m_init_scripts[i].data(),m_init_scripts[i].size(),0);
+	}
+	--indent;
+	ascii_indent(o,indent);
+	o << '}';
+	ascii_indent(o,indent);
+	size_t s_compile_files = m_compile_files.size();
+	o << "compile_files[" << s_compile_files << "] = {";
+	++indent;
+	for (size_t i = 0, e = s_compile_files; i != e; ++i) {
+		ascii_indent(o,indent);
+		o << i << ": ";
+		ascii_string(o,indent,m_compile_files[i].data(),m_compile_files[i].size(),0);
+	}
+	--indent;
+	ascii_indent(o,indent);
+	o << '}';
+	--indent;
+	ascii_indent(o,indent);
+	o << '}';
+}
+
+ssize_t LuaConfig::fromMemory(const void *b, ssize_t s)
+{
+	const uint8_t *a = (const uint8_t *)b;
+	const uint8_t *e = a + s;
+	while (a < e) {
+		varint_t fid;
+		int fn = read_varint(a,e-a,&fid);
+		if (fn <= 0)
+			return -268;
+		a += fn;
+		switch (fid) {
+		case 0xa:	// init_scripts id 1, type std::string, coding byte[]
+			{
+				varint_t v;
+				int n = read_varint(a,e-a,&v);
+				a += n;
+				if ((n <= 0) || ((a+v) > e))
+					return -269;
+				m_init_scripts.emplace_back((const char*)a,v);
+				a += v;
+			}
+			break;
+		case 0x12:	// compile_files id 2, type std::string, coding byte[]
+			{
+				varint_t v;
+				int n = read_varint(a,e-a,&v);
+				a += n;
+				if ((n <= 0) || ((a+v) > e))
+					return -270;
+				m_compile_files.emplace_back((const char*)a,v);
+				a += v;
+			}
+			break;
+		default:
+			// unknown field (option unknown=skip)
+			{
+				ssize_t s = skip_content(a,e-a,fid&7);
+				if (s <= 0)
+					return -271;
+				a += s;
+				break;
+			}
+		}
+	}
+	assert((a-(const uint8_t *)b) == s);
+	if (a > e)
+		return -272;
+	return a-(const uint8_t *)b;
+}
+
+ssize_t LuaConfig::toMemory(uint8_t *b, ssize_t s) const
+{
+	assert(s >= 0);
+	uint8_t *a = b, *e = b + s;
+	signed n;
+	for (const auto &x : m_init_scripts) {
+		// 'init_scripts': id=1, encoding=lenpfx, tag=0xa
+		if (a >= e)
+			return -273;
+		*a++ = 0xa;
+		ssize_t init_scripts_s = x.size();
+		n = write_varint(a,e-a,init_scripts_s);
+		a += n;
+		if ((n <= 0) || ((e-a) < init_scripts_s))
+			return -274;
+		memcpy(a,x.data(),init_scripts_s);
+		a += init_scripts_s;
+	}
+	for (const auto &x : m_compile_files) {
+		// 'compile_files': id=2, encoding=lenpfx, tag=0x12
+		if (a >= e)
+			return -275;
+		*a++ = 0x12;
+		ssize_t compile_files_s = x.size();
+		n = write_varint(a,e-a,compile_files_s);
+		a += n;
+		if ((n <= 0) || ((e-a) < compile_files_s))
+			return -276;
+		memcpy(a,x.data(),compile_files_s);
+		a += compile_files_s;
+	}
+	assert(a <= e);
+	return a-b;
+}
+
+void LuaConfig::toWire(void (*put)(uint8_t)) const
+{
+	for (size_t x = 0, y = m_init_scripts.size(); x != y; ++x) {
+		// 'init_scripts': id=1, encoding=lenpfx, tag=0xa
+		put(0xa);	// 'init_scripts': id=1
+		size_t init_scripts_s = m_init_scripts[x].size();
+		send_varint(put,init_scripts_s);
+		send_bytes(put,(const uint8_t*) m_init_scripts[x].data(),init_scripts_s);
+	}
+	for (size_t x = 0, y = m_compile_files.size(); x != y; ++x) {
+		// 'compile_files': id=2, encoding=lenpfx, tag=0x12
+		put(0x12);	// 'compile_files': id=2
+		size_t compile_files_s = m_compile_files[x].size();
+		send_varint(put,compile_files_s);
+		send_bytes(put,(const uint8_t*) m_compile_files[x].data(),compile_files_s);
+	}
+}
+
+void LuaConfig::toString(std::string &put) const
+{
+	for (size_t x = 0, y = m_init_scripts.size(); x != y; ++x) {
+		// 'init_scripts': id=1, encoding=lenpfx, tag=0xa
+		put.push_back(0xa);	// 'init_scripts': id=1
+		size_t init_scripts_s = m_init_scripts[x].size();
+		send_varint(put,init_scripts_s);
+		put.append((const char *)(const uint8_t*) m_init_scripts[x].data(),init_scripts_s);
+	}
+	for (size_t x = 0, y = m_compile_files.size(); x != y; ++x) {
+		// 'compile_files': id=2, encoding=lenpfx, tag=0x12
+		put.push_back(0x12);	// 'compile_files': id=2
+		size_t compile_files_s = m_compile_files[x].size();
+		send_varint(put,compile_files_s);
+		put.append((const char *)(const uint8_t*) m_compile_files[x].data(),compile_files_s);
+	}
+}
+
+void LuaConfig::toJSON(std::ostream &json, unsigned indLvl) const
+{
+	char fsep = '{';
+	++indLvl;
+	if (size_t s = m_init_scripts.size()) {
+		fsep = json_indent(json,indLvl,fsep);
+		indLvl += 2;
+		json << "\"init_scripts\":[\n";
+		size_t i = 0;
+		for (;;) {
+			json_indent(json,indLvl,0);
+			json_cstr(json,m_init_scripts[i].c_str());
+			++i;
+			if (i == s)
+				break;
+			json << ",\n";
+		}
+		indLvl -= 2;
+		json.put('\n');
+		json_indent(json,indLvl,0);
+		json.put(']');
+	}
+	if (size_t s = m_compile_files.size()) {
+		fsep = json_indent(json,indLvl,fsep);
+		indLvl += 2;
+		json << "\"compile_files\":[\n";
+		size_t i = 0;
+		for (;;) {
+			json_indent(json,indLvl,0);
+			json_cstr(json,m_compile_files[i].c_str());
+			++i;
+			if (i == s)
+				break;
+			json << ",\n";
+		}
+		indLvl -= 2;
+		json.put('\n');
+		json_indent(json,indLvl,0);
+		json.put(']');
+	}
+	if (fsep == '{')
+		json.put('{');
+	json.put('\n');
+	--indLvl;
+	json_indent(json,indLvl,0);
+	json.put('}');
+	if (indLvl == 0)
+		json.put('\n');
+}
+
+size_t LuaConfig::calcSize() const
+{
+	size_t r = 0;	// required size, default is fixed length
+	// repeated string init_scripts, id 1
+	if (!m_init_scripts.empty()) {
+		// init_scripts: repeated std::string
+		for (size_t x = 0, y = m_init_scripts.size(); x < y; ++x) {
+			size_t s = m_init_scripts[x].size();
+			r += wiresize(s);
+			r += s + 1 /* tag(init_scripts) 0x8 */;
+		}
+	}
+	// repeated string compile_files, id 2
+	if (!m_compile_files.empty()) {
+		// compile_files: repeated std::string
+		for (size_t x = 0, y = m_compile_files.size(); x < y; ++x) {
+			size_t s = m_compile_files[x].size();
+			r += wiresize(s);
+			r += s + 1 /* tag(compile_files) 0x10 */;
+		}
+	}
+	return r;
+}
+
+bool LuaConfig::operator != (const LuaConfig &r) const
+{
+	if (m_init_scripts != r.m_init_scripts)
+		return true;
+	if (m_compile_files != r.m_compile_files)
+		return true;
+	return false;
+}
+
+
+bool LuaConfig::operator == (const LuaConfig &r) const
+{
+	return !((*this) != r);
+}
+
+
+/*
+ * Function for setting an element in dot notation with an ASCII value.
+ * It will call the specified parse_ascii function for parsing the value.
+ *
+ * @return number of bytes successfully parsed or negative value indicating
+ *         an error.
+ */
+int LuaConfig::setByName(const char *name, const char *value)
+{
+	if (0 == memcmp(name,"init_scripts",12)) {
+		if ((name[12] == 0) && (value == 0)) {
+			clear_init_scripts();
+			return 0;
+		} else if (name[12] == '[') {
+			char *idxe;
+			unsigned long x;
+			if ((name[13] == '+') && (name[14] == ']')) {
+				x = m_init_scripts.size();
+				m_init_scripts.resize(x+1);
+				idxe = (char*)(name + 14);
+				if (idxe[1] == 0)
+					return 0;
+			} else {
+				x = strtoul(name+13,&idxe,0);
+				if (idxe[0] != ']')
+					return -277;
+				if (m_init_scripts.size() <= x)
+					return -278;
+				if ((idxe[1] == 0) && (value == 0)) {
+					m_init_scripts.erase(m_init_scripts.begin()+x);
+					return 0;
+				}
+			}
+			if (idxe[1] != 0)
+				return -279;
+			m_init_scripts[x] = value;
+			return m_init_scripts[x].size();
+		}
+	}
+	if (0 == memcmp(name,"compile_files",13)) {
+		if ((name[13] == 0) && (value == 0)) {
+			clear_compile_files();
+			return 0;
+		} else if (name[13] == '[') {
+			char *idxe;
+			unsigned long x;
+			if ((name[14] == '+') && (name[15] == ']')) {
+				x = m_compile_files.size();
+				m_compile_files.resize(x+1);
+				idxe = (char*)(name + 15);
+				if (idxe[1] == 0)
+					return 0;
+			} else {
+				x = strtoul(name+14,&idxe,0);
+				if (idxe[0] != ']')
+					return -280;
+				if (m_compile_files.size() <= x)
+					return -281;
+				if ((idxe[1] == 0) && (value == 0)) {
+					m_compile_files.erase(m_compile_files.begin()+x);
+					return 0;
+				}
+			}
+			if (idxe[1] != 0)
+				return -282;
+			m_compile_files[x] = value;
+			return m_compile_files[x].size();
+		}
+	}
+	return -283;
+}
+
 NodeConfig::NodeConfig()
 : m_magic(0)
 , m_nodename()
@@ -6173,6 +6499,8 @@ NodeConfig::NodeConfig()
 #endif // CONFIG_APP_PARAMS
 #ifdef CONFIG_THRESHOLDS
 #endif // CONFIG_THRESHOLDS
+#ifdef CONFIG_LUA
+#endif // CONFIG_LUA
 #ifdef CONFIG_ONEWIRE
 #endif // CONFIG_ONEWIRE
 , p_validbits(0)
@@ -6238,6 +6566,9 @@ void NodeConfig::clear()
 	#ifdef CONFIG_THRESHOLDS
 	m_thresholds.clear();
 	#endif // CONFIG_THRESHOLDS
+	#ifdef CONFIG_LUA
+	m_luafiles.clear();
+	#endif // CONFIG_LUA
 	#ifdef CONFIG_ONEWIRE
 	m_owdevices.clear();
 	#endif // CONFIG_ONEWIRE
@@ -6454,6 +6785,20 @@ void NodeConfig::toASCII(std::ostream &o, size_t indent) const
 	ascii_indent(o,indent);
 	o << '}';
 	#endif // CONFIG_THRESHOLDS
+	#ifdef CONFIG_LUA
+	ascii_indent(o,indent);
+	size_t s_luafiles = m_luafiles.size();
+	o << "luafiles[" << s_luafiles << "] = {";
+	++indent;
+	for (size_t i = 0, e = s_luafiles; i != e; ++i) {
+		ascii_indent(o,indent);
+		o << i << ": ";
+		ascii_string(o,indent,m_luafiles[i].data(),m_luafiles[i].size(),0);
+	}
+	--indent;
+	ascii_indent(o,indent);
+	o << '}';
+	#endif // CONFIG_LUA
 	#ifdef CONFIG_ONEWIRE
 	ascii_indent(o,indent);
 	size_t s_owdevices = m_owdevices.size();
@@ -6481,12 +6826,12 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 		varint_t fid;
 		int fn = read_varint(a,e-a,&fid);
 		if (fn <= 0)
-			return -268;
+			return -284;
 		a += fn;
 		switch (fid) {
 		case 0x5:	// magic id 0, type uint32_t, coding 32bit
 			if ((a+3) >= e)
-				return -269;
+				return -285;
 			set_magic((uint32_t) read_u32(a));
 			a += 4;
 			break;
@@ -6496,7 +6841,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -270;
+					return -286;
 				m_nodename.assign((const char*)a,v);
 				a += v;
 			}
@@ -6507,7 +6852,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -271;
+					return -287;
 				m_pass_hash.assign((const char*)a,v);
 				a += v;
 			}
@@ -6518,7 +6863,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				varint_t v;
 				int n = read_varint(a,e-a,&v);
 				if (n <= 0)
-					return -272;
+					return -288;
 				a += n;
 				set_cpu_freq(v);
 			}
@@ -6529,13 +6874,13 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -273;
+					return -289;
 				if (v != 0) {
 					n = m_station.fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -274;
+						return -290;
 					a += v;
 				}
 			}
@@ -6547,13 +6892,13 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -275;
+					return -291;
 				if (v != 0) {
 					n = m_softap.fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -276;
+						return -292;
 					a += v;
 				}
 			}
@@ -6565,7 +6910,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -277;
+					return -293;
 				m_dns_server.emplace_back((const char*)a,v);
 				a += v;
 			}
@@ -6576,7 +6921,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -278;
+					return -294;
 				m_syslog_host.assign((const char*)a,v);
 				a += v;
 			}
@@ -6587,7 +6932,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -279;
+					return -295;
 				m_sntp_server.assign((const char*)a,v);
 				a += v;
 			}
@@ -6598,7 +6943,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -280;
+					return -296;
 				m_timezone.assign((const char*)a,v);
 				a += v;
 			}
@@ -6610,13 +6955,13 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -281;
+					return -297;
 				if (v != 0) {
 					n = m_mqtt.fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -282;
+						return -298;
 					a += v;
 				}
 			}
@@ -6625,7 +6970,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 			#endif // CONFIG_MQTT
 		case 0x5c:	// dmesg_size id 11, type uint16_t, coding 16bit
 			if ((a+1) >= e)
-				return -283;
+				return -299;
 			set_dmesg_size((uint16_t) read_u16(a));
 			a += 2;
 			break;
@@ -6636,13 +6981,13 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -284;
+					return -300;
 				if (v != 0) {
 					n = m_influx.fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -285;
+						return -301;
 					a += v;
 				}
 			}
@@ -6654,7 +6999,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				varint_t v;
 				int n = read_varint(a,e-a,&v);
 				if (n <= 0)
-					return -286;
+					return -302;
 				a += n;
 				set_station2ap_time(v);
 			}
@@ -6665,7 +7010,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -287;
+					return -303;
 				m_domainname.assign((const char*)a,v);
 				a += v;
 			}
@@ -6676,14 +7021,14 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -288;
+					return -304;
 				m_holidays.emplace_back();
 				if (v != 0) {
 					n = m_holidays.back().fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -289;
+						return -305;
 					a += v;
 				}
 			}
@@ -6694,14 +7039,14 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -290;
+					return -306;
 				m_at_actions.emplace_back();
 				if (v != 0) {
 					n = m_at_actions.back().fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -291;
+						return -307;
 					a += v;
 				}
 			}
@@ -6711,7 +7056,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				varint_t v;
 				int n = read_varint(a,e-a,&v);
 				if (n <= 0)
-					return -292;
+					return -308;
 				a += n;
 				set_actions_enable(v);
 			}
@@ -6722,14 +7067,14 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -293;
+					return -309;
 				m_triggers.emplace_back();
 				if (v != 0) {
 					n = m_triggers.back().fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -294;
+						return -310;
 					a += v;
 				}
 			}
@@ -6740,14 +7085,14 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -295;
+					return -311;
 				m_uart.emplace_back();
 				if (v != 0) {
 					n = m_uart.back().fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -296;
+						return -312;
 					a += v;
 				}
 			}
@@ -6759,14 +7104,14 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -297;
+					return -313;
 				m_terminal.emplace_back();
 				if (v != 0) {
 					n = m_terminal.back().fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -298;
+						return -314;
 					a += v;
 				}
 			}
@@ -6774,7 +7119,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 			#endif // CONFIG_TERMSERV
 		case 0xb4:	// udp_ctrl_port id 22, type uint16_t, coding 16bit
 			if ((a+1) >= e)
-				return -299;
+				return -315;
 			set_udp_ctrl_port((uint16_t) read_u16(a));
 			a += 2;
 			break;
@@ -6784,7 +7129,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -300;
+					return -316;
 				m_debugs.emplace_back((const char*)a,v);
 				a += v;
 			}
@@ -6796,13 +7141,13 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -301;
+					return -317;
 				if (v != 0) {
 					n = m_ftpd.fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -302;
+						return -318;
 					a += v;
 				}
 			}
@@ -6816,13 +7161,13 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -303;
+					return -319;
 				if (v != 0) {
 					n = m_httpd.fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -304;
+						return -320;
 					a += v;
 				}
 			}
@@ -6835,14 +7180,14 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -305;
+					return -321;
 				m_timefuses.emplace_back();
 				if (v != 0) {
 					n = m_timefuses.back().fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -306;
+						return -322;
 					a += v;
 				}
 			}
@@ -6854,14 +7199,14 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -307;
+					return -323;
 				m_signals.emplace_back();
 				if (v != 0) {
 					n = m_signals.back().fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -308;
+						return -324;
 					a += v;
 				}
 			}
@@ -6874,14 +7219,14 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -309;
+					return -325;
 				m_functions.emplace_back();
 				if (v != 0) {
 					n = m_functions.back().fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -310;
+						return -326;
 					a += v;
 				}
 			}
@@ -6894,14 +7239,14 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -311;
+					return -327;
 				m_statemachs.emplace_back();
 				if (v != 0) {
 					n = m_statemachs.back().fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -312;
+						return -328;
 					a += v;
 				}
 			}
@@ -6912,7 +7257,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				varint_t v;
 				int n = read_varint(a,e-a,&v);
 				if (n <= 0)
-					return -313;
+					return -329;
 				a += n;
 				set_max_on_time(v);
 			}
@@ -6922,7 +7267,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				varint_t v;
 				int n = read_varint(a,e-a,&v);
 				if (n <= 0)
-					return -314;
+					return -330;
 				a += n;
 				set_threshold_off(v);
 			}
@@ -6932,7 +7277,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				varint_t v;
 				int n = read_varint(a,e-a,&v);
 				if (n <= 0)
-					return -315;
+					return -331;
 				a += n;
 				set_threshold_on(v);
 			}
@@ -6942,14 +7287,14 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				varint_t v;
 				int n = read_varint(a,e-a,&v);
 				if (n <= 0)
-					return -316;
+					return -332;
 				a += n;
 				set_dim_step(v);
 			}
 			break;
 		case 0x133:	// lightctrl id 38, type bool, coding 8bit
 			if (a >= e)
-				return -317;
+				return -333;
 			set_lightctrl(*a++);
 			break;
 		case 0x138:	// pwm_freq id 39, type uint64_t, coding varint
@@ -6957,7 +7302,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				varint_t v;
 				int n = read_varint(a,e-a,&v);
 				if (n <= 0)
-					return -318;
+					return -334;
 				a += n;
 				set_pwm_freq(v);
 			}
@@ -6969,14 +7314,14 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -319;
+					return -335;
 				m_app_params.emplace_back();
 				if (v != 0) {
 					n = m_app_params.back().fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -320;
+						return -336;
 					a += v;
 				}
 			}
@@ -6989,19 +7334,32 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -321;
+					return -337;
 				m_thresholds.emplace_back();
 				if (v != 0) {
 					n = m_thresholds.back().fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -322;
+						return -338;
 					a += v;
 				}
 			}
 			break;
 			#endif // CONFIG_THRESHOLDS
+			#ifdef CONFIG_LUA
+		case 0x152:	// luafiles id 42, type std::string, coding byte[]
+			{
+				varint_t v;
+				int n = read_varint(a,e-a,&v);
+				a += n;
+				if ((n <= 0) || ((a+v) > e))
+					return -339;
+				m_luafiles.emplace_back((const char*)a,v);
+				a += v;
+			}
+			break;
+			#endif // CONFIG_LUA
 			#ifdef CONFIG_ONEWIRE
 		case 0x192:	// owdevices id 50, type OwDeviceConfig, coding byte[]
 			{
@@ -7009,14 +7367,14 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -323;
+					return -340;
 				m_owdevices.emplace_back();
 				if (v != 0) {
 					n = m_owdevices.back().fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -324;
+						return -341;
 					a += v;
 				}
 			}
@@ -7027,7 +7385,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 			{
 				ssize_t s = skip_content(a,e-a,fid&7);
 				if (s <= 0)
-					return -325;
+					return -342;
 				a += s;
 				break;
 			}
@@ -7035,7 +7393,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 	}
 	assert((a-(const uint8_t *)b) == s);
 	if (a > e)
-		return -326;
+		return -343;
 	return a-(const uint8_t *)b;
 }
 
@@ -7048,10 +7406,10 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint32_t)1U << 0))) {
 		// 'magic': id=0, encoding=32bit, tag=0x5
 		if (5 > (e-a))
-			return -327;
+			return -344;
 		*a++ = 0x5;
 		if ((e-a) < 4)
-			return -328;
+			return -345;
 		write_u32(a,(uint32_t)m_magic);
 		a += 4;
 	}
@@ -7059,13 +7417,13 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (!m_nodename.empty()) {
 		// 'nodename': id=1, encoding=lenpfx, tag=0xa
 		if (a >= e)
-			return -329;
+			return -346;
 		*a++ = 0xa;
 		ssize_t nodename_s = m_nodename.size();
 		n = write_varint(a,e-a,nodename_s);
 		a += n;
 		if ((n <= 0) || ((e-a) < nodename_s))
-			return -330;
+			return -347;
 		memcpy(a,m_nodename.data(),nodename_s);
 		a += nodename_s;
 	}
@@ -7073,13 +7431,13 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint32_t)1U << 1))) {
 		// 'pass_hash': id=2, encoding=lenpfx, tag=0x12
 		if (a >= e)
-			return -331;
+			return -348;
 		*a++ = 0x12;
 		ssize_t pass_hash_s = m_pass_hash.size();
 		n = write_varint(a,e-a,pass_hash_s);
 		a += n;
 		if ((n <= 0) || ((e-a) < pass_hash_s))
-			return -332;
+			return -349;
 		memcpy(a,m_pass_hash.data(),pass_hash_s);
 		a += pass_hash_s;
 	}
@@ -7087,24 +7445,24 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint32_t)1U << 2))) {
 		// 'cpu_freq': id=3, encoding=varint, tag=0x18
 		if (a >= e)
-			return -333;
+			return -350;
 		*a++ = 0x18;
 		n = write_varint(a,e-a,m_cpu_freq);
 		if (n <= 0)
-			return -334;
+			return -351;
 		a += n;
 	}
 	// has station?
 	if (0 != (p_validbits & ((uint32_t)1U << 3))) {
 		// 'station': id=4, encoding=lenpfx, tag=0x22
 		if (a >= e)
-			return -335;
+			return -352;
 		*a++ = 0x22;
 		ssize_t station_ws = m_station.calcSize();
 		n = write_varint(a,e-a,station_ws);
 		a += n;
 		if ((n <= 0) || (station_ws > (e-a)))
-			return -336;
+			return -353;
 		n = m_station.toMemory(a,e-a);
 		a += n;
 		assert(n == station_ws);
@@ -7113,13 +7471,13 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint32_t)1U << 4))) {
 		// 'softap': id=5, encoding=lenpfx, tag=0x2a
 		if (a >= e)
-			return -337;
+			return -354;
 		*a++ = 0x2a;
 		ssize_t softap_ws = m_softap.calcSize();
 		n = write_varint(a,e-a,softap_ws);
 		a += n;
 		if ((n <= 0) || (softap_ws > (e-a)))
-			return -338;
+			return -355;
 		n = m_softap.toMemory(a,e-a);
 		a += n;
 		assert(n == softap_ws);
@@ -7127,13 +7485,13 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_dns_server) {
 		// 'dns_server': id=6, encoding=lenpfx, tag=0x32
 		if (a >= e)
-			return -339;
+			return -356;
 		*a++ = 0x32;
 		ssize_t dns_server_s = x.size();
 		n = write_varint(a,e-a,dns_server_s);
 		a += n;
 		if ((n <= 0) || ((e-a) < dns_server_s))
-			return -340;
+			return -357;
 		memcpy(a,x.data(),dns_server_s);
 		a += dns_server_s;
 	}
@@ -7141,13 +7499,13 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (!m_syslog_host.empty()) {
 		// 'syslog_host': id=7, encoding=lenpfx, tag=0x3a
 		if (a >= e)
-			return -341;
+			return -358;
 		*a++ = 0x3a;
 		ssize_t syslog_host_s = m_syslog_host.size();
 		n = write_varint(a,e-a,syslog_host_s);
 		a += n;
 		if ((n <= 0) || ((e-a) < syslog_host_s))
-			return -342;
+			return -359;
 		memcpy(a,m_syslog_host.data(),syslog_host_s);
 		a += syslog_host_s;
 	}
@@ -7155,13 +7513,13 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (!m_sntp_server.empty()) {
 		// 'sntp_server': id=8, encoding=lenpfx, tag=0x42
 		if (a >= e)
-			return -343;
+			return -360;
 		*a++ = 0x42;
 		ssize_t sntp_server_s = m_sntp_server.size();
 		n = write_varint(a,e-a,sntp_server_s);
 		a += n;
 		if ((n <= 0) || ((e-a) < sntp_server_s))
-			return -344;
+			return -361;
 		memcpy(a,m_sntp_server.data(),sntp_server_s);
 		a += sntp_server_s;
 	}
@@ -7169,13 +7527,13 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (!m_timezone.empty()) {
 		// 'timezone': id=9, encoding=lenpfx, tag=0x4a
 		if (a >= e)
-			return -345;
+			return -362;
 		*a++ = 0x4a;
 		ssize_t timezone_s = m_timezone.size();
 		n = write_varint(a,e-a,timezone_s);
 		a += n;
 		if ((n <= 0) || ((e-a) < timezone_s))
-			return -346;
+			return -363;
 		memcpy(a,m_timezone.data(),timezone_s);
 		a += timezone_s;
 	}
@@ -7184,13 +7542,13 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint32_t)1U << 5))) {
 		// 'mqtt': id=10, encoding=lenpfx, tag=0x52
 		if (a >= e)
-			return -347;
+			return -364;
 		*a++ = 0x52;
 		ssize_t mqtt_ws = m_mqtt.calcSize();
 		n = write_varint(a,e-a,mqtt_ws);
 		a += n;
 		if ((n <= 0) || (mqtt_ws > (e-a)))
-			return -348;
+			return -365;
 		n = m_mqtt.toMemory(a,e-a);
 		a += n;
 		assert(n == mqtt_ws);
@@ -7200,7 +7558,7 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint32_t)1U << 6))) {
 		// 'dmesg_size': id=11, encoding=16bit, tag=0x5c
 		if (3 > (e-a))
-			return -349;
+			return -366;
 		*a++ = 0x5c;
 		write_u16(a,m_dmesg_size);
 		a += 2;
@@ -7210,13 +7568,13 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint32_t)1U << 7))) {
 		// 'influx': id=12, encoding=lenpfx, tag=0x62
 		if (a >= e)
-			return -350;
+			return -367;
 		*a++ = 0x62;
 		ssize_t influx_ws = m_influx.calcSize();
 		n = write_varint(a,e-a,influx_ws);
 		a += n;
 		if ((n <= 0) || (influx_ws > (e-a)))
-			return -351;
+			return -368;
 		n = m_influx.toMemory(a,e-a);
 		a += n;
 		assert(n == influx_ws);
@@ -7226,38 +7584,38 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint32_t)1U << 8))) {
 		// 'station2ap_time': id=13, encoding=varint, tag=0x68
 		if (a >= e)
-			return -352;
+			return -369;
 		*a++ = 0x68;
 		n = write_varint(a,e-a,m_station2ap_time);
 		if (n <= 0)
-			return -353;
+			return -370;
 		a += n;
 	}
 	// has domainname?
 	if (!m_domainname.empty()) {
 		// 'domainname': id=15, encoding=lenpfx, tag=0x7a
 		if (a >= e)
-			return -354;
+			return -371;
 		*a++ = 0x7a;
 		ssize_t domainname_s = m_domainname.size();
 		n = write_varint(a,e-a,domainname_s);
 		a += n;
 		if ((n <= 0) || ((e-a) < domainname_s))
-			return -355;
+			return -372;
 		memcpy(a,m_domainname.data(),domainname_s);
 		a += domainname_s;
 	}
 	for (const auto &x : m_holidays) {
 		// 'holidays': id=16, encoding=lenpfx, tag=0x82
 		if (2 > (e-a))
-			return -356;
+			return -373;
 		*a++ = 0x82;
 		*a++ = 0x1;
 		ssize_t holidays_ws = x.calcSize();
 		n = write_varint(a,e-a,holidays_ws);
 		a += n;
 		if ((n <= 0) || (holidays_ws > (e-a)))
-			return -357;
+			return -374;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == holidays_ws);
@@ -7265,14 +7623,14 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_at_actions) {
 		// 'at_actions': id=17, encoding=lenpfx, tag=0x8a
 		if (2 > (e-a))
-			return -358;
+			return -375;
 		*a++ = 0x8a;
 		*a++ = 0x1;
 		ssize_t at_actions_ws = x.calcSize();
 		n = write_varint(a,e-a,at_actions_ws);
 		a += n;
 		if ((n <= 0) || (at_actions_ws > (e-a)))
-			return -359;
+			return -376;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == at_actions_ws);
@@ -7281,25 +7639,25 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint32_t)1U << 9))) {
 		// 'actions_enable': id=18, encoding=varint, tag=0x90
 		if (2 > (e-a))
-			return -360;
+			return -377;
 		*a++ = 0x90;
 		*a++ = 0x1;
 		n = write_varint(a,e-a,m_actions_enable);
 		if (n <= 0)
-			return -361;
+			return -378;
 		a += n;
 	}
 	for (const auto &x : m_triggers) {
 		// 'triggers': id=19, encoding=lenpfx, tag=0x9a
 		if (2 > (e-a))
-			return -362;
+			return -379;
 		*a++ = 0x9a;
 		*a++ = 0x1;
 		ssize_t triggers_ws = x.calcSize();
 		n = write_varint(a,e-a,triggers_ws);
 		a += n;
 		if ((n <= 0) || (triggers_ws > (e-a)))
-			return -363;
+			return -380;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == triggers_ws);
@@ -7307,14 +7665,14 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_uart) {
 		// 'uart': id=20, encoding=lenpfx, tag=0xa2
 		if (2 > (e-a))
-			return -364;
+			return -381;
 		*a++ = 0xa2;
 		*a++ = 0x1;
 		ssize_t uart_ws = x.calcSize();
 		n = write_varint(a,e-a,uart_ws);
 		a += n;
 		if ((n <= 0) || (uart_ws > (e-a)))
-			return -365;
+			return -382;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == uart_ws);
@@ -7323,14 +7681,14 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_terminal) {
 		// 'terminal': id=21, encoding=lenpfx, tag=0xaa
 		if (2 > (e-a))
-			return -366;
+			return -383;
 		*a++ = 0xaa;
 		*a++ = 0x1;
 		ssize_t terminal_ws = x.calcSize();
 		n = write_varint(a,e-a,terminal_ws);
 		a += n;
 		if ((n <= 0) || (terminal_ws > (e-a)))
-			return -367;
+			return -384;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == terminal_ws);
@@ -7340,7 +7698,7 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint32_t)1U << 10))) {
 		// 'udp_ctrl_port': id=22, encoding=16bit, tag=0xb4
 		if (4 > (e-a))
-			return -368;
+			return -385;
 		*a++ = 0xb4;
 		*a++ = 0x1;
 		write_u16(a,m_udp_ctrl_port);
@@ -7349,14 +7707,14 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_debugs) {
 		// 'debugs': id=23, encoding=lenpfx, tag=0xba
 		if (2 > (e-a))
-			return -369;
+			return -386;
 		*a++ = 0xba;
 		*a++ = 0x1;
 		ssize_t debugs_s = x.size();
 		n = write_varint(a,e-a,debugs_s);
 		a += n;
 		if ((n <= 0) || ((e-a) < debugs_s))
-			return -370;
+			return -387;
 		memcpy(a,x.data(),debugs_s);
 		a += debugs_s;
 	}
@@ -7365,14 +7723,14 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint32_t)1U << 11))) {
 		// 'ftpd': id=24, encoding=lenpfx, tag=0xc2
 		if (2 > (e-a))
-			return -371;
+			return -388;
 		*a++ = 0xc2;
 		*a++ = 0x1;
 		ssize_t ftpd_ws = m_ftpd.calcSize();
 		n = write_varint(a,e-a,ftpd_ws);
 		a += n;
 		if ((n <= 0) || (ftpd_ws > (e-a)))
-			return -372;
+			return -389;
 		n = m_ftpd.toMemory(a,e-a);
 		a += n;
 		assert(n == ftpd_ws);
@@ -7383,14 +7741,14 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint32_t)1U << 12))) {
 		// 'httpd': id=25, encoding=lenpfx, tag=0xca
 		if (2 > (e-a))
-			return -373;
+			return -390;
 		*a++ = 0xca;
 		*a++ = 0x1;
 		ssize_t httpd_ws = m_httpd.calcSize();
 		n = write_varint(a,e-a,httpd_ws);
 		a += n;
 		if ((n <= 0) || (httpd_ws > (e-a)))
-			return -374;
+			return -391;
 		n = m_httpd.toMemory(a,e-a);
 		a += n;
 		assert(n == httpd_ws);
@@ -7399,14 +7757,14 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_timefuses) {
 		// 'timefuses': id=30, encoding=lenpfx, tag=0xf2
 		if (2 > (e-a))
-			return -375;
+			return -392;
 		*a++ = 0xf2;
 		*a++ = 0x1;
 		ssize_t timefuses_ws = x.calcSize();
 		n = write_varint(a,e-a,timefuses_ws);
 		a += n;
 		if ((n <= 0) || (timefuses_ws > (e-a)))
-			return -376;
+			return -393;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == timefuses_ws);
@@ -7415,14 +7773,14 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_signals) {
 		// 'signals': id=31, encoding=lenpfx, tag=0xfa
 		if (2 > (e-a))
-			return -377;
+			return -394;
 		*a++ = 0xfa;
 		*a++ = 0x1;
 		ssize_t signals_ws = x.calcSize();
 		n = write_varint(a,e-a,signals_ws);
 		a += n;
 		if ((n <= 0) || (signals_ws > (e-a)))
-			return -378;
+			return -395;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == signals_ws);
@@ -7432,14 +7790,14 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_functions) {
 		// 'functions': id=32, encoding=lenpfx, tag=0x102
 		if (2 > (e-a))
-			return -379;
+			return -396;
 		*a++ = 0x82;
 		*a++ = 0x2;
 		ssize_t functions_ws = x.calcSize();
 		n = write_varint(a,e-a,functions_ws);
 		a += n;
 		if ((n <= 0) || (functions_ws > (e-a)))
-			return -380;
+			return -397;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == functions_ws);
@@ -7449,14 +7807,14 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_statemachs) {
 		// 'statemachs': id=33, encoding=lenpfx, tag=0x10a
 		if (2 > (e-a))
-			return -381;
+			return -398;
 		*a++ = 0x8a;
 		*a++ = 0x2;
 		ssize_t statemachs_ws = x.calcSize();
 		n = write_varint(a,e-a,statemachs_ws);
 		a += n;
 		if ((n <= 0) || (statemachs_ws > (e-a)))
-			return -382;
+			return -399;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == statemachs_ws);
@@ -7467,43 +7825,43 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint32_t)1U << 13))) {
 		// 'threshold_off': id=35, encoding=varint, tag=0x118
 		if (2 > (e-a))
-			return -383;
+			return -400;
 		*a++ = 0x98;
 		*a++ = 0x2;
 		n = write_varint(a,e-a,m_threshold_off);
 		if (n <= 0)
-			return -384;
+			return -401;
 		a += n;
 	}
 	// has threshold_on?
 	if (0 != (p_validbits & ((uint32_t)1U << 14))) {
 		// 'threshold_on': id=36, encoding=varint, tag=0x120
 		if (2 > (e-a))
-			return -385;
+			return -402;
 		*a++ = 0xa0;
 		*a++ = 0x2;
 		n = write_varint(a,e-a,m_threshold_on);
 		if (n <= 0)
-			return -386;
+			return -403;
 		a += n;
 	}
 	// has dim_step?
 	if (0 != (p_validbits & ((uint32_t)1U << 15))) {
 		// 'dim_step': id=37, encoding=varint, tag=0x128
 		if (2 > (e-a))
-			return -387;
+			return -404;
 		*a++ = 0xa8;
 		*a++ = 0x2;
 		n = write_varint(a,e-a,m_dim_step);
 		if (n <= 0)
-			return -388;
+			return -405;
 		a += n;
 	}
 	// has lightctrl?
 	if (0 != (p_validbits & ((uint32_t)1U << 16))) {
 		// 'lightctrl': id=38, encoding=8bit, tag=0x133
 		if (3 > (e-a))
-			return -389;
+			return -406;
 		*a++ = 0xb3;
 		*a++ = 0x2;
 		*a++ = m_lightctrl;
@@ -7512,26 +7870,26 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint32_t)1U << 17))) {
 		// 'pwm_freq': id=39, encoding=varint, tag=0x138
 		if (2 > (e-a))
-			return -390;
+			return -407;
 		*a++ = 0xb8;
 		*a++ = 0x2;
 		n = write_varint(a,e-a,m_pwm_freq);
 		if (n <= 0)
-			return -391;
+			return -408;
 		a += n;
 	}
 	#ifdef CONFIG_APP_PARAMS
 	for (const auto &x : m_app_params) {
 		// 'app_params': id=40, encoding=lenpfx, tag=0x142
 		if (2 > (e-a))
-			return -392;
+			return -409;
 		*a++ = 0xc2;
 		*a++ = 0x2;
 		ssize_t app_params_ws = x.calcSize();
 		n = write_varint(a,e-a,app_params_ws);
 		a += n;
 		if ((n <= 0) || (app_params_ws > (e-a)))
-			return -393;
+			return -410;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == app_params_ws);
@@ -7541,31 +7899,47 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_thresholds) {
 		// 'thresholds': id=41, encoding=lenpfx, tag=0x14a
 		if (2 > (e-a))
-			return -394;
+			return -411;
 		*a++ = 0xca;
 		*a++ = 0x2;
 		ssize_t thresholds_ws = x.calcSize();
 		n = write_varint(a,e-a,thresholds_ws);
 		a += n;
 		if ((n <= 0) || (thresholds_ws > (e-a)))
-			return -395;
+			return -412;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == thresholds_ws);
 	}
 	#endif // CONFIG_THRESHOLDS
+	#ifdef CONFIG_LUA
+	for (const auto &x : m_luafiles) {
+		// 'luafiles': id=42, encoding=lenpfx, tag=0x152
+		if (2 > (e-a))
+			return -413;
+		*a++ = 0xd2;
+		*a++ = 0x2;
+		ssize_t luafiles_s = x.size();
+		n = write_varint(a,e-a,luafiles_s);
+		a += n;
+		if ((n <= 0) || ((e-a) < luafiles_s))
+			return -414;
+		memcpy(a,x.data(),luafiles_s);
+		a += luafiles_s;
+	}
+	#endif // CONFIG_LUA
 	#ifdef CONFIG_ONEWIRE
 	for (const auto &x : m_owdevices) {
 		// 'owdevices': id=50, encoding=lenpfx, tag=0x192
 		if (2 > (e-a))
-			return -396;
+			return -415;
 		*a++ = 0x92;
 		*a++ = 0x3;
 		ssize_t owdevices_ws = x.calcSize();
 		n = write_varint(a,e-a,owdevices_ws);
 		a += n;
 		if ((n <= 0) || (owdevices_ws > (e-a)))
-			return -397;
+			return -416;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == owdevices_ws);
@@ -7832,6 +8206,16 @@ void NodeConfig::toWire(void (*put)(uint8_t)) const
 		m_thresholds[x].toWire(put);
 	}
 	#endif // CONFIG_THRESHOLDS
+	#ifdef CONFIG_LUA
+	for (size_t x = 0, y = m_luafiles.size(); x != y; ++x) {
+		// 'luafiles': id=42, encoding=lenpfx, tag=0x152
+		put(0xd2);
+		put(0x2);
+		size_t luafiles_s = m_luafiles[x].size();
+		send_varint(put,luafiles_s);
+		send_bytes(put,(const uint8_t*) m_luafiles[x].data(),luafiles_s);
+	}
+	#endif // CONFIG_LUA
 	#ifdef CONFIG_ONEWIRE
 	for (size_t x = 0, y = m_owdevices.size(); x != y; ++x) {
 		// 'owdevices': id=50, encoding=lenpfx, tag=0x192
@@ -8100,6 +8484,16 @@ void NodeConfig::toString(std::string &put) const
 		m_thresholds[x].toString(put);
 	}
 	#endif // CONFIG_THRESHOLDS
+	#ifdef CONFIG_LUA
+	for (size_t x = 0, y = m_luafiles.size(); x != y; ++x) {
+		// 'luafiles': id=42, encoding=lenpfx, tag=0x152
+		put.push_back(0xd2);
+		put.push_back(0x2);
+		size_t luafiles_s = m_luafiles[x].size();
+		send_varint(put,luafiles_s);
+		put.append((const char *)(const uint8_t*) m_luafiles[x].data(),luafiles_s);
+	}
+	#endif // CONFIG_LUA
 	#ifdef CONFIG_ONEWIRE
 	for (size_t x = 0, y = m_owdevices.size(); x != y; ++x) {
 		// 'owdevices': id=50, encoding=lenpfx, tag=0x192
@@ -8465,6 +8859,26 @@ void NodeConfig::toJSON(std::ostream &json, unsigned indLvl) const
 		json.put(']');
 	}
 	#endif // CONFIG_THRESHOLDS
+	#ifdef CONFIG_LUA
+	if (size_t s = m_luafiles.size()) {
+		fsep = json_indent(json,indLvl,fsep);
+		indLvl += 2;
+		json << "\"luafiles\":[\n";
+		size_t i = 0;
+		for (;;) {
+			json_indent(json,indLvl,0);
+			json_cstr(json,m_luafiles[i].c_str());
+			++i;
+			if (i == s)
+				break;
+			json << ",\n";
+		}
+		indLvl -= 2;
+		json.put('\n');
+		json_indent(json,indLvl,0);
+		json.put(']');
+	}
+	#endif // CONFIG_LUA
 	#ifdef CONFIG_ONEWIRE
 	if (size_t s = m_owdevices.size()) {
 		fsep = json_indent(json,indLvl,fsep);
@@ -8718,6 +9132,17 @@ size_t NodeConfig::calcSize() const
 		r += s + 2 /* tag(thresholds) 0x148 */;
 	}
 	#endif // CONFIG_THRESHOLDS
+	#ifdef CONFIG_LUA
+	// repeated string luafiles, id 42
+	if (!m_luafiles.empty()) {
+		// luafiles: repeated std::string
+		for (size_t x = 0, y = m_luafiles.size(); x < y; ++x) {
+			size_t s = m_luafiles[x].size();
+			r += wiresize(s);
+			r += s + 2 /* tag(luafiles) 0x150 */;
+		}
+	}
+	#endif // CONFIG_LUA
 	#ifdef CONFIG_ONEWIRE
 	// repeated OwDeviceConfig owdevices, id 50
 	// repeated message owdevices
@@ -8828,6 +9253,10 @@ bool NodeConfig::operator != (const NodeConfig &r) const
 	if (m_thresholds != r.m_thresholds)
 		return true;
 	#endif // CONFIG_THRESHOLDS
+	#ifdef CONFIG_LUA
+	if (m_luafiles != r.m_luafiles)
+		return true;
+	#endif // CONFIG_LUA
 	#ifdef CONFIG_ONEWIRE
 	if (m_owdevices != r.m_owdevices)
 		return true;
@@ -8924,16 +9353,16 @@ int NodeConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+11,&idxe,0);
 				if (idxe[0] != ']')
-					return -398;
+					return -417;
 				if (m_dns_server.size() <= x)
-					return -399;
+					return -418;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_dns_server.erase(m_dns_server.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != 0)
-				return -400;
+				return -419;
 			m_dns_server[x] = value;
 			return m_dns_server[x].size();
 		}
@@ -9032,16 +9461,16 @@ int NodeConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+9,&idxe,0);
 				if (idxe[0] != ']')
-					return -401;
+					return -420;
 				if (m_holidays.size() <= x)
-					return -402;
+					return -421;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_holidays.erase(m_holidays.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -403;
+				return -422;
 			return m_holidays[x].setByName(idxe+2,value);
 		}
 	}
@@ -9061,16 +9490,16 @@ int NodeConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+11,&idxe,0);
 				if (idxe[0] != ']')
-					return -404;
+					return -423;
 				if (m_at_actions.size() <= x)
-					return -405;
+					return -424;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_at_actions.erase(m_at_actions.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -406;
+				return -425;
 			return m_at_actions[x].setByName(idxe+2,value);
 		}
 	}
@@ -9100,16 +9529,16 @@ int NodeConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+9,&idxe,0);
 				if (idxe[0] != ']')
-					return -407;
+					return -426;
 				if (m_triggers.size() <= x)
-					return -408;
+					return -427;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_triggers.erase(m_triggers.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -409;
+				return -428;
 			return m_triggers[x].setByName(idxe+2,value);
 		}
 	}
@@ -9129,16 +9558,16 @@ int NodeConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+5,&idxe,0);
 				if (idxe[0] != ']')
-					return -410;
+					return -429;
 				if (m_uart.size() <= x)
-					return -411;
+					return -430;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_uart.erase(m_uart.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -412;
+				return -431;
 			return m_uart[x].setByName(idxe+2,value);
 		}
 	}
@@ -9159,16 +9588,16 @@ int NodeConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+9,&idxe,0);
 				if (idxe[0] != ']')
-					return -413;
+					return -432;
 				if (m_terminal.size() <= x)
-					return -414;
+					return -433;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_terminal.erase(m_terminal.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -415;
+				return -434;
 			return m_terminal[x].setByName(idxe+2,value);
 		}
 	}
@@ -9199,16 +9628,16 @@ int NodeConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+7,&idxe,0);
 				if (idxe[0] != ']')
-					return -416;
+					return -435;
 				if (m_debugs.size() <= x)
-					return -417;
+					return -436;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_debugs.erase(m_debugs.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != 0)
-				return -418;
+				return -437;
 			m_debugs[x] = value;
 			return m_debugs[x].size();
 		}
@@ -9251,16 +9680,16 @@ int NodeConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+10,&idxe,0);
 				if (idxe[0] != ']')
-					return -419;
+					return -438;
 				if (m_timefuses.size() <= x)
-					return -420;
+					return -439;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_timefuses.erase(m_timefuses.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -421;
+				return -440;
 			return m_timefuses[x].setByName(idxe+2,value);
 		}
 	}
@@ -9281,16 +9710,16 @@ int NodeConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+8,&idxe,0);
 				if (idxe[0] != ']')
-					return -422;
+					return -441;
 				if (m_signals.size() <= x)
-					return -423;
+					return -442;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_signals.erase(m_signals.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -424;
+				return -443;
 			return m_signals[x].setByName(idxe+2,value);
 		}
 	}
@@ -9312,16 +9741,16 @@ int NodeConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+10,&idxe,0);
 				if (idxe[0] != ']')
-					return -425;
+					return -444;
 				if (m_functions.size() <= x)
-					return -426;
+					return -445;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_functions.erase(m_functions.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -427;
+				return -446;
 			return m_functions[x].setByName(idxe+2,value);
 		}
 	}
@@ -9343,16 +9772,16 @@ int NodeConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+11,&idxe,0);
 				if (idxe[0] != ']')
-					return -428;
+					return -447;
 				if (m_statemachs.size() <= x)
-					return -429;
+					return -448;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_statemachs.erase(m_statemachs.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -430;
+				return -449;
 			return m_statemachs[x].setByName(idxe+2,value);
 		}
 	}
@@ -9432,16 +9861,16 @@ int NodeConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+11,&idxe,0);
 				if (idxe[0] != ']')
-					return -431;
+					return -450;
 				if (m_app_params.size() <= x)
-					return -432;
+					return -451;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_app_params.erase(m_app_params.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -433;
+				return -452;
 			return m_app_params[x].setByName(idxe+2,value);
 		}
 	}
@@ -9463,20 +9892,52 @@ int NodeConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+11,&idxe,0);
 				if (idxe[0] != ']')
-					return -434;
+					return -453;
 				if (m_thresholds.size() <= x)
-					return -435;
+					return -454;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_thresholds.erase(m_thresholds.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -436;
+				return -455;
 			return m_thresholds[x].setByName(idxe+2,value);
 		}
 	}
 	#endif // CONFIG_THRESHOLDS
+	#ifdef CONFIG_LUA
+	if (0 == memcmp(name,"luafiles",8)) {
+		if ((name[8] == 0) && (value == 0)) {
+			clear_luafiles();
+			return 0;
+		} else if (name[8] == '[') {
+			char *idxe;
+			unsigned long x;
+			if ((name[9] == '+') && (name[10] == ']')) {
+				x = m_luafiles.size();
+				m_luafiles.resize(x+1);
+				idxe = (char*)(name + 10);
+				if (idxe[1] == 0)
+					return 0;
+			} else {
+				x = strtoul(name+9,&idxe,0);
+				if (idxe[0] != ']')
+					return -456;
+				if (m_luafiles.size() <= x)
+					return -457;
+				if ((idxe[1] == 0) && (value == 0)) {
+					m_luafiles.erase(m_luafiles.begin()+x);
+					return 0;
+				}
+			}
+			if (idxe[1] != 0)
+				return -458;
+			m_luafiles[x] = value;
+			return m_luafiles[x].size();
+		}
+	}
+	#endif // CONFIG_LUA
 	#ifdef CONFIG_ONEWIRE
 	if (0 == memcmp(name,"owdevices",9)) {
 		if ((name[9] == 0) && (value == 0)) {
@@ -9494,20 +9955,20 @@ int NodeConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+10,&idxe,0);
 				if (idxe[0] != ']')
-					return -437;
+					return -459;
 				if (m_owdevices.size() <= x)
-					return -438;
+					return -460;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_owdevices.erase(m_owdevices.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -439;
+				return -461;
 			return m_owdevices[x].setByName(idxe+2,value);
 		}
 	}
 	#endif // CONFIG_ONEWIRE
-	return -440;
+	return -462;
 }
 

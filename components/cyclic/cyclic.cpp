@@ -80,7 +80,7 @@ struct SubTaskCmp
 };
 
 
-static SubTask *SubTasks;
+static SubTask *SubTasks = 0;
 static SemaphoreHandle_t Mtx = 0;
 static volatile uint64_t TimeSpent = 0;
 

@@ -20,10 +20,12 @@
 
 #ifdef CONFIG_RELAY
 
+#include "actions.h"
+#include "env.h"
 #include "globals.h"
 #include "hwcfg.h"
-#include "env.h"
 #include "log.h"
+#include "nvm.h"
 #include "mqtt.h"
 #include "profiling.h"
 #include "relay.h"
@@ -37,30 +39,13 @@ using namespace std;
 #define TAG MODULE_RELAY
 
 
+#ifdef CONFIG_MQTT
 static void relay_callback(Relay *r)
 {
-	PROFILE_FUNCTION();
-
-	if (r->getPersistent())
-		store_nvs_u8(r->name(),r->is_on());
-	rtd_lock();
-	EnvObject *o = static_cast<EnvObject *>(RTData->get(r->name()));
-	if (o == 0)
-		o = RTData;
-	EnvNumber *i = static_cast<EnvNumber*>(o->get("on"));
-	assert(i);
-	EnvString *s = static_cast<EnvString*>(o->get("state"));
-	assert(s);
 	bool on = r->is_on();
-	EnvString *l = static_cast<EnvString*>(o->get(on ? "laston" : "lastoff"));
-	i->set(on ? 1 : -1);
-	s->set(on ? "on" : "off");
-	l->set(Localtime->get());
-	rtd_unlock();
-#ifdef CONFIG_MQTT
 	mqtt_pub_nl(r->name(),on?"on":"off",on?2:3,1,1);
-#endif
 }
+#endif
 
 
 static int relay_set(const char *n, bool on)
@@ -71,6 +56,40 @@ static int relay_set(const char *n, bool on)
 	}
 	log_warn(TAG,"set(%s): unknown relay",n);
 	return 1;
+}
+
+
+static void relay_set_state(void *arg)
+{
+	const char *a = (const char *) arg;
+	char *sp = strchr(a,':');
+	if (sp == 0) {
+		sp = strchr(a,'=');
+		if (sp == 0) {
+			sp = strchr(a,' ');
+			if (sp == 0) {
+				log_warn(TAG,"relay!set invalid arg '%s'",a);
+				return;
+			}
+		}
+	}
+	*sp = 0;
+	if (Relay *r = Relay::get(a)) {
+		++sp;
+		log_dbug(TAG,"mqtt: %s: %s",a,sp);
+		if (0 == strcmp(sp,"toggle"))
+			r->toggle();
+		else if (0 == strcmp(sp,"on"))
+			r->turn_on();
+		else if (0 == strcmp(sp,"off"))
+			r->turn_off();
+		else if (0 == strcmp(sp,"1"))
+			r->turn_on();
+		else if (0 == strcmp(sp,"0"))
+			r->turn_off();
+		else
+			log_warn(TAG,"invalid mqtt request: %s: %s",a,sp);
+	}
 }
 
 
@@ -110,15 +129,15 @@ static void mqtt_callback(const char *topic, const void *data, size_t len)
 int relay_setup()
 {
 	if (Relay::first()) {
-		log_warn(TAG,"already initialized");
+		log_warn(TAG,"duplicate init");
 		return 0;
 	}
+	unsigned numrel = 0;
 	for (auto &c : *HWConf.mutable_relay()) {
-		if (!c.has_gpio())
-			continue;
 		int8_t gpio = c.gpio();
 		if (gpio < 0)
 			continue;
+		++numrel;
 		unsigned itv = c.min_itv();
 		const char *n = c.name().c_str();
 		if (*n == 0) {
@@ -127,34 +146,30 @@ int relay_setup()
 			c.set_name(name);
 			n = c.name().c_str();
 		}
-		log_dbug(TAG,n);
 #ifdef CONFIG_MQTT
 		if (c.config_mqtt()) {
 			char topic[c.name().size()+5] = "set_";
 			strcpy(topic+4,n);
 			log_dbug(TAG,"subscribe %s",topic);
 			mqtt_sub(topic,mqtt_callback);
-		} else
-			log_info(TAG,"no subscribe");
-#else
-		log_info(TAG,"no mqtt");
-#endif
-		Relay *r = Relay::create(n,(xio_t)gpio,itv,c.config_active_high());
-		if (r == 0)
-			continue;
-		r->setCallback(relay_callback);
-		bool iv = c.config_init_on();
-		if (c.config_persistent()) {
-			r->setPersistent(true);
-			iv = read_nvs_u8(n,iv);
 		}
-		EnvObject *o = RTData->add(n);
-		o->add("on",iv?1.0:-1.0);
-		o->add("state",iv?"on":"off");
-		o->add("laston","");
-		o->add("lastoff","");
-		log_dbug(TAG,"relay '%s' at gpio%d init %d",n,gpio,(int)iv);
-		r->set(iv);
+#endif
+		
+		if (Relay *r = Relay::create(n,(xio_t)gpio,itv,c.config_active_high())) {
+#ifdef CONFIG_MQTT
+			r->setCallback(relay_callback);
+#endif
+			bool iv = c.config_init_on();
+			if (c.config_persistent()) {
+				r->setPersistent(true);
+				iv = nvm_read_u8(n,iv);
+			}
+			r->attach(RTData);
+			log_info(TAG,"relay '%s' at gpio%d init %d",n,gpio,(int)iv);
+			r->set(iv);
+		} else {
+			log_warn(TAG,"%s at %u: error",n,gpio);
+		}
 	}
 	// update interlocks
 	for (const auto &c : HWConf.relay()) {
@@ -170,35 +185,33 @@ int relay_setup()
 			r->setInterlock(r);
 		}
 	}
+	if (numrel)
+		action_add("relay!set",relay_set_state,0,"set relay state - argument: '<name>:{on,off,toggle}'");
 	return 0;
 }
 
 
-int relay(Terminal &term, int argc, const char *args[])
+const char *relay(Terminal &term, int argc, const char *args[])
 {
 	Relay *r = Relay::first();
 	if (r == 0) {
 		term.printf("no relays\n");
-		return 1;
-	}
-	if (argc == 1) {
+	} else if (argc == 1) {
 		while (r) {
-			term.printf("relay '%s' at gpio%d is %s",r->name(),r->gpio(),r->is_on() ? "on" : "off");
+			term.printf("relay '%s' at gpio%d is %s\n",r->name(),r->gpio(),r->is_on() ? "on" : "off");
 			if (Relay *il = r->getInterlock())
-				term.printf(", interlocked with %s (%s)",il->name(),il->is_on() ? "locked" : "free");
-			term.println("");
+				term.printf("\tinterlocked with %s (%s)\n",il->name(),il->is_on() ? "locked" : "free");
 			r = r->next();
 		}
 		return 0;
 	} else if (argc == 3) {
 		if (0 == strcmp("on",args[2]))
-			return relay_set(args[1],true);
+			return relay_set(args[1],true) ? "Failed." : 0;
 		else if (0 == strcmp("off",args[2]))
-			return relay_set(args[1],false);
-		else
-			return 1;
+			return relay_set(args[1],false) ? "Failed." : 0;
+		return "Invalid argument #1.";
 	}
-	return 1;
+	return "Invalid number of arguments.";
 }
 
 #endif	// CONFIG_RELAY

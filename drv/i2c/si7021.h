@@ -34,8 +34,9 @@ struct SI7021 : public I2CDevice
 //	int init() override;
 	void attach(class EnvObject *) override;
 #ifdef CONFIG_I2C_XCMD
-	int exeCmd(struct Terminal &, int argc, const char **argv) override;
+	const char *exeCmd(struct Terminal &, int argc, const char **argv) override;
 #endif
+	static SI7021 *create(uint8_t bus, uint8_t addr);
 
 	protected:
 	static unsigned cyclic(void *);

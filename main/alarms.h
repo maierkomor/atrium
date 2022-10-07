@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2017-2020, Thomas Maier-Komor
+ *  Copyright (C) 2017-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -23,10 +23,7 @@
 #include "actions.h"
 
 
-typedef enum { Sun = 0, Mon, Tue, Wed, Thu, Fri, Sat, WD, WE, ED } weekdays_t;
-
-extern const char *Weekdays_en[];
-extern const char *Weekdays_de[];
+typedef enum { Sun = 0, Mon, Tue, Wed, Thu, Fri, Sat, WD, WE, ED, weekdays_max } weekdays_t;
 
 #ifdef __cplusplus
 #include <vector>

@@ -10,7 +10,7 @@
  * Copyright: 2018-2021
  * Author   : Thomas Maier-Komor
  * 
- * Code generated on 2022-08-01, 00:43:58 (CET).
+ * Code generated on 2022-10-07, 14:15:34 (CET).
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -170,6 +170,7 @@ typedef enum {
 	i2cdrv_pca9685_xclk_pnp = 9,
 	i2cdrv_ht16k33 = 10,
 	i2cdrv_ina219 = 11,
+	i2cdrv_si7021 = 12,
 } i2cdrv_t;
 //! Function to get an ASCII string from a value of a i2cdrv_t.
 const char *i2cdrv_t_str(i2cdrv_t e);
@@ -2640,6 +2641,42 @@ class AdcChannel
 	*/
 	uint8_t *mutable_atten();
 	
+	// optional uint8 interval, id 5
+	/*!
+	* Function for querying if interval has been set.
+	* @return true if interval is set.
+	*/
+	bool has_interval() const;
+	//! Function to reset interval to its default/unset value.
+	void clear_interval();
+	//! Get value of interval.
+	uint8_t interval() const;
+	//! Set interval using a constant reference
+	void set_interval(uint8_t v);
+	/*!
+	* Provide mutable access to interval.
+	* @return pointer to member variable of interval.
+	*/
+	uint8_t *mutable_interval();
+	
+	// optional uint8 window, id 6
+	/*!
+	* Function for querying if window has been set.
+	* @return true if window is set.
+	*/
+	bool has_window() const;
+	//! Function to reset window to its default/unset value.
+	void clear_window();
+	//! Get value of window.
+	uint8_t window() const;
+	//! Set window using a constant reference
+	void set_window(uint8_t v);
+	/*!
+	* Provide mutable access to window.
+	* @return pointer to member variable of window.
+	*/
+	uint8_t *mutable_window();
+	
 	
 	protected:
 	//! string name, id 1
@@ -2650,6 +2687,10 @@ class AdcChannel
 	int8_t m_ch;
 	//! uint8 atten, id 4
 	uint8_t m_atten;
+	//! uint8 interval, id 5
+	uint8_t m_interval;
+	//! uint8 window, id 6
+	uint8_t m_window;
 	
 	private:
 	uint8_t p_validbits;
@@ -6105,6 +6146,8 @@ inline size_t AdcChannel::getMaxSize()
 	// optional uint8 unit, id 2 has maximum size 3
 	// optional sint8 ch, id 3 has maximum size 3
 	// optional uint8 atten, id 4 has maximum size 3
+	// optional uint8 interval, id 5 has maximum size 3
+	// optional uint8 window, id 6 has maximum size 3
 	return SIZE_MAX;
 }
 
@@ -6244,6 +6287,80 @@ inline void AdcChannel::set_atten(uint8_t v)
 {
 	m_atten = v;
 	p_validbits |= ((uint8_t)1U << 0);
+}
+
+
+
+inline uint8_t AdcChannel::interval() const
+{
+	return m_interval;
+}
+
+inline bool AdcChannel::has_interval() const
+{
+	return 0 != (p_validbits & ((uint8_t)1U << 1));
+}
+
+/*!
+ * Function for clearing the associated member variable.
+ * It will reset the value to the default value.
+ */
+inline void AdcChannel::clear_interval()
+{
+	p_validbits &= ~((uint8_t)1U << 1);
+	m_interval = 0;
+}
+
+inline uint8_t *AdcChannel::mutable_interval()
+{
+	if (0 == (p_validbits & ((uint8_t)1U << 1))) {
+		p_validbits |= ((uint8_t)1U << 1);
+		m_interval = 0;
+	}
+	return &m_interval;
+}
+
+inline void AdcChannel::set_interval(uint8_t v)
+{
+	m_interval = v;
+	p_validbits |= ((uint8_t)1U << 1);
+}
+
+
+
+inline uint8_t AdcChannel::window() const
+{
+	return m_window;
+}
+
+inline bool AdcChannel::has_window() const
+{
+	return 0 != (p_validbits & ((uint8_t)1U << 2));
+}
+
+/*!
+ * Function for clearing the associated member variable.
+ * It will reset the value to the default value.
+ */
+inline void AdcChannel::clear_window()
+{
+	p_validbits &= ~((uint8_t)1U << 2);
+	m_window = 0;
+}
+
+inline uint8_t *AdcChannel::mutable_window()
+{
+	if (0 == (p_validbits & ((uint8_t)1U << 2))) {
+		p_validbits |= ((uint8_t)1U << 2);
+		m_window = 0;
+	}
+	return &m_window;
+}
+
+inline void AdcChannel::set_window(uint8_t v)
+{
+	m_window = v;
+	p_validbits |= ((uint8_t)1U << 2);
 }
 
 

@@ -303,6 +303,13 @@ message ThresholdConfig
 }
 
 
+message LuaConfig
+{
+	repeated string init_scripts = 1;
+	repeated string compile_files = 2;
+}
+
+
 message NodeConfig
 {
 	fixed32 magic = 0;	// should always be set to 0xAE54EDC0
@@ -358,6 +365,7 @@ message NodeConfig
 
 	repeated AppParam app_params = 40	[ ifdef=CONFIG_APP_PARAMS ];
 	repeated ThresholdConfig thresholds = 41	[ ifdef=CONFIG_THRESHOLDS ];
+	repeated string luafiles = 42		[ ifdef=CONFIG_LUA ];
 
 	repeated OwDeviceConfig owdevices = 50	[ ifdef=CONFIG_ONEWIRE ];
 }
