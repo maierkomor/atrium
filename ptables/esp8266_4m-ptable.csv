@@ -7,4 +7,5 @@ app1,     0,    ota_0,   0x10000, 0x100000
 app2,     0,    ota_1,   0x110000, 0x100000
 coredump, data, coredump,0x210000, 0x10000
 settings, data, nvs,     0x220000, 0x10000
-storage,  data, fat,     0x230000, 0x1d0000
+storage,  data, fat,     0x230000, 0x1c0000
+romfs,    data, fat,     0x3f0000, 0x10000

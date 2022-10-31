@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2021, Thomas Maier-Komor
+ *  Copyright (C) 2018-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -58,7 +58,8 @@ static void init_spiffs()
 		log_info(TAG, "SPIFFS mounting failed: %s",esp_err_to_name(e));
 	} else {
 		size_t total = 0, used = 0;
-		if (esp_err_t e = esp_spiffs_info(DATA_PARTITION, &total, &used)) log_error(TAG, "error getting SPIFFS info: %s",esp_err_to_name(e));
+		if (esp_err_t e = esp_spiffs_info(DATA_PARTITION, &total, &used))
+			log_error(TAG,"error getting SPIFFS info: %s",esp_err_to_name(e));
 		else
 			log_info(TAG, "SPIFFS at %s: %ukB of %ukB used",conf.base_path,used>>10,total>>10);
 	}
@@ -184,7 +185,7 @@ const char *shell_format(Terminal &term, int argc, const char *args[])
 
 
 extern "C"
-void init_fs()
+void fs_init()
 {
 #ifdef CONFIG_ROMFS
 	init_romfs();

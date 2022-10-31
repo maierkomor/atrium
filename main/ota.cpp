@@ -344,7 +344,7 @@ static int socket_to_x(Terminal &t, LwTcp &P, int (*sink)(Terminal&,void*,char*,
 		t.printf("error %d",r);
 		log_warn(TAG,"read error %d",r);
 	} else if (numD != contlen) {
-		result = "incomplete";
+		result = "\nincomplete";
 		log_warn(TAG,"incomplete");
 	} else {
 		ret = 0;

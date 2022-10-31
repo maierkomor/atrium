@@ -196,15 +196,18 @@ int WS2812BDrv::init(gpio_num_t gpio, size_t nleds, rmt_channel_t ch)
 	rmt_tx.tx_config.idle_level = RMT_IDLE_LEVEL_LOW;
 	rmt_tx.tx_config.idle_output_en = true;
 	rmt_tx.rmt_mode = RMT_MODE_TX;
-	rmt_config(&rmt_tx);
+	if (esp_err_t e = rmt_config(&rmt_tx)) {
+		log_error(TAG,"rmt config error 0x%x",e);
+		return 1;
+	}
 	if (esp_err_t e = rmt_driver_install(m_ch, 0, 0)) {
-		log_error(TAG,"rmt driver install 0x%x",e);
+		log_warn(TAG,"rmt driver install %s",esp_err_to_name(e));
 		return 1;
 	}
 #else
 	gpio_pad_select_gpio(m_gpio);
 	if (esp_err_t e = gpio_set_direction(m_gpio, GPIO_MODE_OUTPUT)) {
-		log_error(TAG,"cannot set %u to output: 0x%x",m_gpio,e);
+		log_warn(TAG,"cannot set %u to output: %s",m_gpio,esp_err_to_name(e));
 		return 1;
 	}
 	GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS,1<<m_gpio);

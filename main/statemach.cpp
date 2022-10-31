@@ -125,8 +125,7 @@ void State::init(const StateConfig &cfg, const char *stname)
 				log_dbug(TAG,"adding %s => %s",event_name(e),a->name);
 				trigger_t t;
 				if (sp) {
-					char *arg = strdup(sp+1);
-					t = event_callback_arg(e,a,arg);
+					t = event_callback_arg(e,a,sp+1);
 				} else {
 					t = event_callback(e,a);
 				}
@@ -324,7 +323,7 @@ const char *sm_cmd(Terminal &term, int argc, const char *args[])
 		if (argc == 5)
 			t = event_callback(e,a);
 		else
-			t = event_callback_arg(e,a,strdup(args[5]));
+			t = event_callback_arg(e,a,args[5]);
 		event_trigger_en(t,false);
 		s->conds.push_back(t);
 		strcpy(arg,args[4]);

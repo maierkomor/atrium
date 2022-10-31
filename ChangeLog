@@ -1,3 +1,21 @@
+R2210:
+======
+- support to print/json sub messages
+- support to add array element with value in config/hwconf
+- expanded max. range of ADC interval from 255ms to 65535ms
+- reduce default RAM consumption (init Lua on demand)
+- added hwconf backup, restore, and read
+- added led!toggle to switch on<->off, other modes are ignored
+- failsafe boot without hardware config after reset during init
+- docu update
+- enable SPIFFS and FTP per default on esp8266/4m
+- Lua getvar should return nil for unknown variables
+- fix ftpd aborting on out-of-memory
+- fix threshold not triggering the first time
+- fix for influx command returning Failed although succeeded
+- fix xio of esp8266 for hiz
+- fix incoming connections on disabled services are not closed
+
 R2209:
 ======
 - added Lua interpreter

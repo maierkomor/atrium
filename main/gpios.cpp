@@ -46,15 +46,6 @@ static const char *GpioIntrTypeStr[] = {
 	"NMI",
 	"NMI and regular",
 };
-
-
-static const char *PullStr[] = {
-	"none",
-	"pull-up",
-	"pull-down",
-	"pull-updown",
-};
-
 #endif
 
 

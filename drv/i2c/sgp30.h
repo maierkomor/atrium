@@ -20,6 +20,7 @@
 #define SGP30_H
 
 #include "i2cdrv.h"
+#include "env.h"
 
 #define SGP30_ADDR	(0x58<<1)
 
@@ -28,18 +29,12 @@ class EnvNumber;
 
 struct SGP30 : public I2CDevice
 {
-	explicit SGP30(uint8_t port)
-	: I2CDevice(port,SGP30_ADDR,drvName())
-	{ }
-
-	SGP30(uint8_t port, uint8_t addr, const char *n)
-	: I2CDevice(port,addr,n)
-	{ }
-
+	explicit SGP30(uint8_t port);
+	SGP30(uint8_t port, uint8_t addr, const char *n);
 
 	static SGP30 *create(uint8_t bus);
 
-	const char *drvName() const;
+	const char *drvName() const override;
 	int init();
 	uint8_t status();
 	void attach(class EnvObject *);
@@ -54,7 +49,7 @@ struct SGP30 : public I2CDevice
 	int selftest_start();
 	int selftest_finish();
 
-	EnvNumber *m_tvoc = 0, *m_co2 = 0;	// owned
+	EnvNumber m_tvoc, m_co2;	// owned
 	EnvNumber *m_temp = 0, *m_humid = 0;	// refered to
 	EnvObject *m_root = 0;
 	uint16_t m_ahumid = 0;

@@ -17,9 +17,11 @@
  */
 
 option author="Thomas Maier-Komor";
-option copyright="2018-2021";
+option copyright="2018-2022";
 
 option common {
+	BaseClass=Message;
+	getMember=getMember;
 	id0=true;
 	wfclib=extern;
 }
@@ -82,6 +84,13 @@ option esp8266 : esp {
 	/AdcConfig/channels:		used = false;
 	/Ws2812bConfig/ch:		used = false;
 }
+
+option esp8285 : esp8266 {
+	BaseClass="";
+	getMember="";
+}
+
+
 
 message SystemConfig
 {
@@ -306,7 +315,7 @@ message AdcChannel
 	// adc_atten_t: 0 = 0dB, 1=2,5dB, 2=6dB, 3=11dB
 	uint8 atten = 4		[ default = 0 ];	
 	// 0: manual sampling, >0: sampling interval in ms
-	uint8 interval = 5	[ unset = 0 ];
+	uint16 interval = 5	[ unset = 0 ];
 	uint8 window = 6	[ unset = 0 ];
 	/*
 	// sliding window requires window-size*2 bytes additional RAM
@@ -437,8 +446,8 @@ message HardwareConfig
 	SystemConfig system = 1;
 	repeated UartConfig uart = 3;
 	AdcConfig adc = 4;
-	TouchpadConfig touchpad = 5;
-	repeated TouchChannelConfig tp_channel = 6;
+	TouchpadConfig touchpad = 5			[ ifdef=CONFIG_TOUCHPAD ];
+	repeated TouchChannelConfig tp_channel = 6	[ ifdef=CONFIG_TOUCHPAD ];
 	repeated GpioConfig gpio = 7;
 //	repeated SpiBus spibus = 8;
 //	repeated SpiDevice spidev = 9;
@@ -446,7 +455,7 @@ message HardwareConfig
 	// direct gpio drivers
 	repeated ButtonConfig button = 16	[ ifdef=CONFIG_BUTTON ];
 	repeated RelayConfig relay = 17		[ ifdef=CONFIG_RELAY ];
-	repeated LedConfig led = 18;
+	repeated LedConfig led = 18		[ ifdef=CONFIG_LEDS ];
 
 	// high level applicaton drivers
 	Max7219Config max7219 = 32		[ ifdef=CONFIG_MAX7219 ];	// for 7-segment clock

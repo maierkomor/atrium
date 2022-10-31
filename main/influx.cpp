@@ -648,7 +648,7 @@ const char *influx(Terminal &term, int argc, const char *args[])
 			i->set_measurement(s+1);
 			return 0;
 		}
-		return i->setByName(args[1],args[2]) ? "Failed." : 0;
+		return i->setByName(args[1],args[2]) < 0 ? "Failed." : 0;
 	}
 	return 0;
 }

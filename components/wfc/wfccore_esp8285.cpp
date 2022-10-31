@@ -32,6 +32,10 @@
  * options from commandline:
  * wfclib          : "extern"
  * 
+ * options from esp8285:
+ * BaseClass       : ""
+ * getMember       : ""
+ * 
  * options from esp8266:
  * Optimize        : "size"
  * 
@@ -47,8 +51,6 @@
  * varintbits      : 32
  * 
  * options from common:
- * BaseClass       : "Message"
- * getMember       : "getMember"
  * 
  * options from defaults:
  * AddPrefix       : "add_"
@@ -992,41 +994,6 @@ void send_xvarint(estring &put, varint_t v)
 			put.push_back(0xff);
 		put.push_back(0x1);
 	}
-}
-
-
-/* included from: (WFC_ROOT)/share/getmember.cct
- * function:      getMember
- * variant:       getMember
- */
-Message *Message::getMember(const char *n)
-{
-	Message *r = this;
-	do {
-		const char *d = strchr(n,'.');
-		const char *b = strchr(n,'[');
-		if ((d != 0) && (d < b)) 
-			b = 0;
-		if (b) {
-			char *e;
-			long l = strtol(b+1,&e,0);
-			if ((l < 0) || (*e != ']'))
-				return 0;
-			r = r->p_getMember(n,b,l);
-			n = e + 1;
-			if (*n == 0)
-				return r;
-			if (*n != '.')
-				return 0;
-		} else if (d) {
-			r = r->p_getMember(n,d);
-			n = d;
-		} else {
-			return r->p_getMember(n,n+strlen(n));
-		}
-		++n;
-	} while (r);
-	return 0;
 }
 
 

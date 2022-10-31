@@ -66,12 +66,28 @@ static inline float relHumid2abs(float temp, float humid)
 }
 
 
+SGP30::SGP30(uint8_t port)
+: I2CDevice(port,SGP30_ADDR,drvName())
+, m_tvoc("TVOC","ppb","%4.0f")
+, m_co2("CO2","ppm")
+{
+}
+
+
+SGP30::SGP30(uint8_t port, uint8_t addr, const char *n)
+: I2CDevice(port,addr,n)
+, m_tvoc("TVOC","ppb","%4.0f")
+, m_co2("CO2","ppm")
+{
+}
+
+
 void SGP30::attach(EnvObject *r)
 {
 	log_dbug(TAG,"attach");
 	m_root = r;
-	r->add(m_tvoc);
-	r->add(m_co2);
+	r->add(&m_tvoc);
+	r->add(&m_co2);
 }
 
 
@@ -160,8 +176,6 @@ int SGP30::init()
 		m_state = selftest;
 	else
 		m_state = error;
-	m_tvoc = new EnvNumber("TVOC","ppb","%4.0f");
-	m_co2 = new EnvNumber("CO2","ppm");
 	return cyclic_add_task("sgp30",SGP30::cyclic,this,220);
 }
 
@@ -281,10 +295,8 @@ int SGP30::read()
 			log_warn(TAG,"tcov CRC error: get %x, expected %x",crc2,data[5]);
 		}
 	}
-	if (m_co2)
-		m_co2->set(co2);
-	if (m_tvoc)
-		m_tvoc->set(tvoc);
+	m_co2.set(co2);
+	m_tvoc.set(tvoc);
 	return r;
 }
 

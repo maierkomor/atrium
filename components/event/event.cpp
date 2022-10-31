@@ -119,12 +119,12 @@ trigger_t event_callback(event_t e, Action *a)
 }
 
 
-trigger_t event_callback_arg(event_t e, Action *a, char *arg)
+trigger_t event_callback_arg(event_t e, Action *a, const char *arg)
 {
 	if (pdFALSE == xSemaphoreTake(EventMtx,MUTEX_ABORT_TIMEOUT))
 		abort_on_mutex(EventMtx,__FUNCTION__);
 	if (e && (e < EventHandlers.size())) {
-		Callback c(a,arg);
+		Callback c(a,strdup(arg));
 		trigger_t t = (trigger_t) ((e << 16) | EventHandlers[e].callbacks.size());
 		EventHandlers[e].callbacks.push_back(c);
 		xSemaphoreGive(EventMtx);
@@ -164,7 +164,7 @@ trigger_t event_callback(const char *event, const char *action)
 }
 
 
-trigger_t event_callback_arg(const char *event, const char *action, char *arg)
+trigger_t event_callback_arg(const char *event, const char *action, const char *arg)
 {
 	const char *x = 0;
 	if (event_t e = event_id(event)) {

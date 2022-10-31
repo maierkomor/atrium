@@ -31,14 +31,24 @@
 /*
  * options from commandline:
  * 
- * options from pc:
- * Optimize        : "speed"
+ * options from esp8285:
+ * BaseClass       : ""
+ * getMember       : ""
+ * 
+ * options from esp8266:
+ * Optimize        : "size"
+ * 
+ * options from esp:
+ * bytestype       : "estring"
+ * intsize         : 32
+ * stringtype      : "estring"
  * toASCII         : "toASCII"
  * toSink          : ""
+ * toString        : ""
+ * toWire          : ""
+ * varintbits      : 32
  * 
  * options from common:
- * BaseClass       : "Message"
- * getMember       : "getMember"
  * wfclib          : "extern"
  * 
  * options from defaults:
@@ -48,7 +58,6 @@
  * ascii_indent    : "ascii_indent"
  * ascii_string    : "ascii_string"
  * author          : ""
- * bytestype       : "std::string"
  * calcSize        : "calcSize"
  * ClearName       : "clear"
  * ClearPrefix     : "clear_"
@@ -60,7 +69,6 @@
  * GetPrefix       : ""
  * HasPrefix       : "has_"
  * inline          : ""
- * IntSize         : 64
  * json_indent     : "json_indent"
  * lang            : "c++"
  * MutablePrefix   : "mutable_"
@@ -68,26 +76,22 @@
  * SetByName       : "setByName"
  * SetPrefix       : "set_"
  * SortMembers     : "id"
- * stringtype      : "std::string"
  * toJSON          : "toJSON"
  * toMemory        : "toMemory"
- * toString        : "toString"
- * toWire          : "toWire"
  * UnknownField    : "skip"
- * VarIntBits      : 64
  * wireput         : ""
  * wiresize        : ""
  * 
- * enabled flags from commandline:
- * 	enumnames
- * enabled flags from pc:
- * 	enummap
+ * disabled flags from esp8266:
+ * 	withUnequal
+ * enabled flags from esp:
+ * 	enumnames, withEqual
  * enabled flags from common:
  * 	id0
  * disabled flags from defaults:
  * 	debug, SubClasses
  * enabled flags from defaults:
- * 	asserts, comments, genlib, gnux, withEqual, withUnequal
+ * 	asserts, comments, genlib, gnux
  */
 
 #ifndef SWCFG_H
@@ -95,10 +99,8 @@
 
 #include <assert.h>
 #define OUTPUT_TO_ASCII 1
-#include <iosfwd>
-#include <ostream>
 #include <string>
-#include <map>
+/* std::map support not needed */
 #include <vector>
 /* array support not needed */
 #include <stddef.h>
@@ -106,7 +108,9 @@
 #include <stdint.h>
 
 /* user requested header files */
-#include "pcconfig.h"
+#include "estring.h"
+#include <sdkconfig.h>
+#include "stream.h"
 #include "support.h"
 #ifdef WFC_ENDIAN
 #if WFC_ENDIAN != 0
@@ -117,22 +121,19 @@
 #endif
 
 #define HAVE_TO_MEMORY 1
-#define HAVE_TO_STRING 1
-#define HAVE_TO_WIRE 1
 #define HAVE_TO_ASCII 1
 #define HAVE_TO_JSON 1
-#define HAVE_GET_MEMBER 1
 #define HAVE_FROM_MEMORY 1
 #define ON_ERROR_CANCEL 1
-#define HAVE_ENUM_MAP 1
 #define HAVE_ENUM_NAMES 1
 
 #include "wfccore.h"
 /* wfc support functions not needed */
 
-typedef uint64_t varint_t;
+typedef _ssize_t ssize_t;
+typedef uint32_t varint_t;
 
-typedef int64_t varsint_t;
+typedef int32_t varsint_t;
 
 
 typedef enum {
@@ -216,12 +217,11 @@ size_t parse_ascii_sigtype_t(sigtype_t *, const char *);
 
 typedef uint16_t uartcfg_t;
 typedef uint8_t eventcfg_t;
-class WifiConfig : public Message
+class WifiConfig
 {
 	public:
 	WifiConfig();
 	
-	bool operator != (const WifiConfig &r) const;
 	bool operator == (const WifiConfig &r) const;
 	
 	//! Function for resetting all members to their default values.
@@ -254,27 +254,18 @@ class WifiConfig : public Message
 	ssize_t toMemory(uint8_t *, ssize_t) const;
 	
 	/*!
-	* Serialize the object using a function for transmitting individual bytes.
-	* @param put function to put individual bytes for transmission on the wire
-	*/
-	void toWire(void (*put)(uint8_t)) const;
-	
-	//! Function for serializing the object to a string.
-	void toString(std::string &put) const;
-	
-	/*!
 	* Function for writing a JSON representation of this object to a stream.
 	* @param json stream object the JSON output shall be written to
 	* @indLvl current indention level
 	*/
-	void toJSON(std::ostream &json, unsigned indLvl = 0) const;
+	void toJSON(stream &json, unsigned indLvl = 0) const;
 	
 	/*!
 	* Function for writing an ASCII representation of this object to a stream.
 	* @param o output stream
 	* @param indent initial indention level
 	*/
-	void toASCII(std::ostream &o, size_t indent = 0) const;
+	void toASCII(stream &o, size_t indent = 0) const;
 	
 	/*!
 	* Function for determining the maximum size that the object may need for
@@ -298,7 +289,7 @@ class WifiConfig : public Message
 	//! Function to reset ssid to its default/unset value.
 	void clear_ssid();
 	//! Get value of ssid.
-	const std::string &ssid() const;
+	const estring &ssid() const;
 	/*!
 	* Function for setting ssid using binary data.
 	* @param data pointer to binary data
@@ -306,14 +297,14 @@ class WifiConfig : public Message
 	*/
 	void set_ssid(const void *data, size_t s);
 	//! Set ssid using a constant reference
-	void set_ssid(const std::string &v);
+	void set_ssid(const estring &v);
 	//! Set ssid using a pointer to a null-terminated C-string.
 	void set_ssid(const char *);
 	/*!
 	* Provide mutable access to ssid.
 	* @return pointer to member variable of ssid.
 	*/
-	std::string *mutable_ssid();
+	estring *mutable_ssid();
 	
 	// optional string pass, id 2
 	/*!
@@ -324,7 +315,7 @@ class WifiConfig : public Message
 	//! Function to reset pass to its default/unset value.
 	void clear_pass();
 	//! Get value of pass.
-	const std::string &pass() const;
+	const estring &pass() const;
 	/*!
 	* Function for setting pass using binary data.
 	* @param data pointer to binary data
@@ -332,14 +323,14 @@ class WifiConfig : public Message
 	*/
 	void set_pass(const void *data, size_t s);
 	//! Set pass using a constant reference
-	void set_pass(const std::string &v);
+	void set_pass(const estring &v);
 	//! Set pass using a pointer to a null-terminated C-string.
 	void set_pass(const char *);
 	/*!
 	* Provide mutable access to pass.
 	* @return pointer to member variable of pass.
 	*/
-	std::string *mutable_pass();
+	estring *mutable_pass();
 	
 	// optional bytes mac, id 3
 	/*!
@@ -350,7 +341,7 @@ class WifiConfig : public Message
 	//! Function to reset mac to its default/unset value.
 	void clear_mac();
 	//! Get value of mac.
-	const std::string &mac() const;
+	const estring &mac() const;
 	/*!
 	* Function for setting mac using binary data.
 	* @param data pointer to binary data
@@ -358,12 +349,12 @@ class WifiConfig : public Message
 	*/
 	void set_mac(const void *data, size_t s);
 	//! Set mac using a constant reference
-	void set_mac(const std::string &v);
+	void set_mac(const estring &v);
 	/*!
 	* Provide mutable access to mac.
 	* @return pointer to member variable of mac.
 	*/
-	std::string *mutable_mac();
+	estring *mutable_mac();
 	
 	// required bool activate, id 4
 	//! Get value of activate.
@@ -432,14 +423,12 @@ class WifiConfig : public Message
 	
 	
 	protected:
-	Message *p_getMember(const char *s, const char *e);
-	Message *p_getMember(const char *s, const char *e, unsigned i);
 	//! string ssid, id 1
-	std::string m_ssid;
+	estring m_ssid;
 	//! string pass, id 2
-	std::string m_pass;
+	estring m_pass;
 	//! bytes mac, id 3
-	std::string m_mac;
+	estring m_mac;
 	//! bool activate, id 4
 	bool m_activate;
 	//! fixed32 addr4, id 5
@@ -454,12 +443,11 @@ class WifiConfig : public Message
 };
 
 
-class MQTT : public Message
+class MQTT
 {
 	public:
 	MQTT();
 	
-	bool operator != (const MQTT &r) const;
 	bool operator == (const MQTT &r) const;
 	
 	//! Function for resetting all members to their default values.
@@ -492,27 +480,18 @@ class MQTT : public Message
 	ssize_t toMemory(uint8_t *, ssize_t) const;
 	
 	/*!
-	* Serialize the object using a function for transmitting individual bytes.
-	* @param put function to put individual bytes for transmission on the wire
-	*/
-	void toWire(void (*put)(uint8_t)) const;
-	
-	//! Function for serializing the object to a string.
-	void toString(std::string &put) const;
-	
-	/*!
 	* Function for writing a JSON representation of this object to a stream.
 	* @param json stream object the JSON output shall be written to
 	* @indLvl current indention level
 	*/
-	void toJSON(std::ostream &json, unsigned indLvl = 0) const;
+	void toJSON(stream &json, unsigned indLvl = 0) const;
 	
 	/*!
 	* Function for writing an ASCII representation of this object to a stream.
 	* @param o output stream
 	* @param indent initial indention level
 	*/
-	void toASCII(std::ostream &o, size_t indent = 0) const;
+	void toASCII(stream &o, size_t indent = 0) const;
 	
 	/*!
 	* Function for determining the maximum size that the object may need for
@@ -536,7 +515,7 @@ class MQTT : public Message
 	//! Function to reset uri to its default/unset value.
 	void clear_uri();
 	//! Get value of uri.
-	const std::string &uri() const;
+	const estring &uri() const;
 	/*!
 	* Function for setting uri using binary data.
 	* @param data pointer to binary data
@@ -544,14 +523,14 @@ class MQTT : public Message
 	*/
 	void set_uri(const void *data, size_t s);
 	//! Set uri using a constant reference
-	void set_uri(const std::string &v);
+	void set_uri(const estring &v);
 	//! Set uri using a pointer to a null-terminated C-string.
 	void set_uri(const char *);
 	/*!
 	* Provide mutable access to uri.
 	* @return pointer to member variable of uri.
 	*/
-	std::string *mutable_uri();
+	estring *mutable_uri();
 	
 	// optional bool enable, id 2
 	/*!
@@ -580,7 +559,7 @@ class MQTT : public Message
 	//! Function to reset username to its default/unset value.
 	void clear_username();
 	//! Get value of username.
-	const std::string &username() const;
+	const estring &username() const;
 	/*!
 	* Function for setting username using binary data.
 	* @param data pointer to binary data
@@ -588,14 +567,14 @@ class MQTT : public Message
 	*/
 	void set_username(const void *data, size_t s);
 	//! Set username using a constant reference
-	void set_username(const std::string &v);
+	void set_username(const estring &v);
 	//! Set username using a pointer to a null-terminated C-string.
 	void set_username(const char *);
 	/*!
 	* Provide mutable access to username.
 	* @return pointer to member variable of username.
 	*/
-	std::string *mutable_username();
+	estring *mutable_username();
 	
 	// optional string password, id 4
 	/*!
@@ -606,7 +585,7 @@ class MQTT : public Message
 	//! Function to reset password to its default/unset value.
 	void clear_password();
 	//! Get value of password.
-	const std::string &password() const;
+	const estring &password() const;
 	/*!
 	* Function for setting password using binary data.
 	* @param data pointer to binary data
@@ -614,64 +593,61 @@ class MQTT : public Message
 	*/
 	void set_password(const void *data, size_t s);
 	//! Set password using a constant reference
-	void set_password(const std::string &v);
+	void set_password(const estring &v);
 	//! Set password using a pointer to a null-terminated C-string.
 	void set_password(const char *);
 	/*!
 	* Provide mutable access to password.
 	* @return pointer to member variable of password.
 	*/
-	std::string *mutable_password();
+	estring *mutable_password();
 	
 	// repeated string subscribtions, id 5
 	//! Function get const-access to the elements of subscribtions.
-	const std::vector<std::string> &subscribtions() const;
+	const std::vector<estring> &subscribtions() const;
 	//! Function to get the number of elements in subscribtions.
 	size_t subscribtions_size() const;
 	/*!
 	* Function to append a element to subscribtions.
 	* @return point to newly added element.
 	*/
-	void add_subscribtions(const std::string &v);
+	void add_subscribtions(const estring &v);
 	//! Function to append an element to subscribtions initialized by a C-string.
 	void add_subscribtions(const char*);
 	//! Function to reset subscribtions to its default/unset value.
 	void clear_subscribtions();
 	//! Get value of element x of subscribtions.
-	const std::string &subscribtions(unsigned x) const;
+	const estring &subscribtions(unsigned x) const;
 	//! Set subscribtions using a constant reference
-	void set_subscribtions(unsigned x, const std::string &v);
+	void set_subscribtions(unsigned x, const estring &v);
 	/*!
 	* Provide mutable access to subscribtions.
 	* @return pointer to member variable of subscribtions.
 	*/
-	std::string *mutable_subscribtions(unsigned x);
+	estring *mutable_subscribtions(unsigned x);
 	//! Function to get mutable access to all elements of subscribtions.
-	std::vector<std::string> *mutable_subscribtions();
+	std::vector<estring> *mutable_subscribtions();
 	
 	
 	protected:
-	Message *p_getMember(const char *s, const char *e);
-	Message *p_getMember(const char *s, const char *e, unsigned i);
 	//! string uri, id 1
-	std::string m_uri;
+	estring m_uri;
 	//! bool enable, id 2
 	bool m_enable;
 	//! string username, id 3
-	std::string m_username;
+	estring m_username;
 	//! string password, id 4
-	std::string m_password;
+	estring m_password;
 	//! string subscribtions, id 5
-	std::vector<std::string> m_subscribtions;
+	std::vector<estring> m_subscribtions;
 };
 
 
-class Date : public Message
+class Date
 {
 	public:
 	Date();
 	
-	bool operator != (const Date &r) const;
 	bool operator == (const Date &r) const;
 	
 	//! Function for resetting all members to their default values.
@@ -704,27 +680,18 @@ class Date : public Message
 	ssize_t toMemory(uint8_t *, ssize_t) const;
 	
 	/*!
-	* Serialize the object using a function for transmitting individual bytes.
-	* @param put function to put individual bytes for transmission on the wire
-	*/
-	void toWire(void (*put)(uint8_t)) const;
-	
-	//! Function for serializing the object to a string.
-	void toString(std::string &put) const;
-	
-	/*!
 	* Function for writing a JSON representation of this object to a stream.
 	* @param json stream object the JSON output shall be written to
 	* @indLvl current indention level
 	*/
-	void toJSON(std::ostream &json, unsigned indLvl = 0) const;
+	void toJSON(stream &json, unsigned indLvl = 0) const;
 	
 	/*!
 	* Function for writing an ASCII representation of this object to a stream.
 	* @param o output stream
 	* @param indent initial indention level
 	*/
-	void toASCII(std::ostream &o, size_t indent = 0) const;
+	void toASCII(stream &o, size_t indent = 0) const;
 	
 	/*!
 	* Function for determining the maximum size that the object may need for
@@ -849,8 +816,6 @@ class Date : public Message
 	
 	
 	protected:
-	Message *p_getMember(const char *s, const char *e);
-	Message *p_getMember(const char *s, const char *e, unsigned i);
 	//! fixed8 day, id 1
 	uint8_t m_day;
 	//! fixed8 month, id 2
@@ -866,12 +831,11 @@ class Date : public Message
 };
 
 
-class AtAction : public Message
+class AtAction
 {
 	public:
 	AtAction();
 	
-	bool operator != (const AtAction &r) const;
 	bool operator == (const AtAction &r) const;
 	
 	//! Function for resetting all members to their default values.
@@ -904,27 +868,18 @@ class AtAction : public Message
 	ssize_t toMemory(uint8_t *, ssize_t) const;
 	
 	/*!
-	* Serialize the object using a function for transmitting individual bytes.
-	* @param put function to put individual bytes for transmission on the wire
-	*/
-	void toWire(void (*put)(uint8_t)) const;
-	
-	//! Function for serializing the object to a string.
-	void toString(std::string &put) const;
-	
-	/*!
 	* Function for writing a JSON representation of this object to a stream.
 	* @param json stream object the JSON output shall be written to
 	* @indLvl current indention level
 	*/
-	void toJSON(std::ostream &json, unsigned indLvl = 0) const;
+	void toJSON(stream &json, unsigned indLvl = 0) const;
 	
 	/*!
 	* Function for writing an ASCII representation of this object to a stream.
 	* @param o output stream
 	* @param indent initial indention level
 	*/
-	void toASCII(std::ostream &o, size_t indent = 0) const;
+	void toASCII(stream &o, size_t indent = 0) const;
 	
 	/*!
 	* Function for determining the maximum size that the object may need for
@@ -966,14 +921,14 @@ class AtAction : public Message
 	//! Function to reset min_of_day to its default/unset value.
 	void clear_min_of_day();
 	//! Get value of min_of_day.
-	uint64_t min_of_day() const;
+	uint32_t min_of_day() const;
 	//! Set min_of_day using a constant reference
-	void set_min_of_day(uint64_t v);
+	void set_min_of_day(uint32_t v);
 	/*!
 	* Provide mutable access to min_of_day.
 	* @return pointer to member variable of min_of_day.
 	*/
-	uint64_t *mutable_min_of_day();
+	uint32_t *mutable_min_of_day();
 	
 	// optional string action, id 3
 	/*!
@@ -984,7 +939,7 @@ class AtAction : public Message
 	//! Function to reset action to its default/unset value.
 	void clear_action();
 	//! Get value of action.
-	const std::string &action() const;
+	const estring &action() const;
 	/*!
 	* Function for setting action using binary data.
 	* @param data pointer to binary data
@@ -992,14 +947,14 @@ class AtAction : public Message
 	*/
 	void set_action(const void *data, size_t s);
 	//! Set action using a constant reference
-	void set_action(const std::string &v);
+	void set_action(const estring &v);
 	//! Set action using a pointer to a null-terminated C-string.
 	void set_action(const char *);
 	/*!
 	* Provide mutable access to action.
 	* @return pointer to member variable of action.
 	*/
-	std::string *mutable_action();
+	estring *mutable_action();
 	
 	// required bool enable, id 4
 	//! Get value of enable.
@@ -1014,14 +969,12 @@ class AtAction : public Message
 	
 	
 	protected:
-	Message *p_getMember(const char *s, const char *e);
-	Message *p_getMember(const char *s, const char *e, unsigned i);
 	//! WeekDay day, id 1
 	WeekDay m_day;
 	//! unsigned min_of_day, id 2
-	uint64_t m_min_of_day;
+	uint32_t m_min_of_day;
 	//! string action, id 3
-	std::string m_action;
+	estring m_action;
 	//! bool enable, id 4
 	bool m_enable;
 	
@@ -1030,12 +983,11 @@ class AtAction : public Message
 };
 
 
-class Influx : public Message
+class Influx
 {
 	public:
 	Influx();
 	
-	bool operator != (const Influx &r) const;
 	bool operator == (const Influx &r) const;
 	
 	//! Function for resetting all members to their default values.
@@ -1068,27 +1020,18 @@ class Influx : public Message
 	ssize_t toMemory(uint8_t *, ssize_t) const;
 	
 	/*!
-	* Serialize the object using a function for transmitting individual bytes.
-	* @param put function to put individual bytes for transmission on the wire
-	*/
-	void toWire(void (*put)(uint8_t)) const;
-	
-	//! Function for serializing the object to a string.
-	void toString(std::string &put) const;
-	
-	/*!
 	* Function for writing a JSON representation of this object to a stream.
 	* @param json stream object the JSON output shall be written to
 	* @indLvl current indention level
 	*/
-	void toJSON(std::ostream &json, unsigned indLvl = 0) const;
+	void toJSON(stream &json, unsigned indLvl = 0) const;
 	
 	/*!
 	* Function for writing an ASCII representation of this object to a stream.
 	* @param o output stream
 	* @param indent initial indention level
 	*/
-	void toASCII(std::ostream &o, size_t indent = 0) const;
+	void toASCII(stream &o, size_t indent = 0) const;
 	
 	/*!
 	* Function for determining the maximum size that the object may need for
@@ -1112,7 +1055,7 @@ class Influx : public Message
 	//! Function to reset hostname to its default/unset value.
 	void clear_hostname();
 	//! Get value of hostname.
-	const std::string &hostname() const;
+	const estring &hostname() const;
 	/*!
 	* Function for setting hostname using binary data.
 	* @param data pointer to binary data
@@ -1120,14 +1063,14 @@ class Influx : public Message
 	*/
 	void set_hostname(const void *data, size_t s);
 	//! Set hostname using a constant reference
-	void set_hostname(const std::string &v);
+	void set_hostname(const estring &v);
 	//! Set hostname using a pointer to a null-terminated C-string.
 	void set_hostname(const char *);
 	/*!
 	* Provide mutable access to hostname.
 	* @return pointer to member variable of hostname.
 	*/
-	std::string *mutable_hostname();
+	estring *mutable_hostname();
 	
 	// optional fixed16 port, id 2
 	/*!
@@ -1156,7 +1099,7 @@ class Influx : public Message
 	//! Function to reset measurement to its default/unset value.
 	void clear_measurement();
 	//! Get value of measurement.
-	const std::string &measurement() const;
+	const estring &measurement() const;
 	/*!
 	* Function for setting measurement using binary data.
 	* @param data pointer to binary data
@@ -1164,14 +1107,14 @@ class Influx : public Message
 	*/
 	void set_measurement(const void *data, size_t s);
 	//! Set measurement using a constant reference
-	void set_measurement(const std::string &v);
+	void set_measurement(const estring &v);
 	//! Set measurement using a pointer to a null-terminated C-string.
 	void set_measurement(const char *);
 	/*!
 	* Provide mutable access to measurement.
 	* @return pointer to member variable of measurement.
 	*/
-	std::string *mutable_measurement();
+	estring *mutable_measurement();
 	
 	// obsolete optional unsigned interval, id 4
 	// optional string database, id 5
@@ -1183,7 +1126,7 @@ class Influx : public Message
 	//! Function to reset database to its default/unset value.
 	void clear_database();
 	//! Get value of database.
-	const std::string &database() const;
+	const estring &database() const;
 	/*!
 	* Function for setting database using binary data.
 	* @param data pointer to binary data
@@ -1191,37 +1134,34 @@ class Influx : public Message
 	*/
 	void set_database(const void *data, size_t s);
 	//! Set database using a constant reference
-	void set_database(const std::string &v);
+	void set_database(const estring &v);
 	//! Set database using a pointer to a null-terminated C-string.
 	void set_database(const char *);
 	/*!
 	* Provide mutable access to database.
 	* @return pointer to member variable of database.
 	*/
-	std::string *mutable_database();
+	estring *mutable_database();
 	
 	
 	protected:
-	Message *p_getMember(const char *s, const char *e);
-	Message *p_getMember(const char *s, const char *e, unsigned i);
 	//! string hostname, id 1
-	std::string m_hostname;
+	estring m_hostname;
 	//! fixed16 port, id 2
 	uint16_t m_port;
 	//! string measurement, id 3
-	std::string m_measurement;
+	estring m_measurement;
 	// omitted obsolete member interval
 	//! string database, id 5
-	std::string m_database;
+	estring m_database;
 };
 
 
-class UartSettings : public Message
+class UartSettings
 {
 	public:
 	UartSettings();
 	
-	bool operator != (const UartSettings &r) const;
 	bool operator == (const UartSettings &r) const;
 	
 	//! Function for resetting all members to their default values.
@@ -1254,27 +1194,18 @@ class UartSettings : public Message
 	ssize_t toMemory(uint8_t *, ssize_t) const;
 	
 	/*!
-	* Serialize the object using a function for transmitting individual bytes.
-	* @param put function to put individual bytes for transmission on the wire
-	*/
-	void toWire(void (*put)(uint8_t)) const;
-	
-	//! Function for serializing the object to a string.
-	void toString(std::string &put) const;
-	
-	/*!
 	* Function for writing a JSON representation of this object to a stream.
 	* @param json stream object the JSON output shall be written to
 	* @indLvl current indention level
 	*/
-	void toJSON(std::ostream &json, unsigned indLvl = 0) const;
+	void toJSON(stream &json, unsigned indLvl = 0) const;
 	
 	/*!
 	* Function for writing an ASCII representation of this object to a stream.
 	* @param o output stream
 	* @param indent initial indention level
 	*/
-	void toASCII(std::ostream &o, size_t indent = 0) const;
+	void toASCII(stream &o, size_t indent = 0) const;
 	
 	/*!
 	* Function for determining the maximum size that the object may need for
@@ -1316,14 +1247,14 @@ class UartSettings : public Message
 	//! Function to reset baudrate to its default/unset value.
 	void clear_baudrate();
 	//! Get value of baudrate.
-	uint64_t baudrate() const;
+	uint32_t baudrate() const;
 	//! Set baudrate using a constant reference
-	void set_baudrate(uint64_t v);
+	void set_baudrate(uint32_t v);
 	/*!
 	* Provide mutable access to baudrate.
 	* @return pointer to member variable of baudrate.
 	*/
-	uint64_t *mutable_baudrate();
+	uint32_t *mutable_baudrate();
 	
 	// optional uartcfg_t config, id 3
 	/*!
@@ -1394,14 +1325,14 @@ class UartSettings : public Message
 	//! Function to reset tx_bufsize to its default/unset value.
 	void clear_tx_bufsize();
 	//! Get value of tx_bufsize.
-	uint64_t tx_bufsize() const;
+	uint32_t tx_bufsize() const;
 	//! Set tx_bufsize using a constant reference
-	void set_tx_bufsize(uint64_t v);
+	void set_tx_bufsize(uint32_t v);
 	/*!
 	* Provide mutable access to tx_bufsize.
 	* @return pointer to member variable of tx_bufsize.
 	*/
-	uint64_t *mutable_tx_bufsize();
+	uint32_t *mutable_tx_bufsize();
 	
 	// optional unsigned rx_bufsize, id 7
 	/*!
@@ -1412,43 +1343,40 @@ class UartSettings : public Message
 	//! Function to reset rx_bufsize to its default/unset value.
 	void clear_rx_bufsize();
 	//! Get value of rx_bufsize.
-	uint64_t rx_bufsize() const;
+	uint32_t rx_bufsize() const;
 	//! Set rx_bufsize using a constant reference
-	void set_rx_bufsize(uint64_t v);
+	void set_rx_bufsize(uint32_t v);
 	/*!
 	* Provide mutable access to rx_bufsize.
 	* @return pointer to member variable of rx_bufsize.
 	*/
-	uint64_t *mutable_rx_bufsize();
+	uint32_t *mutable_rx_bufsize();
 	
 	
 	protected:
-	Message *p_getMember(const char *s, const char *e);
-	Message *p_getMember(const char *s, const char *e, unsigned i);
 	//! uint8 port, id 1
 	uint8_t m_port;
 	//! unsigned baudrate, id 2
-	uint64_t m_baudrate;
+	uint32_t m_baudrate;
 	//! uartcfg_t config, id 3
 	uartcfg_t m_config;
 	//! fixed8 rx_thresh, id 4
 	uint8_t m_rx_thresh;
 	//! unsigned tx_bufsize, id 6
-	uint64_t m_tx_bufsize;
+	uint32_t m_tx_bufsize;
 	//! unsigned rx_bufsize, id 7
-	uint64_t m_rx_bufsize;
+	uint32_t m_rx_bufsize;
 	
 	private:
 	uint8_t p_validbits;
 };
 
 
-class FtpHttpConfig : public Message
+class FtpHttpConfig
 {
 	public:
 	FtpHttpConfig();
 	
-	bool operator != (const FtpHttpConfig &r) const;
 	bool operator == (const FtpHttpConfig &r) const;
 	
 	//! Function for resetting all members to their default values.
@@ -1481,27 +1409,18 @@ class FtpHttpConfig : public Message
 	ssize_t toMemory(uint8_t *, ssize_t) const;
 	
 	/*!
-	* Serialize the object using a function for transmitting individual bytes.
-	* @param put function to put individual bytes for transmission on the wire
-	*/
-	void toWire(void (*put)(uint8_t)) const;
-	
-	//! Function for serializing the object to a string.
-	void toString(std::string &put) const;
-	
-	/*!
 	* Function for writing a JSON representation of this object to a stream.
 	* @param json stream object the JSON output shall be written to
 	* @indLvl current indention level
 	*/
-	void toJSON(std::ostream &json, unsigned indLvl = 0) const;
+	void toJSON(stream &json, unsigned indLvl = 0) const;
 	
 	/*!
 	* Function for writing an ASCII representation of this object to a stream.
 	* @param o output stream
 	* @param indent initial indention level
 	*/
-	void toASCII(std::ostream &o, size_t indent = 0) const;
+	void toASCII(stream &o, size_t indent = 0) const;
 	
 	/*!
 	* Function for determining the maximum size that the object may need for
@@ -1561,7 +1480,7 @@ class FtpHttpConfig : public Message
 	//! Function to reset root to its default/unset value.
 	void clear_root();
 	//! Get value of root.
-	const std::string &root() const;
+	const estring &root() const;
 	/*!
 	* Function for setting root using binary data.
 	* @param data pointer to binary data
@@ -1569,14 +1488,14 @@ class FtpHttpConfig : public Message
 	*/
 	void set_root(const void *data, size_t s);
 	//! Set root using a constant reference
-	void set_root(const std::string &v);
+	void set_root(const estring &v);
 	//! Set root using a pointer to a null-terminated C-string.
 	void set_root(const char *);
 	/*!
 	* Provide mutable access to root.
 	* @return pointer to member variable of root.
 	*/
-	std::string *mutable_root();
+	estring *mutable_root();
 	
 	// optional string uploaddir, id 4
 	/*!
@@ -1587,7 +1506,7 @@ class FtpHttpConfig : public Message
 	//! Function to reset uploaddir to its default/unset value.
 	void clear_uploaddir();
 	//! Get value of uploaddir.
-	const std::string &uploaddir() const;
+	const estring &uploaddir() const;
 	/*!
 	* Function for setting uploaddir using binary data.
 	* @param data pointer to binary data
@@ -1595,39 +1514,36 @@ class FtpHttpConfig : public Message
 	*/
 	void set_uploaddir(const void *data, size_t s);
 	//! Set uploaddir using a constant reference
-	void set_uploaddir(const std::string &v);
+	void set_uploaddir(const estring &v);
 	//! Set uploaddir using a pointer to a null-terminated C-string.
 	void set_uploaddir(const char *);
 	/*!
 	* Provide mutable access to uploaddir.
 	* @return pointer to member variable of uploaddir.
 	*/
-	std::string *mutable_uploaddir();
+	estring *mutable_uploaddir();
 	
 	
 	protected:
-	Message *p_getMember(const char *s, const char *e);
-	Message *p_getMember(const char *s, const char *e, unsigned i);
 	//! fixed16 port, id 1
 	uint16_t m_port;
 	//! bool start, id 2
 	bool m_start;
 	//! string root, id 3
-	std::string m_root;
+	estring m_root;
 	//! string uploaddir, id 4
-	std::string m_uploaddir;
+	estring m_uploaddir;
 	
 	private:
 	uint8_t p_validbits;
 };
 
 
-class TerminalConfig : public Message
+class TerminalConfig
 {
 	public:
 	TerminalConfig();
 	
-	bool operator != (const TerminalConfig &r) const;
 	bool operator == (const TerminalConfig &r) const;
 	
 	//! Function for resetting all members to their default values.
@@ -1660,27 +1576,18 @@ class TerminalConfig : public Message
 	ssize_t toMemory(uint8_t *, ssize_t) const;
 	
 	/*!
-	* Serialize the object using a function for transmitting individual bytes.
-	* @param put function to put individual bytes for transmission on the wire
-	*/
-	void toWire(void (*put)(uint8_t)) const;
-	
-	//! Function for serializing the object to a string.
-	void toString(std::string &put) const;
-	
-	/*!
 	* Function for writing a JSON representation of this object to a stream.
 	* @param json stream object the JSON output shall be written to
 	* @indLvl current indention level
 	*/
-	void toJSON(std::ostream &json, unsigned indLvl = 0) const;
+	void toJSON(stream &json, unsigned indLvl = 0) const;
 	
 	/*!
 	* Function for writing an ASCII representation of this object to a stream.
 	* @param o output stream
 	* @param indent initial indention level
 	*/
-	void toASCII(std::ostream &o, size_t indent = 0) const;
+	void toASCII(stream &o, size_t indent = 0) const;
 	
 	/*!
 	* Function for determining the maximum size that the object may need for
@@ -1740,7 +1647,7 @@ class TerminalConfig : public Message
 	//! Function to reset name to its default/unset value.
 	void clear_name();
 	//! Get value of name.
-	const std::string &name() const;
+	const estring &name() const;
 	/*!
 	* Function for setting name using binary data.
 	* @param data pointer to binary data
@@ -1748,37 +1655,34 @@ class TerminalConfig : public Message
 	*/
 	void set_name(const void *data, size_t s);
 	//! Set name using a constant reference
-	void set_name(const std::string &v);
+	void set_name(const estring &v);
 	//! Set name using a pointer to a null-terminated C-string.
 	void set_name(const char *);
 	/*!
 	* Provide mutable access to name.
 	* @return pointer to member variable of name.
 	*/
-	std::string *mutable_name();
+	estring *mutable_name();
 	
 	
 	protected:
-	Message *p_getMember(const char *s, const char *e);
-	Message *p_getMember(const char *s, const char *e, unsigned i);
 	//! sint8 uart_rx, id 1
 	int8_t m_uart_rx;
 	//! sint8 uart_tx, id 2
 	int8_t m_uart_tx;
 	//! string name, id 3
-	std::string m_name;
+	estring m_name;
 	
 	private:
 	uint8_t p_validbits;
 };
 
 
-class Trigger : public Message
+class Trigger
 {
 	public:
 	Trigger();
 	
-	bool operator != (const Trigger &r) const;
 	bool operator == (const Trigger &r) const;
 	
 	//! Function for resetting all members to their default values.
@@ -1811,27 +1715,18 @@ class Trigger : public Message
 	ssize_t toMemory(uint8_t *, ssize_t) const;
 	
 	/*!
-	* Serialize the object using a function for transmitting individual bytes.
-	* @param put function to put individual bytes for transmission on the wire
-	*/
-	void toWire(void (*put)(uint8_t)) const;
-	
-	//! Function for serializing the object to a string.
-	void toString(std::string &put) const;
-	
-	/*!
 	* Function for writing a JSON representation of this object to a stream.
 	* @param json stream object the JSON output shall be written to
 	* @indLvl current indention level
 	*/
-	void toJSON(std::ostream &json, unsigned indLvl = 0) const;
+	void toJSON(stream &json, unsigned indLvl = 0) const;
 	
 	/*!
 	* Function for writing an ASCII representation of this object to a stream.
 	* @param o output stream
 	* @param indent initial indention level
 	*/
-	void toASCII(std::ostream &o, size_t indent = 0) const;
+	void toASCII(stream &o, size_t indent = 0) const;
 	
 	/*!
 	* Function for determining the maximum size that the object may need for
@@ -1855,7 +1750,7 @@ class Trigger : public Message
 	//! Function to reset event to its default/unset value.
 	void clear_event();
 	//! Get value of event.
-	const std::string &event() const;
+	const estring &event() const;
 	/*!
 	* Function for setting event using binary data.
 	* @param data pointer to binary data
@@ -1863,61 +1758,58 @@ class Trigger : public Message
 	*/
 	void set_event(const void *data, size_t s);
 	//! Set event using a constant reference
-	void set_event(const std::string &v);
+	void set_event(const estring &v);
 	//! Set event using a pointer to a null-terminated C-string.
 	void set_event(const char *);
 	/*!
 	* Provide mutable access to event.
 	* @return pointer to member variable of event.
 	*/
-	std::string *mutable_event();
+	estring *mutable_event();
 	
 	// repeated string action, id 2
 	//! Function get const-access to the elements of action.
-	const std::vector<std::string> &action() const;
+	const std::vector<estring> &action() const;
 	//! Function to get the number of elements in action.
 	size_t action_size() const;
 	/*!
 	* Function to append a element to action.
 	* @return point to newly added element.
 	*/
-	void add_action(const std::string &v);
+	void add_action(const estring &v);
 	//! Function to append an element to action initialized by a C-string.
 	void add_action(const char*);
 	//! Function to reset action to its default/unset value.
 	void clear_action();
 	//! Get value of element x of action.
-	const std::string &action(unsigned x) const;
+	const estring &action(unsigned x) const;
 	//! Set action using a constant reference
-	void set_action(unsigned x, const std::string &v);
+	void set_action(unsigned x, const estring &v);
 	/*!
 	* Provide mutable access to action.
 	* @return pointer to member variable of action.
 	*/
-	std::string *mutable_action(unsigned x);
+	estring *mutable_action(unsigned x);
 	//! Function to get mutable access to all elements of action.
-	std::vector<std::string> *mutable_action();
+	std::vector<estring> *mutable_action();
 	
 	
 	protected:
-	Message *p_getMember(const char *s, const char *e);
-	Message *p_getMember(const char *s, const char *e, unsigned i);
 	//! string event, id 1
-	std::string m_event;
+	estring m_event;
 	//! string action, id 2
-	std::vector<std::string> m_action;
+	std::vector<estring> m_action;
 	
 	private:
 	uint8_t p_validbits;
 };
 
 
-class AppParam : public Message
+class AppParam
 {
 	public:
 	AppParam();
 	
-	bool operator != (const AppParam &r) const;
 	bool operator == (const AppParam &r) const;
 	
 	//! Function for resetting all members to their default values.
@@ -1950,27 +1842,18 @@ class AppParam : public Message
 	ssize_t toMemory(uint8_t *, ssize_t) const;
 	
 	/*!
-	* Serialize the object using a function for transmitting individual bytes.
-	* @param put function to put individual bytes for transmission on the wire
-	*/
-	void toWire(void (*put)(uint8_t)) const;
-	
-	//! Function for serializing the object to a string.
-	void toString(std::string &put) const;
-	
-	/*!
 	* Function for writing a JSON representation of this object to a stream.
 	* @param json stream object the JSON output shall be written to
 	* @indLvl current indention level
 	*/
-	void toJSON(std::ostream &json, unsigned indLvl = 0) const;
+	void toJSON(stream &json, unsigned indLvl = 0) const;
 	
 	/*!
 	* Function for writing an ASCII representation of this object to a stream.
 	* @param o output stream
 	* @param indent initial indention level
 	*/
-	void toASCII(std::ostream &o, size_t indent = 0) const;
+	void toASCII(stream &o, size_t indent = 0) const;
 	
 	/*!
 	* Function for determining the maximum size that the object may need for
@@ -1994,7 +1877,7 @@ class AppParam : public Message
 	//! Function to reset key to its default/unset value.
 	void clear_key();
 	//! Get value of key.
-	const std::string &key() const;
+	const estring &key() const;
 	/*!
 	* Function for setting key using binary data.
 	* @param data pointer to binary data
@@ -2002,14 +1885,14 @@ class AppParam : public Message
 	*/
 	void set_key(const void *data, size_t s);
 	//! Set key using a constant reference
-	void set_key(const std::string &v);
+	void set_key(const estring &v);
 	//! Set key using a pointer to a null-terminated C-string.
 	void set_key(const char *);
 	/*!
 	* Provide mutable access to key.
 	* @return pointer to member variable of key.
 	*/
-	std::string *mutable_key();
+	estring *mutable_key();
 	
 	// optional unsigned uValue, id 2
 	/*!
@@ -2020,14 +1903,14 @@ class AppParam : public Message
 	//! Function to reset uValue to its default/unset value.
 	void clear_uValue();
 	//! Get value of uValue.
-	uint64_t uValue() const;
+	uint32_t uValue() const;
 	//! Set uValue using a constant reference
-	void set_uValue(uint64_t v);
+	void set_uValue(uint32_t v);
 	/*!
 	* Provide mutable access to uValue.
 	* @return pointer to member variable of uValue.
 	*/
-	uint64_t *mutable_uValue();
+	uint32_t *mutable_uValue();
 	
 	// optional string sValue, id 3
 	/*!
@@ -2038,7 +1921,7 @@ class AppParam : public Message
 	//! Function to reset sValue to its default/unset value.
 	void clear_sValue();
 	//! Get value of sValue.
-	const std::string &sValue() const;
+	const estring &sValue() const;
 	/*!
 	* Function for setting sValue using binary data.
 	* @param data pointer to binary data
@@ -2046,14 +1929,14 @@ class AppParam : public Message
 	*/
 	void set_sValue(const void *data, size_t s);
 	//! Set sValue using a constant reference
-	void set_sValue(const std::string &v);
+	void set_sValue(const estring &v);
 	//! Set sValue using a pointer to a null-terminated C-string.
 	void set_sValue(const char *);
 	/*!
 	* Provide mutable access to sValue.
 	* @return pointer to member variable of sValue.
 	*/
-	std::string *mutable_sValue();
+	estring *mutable_sValue();
 	
 	// optional signed dValue, id 4
 	/*!
@@ -2064,14 +1947,14 @@ class AppParam : public Message
 	//! Function to reset dValue to its default/unset value.
 	void clear_dValue();
 	//! Get value of dValue.
-	int64_t dValue() const;
+	int32_t dValue() const;
 	//! Set dValue using a constant reference
-	void set_dValue(int64_t v);
+	void set_dValue(int32_t v);
 	/*!
 	* Provide mutable access to dValue.
 	* @return pointer to member variable of dValue.
 	*/
-	int64_t *mutable_dValue();
+	int32_t *mutable_dValue();
 	
 	// optional double fValue, id 5
 	/*!
@@ -2093,16 +1976,14 @@ class AppParam : public Message
 	
 	
 	protected:
-	Message *p_getMember(const char *s, const char *e);
-	Message *p_getMember(const char *s, const char *e, unsigned i);
 	//! string key, id 1
-	std::string m_key;
+	estring m_key;
 	//! unsigned uValue, id 2
-	uint64_t m_uValue;
+	uint32_t m_uValue;
 	//! string sValue, id 3
-	std::string m_sValue;
+	estring m_sValue;
 	//! signed dValue, id 4
-	int64_t m_dValue;
+	int32_t m_dValue;
 	//! double fValue, id 5
 	double m_fValue;
 	
@@ -2111,12 +1992,11 @@ class AppParam : public Message
 };
 
 
-class EventTimer : public Message
+class EventTimer
 {
 	public:
 	EventTimer();
 	
-	bool operator != (const EventTimer &r) const;
 	bool operator == (const EventTimer &r) const;
 	
 	//! Function for resetting all members to their default values.
@@ -2149,27 +2029,18 @@ class EventTimer : public Message
 	ssize_t toMemory(uint8_t *, ssize_t) const;
 	
 	/*!
-	* Serialize the object using a function for transmitting individual bytes.
-	* @param put function to put individual bytes for transmission on the wire
-	*/
-	void toWire(void (*put)(uint8_t)) const;
-	
-	//! Function for serializing the object to a string.
-	void toString(std::string &put) const;
-	
-	/*!
 	* Function for writing a JSON representation of this object to a stream.
 	* @param json stream object the JSON output shall be written to
 	* @indLvl current indention level
 	*/
-	void toJSON(std::ostream &json, unsigned indLvl = 0) const;
+	void toJSON(stream &json, unsigned indLvl = 0) const;
 	
 	/*!
 	* Function for writing an ASCII representation of this object to a stream.
 	* @param o output stream
 	* @param indent initial indention level
 	*/
-	void toASCII(std::ostream &o, size_t indent = 0) const;
+	void toASCII(stream &o, size_t indent = 0) const;
 	
 	/*!
 	* Function for determining the maximum size that the object may need for
@@ -2193,7 +2064,7 @@ class EventTimer : public Message
 	//! Function to reset name to its default/unset value.
 	void clear_name();
 	//! Get value of name.
-	const std::string &name() const;
+	const estring &name() const;
 	/*!
 	* Function for setting name using binary data.
 	* @param data pointer to binary data
@@ -2201,14 +2072,14 @@ class EventTimer : public Message
 	*/
 	void set_name(const void *data, size_t s);
 	//! Set name using a constant reference
-	void set_name(const std::string &v);
+	void set_name(const estring &v);
 	//! Set name using a pointer to a null-terminated C-string.
 	void set_name(const char *);
 	/*!
 	* Provide mutable access to name.
 	* @return pointer to member variable of name.
 	*/
-	std::string *mutable_name();
+	estring *mutable_name();
 	
 	// optional unsigned time, id 2
 	/*!
@@ -2219,14 +2090,14 @@ class EventTimer : public Message
 	//! Function to reset time to its default/unset value.
 	void clear_time();
 	//! Get value of time.
-	uint64_t time() const;
+	uint32_t time() const;
 	//! Set time using a constant reference
-	void set_time(uint64_t v);
+	void set_time(uint32_t v);
 	/*!
 	* Provide mutable access to time.
 	* @return pointer to member variable of time.
 	*/
-	uint64_t *mutable_time();
+	uint32_t *mutable_time();
 	
 	// optional eventcfg_t config, id 3
 	/*!
@@ -2256,12 +2127,10 @@ class EventTimer : public Message
 	
 	
 	protected:
-	Message *p_getMember(const char *s, const char *e);
-	Message *p_getMember(const char *s, const char *e, unsigned i);
 	//! string name, id 1
-	std::string m_name;
+	estring m_name;
 	//! unsigned time, id 2
-	uint64_t m_time;
+	uint32_t m_time;
 	//! eventcfg_t config, id 3
 	eventcfg_t m_config;
 	
@@ -2270,12 +2139,11 @@ class EventTimer : public Message
 };
 
 
-class FunctionConfig : public Message
+class FunctionConfig
 {
 	public:
 	FunctionConfig();
 	
-	bool operator != (const FunctionConfig &r) const;
 	bool operator == (const FunctionConfig &r) const;
 	
 	//! Function for resetting all members to their default values.
@@ -2308,27 +2176,18 @@ class FunctionConfig : public Message
 	ssize_t toMemory(uint8_t *, ssize_t) const;
 	
 	/*!
-	* Serialize the object using a function for transmitting individual bytes.
-	* @param put function to put individual bytes for transmission on the wire
-	*/
-	void toWire(void (*put)(uint8_t)) const;
-	
-	//! Function for serializing the object to a string.
-	void toString(std::string &put) const;
-	
-	/*!
 	* Function for writing a JSON representation of this object to a stream.
 	* @param json stream object the JSON output shall be written to
 	* @indLvl current indention level
 	*/
-	void toJSON(std::ostream &json, unsigned indLvl = 0) const;
+	void toJSON(stream &json, unsigned indLvl = 0) const;
 	
 	/*!
 	* Function for writing an ASCII representation of this object to a stream.
 	* @param o output stream
 	* @param indent initial indention level
 	*/
-	void toASCII(std::ostream &o, size_t indent = 0) const;
+	void toASCII(stream &o, size_t indent = 0) const;
 	
 	/*!
 	* Function for determining the maximum size that the object may need for
@@ -2352,7 +2211,7 @@ class FunctionConfig : public Message
 	//! Function to reset name to its default/unset value.
 	void clear_name();
 	//! Get value of name.
-	const std::string &name() const;
+	const estring &name() const;
 	/*!
 	* Function for setting name using binary data.
 	* @param data pointer to binary data
@@ -2360,14 +2219,14 @@ class FunctionConfig : public Message
 	*/
 	void set_name(const void *data, size_t s);
 	//! Set name using a constant reference
-	void set_name(const std::string &v);
+	void set_name(const estring &v);
 	//! Set name using a pointer to a null-terminated C-string.
 	void set_name(const char *);
 	/*!
 	* Provide mutable access to name.
 	* @return pointer to member variable of name.
 	*/
-	std::string *mutable_name();
+	estring *mutable_name();
 	
 	// optional string func, id 2
 	/*!
@@ -2378,7 +2237,7 @@ class FunctionConfig : public Message
 	//! Function to reset func to its default/unset value.
 	void clear_func();
 	//! Get value of func.
-	const std::string &func() const;
+	const estring &func() const;
 	/*!
 	* Function for setting func using binary data.
 	* @param data pointer to binary data
@@ -2386,63 +2245,60 @@ class FunctionConfig : public Message
 	*/
 	void set_func(const void *data, size_t s);
 	//! Set func using a constant reference
-	void set_func(const std::string &v);
+	void set_func(const estring &v);
 	//! Set func using a pointer to a null-terminated C-string.
 	void set_func(const char *);
 	/*!
 	* Provide mutable access to func.
 	* @return pointer to member variable of func.
 	*/
-	std::string *mutable_func();
+	estring *mutable_func();
 	
 	// repeated string params, id 3
 	//! Function get const-access to the elements of params.
-	const std::vector<std::string> &params() const;
+	const std::vector<estring> &params() const;
 	//! Function to get the number of elements in params.
 	size_t params_size() const;
 	/*!
 	* Function to append a element to params.
 	* @return point to newly added element.
 	*/
-	void add_params(const std::string &v);
+	void add_params(const estring &v);
 	//! Function to append an element to params initialized by a C-string.
 	void add_params(const char*);
 	//! Function to reset params to its default/unset value.
 	void clear_params();
 	//! Get value of element x of params.
-	const std::string &params(unsigned x) const;
+	const estring &params(unsigned x) const;
 	//! Set params using a constant reference
-	void set_params(unsigned x, const std::string &v);
+	void set_params(unsigned x, const estring &v);
 	/*!
 	* Provide mutable access to params.
 	* @return pointer to member variable of params.
 	*/
-	std::string *mutable_params(unsigned x);
+	estring *mutable_params(unsigned x);
 	//! Function to get mutable access to all elements of params.
-	std::vector<std::string> *mutable_params();
+	std::vector<estring> *mutable_params();
 	
 	
 	protected:
-	Message *p_getMember(const char *s, const char *e);
-	Message *p_getMember(const char *s, const char *e, unsigned i);
 	//! string name, id 1
-	std::string m_name;
+	estring m_name;
 	//! string func, id 2
-	std::string m_func;
+	estring m_func;
 	//! string params, id 3
-	std::vector<std::string> m_params;
+	std::vector<estring> m_params;
 	
 	private:
 	uint8_t p_validbits;
 };
 
 
-class SignalConfig : public Message
+class SignalConfig
 {
 	public:
 	SignalConfig();
 	
-	bool operator != (const SignalConfig &r) const;
 	bool operator == (const SignalConfig &r) const;
 	
 	//! Function for resetting all members to their default values.
@@ -2475,27 +2331,18 @@ class SignalConfig : public Message
 	ssize_t toMemory(uint8_t *, ssize_t) const;
 	
 	/*!
-	* Serialize the object using a function for transmitting individual bytes.
-	* @param put function to put individual bytes for transmission on the wire
-	*/
-	void toWire(void (*put)(uint8_t)) const;
-	
-	//! Function for serializing the object to a string.
-	void toString(std::string &put) const;
-	
-	/*!
 	* Function for writing a JSON representation of this object to a stream.
 	* @param json stream object the JSON output shall be written to
 	* @indLvl current indention level
 	*/
-	void toJSON(std::ostream &json, unsigned indLvl = 0) const;
+	void toJSON(stream &json, unsigned indLvl = 0) const;
 	
 	/*!
 	* Function for writing an ASCII representation of this object to a stream.
 	* @param o output stream
 	* @param indent initial indention level
 	*/
-	void toASCII(std::ostream &o, size_t indent = 0) const;
+	void toASCII(stream &o, size_t indent = 0) const;
 	
 	/*!
 	* Function for determining the maximum size that the object may need for
@@ -2519,7 +2366,7 @@ class SignalConfig : public Message
 	//! Function to reset name to its default/unset value.
 	void clear_name();
 	//! Get value of name.
-	const std::string &name() const;
+	const estring &name() const;
 	/*!
 	* Function for setting name using binary data.
 	* @param data pointer to binary data
@@ -2527,14 +2374,14 @@ class SignalConfig : public Message
 	*/
 	void set_name(const void *data, size_t s);
 	//! Set name using a constant reference
-	void set_name(const std::string &v);
+	void set_name(const estring &v);
 	//! Set name using a pointer to a null-terminated C-string.
 	void set_name(const char *);
 	/*!
 	* Provide mutable access to name.
 	* @return pointer to member variable of name.
 	*/
-	std::string *mutable_name();
+	estring *mutable_name();
 	
 	// optional sigtype_t type, id 2
 	/*!
@@ -2563,7 +2410,7 @@ class SignalConfig : public Message
 	//! Function to reset iv to its default/unset value.
 	void clear_iv();
 	//! Get value of iv.
-	const std::string &iv() const;
+	const estring &iv() const;
 	/*!
 	* Function for setting iv using binary data.
 	* @param data pointer to binary data
@@ -2571,34 +2418,31 @@ class SignalConfig : public Message
 	*/
 	void set_iv(const void *data, size_t s);
 	//! Set iv using a constant reference
-	void set_iv(const std::string &v);
+	void set_iv(const estring &v);
 	//! Set iv using a pointer to a null-terminated C-string.
 	void set_iv(const char *);
 	/*!
 	* Provide mutable access to iv.
 	* @return pointer to member variable of iv.
 	*/
-	std::string *mutable_iv();
+	estring *mutable_iv();
 	
 	
 	protected:
-	Message *p_getMember(const char *s, const char *e);
-	Message *p_getMember(const char *s, const char *e, unsigned i);
 	//! string name, id 1
-	std::string m_name;
+	estring m_name;
 	//! sigtype_t type, id 2
 	sigtype_t m_type;
 	//! string iv, id 3
-	std::string m_iv;
+	estring m_iv;
 };
 
 
-class OwDeviceConfig : public Message
+class OwDeviceConfig
 {
 	public:
 	OwDeviceConfig();
 	
-	bool operator != (const OwDeviceConfig &r) const;
 	bool operator == (const OwDeviceConfig &r) const;
 	
 	//! Function for resetting all members to their default values.
@@ -2631,27 +2475,18 @@ class OwDeviceConfig : public Message
 	ssize_t toMemory(uint8_t *, ssize_t) const;
 	
 	/*!
-	* Serialize the object using a function for transmitting individual bytes.
-	* @param put function to put individual bytes for transmission on the wire
-	*/
-	void toWire(void (*put)(uint8_t)) const;
-	
-	//! Function for serializing the object to a string.
-	void toString(std::string &put) const;
-	
-	/*!
 	* Function for writing a JSON representation of this object to a stream.
 	* @param json stream object the JSON output shall be written to
 	* @indLvl current indention level
 	*/
-	void toJSON(std::ostream &json, unsigned indLvl = 0) const;
+	void toJSON(stream &json, unsigned indLvl = 0) const;
 	
 	/*!
 	* Function for writing an ASCII representation of this object to a stream.
 	* @param o output stream
 	* @param indent initial indention level
 	*/
-	void toASCII(std::ostream &o, size_t indent = 0) const;
+	void toASCII(stream &o, size_t indent = 0) const;
 	
 	/*!
 	* Function for determining the maximum size that the object may need for
@@ -2693,7 +2528,7 @@ class OwDeviceConfig : public Message
 	//! Function to reset name to its default/unset value.
 	void clear_name();
 	//! Get value of name.
-	const std::string &name() const;
+	const estring &name() const;
 	/*!
 	* Function for setting name using binary data.
 	* @param data pointer to binary data
@@ -2701,35 +2536,32 @@ class OwDeviceConfig : public Message
 	*/
 	void set_name(const void *data, size_t s);
 	//! Set name using a constant reference
-	void set_name(const std::string &v);
+	void set_name(const estring &v);
 	//! Set name using a pointer to a null-terminated C-string.
 	void set_name(const char *);
 	/*!
 	* Provide mutable access to name.
 	* @return pointer to member variable of name.
 	*/
-	std::string *mutable_name();
+	estring *mutable_name();
 	
 	
 	protected:
-	Message *p_getMember(const char *s, const char *e);
-	Message *p_getMember(const char *s, const char *e, unsigned i);
 	//! fixed64 id, id 1
 	uint64_t m_id;
 	//! string name, id 2
-	std::string m_name;
+	estring m_name;
 	
 	private:
 	uint8_t p_validbits;
 };
 
 
-class StateConfig : public Message
+class StateConfig
 {
 	public:
 	StateConfig();
 	
-	bool operator != (const StateConfig &r) const;
 	bool operator == (const StateConfig &r) const;
 	
 	//! Function for resetting all members to their default values.
@@ -2762,27 +2594,18 @@ class StateConfig : public Message
 	ssize_t toMemory(uint8_t *, ssize_t) const;
 	
 	/*!
-	* Serialize the object using a function for transmitting individual bytes.
-	* @param put function to put individual bytes for transmission on the wire
-	*/
-	void toWire(void (*put)(uint8_t)) const;
-	
-	//! Function for serializing the object to a string.
-	void toString(std::string &put) const;
-	
-	/*!
 	* Function for writing a JSON representation of this object to a stream.
 	* @param json stream object the JSON output shall be written to
 	* @indLvl current indention level
 	*/
-	void toJSON(std::ostream &json, unsigned indLvl = 0) const;
+	void toJSON(stream &json, unsigned indLvl = 0) const;
 	
 	/*!
 	* Function for writing an ASCII representation of this object to a stream.
 	* @param o output stream
 	* @param indent initial indention level
 	*/
-	void toASCII(std::ostream &o, size_t indent = 0) const;
+	void toASCII(stream &o, size_t indent = 0) const;
 	
 	/*!
 	* Function for determining the maximum size that the object may need for
@@ -2806,7 +2629,7 @@ class StateConfig : public Message
 	//! Function to reset name to its default/unset value.
 	void clear_name();
 	//! Get value of name.
-	const std::string &name() const;
+	const estring &name() const;
 	/*!
 	* Function for setting name using binary data.
 	* @param data pointer to binary data
@@ -2814,14 +2637,14 @@ class StateConfig : public Message
 	*/
 	void set_name(const void *data, size_t s);
 	//! Set name using a constant reference
-	void set_name(const std::string &v);
+	void set_name(const estring &v);
 	//! Set name using a pointer to a null-terminated C-string.
 	void set_name(const char *);
 	/*!
 	* Provide mutable access to name.
 	* @return pointer to member variable of name.
 	*/
-	std::string *mutable_name();
+	estring *mutable_name();
 	
 	// repeated Trigger conds, id 2
 	//! Function get const-access to the elements of conds.
@@ -2849,10 +2672,8 @@ class StateConfig : public Message
 	
 	
 	protected:
-	Message *p_getMember(const char *s, const char *e);
-	Message *p_getMember(const char *s, const char *e, unsigned i);
 	//! string name, id 1
-	std::string m_name;
+	estring m_name;
 	//! Trigger conds, id 2
 	std::vector<Trigger> m_conds;
 	
@@ -2861,12 +2682,11 @@ class StateConfig : public Message
 };
 
 
-class StateMachineConfig : public Message
+class StateMachineConfig
 {
 	public:
 	StateMachineConfig();
 	
-	bool operator != (const StateMachineConfig &r) const;
 	bool operator == (const StateMachineConfig &r) const;
 	
 	//! Function for resetting all members to their default values.
@@ -2899,27 +2719,18 @@ class StateMachineConfig : public Message
 	ssize_t toMemory(uint8_t *, ssize_t) const;
 	
 	/*!
-	* Serialize the object using a function for transmitting individual bytes.
-	* @param put function to put individual bytes for transmission on the wire
-	*/
-	void toWire(void (*put)(uint8_t)) const;
-	
-	//! Function for serializing the object to a string.
-	void toString(std::string &put) const;
-	
-	/*!
 	* Function for writing a JSON representation of this object to a stream.
 	* @param json stream object the JSON output shall be written to
 	* @indLvl current indention level
 	*/
-	void toJSON(std::ostream &json, unsigned indLvl = 0) const;
+	void toJSON(stream &json, unsigned indLvl = 0) const;
 	
 	/*!
 	* Function for writing an ASCII representation of this object to a stream.
 	* @param o output stream
 	* @param indent initial indention level
 	*/
-	void toASCII(std::ostream &o, size_t indent = 0) const;
+	void toASCII(stream &o, size_t indent = 0) const;
 	
 	/*!
 	* Function for determining the maximum size that the object may need for
@@ -2943,7 +2754,7 @@ class StateMachineConfig : public Message
 	//! Function to reset name to its default/unset value.
 	void clear_name();
 	//! Get value of name.
-	const std::string &name() const;
+	const estring &name() const;
 	/*!
 	* Function for setting name using binary data.
 	* @param data pointer to binary data
@@ -2951,14 +2762,14 @@ class StateMachineConfig : public Message
 	*/
 	void set_name(const void *data, size_t s);
 	//! Set name using a constant reference
-	void set_name(const std::string &v);
+	void set_name(const estring &v);
 	//! Set name using a pointer to a null-terminated C-string.
 	void set_name(const char *);
 	/*!
 	* Provide mutable access to name.
 	* @return pointer to member variable of name.
 	*/
-	std::string *mutable_name();
+	estring *mutable_name();
 	
 	// optional uint8 ini_st, id 2
 	/*!
@@ -3004,10 +2815,8 @@ class StateMachineConfig : public Message
 	
 	
 	protected:
-	Message *p_getMember(const char *s, const char *e);
-	Message *p_getMember(const char *s, const char *e, unsigned i);
 	//! string name, id 1
-	std::string m_name;
+	estring m_name;
 	//! uint8 ini_st, id 2
 	uint8_t m_ini_st;
 	//! StateConfig states, id 3
@@ -3018,12 +2827,11 @@ class StateMachineConfig : public Message
 };
 
 
-class ThresholdConfig : public Message
+class ThresholdConfig
 {
 	public:
 	ThresholdConfig();
 	
-	bool operator != (const ThresholdConfig &r) const;
 	bool operator == (const ThresholdConfig &r) const;
 	
 	//! Function for resetting all members to their default values.
@@ -3056,27 +2864,18 @@ class ThresholdConfig : public Message
 	ssize_t toMemory(uint8_t *, ssize_t) const;
 	
 	/*!
-	* Serialize the object using a function for transmitting individual bytes.
-	* @param put function to put individual bytes for transmission on the wire
-	*/
-	void toWire(void (*put)(uint8_t)) const;
-	
-	//! Function for serializing the object to a string.
-	void toString(std::string &put) const;
-	
-	/*!
 	* Function for writing a JSON representation of this object to a stream.
 	* @param json stream object the JSON output shall be written to
 	* @indLvl current indention level
 	*/
-	void toJSON(std::ostream &json, unsigned indLvl = 0) const;
+	void toJSON(stream &json, unsigned indLvl = 0) const;
 	
 	/*!
 	* Function for writing an ASCII representation of this object to a stream.
 	* @param o output stream
 	* @param indent initial indention level
 	*/
-	void toASCII(std::ostream &o, size_t indent = 0) const;
+	void toASCII(stream &o, size_t indent = 0) const;
 	
 	/*!
 	* Function for determining the maximum size that the object may need for
@@ -3100,7 +2899,7 @@ class ThresholdConfig : public Message
 	//! Function to reset name to its default/unset value.
 	void clear_name();
 	//! Get value of name.
-	const std::string &name() const;
+	const estring &name() const;
 	/*!
 	* Function for setting name using binary data.
 	* @param data pointer to binary data
@@ -3108,14 +2907,14 @@ class ThresholdConfig : public Message
 	*/
 	void set_name(const void *data, size_t s);
 	//! Set name using a constant reference
-	void set_name(const std::string &v);
+	void set_name(const estring &v);
 	//! Set name using a pointer to a null-terminated C-string.
 	void set_name(const char *);
 	/*!
 	* Provide mutable access to name.
 	* @return pointer to member variable of name.
 	*/
-	std::string *mutable_name();
+	estring *mutable_name();
 	
 	// optional float low, id 2
 	/*!
@@ -3155,10 +2954,8 @@ class ThresholdConfig : public Message
 	
 	
 	protected:
-	Message *p_getMember(const char *s, const char *e);
-	Message *p_getMember(const char *s, const char *e, unsigned i);
 	//! string name, id 1
-	std::string m_name;
+	estring m_name;
 	//! float low, id 2
 	float m_low;
 	//! float high, id 3
@@ -3169,12 +2966,11 @@ class ThresholdConfig : public Message
 };
 
 
-class LuaConfig : public Message
+class LuaConfig
 {
 	public:
 	LuaConfig();
 	
-	bool operator != (const LuaConfig &r) const;
 	bool operator == (const LuaConfig &r) const;
 	
 	//! Function for resetting all members to their default values.
@@ -3207,27 +3003,18 @@ class LuaConfig : public Message
 	ssize_t toMemory(uint8_t *, ssize_t) const;
 	
 	/*!
-	* Serialize the object using a function for transmitting individual bytes.
-	* @param put function to put individual bytes for transmission on the wire
-	*/
-	void toWire(void (*put)(uint8_t)) const;
-	
-	//! Function for serializing the object to a string.
-	void toString(std::string &put) const;
-	
-	/*!
 	* Function for writing a JSON representation of this object to a stream.
 	* @param json stream object the JSON output shall be written to
 	* @indLvl current indention level
 	*/
-	void toJSON(std::ostream &json, unsigned indLvl = 0) const;
+	void toJSON(stream &json, unsigned indLvl = 0) const;
 	
 	/*!
 	* Function for writing an ASCII representation of this object to a stream.
 	* @param o output stream
 	* @param indent initial indention level
 	*/
-	void toASCII(std::ostream &o, size_t indent = 0) const;
+	void toASCII(stream &o, size_t indent = 0) const;
 	
 	/*!
 	* Function for determining the maximum size that the object may need for
@@ -3244,73 +3031,70 @@ class LuaConfig : public Message
 	
 	// repeated string init_scripts, id 1
 	//! Function get const-access to the elements of init_scripts.
-	const std::vector<std::string> &init_scripts() const;
+	const std::vector<estring> &init_scripts() const;
 	//! Function to get the number of elements in init_scripts.
 	size_t init_scripts_size() const;
 	/*!
 	* Function to append a element to init_scripts.
 	* @return point to newly added element.
 	*/
-	void add_init_scripts(const std::string &v);
+	void add_init_scripts(const estring &v);
 	//! Function to append an element to init_scripts initialized by a C-string.
 	void add_init_scripts(const char*);
 	//! Function to reset init_scripts to its default/unset value.
 	void clear_init_scripts();
 	//! Get value of element x of init_scripts.
-	const std::string &init_scripts(unsigned x) const;
+	const estring &init_scripts(unsigned x) const;
 	//! Set init_scripts using a constant reference
-	void set_init_scripts(unsigned x, const std::string &v);
+	void set_init_scripts(unsigned x, const estring &v);
 	/*!
 	* Provide mutable access to init_scripts.
 	* @return pointer to member variable of init_scripts.
 	*/
-	std::string *mutable_init_scripts(unsigned x);
+	estring *mutable_init_scripts(unsigned x);
 	//! Function to get mutable access to all elements of init_scripts.
-	std::vector<std::string> *mutable_init_scripts();
+	std::vector<estring> *mutable_init_scripts();
 	
 	// repeated string compile_files, id 2
 	//! Function get const-access to the elements of compile_files.
-	const std::vector<std::string> &compile_files() const;
+	const std::vector<estring> &compile_files() const;
 	//! Function to get the number of elements in compile_files.
 	size_t compile_files_size() const;
 	/*!
 	* Function to append a element to compile_files.
 	* @return point to newly added element.
 	*/
-	void add_compile_files(const std::string &v);
+	void add_compile_files(const estring &v);
 	//! Function to append an element to compile_files initialized by a C-string.
 	void add_compile_files(const char*);
 	//! Function to reset compile_files to its default/unset value.
 	void clear_compile_files();
 	//! Get value of element x of compile_files.
-	const std::string &compile_files(unsigned x) const;
+	const estring &compile_files(unsigned x) const;
 	//! Set compile_files using a constant reference
-	void set_compile_files(unsigned x, const std::string &v);
+	void set_compile_files(unsigned x, const estring &v);
 	/*!
 	* Provide mutable access to compile_files.
 	* @return pointer to member variable of compile_files.
 	*/
-	std::string *mutable_compile_files(unsigned x);
+	estring *mutable_compile_files(unsigned x);
 	//! Function to get mutable access to all elements of compile_files.
-	std::vector<std::string> *mutable_compile_files();
+	std::vector<estring> *mutable_compile_files();
 	
 	
 	protected:
-	Message *p_getMember(const char *s, const char *e);
-	Message *p_getMember(const char *s, const char *e, unsigned i);
 	//! string init_scripts, id 1
-	std::vector<std::string> m_init_scripts;
+	std::vector<estring> m_init_scripts;
 	//! string compile_files, id 2
-	std::vector<std::string> m_compile_files;
+	std::vector<estring> m_compile_files;
 };
 
 
-class NodeConfig : public Message
+class NodeConfig
 {
 	public:
 	NodeConfig();
 	
-	bool operator != (const NodeConfig &r) const;
 	bool operator == (const NodeConfig &r) const;
 	
 	//! Function for resetting all members to their default values.
@@ -3343,27 +3127,18 @@ class NodeConfig : public Message
 	ssize_t toMemory(uint8_t *, ssize_t) const;
 	
 	/*!
-	* Serialize the object using a function for transmitting individual bytes.
-	* @param put function to put individual bytes for transmission on the wire
-	*/
-	void toWire(void (*put)(uint8_t)) const;
-	
-	//! Function for serializing the object to a string.
-	void toString(std::string &put) const;
-	
-	/*!
 	* Function for writing a JSON representation of this object to a stream.
 	* @param json stream object the JSON output shall be written to
 	* @indLvl current indention level
 	*/
-	void toJSON(std::ostream &json, unsigned indLvl = 0) const;
+	void toJSON(stream &json, unsigned indLvl = 0) const;
 	
 	/*!
 	* Function for writing an ASCII representation of this object to a stream.
 	* @param o output stream
 	* @param indent initial indention level
 	*/
-	void toASCII(std::ostream &o, size_t indent = 0) const;
+	void toASCII(stream &o, size_t indent = 0) const;
 	
 	/*!
 	* Function for determining the maximum size that the object may need for
@@ -3405,7 +3180,7 @@ class NodeConfig : public Message
 	//! Function to reset nodename to its default/unset value.
 	void clear_nodename();
 	//! Get value of nodename.
-	const std::string &nodename() const;
+	const estring &nodename() const;
 	/*!
 	* Function for setting nodename using binary data.
 	* @param data pointer to binary data
@@ -3413,14 +3188,14 @@ class NodeConfig : public Message
 	*/
 	void set_nodename(const void *data, size_t s);
 	//! Set nodename using a constant reference
-	void set_nodename(const std::string &v);
+	void set_nodename(const estring &v);
 	//! Set nodename using a pointer to a null-terminated C-string.
 	void set_nodename(const char *);
 	/*!
 	* Provide mutable access to nodename.
 	* @return pointer to member variable of nodename.
 	*/
-	std::string *mutable_nodename();
+	estring *mutable_nodename();
 	
 	// optional bytes pass_hash, id 2
 	/*!
@@ -3431,7 +3206,7 @@ class NodeConfig : public Message
 	//! Function to reset pass_hash to its default/unset value.
 	void clear_pass_hash();
 	//! Get value of pass_hash.
-	const std::string &pass_hash() const;
+	const estring &pass_hash() const;
 	/*!
 	* Function for setting pass_hash using binary data.
 	* @param data pointer to binary data
@@ -3439,12 +3214,12 @@ class NodeConfig : public Message
 	*/
 	void set_pass_hash(const void *data, size_t s);
 	//! Set pass_hash using a constant reference
-	void set_pass_hash(const std::string &v);
+	void set_pass_hash(const estring &v);
 	/*!
 	* Provide mutable access to pass_hash.
 	* @return pointer to member variable of pass_hash.
 	*/
-	std::string *mutable_pass_hash();
+	estring *mutable_pass_hash();
 	
 	// optional unsigned cpu_freq, id 3
 	/*!
@@ -3455,14 +3230,14 @@ class NodeConfig : public Message
 	//! Function to reset cpu_freq to its default/unset value.
 	void clear_cpu_freq();
 	//! Get value of cpu_freq.
-	uint64_t cpu_freq() const;
+	uint32_t cpu_freq() const;
 	//! Set cpu_freq using a constant reference
-	void set_cpu_freq(uint64_t v);
+	void set_cpu_freq(uint32_t v);
 	/*!
 	* Provide mutable access to cpu_freq.
 	* @return pointer to member variable of cpu_freq.
 	*/
-	uint64_t *mutable_cpu_freq();
+	uint32_t *mutable_cpu_freq();
 	
 	// optional WifiConfig station, id 4
 	/*!
@@ -3514,29 +3289,29 @@ class NodeConfig : public Message
 	
 	// repeated string dns_server, id 6
 	//! Function get const-access to the elements of dns_server.
-	const std::vector<std::string> &dns_server() const;
+	const std::vector<estring> &dns_server() const;
 	//! Function to get the number of elements in dns_server.
 	size_t dns_server_size() const;
 	/*!
 	* Function to append a element to dns_server.
 	* @return point to newly added element.
 	*/
-	void add_dns_server(const std::string &v);
+	void add_dns_server(const estring &v);
 	//! Function to append an element to dns_server initialized by a C-string.
 	void add_dns_server(const char*);
 	//! Function to reset dns_server to its default/unset value.
 	void clear_dns_server();
 	//! Get value of element x of dns_server.
-	const std::string &dns_server(unsigned x) const;
+	const estring &dns_server(unsigned x) const;
 	//! Set dns_server using a constant reference
-	void set_dns_server(unsigned x, const std::string &v);
+	void set_dns_server(unsigned x, const estring &v);
 	/*!
 	* Provide mutable access to dns_server.
 	* @return pointer to member variable of dns_server.
 	*/
-	std::string *mutable_dns_server(unsigned x);
+	estring *mutable_dns_server(unsigned x);
 	//! Function to get mutable access to all elements of dns_server.
-	std::vector<std::string> *mutable_dns_server();
+	std::vector<estring> *mutable_dns_server();
 	
 	// optional string syslog_host, id 7
 	/*!
@@ -3547,7 +3322,7 @@ class NodeConfig : public Message
 	//! Function to reset syslog_host to its default/unset value.
 	void clear_syslog_host();
 	//! Get value of syslog_host.
-	const std::string &syslog_host() const;
+	const estring &syslog_host() const;
 	/*!
 	* Function for setting syslog_host using binary data.
 	* @param data pointer to binary data
@@ -3555,14 +3330,14 @@ class NodeConfig : public Message
 	*/
 	void set_syslog_host(const void *data, size_t s);
 	//! Set syslog_host using a constant reference
-	void set_syslog_host(const std::string &v);
+	void set_syslog_host(const estring &v);
 	//! Set syslog_host using a pointer to a null-terminated C-string.
 	void set_syslog_host(const char *);
 	/*!
 	* Provide mutable access to syslog_host.
 	* @return pointer to member variable of syslog_host.
 	*/
-	std::string *mutable_syslog_host();
+	estring *mutable_syslog_host();
 	
 	// optional string sntp_server, id 8
 	/*!
@@ -3573,7 +3348,7 @@ class NodeConfig : public Message
 	//! Function to reset sntp_server to its default/unset value.
 	void clear_sntp_server();
 	//! Get value of sntp_server.
-	const std::string &sntp_server() const;
+	const estring &sntp_server() const;
 	/*!
 	* Function for setting sntp_server using binary data.
 	* @param data pointer to binary data
@@ -3581,14 +3356,14 @@ class NodeConfig : public Message
 	*/
 	void set_sntp_server(const void *data, size_t s);
 	//! Set sntp_server using a constant reference
-	void set_sntp_server(const std::string &v);
+	void set_sntp_server(const estring &v);
 	//! Set sntp_server using a pointer to a null-terminated C-string.
 	void set_sntp_server(const char *);
 	/*!
 	* Provide mutable access to sntp_server.
 	* @return pointer to member variable of sntp_server.
 	*/
-	std::string *mutable_sntp_server();
+	estring *mutable_sntp_server();
 	
 	// optional string timezone, id 9
 	/*!
@@ -3599,7 +3374,7 @@ class NodeConfig : public Message
 	//! Function to reset timezone to its default/unset value.
 	void clear_timezone();
 	//! Get value of timezone.
-	const std::string &timezone() const;
+	const estring &timezone() const;
 	/*!
 	* Function for setting timezone using binary data.
 	* @param data pointer to binary data
@@ -3607,14 +3382,14 @@ class NodeConfig : public Message
 	*/
 	void set_timezone(const void *data, size_t s);
 	//! Set timezone using a constant reference
-	void set_timezone(const std::string &v);
+	void set_timezone(const estring &v);
 	//! Set timezone using a pointer to a null-terminated C-string.
 	void set_timezone(const char *);
 	/*!
 	* Provide mutable access to timezone.
 	* @return pointer to member variable of timezone.
 	*/
-	std::string *mutable_timezone();
+	estring *mutable_timezone();
 	
 	#ifdef CONFIG_MQTT
 	// optional MQTT mqtt, id 10
@@ -3695,14 +3470,14 @@ class NodeConfig : public Message
 	//! Function to reset station2ap_time to its default/unset value.
 	void clear_station2ap_time();
 	//! Get value of station2ap_time.
-	uint64_t station2ap_time() const;
+	uint32_t station2ap_time() const;
 	//! Set station2ap_time using a constant reference
-	void set_station2ap_time(uint64_t v);
+	void set_station2ap_time(uint32_t v);
 	/*!
 	* Provide mutable access to station2ap_time.
 	* @return pointer to member variable of station2ap_time.
 	*/
-	uint64_t *mutable_station2ap_time();
+	uint32_t *mutable_station2ap_time();
 	
 	// optional string domainname, id 15
 	/*!
@@ -3713,7 +3488,7 @@ class NodeConfig : public Message
 	//! Function to reset domainname to its default/unset value.
 	void clear_domainname();
 	//! Get value of domainname.
-	const std::string &domainname() const;
+	const estring &domainname() const;
 	/*!
 	* Function for setting domainname using binary data.
 	* @param data pointer to binary data
@@ -3721,14 +3496,14 @@ class NodeConfig : public Message
 	*/
 	void set_domainname(const void *data, size_t s);
 	//! Set domainname using a constant reference
-	void set_domainname(const std::string &v);
+	void set_domainname(const estring &v);
 	//! Set domainname using a pointer to a null-terminated C-string.
 	void set_domainname(const char *);
 	/*!
 	* Provide mutable access to domainname.
 	* @return pointer to member variable of domainname.
 	*/
-	std::string *mutable_domainname();
+	estring *mutable_domainname();
 	
 	// repeated Date holidays, id 16
 	//! Function get const-access to the elements of holidays.
@@ -3787,14 +3562,14 @@ class NodeConfig : public Message
 	//! Function to reset actions_enable to its default/unset value.
 	void clear_actions_enable();
 	//! Get value of actions_enable.
-	uint64_t actions_enable() const;
+	uint32_t actions_enable() const;
 	//! Set actions_enable using a constant reference
-	void set_actions_enable(uint64_t v);
+	void set_actions_enable(uint32_t v);
 	/*!
 	* Provide mutable access to actions_enable.
 	* @return pointer to member variable of actions_enable.
 	*/
-	uint64_t *mutable_actions_enable();
+	uint32_t *mutable_actions_enable();
 	
 	// repeated Trigger triggers, id 19
 	//! Function get const-access to the elements of triggers.
@@ -3890,29 +3665,29 @@ class NodeConfig : public Message
 	
 	// repeated string debugs, id 23
 	//! Function get const-access to the elements of debugs.
-	const std::vector<std::string> &debugs() const;
+	const std::vector<estring> &debugs() const;
 	//! Function to get the number of elements in debugs.
 	size_t debugs_size() const;
 	/*!
 	* Function to append a element to debugs.
 	* @return point to newly added element.
 	*/
-	void add_debugs(const std::string &v);
+	void add_debugs(const estring &v);
 	//! Function to append an element to debugs initialized by a C-string.
 	void add_debugs(const char*);
 	//! Function to reset debugs to its default/unset value.
 	void clear_debugs();
 	//! Get value of element x of debugs.
-	const std::string &debugs(unsigned x) const;
+	const estring &debugs(unsigned x) const;
 	//! Set debugs using a constant reference
-	void set_debugs(unsigned x, const std::string &v);
+	void set_debugs(unsigned x, const estring &v);
 	/*!
 	* Provide mutable access to debugs.
 	* @return pointer to member variable of debugs.
 	*/
-	std::string *mutable_debugs(unsigned x);
+	estring *mutable_debugs(unsigned x);
 	//! Function to get mutable access to all elements of debugs.
-	std::vector<std::string> *mutable_debugs();
+	std::vector<estring> *mutable_debugs();
 	
 	#ifdef CONFIG_FTP
 	// optional FtpHttpConfig ftpd, id 24
@@ -4077,7 +3852,7 @@ class NodeConfig : public Message
 	//! Function to reset max_on_time to its default/unset value.
 	void clear_max_on_time();
 	//! Get value of max_on_time.
-	uint64_t max_on_time() const __attribute__ ((deprecated));
+	uint32_t max_on_time() const __attribute__ ((deprecated));
 	
 	// optional unsigned threshold_off, id 35
 	/*!
@@ -4088,14 +3863,14 @@ class NodeConfig : public Message
 	//! Function to reset threshold_off to its default/unset value.
 	void clear_threshold_off();
 	//! Get value of threshold_off.
-	uint64_t threshold_off() const;
+	uint32_t threshold_off() const;
 	//! Set threshold_off using a constant reference
-	void set_threshold_off(uint64_t v);
+	void set_threshold_off(uint32_t v);
 	/*!
 	* Provide mutable access to threshold_off.
 	* @return pointer to member variable of threshold_off.
 	*/
-	uint64_t *mutable_threshold_off();
+	uint32_t *mutable_threshold_off();
 	
 	// optional unsigned threshold_on, id 36
 	/*!
@@ -4106,14 +3881,14 @@ class NodeConfig : public Message
 	//! Function to reset threshold_on to its default/unset value.
 	void clear_threshold_on();
 	//! Get value of threshold_on.
-	uint64_t threshold_on() const;
+	uint32_t threshold_on() const;
 	//! Set threshold_on using a constant reference
-	void set_threshold_on(uint64_t v);
+	void set_threshold_on(uint32_t v);
 	/*!
 	* Provide mutable access to threshold_on.
 	* @return pointer to member variable of threshold_on.
 	*/
-	uint64_t *mutable_threshold_on();
+	uint32_t *mutable_threshold_on();
 	
 	// optional unsigned dim_step, id 37
 	/*!
@@ -4124,14 +3899,14 @@ class NodeConfig : public Message
 	//! Function to reset dim_step to its default/unset value.
 	void clear_dim_step();
 	//! Get value of dim_step.
-	uint64_t dim_step() const;
+	uint32_t dim_step() const;
 	//! Set dim_step using a constant reference
-	void set_dim_step(uint64_t v);
+	void set_dim_step(uint32_t v);
 	/*!
 	* Provide mutable access to dim_step.
 	* @return pointer to member variable of dim_step.
 	*/
-	uint64_t *mutable_dim_step();
+	uint32_t *mutable_dim_step();
 	
 	// optional bool lightctrl, id 38
 	/*!
@@ -4160,14 +3935,14 @@ class NodeConfig : public Message
 	//! Function to reset pwm_freq to its default/unset value.
 	void clear_pwm_freq();
 	//! Get value of pwm_freq.
-	uint64_t pwm_freq() const;
+	uint32_t pwm_freq() const;
 	//! Set pwm_freq using a constant reference
-	void set_pwm_freq(uint64_t v);
+	void set_pwm_freq(uint32_t v);
 	/*!
 	* Provide mutable access to pwm_freq.
 	* @return pointer to member variable of pwm_freq.
 	*/
-	uint64_t *mutable_pwm_freq();
+	uint32_t *mutable_pwm_freq();
 	
 	#ifdef CONFIG_APP_PARAMS
 	// repeated AppParam app_params, id 40
@@ -4224,29 +3999,29 @@ class NodeConfig : public Message
 	#ifdef CONFIG_LUA
 	// repeated string luafiles, id 42
 	//! Function get const-access to the elements of luafiles.
-	const std::vector<std::string> &luafiles() const;
+	const std::vector<estring> &luafiles() const;
 	//! Function to get the number of elements in luafiles.
 	size_t luafiles_size() const;
 	/*!
 	* Function to append a element to luafiles.
 	* @return point to newly added element.
 	*/
-	void add_luafiles(const std::string &v);
+	void add_luafiles(const estring &v);
 	//! Function to append an element to luafiles initialized by a C-string.
 	void add_luafiles(const char*);
 	//! Function to reset luafiles to its default/unset value.
 	void clear_luafiles();
 	//! Get value of element x of luafiles.
-	const std::string &luafiles(unsigned x) const;
+	const estring &luafiles(unsigned x) const;
 	//! Set luafiles using a constant reference
-	void set_luafiles(unsigned x, const std::string &v);
+	void set_luafiles(unsigned x, const estring &v);
 	/*!
 	* Provide mutable access to luafiles.
 	* @return pointer to member variable of luafiles.
 	*/
-	std::string *mutable_luafiles(unsigned x);
+	estring *mutable_luafiles(unsigned x);
 	//! Function to get mutable access to all elements of luafiles.
-	std::vector<std::string> *mutable_luafiles();
+	std::vector<estring> *mutable_luafiles();
 	#endif // CONFIG_LUA
 	
 	#ifdef CONFIG_ONEWIRE
@@ -4277,31 +4052,29 @@ class NodeConfig : public Message
 	
 	
 	protected:
-	Message *p_getMember(const char *s, const char *e);
-	Message *p_getMember(const char *s, const char *e, unsigned i);
 	// deprecated unsigned max_on_time, id 34
 	//! Set max_on_time using a constant reference
-	void set_max_on_time(uint64_t v);
+	void set_max_on_time(uint32_t v);
 	//! fixed32 magic, id 0
 	uint32_t m_magic;
 	//! string nodename, id 1
-	std::string m_nodename;
+	estring m_nodename;
 	//! bytes pass_hash, id 2
-	std::string m_pass_hash;
+	estring m_pass_hash;
 	//! unsigned cpu_freq, id 3
-	uint64_t m_cpu_freq;
+	uint32_t m_cpu_freq;
 	//! WifiConfig station, id 4
 	WifiConfig m_station;
 	//! WifiConfig softap, id 5
 	WifiConfig m_softap;
 	//! string dns_server, id 6
-	std::vector<std::string> m_dns_server;
+	std::vector<estring> m_dns_server;
 	//! string syslog_host, id 7
-	std::string m_syslog_host;
+	estring m_syslog_host;
 	//! string sntp_server, id 8
-	std::string m_sntp_server;
+	estring m_sntp_server;
 	//! string timezone, id 9
-	std::string m_timezone;
+	estring m_timezone;
 	#ifdef CONFIG_MQTT
 	//! MQTT mqtt, id 10
 	MQTT m_mqtt;
@@ -4313,15 +4086,15 @@ class NodeConfig : public Message
 	Influx m_influx;
 	#endif // CONFIG_INFLUX
 	//! unsigned station2ap_time, id 13
-	uint64_t m_station2ap_time;
+	uint32_t m_station2ap_time;
 	//! string domainname, id 15
-	std::string m_domainname;
+	estring m_domainname;
 	//! Date holidays, id 16
 	std::vector<Date> m_holidays;
 	//! AtAction at_actions, id 17
 	std::vector<AtAction> m_at_actions;
 	//! unsigned actions_enable, id 18
-	uint64_t m_actions_enable;
+	uint32_t m_actions_enable;
 	//! Trigger triggers, id 19
 	std::vector<Trigger> m_triggers;
 	//! UartSettings uart, id 20
@@ -4333,7 +4106,7 @@ class NodeConfig : public Message
 	//! fixed16 udp_ctrl_port, id 22
 	uint16_t m_udp_ctrl_port;
 	//! string debugs, id 23
-	std::vector<std::string> m_debugs;
+	std::vector<estring> m_debugs;
 	#ifdef CONFIG_FTP
 	//! FtpHttpConfig ftpd, id 24
 	FtpHttpConfig m_ftpd;
@@ -4357,17 +4130,17 @@ class NodeConfig : public Message
 	std::vector<StateMachineConfig> m_statemachs;
 	#endif // CONFIG_STATEMACHINES
 	//! unsigned max_on_time, id 34
-	uint64_t m_max_on_time;
+	uint32_t m_max_on_time;
 	//! unsigned threshold_off, id 35
-	uint64_t m_threshold_off;
+	uint32_t m_threshold_off;
 	//! unsigned threshold_on, id 36
-	uint64_t m_threshold_on;
+	uint32_t m_threshold_on;
 	//! unsigned dim_step, id 37
-	uint64_t m_dim_step;
+	uint32_t m_dim_step;
 	//! bool lightctrl, id 38
 	bool m_lightctrl;
 	//! unsigned pwm_freq, id 39
-	uint64_t m_pwm_freq;
+	uint32_t m_pwm_freq;
 	#ifdef CONFIG_APP_PARAMS
 	//! AppParam app_params, id 40
 	std::vector<AppParam> m_app_params;
@@ -4378,7 +4151,7 @@ class NodeConfig : public Message
 	#endif // CONFIG_THRESHOLDS
 	#ifdef CONFIG_LUA
 	//! string luafiles, id 42
-	std::vector<std::string> m_luafiles;
+	std::vector<estring> m_luafiles;
 	#endif // CONFIG_LUA
 	#ifdef CONFIG_ONEWIRE
 	//! OwDeviceConfig owdevices, id 50
@@ -4402,7 +4175,7 @@ inline size_t WifiConfig::getMaxSize()
 	return SIZE_MAX;
 }
 
-inline const std::string &WifiConfig::ssid() const
+inline const estring &WifiConfig::ssid() const
 {
 	return m_ssid;
 }
@@ -4421,7 +4194,7 @@ inline void WifiConfig::clear_ssid()
 	m_ssid.clear();
 }
 
-inline std::string *WifiConfig::mutable_ssid()
+inline estring *WifiConfig::mutable_ssid()
 {
 	return &m_ssid;
 }
@@ -4436,14 +4209,14 @@ inline void WifiConfig::set_ssid(const char *data)
 	m_ssid = data;
 }
 
-inline void WifiConfig::set_ssid(const std::string &v)
+inline void WifiConfig::set_ssid(const estring &v)
 {
 	m_ssid = v;
 }
 
 
 
-inline const std::string &WifiConfig::pass() const
+inline const estring &WifiConfig::pass() const
 {
 	return m_pass;
 }
@@ -4462,7 +4235,7 @@ inline void WifiConfig::clear_pass()
 	m_pass.clear();
 }
 
-inline std::string *WifiConfig::mutable_pass()
+inline estring *WifiConfig::mutable_pass()
 {
 	return &m_pass;
 }
@@ -4477,14 +4250,14 @@ inline void WifiConfig::set_pass(const char *data)
 	m_pass = data;
 }
 
-inline void WifiConfig::set_pass(const std::string &v)
+inline void WifiConfig::set_pass(const estring &v)
 {
 	m_pass = v;
 }
 
 
 
-inline const std::string &WifiConfig::mac() const
+inline const estring &WifiConfig::mac() const
 {
 	return m_mac;
 }
@@ -4504,7 +4277,7 @@ inline void WifiConfig::clear_mac()
 	m_mac.clear();
 }
 
-inline std::string *WifiConfig::mutable_mac()
+inline estring *WifiConfig::mutable_mac()
 {
 	if (0 == (p_validbits & ((uint8_t)1U << 0))) {
 		p_validbits |= ((uint8_t)1U << 0);
@@ -4519,7 +4292,7 @@ inline void WifiConfig::set_mac(const void *data, size_t s)
 	p_validbits |= ((uint8_t)1U << 0);
 }
 
-inline void WifiConfig::set_mac(const std::string &v)
+inline void WifiConfig::set_mac(const estring &v)
 {
 	m_mac = v;
 	p_validbits |= ((uint8_t)1U << 0);
@@ -4665,7 +4438,7 @@ inline size_t MQTT::getMaxSize()
 	return SIZE_MAX;
 }
 
-inline const std::string &MQTT::uri() const
+inline const estring &MQTT::uri() const
 {
 	return m_uri;
 }
@@ -4684,7 +4457,7 @@ inline void MQTT::clear_uri()
 	m_uri.clear();
 }
 
-inline std::string *MQTT::mutable_uri()
+inline estring *MQTT::mutable_uri()
 {
 	return &m_uri;
 }
@@ -4699,7 +4472,7 @@ inline void MQTT::set_uri(const char *data)
 	m_uri = data;
 }
 
-inline void MQTT::set_uri(const std::string &v)
+inline void MQTT::set_uri(const estring &v)
 {
 	m_uri = v;
 }
@@ -4737,7 +4510,7 @@ inline void MQTT::set_enable(bool v)
 
 
 
-inline const std::string &MQTT::username() const
+inline const estring &MQTT::username() const
 {
 	return m_username;
 }
@@ -4756,7 +4529,7 @@ inline void MQTT::clear_username()
 	m_username.clear();
 }
 
-inline std::string *MQTT::mutable_username()
+inline estring *MQTT::mutable_username()
 {
 	return &m_username;
 }
@@ -4771,14 +4544,14 @@ inline void MQTT::set_username(const char *data)
 	m_username = data;
 }
 
-inline void MQTT::set_username(const std::string &v)
+inline void MQTT::set_username(const estring &v)
 {
 	m_username = v;
 }
 
 
 
-inline const std::string &MQTT::password() const
+inline const estring &MQTT::password() const
 {
 	return m_password;
 }
@@ -4797,7 +4570,7 @@ inline void MQTT::clear_password()
 	m_password.clear();
 }
 
-inline std::string *MQTT::mutable_password()
+inline estring *MQTT::mutable_password()
 {
 	return &m_password;
 }
@@ -4812,19 +4585,19 @@ inline void MQTT::set_password(const char *data)
 	m_password = data;
 }
 
-inline void MQTT::set_password(const std::string &v)
+inline void MQTT::set_password(const estring &v)
 {
 	m_password = v;
 }
 
 
 
-inline const std::string &MQTT::subscribtions(unsigned x) const
+inline const estring &MQTT::subscribtions(unsigned x) const
 {
 	return m_subscribtions[x];
 }
 
-inline const std::vector<std::string> &MQTT::subscribtions() const
+inline const std::vector<estring> &MQTT::subscribtions() const
 {
 	return m_subscribtions;
 }
@@ -4838,19 +4611,19 @@ inline void MQTT::clear_subscribtions()
 	m_subscribtions.clear();
 }
 
-inline std::string *MQTT::mutable_subscribtions(unsigned x)
+inline estring *MQTT::mutable_subscribtions(unsigned x)
 {
 	if (x >= m_subscribtions.size())
 		m_subscribtions.resize(x+1);
 	return &m_subscribtions[x];
 }
 
-inline std::vector<std::string> *MQTT::mutable_subscribtions()
+inline std::vector<estring> *MQTT::mutable_subscribtions()
 {
 	return &m_subscribtions;
 }
 
-inline void MQTT::add_subscribtions(const std::string &v)
+inline void MQTT::add_subscribtions(const estring &v)
 {
 	m_subscribtions.push_back(v);
 }
@@ -4860,7 +4633,7 @@ inline void MQTT::add_subscribtions(const char *s)
 	m_subscribtions.push_back(s);
 }
 
-inline void MQTT::set_subscribtions(unsigned x, const std::string &v)
+inline void MQTT::set_subscribtions(unsigned x, const estring &v)
 {
 	assert(x < m_subscribtions.size());
 	m_subscribtions[x] = v;
@@ -5073,7 +4846,7 @@ inline void Date::set_endyear(uint8_t v)
 inline size_t AtAction::getMaxSize()
 {
 	// optional WeekDay day, id 1 has maximum size 2
-	// optional unsigned min_of_day, id 2 has maximum size 11
+	// optional unsigned min_of_day, id 2 has maximum size 6
 	// optional string action, id 3 has unlimited size
 	// required bool enable, id 4 has maximum size 2
 	return SIZE_MAX;
@@ -5116,7 +4889,7 @@ inline void AtAction::set_day(WeekDay v)
 
 
 
-inline uint64_t AtAction::min_of_day() const
+inline uint32_t AtAction::min_of_day() const
 {
 	return m_min_of_day;
 }
@@ -5136,7 +4909,7 @@ inline void AtAction::clear_min_of_day()
 	m_min_of_day = 0;
 }
 
-inline uint64_t *AtAction::mutable_min_of_day()
+inline uint32_t *AtAction::mutable_min_of_day()
 {
 	if (0 == (p_validbits & ((uint8_t)1U << 1))) {
 		p_validbits |= ((uint8_t)1U << 1);
@@ -5145,7 +4918,7 @@ inline uint64_t *AtAction::mutable_min_of_day()
 	return &m_min_of_day;
 }
 
-inline void AtAction::set_min_of_day(uint64_t v)
+inline void AtAction::set_min_of_day(uint32_t v)
 {
 	m_min_of_day = v;
 	p_validbits |= ((uint8_t)1U << 1);
@@ -5153,7 +4926,7 @@ inline void AtAction::set_min_of_day(uint64_t v)
 
 
 
-inline const std::string &AtAction::action() const
+inline const estring &AtAction::action() const
 {
 	return m_action;
 }
@@ -5173,7 +4946,7 @@ inline void AtAction::clear_action()
 	m_action.clear();
 }
 
-inline std::string *AtAction::mutable_action()
+inline estring *AtAction::mutable_action()
 {
 	if (0 == (p_validbits & ((uint8_t)1U << 2))) {
 		p_validbits |= ((uint8_t)1U << 2);
@@ -5194,7 +4967,7 @@ inline void AtAction::set_action(const char *data)
 	p_validbits |= ((uint8_t)1U << 2);
 }
 
-inline void AtAction::set_action(const std::string &v)
+inline void AtAction::set_action(const estring &v)
 {
 	m_action = v;
 	p_validbits |= ((uint8_t)1U << 2);
@@ -5229,7 +5002,7 @@ inline size_t Influx::getMaxSize()
 	return SIZE_MAX;
 }
 
-inline const std::string &Influx::hostname() const
+inline const estring &Influx::hostname() const
 {
 	return m_hostname;
 }
@@ -5248,7 +5021,7 @@ inline void Influx::clear_hostname()
 	m_hostname.clear();
 }
 
-inline std::string *Influx::mutable_hostname()
+inline estring *Influx::mutable_hostname()
 {
 	return &m_hostname;
 }
@@ -5263,7 +5036,7 @@ inline void Influx::set_hostname(const char *data)
 	m_hostname = data;
 }
 
-inline void Influx::set_hostname(const std::string &v)
+inline void Influx::set_hostname(const estring &v)
 {
 	m_hostname = v;
 }
@@ -5301,7 +5074,7 @@ inline void Influx::set_port(uint16_t v)
 
 
 
-inline const std::string &Influx::measurement() const
+inline const estring &Influx::measurement() const
 {
 	return m_measurement;
 }
@@ -5320,7 +5093,7 @@ inline void Influx::clear_measurement()
 	m_measurement.clear();
 }
 
-inline std::string *Influx::mutable_measurement()
+inline estring *Influx::mutable_measurement()
 {
 	return &m_measurement;
 }
@@ -5335,14 +5108,14 @@ inline void Influx::set_measurement(const char *data)
 	m_measurement = data;
 }
 
-inline void Influx::set_measurement(const std::string &v)
+inline void Influx::set_measurement(const estring &v)
 {
 	m_measurement = v;
 }
 
 
 
-inline const std::string &Influx::database() const
+inline const estring &Influx::database() const
 {
 	return m_database;
 }
@@ -5361,7 +5134,7 @@ inline void Influx::clear_database()
 	m_database.clear();
 }
 
-inline std::string *Influx::mutable_database()
+inline estring *Influx::mutable_database()
 {
 	return &m_database;
 }
@@ -5376,7 +5149,7 @@ inline void Influx::set_database(const char *data)
 	m_database = data;
 }
 
-inline void Influx::set_database(const std::string &v)
+inline void Influx::set_database(const estring &v)
 {
 	m_database = v;
 }
@@ -5386,12 +5159,12 @@ inline void Influx::set_database(const std::string &v)
 inline size_t UartSettings::getMaxSize()
 {
 	// optional uint8 port, id 1 has maximum size 3
-	// optional unsigned baudrate, id 2 has maximum size 11
+	// optional unsigned baudrate, id 2 has maximum size 6
 	// optional uartcfg_t config, id 3 has maximum size 3
 	// optional fixed8 rx_thresh, id 4 has maximum size 2
-	// optional unsigned tx_bufsize, id 6 has maximum size 11
-	// optional unsigned rx_bufsize, id 7 has maximum size 11
-	return 41;
+	// optional unsigned tx_bufsize, id 6 has maximum size 6
+	// optional unsigned rx_bufsize, id 7 has maximum size 6
+	return 26;
 }
 
 inline uint8_t UartSettings::port() const
@@ -5431,7 +5204,7 @@ inline void UartSettings::set_port(uint8_t v)
 
 
 
-inline uint64_t UartSettings::baudrate() const
+inline uint32_t UartSettings::baudrate() const
 {
 	return m_baudrate;
 }
@@ -5451,7 +5224,7 @@ inline void UartSettings::clear_baudrate()
 	m_baudrate = 0;
 }
 
-inline uint64_t *UartSettings::mutable_baudrate()
+inline uint32_t *UartSettings::mutable_baudrate()
 {
 	if (0 == (p_validbits & ((uint8_t)1U << 1))) {
 		p_validbits |= ((uint8_t)1U << 1);
@@ -5460,7 +5233,7 @@ inline uint64_t *UartSettings::mutable_baudrate()
 	return &m_baudrate;
 }
 
-inline void UartSettings::set_baudrate(uint64_t v)
+inline void UartSettings::set_baudrate(uint32_t v)
 {
 	m_baudrate = v;
 	p_validbits |= ((uint8_t)1U << 1);
@@ -5608,7 +5381,7 @@ inline void UartSettings::set_rx_thresh(uint8_t v)
 
 
 
-inline uint64_t UartSettings::tx_bufsize() const
+inline uint32_t UartSettings::tx_bufsize() const
 {
 	return m_tx_bufsize;
 }
@@ -5628,7 +5401,7 @@ inline void UartSettings::clear_tx_bufsize()
 	m_tx_bufsize = 0;
 }
 
-inline uint64_t *UartSettings::mutable_tx_bufsize()
+inline uint32_t *UartSettings::mutable_tx_bufsize()
 {
 	if (0 == (p_validbits & ((uint8_t)1U << 3))) {
 		p_validbits |= ((uint8_t)1U << 3);
@@ -5637,7 +5410,7 @@ inline uint64_t *UartSettings::mutable_tx_bufsize()
 	return &m_tx_bufsize;
 }
 
-inline void UartSettings::set_tx_bufsize(uint64_t v)
+inline void UartSettings::set_tx_bufsize(uint32_t v)
 {
 	m_tx_bufsize = v;
 	p_validbits |= ((uint8_t)1U << 3);
@@ -5645,7 +5418,7 @@ inline void UartSettings::set_tx_bufsize(uint64_t v)
 
 
 
-inline uint64_t UartSettings::rx_bufsize() const
+inline uint32_t UartSettings::rx_bufsize() const
 {
 	return m_rx_bufsize;
 }
@@ -5665,7 +5438,7 @@ inline void UartSettings::clear_rx_bufsize()
 	m_rx_bufsize = 0;
 }
 
-inline uint64_t *UartSettings::mutable_rx_bufsize()
+inline uint32_t *UartSettings::mutable_rx_bufsize()
 {
 	if (0 == (p_validbits & ((uint8_t)1U << 4))) {
 		p_validbits |= ((uint8_t)1U << 4);
@@ -5674,7 +5447,7 @@ inline uint64_t *UartSettings::mutable_rx_bufsize()
 	return &m_rx_bufsize;
 }
 
-inline void UartSettings::set_rx_bufsize(uint64_t v)
+inline void UartSettings::set_rx_bufsize(uint32_t v)
 {
 	m_rx_bufsize = v;
 	p_validbits |= ((uint8_t)1U << 4);
@@ -5759,7 +5532,7 @@ inline void FtpHttpConfig::set_start(bool v)
 
 
 
-inline const std::string &FtpHttpConfig::root() const
+inline const estring &FtpHttpConfig::root() const
 {
 	return m_root;
 }
@@ -5778,7 +5551,7 @@ inline void FtpHttpConfig::clear_root()
 	m_root.clear();
 }
 
-inline std::string *FtpHttpConfig::mutable_root()
+inline estring *FtpHttpConfig::mutable_root()
 {
 	return &m_root;
 }
@@ -5793,14 +5566,14 @@ inline void FtpHttpConfig::set_root(const char *data)
 	m_root = data;
 }
 
-inline void FtpHttpConfig::set_root(const std::string &v)
+inline void FtpHttpConfig::set_root(const estring &v)
 {
 	m_root = v;
 }
 
 
 
-inline const std::string &FtpHttpConfig::uploaddir() const
+inline const estring &FtpHttpConfig::uploaddir() const
 {
 	return m_uploaddir;
 }
@@ -5819,7 +5592,7 @@ inline void FtpHttpConfig::clear_uploaddir()
 	m_uploaddir.clear();
 }
 
-inline std::string *FtpHttpConfig::mutable_uploaddir()
+inline estring *FtpHttpConfig::mutable_uploaddir()
 {
 	return &m_uploaddir;
 }
@@ -5834,7 +5607,7 @@ inline void FtpHttpConfig::set_uploaddir(const char *data)
 	m_uploaddir = data;
 }
 
-inline void FtpHttpConfig::set_uploaddir(const std::string &v)
+inline void FtpHttpConfig::set_uploaddir(const estring &v)
 {
 	m_uploaddir = v;
 }
@@ -5911,7 +5684,7 @@ inline void TerminalConfig::set_uart_tx(int8_t v)
 
 
 
-inline const std::string &TerminalConfig::name() const
+inline const estring &TerminalConfig::name() const
 {
 	return m_name;
 }
@@ -5931,7 +5704,7 @@ inline void TerminalConfig::clear_name()
 	m_name.clear();
 }
 
-inline std::string *TerminalConfig::mutable_name()
+inline estring *TerminalConfig::mutable_name()
 {
 	if (0 == (p_validbits & ((uint8_t)1U << 0))) {
 		p_validbits |= ((uint8_t)1U << 0);
@@ -5952,7 +5725,7 @@ inline void TerminalConfig::set_name(const char *data)
 	p_validbits |= ((uint8_t)1U << 0);
 }
 
-inline void TerminalConfig::set_name(const std::string &v)
+inline void TerminalConfig::set_name(const estring &v)
 {
 	m_name = v;
 	p_validbits |= ((uint8_t)1U << 0);
@@ -5967,7 +5740,7 @@ inline size_t Trigger::getMaxSize()
 	return SIZE_MAX;
 }
 
-inline const std::string &Trigger::event() const
+inline const estring &Trigger::event() const
 {
 	return m_event;
 }
@@ -5987,7 +5760,7 @@ inline void Trigger::clear_event()
 	m_event.clear();
 }
 
-inline std::string *Trigger::mutable_event()
+inline estring *Trigger::mutable_event()
 {
 	if (0 == (p_validbits & ((uint8_t)1U << 0))) {
 		p_validbits |= ((uint8_t)1U << 0);
@@ -6008,7 +5781,7 @@ inline void Trigger::set_event(const char *data)
 	p_validbits |= ((uint8_t)1U << 0);
 }
 
-inline void Trigger::set_event(const std::string &v)
+inline void Trigger::set_event(const estring &v)
 {
 	m_event = v;
 	p_validbits |= ((uint8_t)1U << 0);
@@ -6016,12 +5789,12 @@ inline void Trigger::set_event(const std::string &v)
 
 
 
-inline const std::string &Trigger::action(unsigned x) const
+inline const estring &Trigger::action(unsigned x) const
 {
 	return m_action[x];
 }
 
-inline const std::vector<std::string> &Trigger::action() const
+inline const std::vector<estring> &Trigger::action() const
 {
 	return m_action;
 }
@@ -6035,19 +5808,19 @@ inline void Trigger::clear_action()
 	m_action.clear();
 }
 
-inline std::string *Trigger::mutable_action(unsigned x)
+inline estring *Trigger::mutable_action(unsigned x)
 {
 	if (x >= m_action.size())
 		m_action.resize(x+1);
 	return &m_action[x];
 }
 
-inline std::vector<std::string> *Trigger::mutable_action()
+inline std::vector<estring> *Trigger::mutable_action()
 {
 	return &m_action;
 }
 
-inline void Trigger::add_action(const std::string &v)
+inline void Trigger::add_action(const estring &v)
 {
 	m_action.push_back(v);
 }
@@ -6057,7 +5830,7 @@ inline void Trigger::add_action(const char *s)
 	m_action.push_back(s);
 }
 
-inline void Trigger::set_action(unsigned x, const std::string &v)
+inline void Trigger::set_action(unsigned x, const estring &v)
 {
 	assert(x < m_action.size());
 	m_action[x] = v;
@@ -6073,14 +5846,14 @@ inline size_t Trigger::action_size() const
 inline size_t AppParam::getMaxSize()
 {
 	// optional string key, id 1 has unlimited size
-	// optional unsigned uValue, id 2 has maximum size 11
+	// optional unsigned uValue, id 2 has maximum size 6
 	// optional string sValue, id 3 has unlimited size
-	// optional signed dValue, id 4 has maximum size 11
+	// optional signed dValue, id 4 has maximum size 6
 	// optional double fValue, id 5 has maximum size 9
 	return SIZE_MAX;
 }
 
-inline const std::string &AppParam::key() const
+inline const estring &AppParam::key() const
 {
 	return m_key;
 }
@@ -6100,7 +5873,7 @@ inline void AppParam::clear_key()
 	m_key.clear();
 }
 
-inline std::string *AppParam::mutable_key()
+inline estring *AppParam::mutable_key()
 {
 	if (0 == (p_validbits & ((uint8_t)1U << 0))) {
 		p_validbits |= ((uint8_t)1U << 0);
@@ -6121,7 +5894,7 @@ inline void AppParam::set_key(const char *data)
 	p_validbits |= ((uint8_t)1U << 0);
 }
 
-inline void AppParam::set_key(const std::string &v)
+inline void AppParam::set_key(const estring &v)
 {
 	m_key = v;
 	p_validbits |= ((uint8_t)1U << 0);
@@ -6129,7 +5902,7 @@ inline void AppParam::set_key(const std::string &v)
 
 
 
-inline uint64_t AppParam::uValue() const
+inline uint32_t AppParam::uValue() const
 {
 	return m_uValue;
 }
@@ -6149,7 +5922,7 @@ inline void AppParam::clear_uValue()
 	m_uValue = 0;
 }
 
-inline uint64_t *AppParam::mutable_uValue()
+inline uint32_t *AppParam::mutable_uValue()
 {
 	if (0 == (p_validbits & ((uint8_t)1U << 1))) {
 		p_validbits |= ((uint8_t)1U << 1);
@@ -6158,7 +5931,7 @@ inline uint64_t *AppParam::mutable_uValue()
 	return &m_uValue;
 }
 
-inline void AppParam::set_uValue(uint64_t v)
+inline void AppParam::set_uValue(uint32_t v)
 {
 	m_uValue = v;
 	p_validbits |= ((uint8_t)1U << 1);
@@ -6166,7 +5939,7 @@ inline void AppParam::set_uValue(uint64_t v)
 
 
 
-inline const std::string &AppParam::sValue() const
+inline const estring &AppParam::sValue() const
 {
 	return m_sValue;
 }
@@ -6186,7 +5959,7 @@ inline void AppParam::clear_sValue()
 	m_sValue.clear();
 }
 
-inline std::string *AppParam::mutable_sValue()
+inline estring *AppParam::mutable_sValue()
 {
 	if (0 == (p_validbits & ((uint8_t)1U << 2))) {
 		p_validbits |= ((uint8_t)1U << 2);
@@ -6207,7 +5980,7 @@ inline void AppParam::set_sValue(const char *data)
 	p_validbits |= ((uint8_t)1U << 2);
 }
 
-inline void AppParam::set_sValue(const std::string &v)
+inline void AppParam::set_sValue(const estring &v)
 {
 	m_sValue = v;
 	p_validbits |= ((uint8_t)1U << 2);
@@ -6215,7 +5988,7 @@ inline void AppParam::set_sValue(const std::string &v)
 
 
 
-inline int64_t AppParam::dValue() const
+inline int32_t AppParam::dValue() const
 {
 	return m_dValue;
 }
@@ -6235,7 +6008,7 @@ inline void AppParam::clear_dValue()
 	m_dValue = 0;
 }
 
-inline int64_t *AppParam::mutable_dValue()
+inline int32_t *AppParam::mutable_dValue()
 {
 	if (0 == (p_validbits & ((uint8_t)1U << 3))) {
 		p_validbits |= ((uint8_t)1U << 3);
@@ -6244,7 +6017,7 @@ inline int64_t *AppParam::mutable_dValue()
 	return &m_dValue;
 }
 
-inline void AppParam::set_dValue(int64_t v)
+inline void AppParam::set_dValue(int32_t v)
 {
 	m_dValue = v;
 	p_validbits |= ((uint8_t)1U << 3);
@@ -6292,12 +6065,12 @@ inline void AppParam::set_fValue(double v)
 inline size_t EventTimer::getMaxSize()
 {
 	// optional string name, id 1 has unlimited size
-	// optional unsigned time, id 2 has maximum size 11
-	// optional eventcfg_t config, id 3 has maximum size 11
+	// optional unsigned time, id 2 has maximum size 6
+	// optional eventcfg_t config, id 3 has maximum size 6
 	return SIZE_MAX;
 }
 
-inline const std::string &EventTimer::name() const
+inline const estring &EventTimer::name() const
 {
 	return m_name;
 }
@@ -6316,7 +6089,7 @@ inline void EventTimer::clear_name()
 	m_name.clear();
 }
 
-inline std::string *EventTimer::mutable_name()
+inline estring *EventTimer::mutable_name()
 {
 	return &m_name;
 }
@@ -6331,14 +6104,14 @@ inline void EventTimer::set_name(const char *data)
 	m_name = data;
 }
 
-inline void EventTimer::set_name(const std::string &v)
+inline void EventTimer::set_name(const estring &v)
 {
 	m_name = v;
 }
 
 
 
-inline uint64_t EventTimer::time() const
+inline uint32_t EventTimer::time() const
 {
 	return m_time;
 }
@@ -6358,7 +6131,7 @@ inline void EventTimer::clear_time()
 	m_time = 0;
 }
 
-inline uint64_t *EventTimer::mutable_time()
+inline uint32_t *EventTimer::mutable_time()
 {
 	if (0 == (p_validbits & ((uint8_t)1U << 0))) {
 		p_validbits |= ((uint8_t)1U << 0);
@@ -6367,7 +6140,7 @@ inline uint64_t *EventTimer::mutable_time()
 	return &m_time;
 }
 
-inline void EventTimer::set_time(uint64_t v)
+inline void EventTimer::set_time(uint32_t v)
 {
 	m_time = v;
 	p_validbits |= ((uint8_t)1U << 0);
@@ -6436,7 +6209,7 @@ inline size_t FunctionConfig::getMaxSize()
 	return SIZE_MAX;
 }
 
-inline const std::string &FunctionConfig::name() const
+inline const estring &FunctionConfig::name() const
 {
 	return m_name;
 }
@@ -6456,7 +6229,7 @@ inline void FunctionConfig::clear_name()
 	m_name.clear();
 }
 
-inline std::string *FunctionConfig::mutable_name()
+inline estring *FunctionConfig::mutable_name()
 {
 	if (0 == (p_validbits & ((uint8_t)1U << 0))) {
 		p_validbits |= ((uint8_t)1U << 0);
@@ -6477,7 +6250,7 @@ inline void FunctionConfig::set_name(const char *data)
 	p_validbits |= ((uint8_t)1U << 0);
 }
 
-inline void FunctionConfig::set_name(const std::string &v)
+inline void FunctionConfig::set_name(const estring &v)
 {
 	m_name = v;
 	p_validbits |= ((uint8_t)1U << 0);
@@ -6485,7 +6258,7 @@ inline void FunctionConfig::set_name(const std::string &v)
 
 
 
-inline const std::string &FunctionConfig::func() const
+inline const estring &FunctionConfig::func() const
 {
 	return m_func;
 }
@@ -6505,7 +6278,7 @@ inline void FunctionConfig::clear_func()
 	m_func.clear();
 }
 
-inline std::string *FunctionConfig::mutable_func()
+inline estring *FunctionConfig::mutable_func()
 {
 	if (0 == (p_validbits & ((uint8_t)1U << 1))) {
 		p_validbits |= ((uint8_t)1U << 1);
@@ -6526,7 +6299,7 @@ inline void FunctionConfig::set_func(const char *data)
 	p_validbits |= ((uint8_t)1U << 1);
 }
 
-inline void FunctionConfig::set_func(const std::string &v)
+inline void FunctionConfig::set_func(const estring &v)
 {
 	m_func = v;
 	p_validbits |= ((uint8_t)1U << 1);
@@ -6534,12 +6307,12 @@ inline void FunctionConfig::set_func(const std::string &v)
 
 
 
-inline const std::string &FunctionConfig::params(unsigned x) const
+inline const estring &FunctionConfig::params(unsigned x) const
 {
 	return m_params[x];
 }
 
-inline const std::vector<std::string> &FunctionConfig::params() const
+inline const std::vector<estring> &FunctionConfig::params() const
 {
 	return m_params;
 }
@@ -6553,19 +6326,19 @@ inline void FunctionConfig::clear_params()
 	m_params.clear();
 }
 
-inline std::string *FunctionConfig::mutable_params(unsigned x)
+inline estring *FunctionConfig::mutable_params(unsigned x)
 {
 	if (x >= m_params.size())
 		m_params.resize(x+1);
 	return &m_params[x];
 }
 
-inline std::vector<std::string> *FunctionConfig::mutable_params()
+inline std::vector<estring> *FunctionConfig::mutable_params()
 {
 	return &m_params;
 }
 
-inline void FunctionConfig::add_params(const std::string &v)
+inline void FunctionConfig::add_params(const estring &v)
 {
 	m_params.push_back(v);
 }
@@ -6575,7 +6348,7 @@ inline void FunctionConfig::add_params(const char *s)
 	m_params.push_back(s);
 }
 
-inline void FunctionConfig::set_params(unsigned x, const std::string &v)
+inline void FunctionConfig::set_params(unsigned x, const estring &v)
 {
 	assert(x < m_params.size());
 	m_params[x] = v;
@@ -6596,7 +6369,7 @@ inline size_t SignalConfig::getMaxSize()
 	return SIZE_MAX;
 }
 
-inline const std::string &SignalConfig::name() const
+inline const estring &SignalConfig::name() const
 {
 	return m_name;
 }
@@ -6615,7 +6388,7 @@ inline void SignalConfig::clear_name()
 	m_name.clear();
 }
 
-inline std::string *SignalConfig::mutable_name()
+inline estring *SignalConfig::mutable_name()
 {
 	return &m_name;
 }
@@ -6630,7 +6403,7 @@ inline void SignalConfig::set_name(const char *data)
 	m_name = data;
 }
 
-inline void SignalConfig::set_name(const std::string &v)
+inline void SignalConfig::set_name(const estring &v)
 {
 	m_name = v;
 }
@@ -6668,7 +6441,7 @@ inline void SignalConfig::set_type(sigtype_t v)
 
 
 
-inline const std::string &SignalConfig::iv() const
+inline const estring &SignalConfig::iv() const
 {
 	return m_iv;
 }
@@ -6687,7 +6460,7 @@ inline void SignalConfig::clear_iv()
 	m_iv.clear();
 }
 
-inline std::string *SignalConfig::mutable_iv()
+inline estring *SignalConfig::mutable_iv()
 {
 	return &m_iv;
 }
@@ -6702,7 +6475,7 @@ inline void SignalConfig::set_iv(const char *data)
 	m_iv = data;
 }
 
-inline void SignalConfig::set_iv(const std::string &v)
+inline void SignalConfig::set_iv(const estring &v)
 {
 	m_iv = v;
 }
@@ -6753,7 +6526,7 @@ inline void OwDeviceConfig::set_id(uint64_t v)
 
 
 
-inline const std::string &OwDeviceConfig::name() const
+inline const estring &OwDeviceConfig::name() const
 {
 	return m_name;
 }
@@ -6773,7 +6546,7 @@ inline void OwDeviceConfig::clear_name()
 	m_name.clear();
 }
 
-inline std::string *OwDeviceConfig::mutable_name()
+inline estring *OwDeviceConfig::mutable_name()
 {
 	if (0 == (p_validbits & ((uint8_t)1U << 1))) {
 		p_validbits |= ((uint8_t)1U << 1);
@@ -6794,7 +6567,7 @@ inline void OwDeviceConfig::set_name(const char *data)
 	p_validbits |= ((uint8_t)1U << 1);
 }
 
-inline void OwDeviceConfig::set_name(const std::string &v)
+inline void OwDeviceConfig::set_name(const estring &v)
 {
 	m_name = v;
 	p_validbits |= ((uint8_t)1U << 1);
@@ -6809,7 +6582,7 @@ inline size_t StateConfig::getMaxSize()
 	return SIZE_MAX;
 }
 
-inline const std::string &StateConfig::name() const
+inline const estring &StateConfig::name() const
 {
 	return m_name;
 }
@@ -6829,7 +6602,7 @@ inline void StateConfig::clear_name()
 	m_name.clear();
 }
 
-inline std::string *StateConfig::mutable_name()
+inline estring *StateConfig::mutable_name()
 {
 	if (0 == (p_validbits & ((uint8_t)1U << 0))) {
 		p_validbits |= ((uint8_t)1U << 0);
@@ -6850,7 +6623,7 @@ inline void StateConfig::set_name(const char *data)
 	p_validbits |= ((uint8_t)1U << 0);
 }
 
-inline void StateConfig::set_name(const std::string &v)
+inline void StateConfig::set_name(const estring &v)
 {
 	m_name = v;
 	p_validbits |= ((uint8_t)1U << 0);
@@ -6916,7 +6689,7 @@ inline size_t StateMachineConfig::getMaxSize()
 	return SIZE_MAX;
 }
 
-inline const std::string &StateMachineConfig::name() const
+inline const estring &StateMachineConfig::name() const
 {
 	return m_name;
 }
@@ -6936,7 +6709,7 @@ inline void StateMachineConfig::clear_name()
 	m_name.clear();
 }
 
-inline std::string *StateMachineConfig::mutable_name()
+inline estring *StateMachineConfig::mutable_name()
 {
 	if (0 == (p_validbits & ((uint8_t)1U << 0))) {
 		p_validbits |= ((uint8_t)1U << 0);
@@ -6957,7 +6730,7 @@ inline void StateMachineConfig::set_name(const char *data)
 	p_validbits |= ((uint8_t)1U << 0);
 }
 
-inline void StateMachineConfig::set_name(const std::string &v)
+inline void StateMachineConfig::set_name(const estring &v)
 {
 	m_name = v;
 	p_validbits |= ((uint8_t)1U << 0);
@@ -7060,7 +6833,7 @@ inline size_t ThresholdConfig::getMaxSize()
 	return SIZE_MAX;
 }
 
-inline const std::string &ThresholdConfig::name() const
+inline const estring &ThresholdConfig::name() const
 {
 	return m_name;
 }
@@ -7080,7 +6853,7 @@ inline void ThresholdConfig::clear_name()
 	m_name.clear();
 }
 
-inline std::string *ThresholdConfig::mutable_name()
+inline estring *ThresholdConfig::mutable_name()
 {
 	if (0 == (p_validbits & ((uint8_t)1U << 0))) {
 		p_validbits |= ((uint8_t)1U << 0);
@@ -7101,7 +6874,7 @@ inline void ThresholdConfig::set_name(const char *data)
 	p_validbits |= ((uint8_t)1U << 0);
 }
 
-inline void ThresholdConfig::set_name(const std::string &v)
+inline void ThresholdConfig::set_name(const estring &v)
 {
 	m_name = v;
 	p_validbits |= ((uint8_t)1U << 0);
@@ -7190,12 +6963,12 @@ inline size_t LuaConfig::getMaxSize()
 	return SIZE_MAX;
 }
 
-inline const std::string &LuaConfig::init_scripts(unsigned x) const
+inline const estring &LuaConfig::init_scripts(unsigned x) const
 {
 	return m_init_scripts[x];
 }
 
-inline const std::vector<std::string> &LuaConfig::init_scripts() const
+inline const std::vector<estring> &LuaConfig::init_scripts() const
 {
 	return m_init_scripts;
 }
@@ -7209,19 +6982,19 @@ inline void LuaConfig::clear_init_scripts()
 	m_init_scripts.clear();
 }
 
-inline std::string *LuaConfig::mutable_init_scripts(unsigned x)
+inline estring *LuaConfig::mutable_init_scripts(unsigned x)
 {
 	if (x >= m_init_scripts.size())
 		m_init_scripts.resize(x+1);
 	return &m_init_scripts[x];
 }
 
-inline std::vector<std::string> *LuaConfig::mutable_init_scripts()
+inline std::vector<estring> *LuaConfig::mutable_init_scripts()
 {
 	return &m_init_scripts;
 }
 
-inline void LuaConfig::add_init_scripts(const std::string &v)
+inline void LuaConfig::add_init_scripts(const estring &v)
 {
 	m_init_scripts.push_back(v);
 }
@@ -7231,7 +7004,7 @@ inline void LuaConfig::add_init_scripts(const char *s)
 	m_init_scripts.push_back(s);
 }
 
-inline void LuaConfig::set_init_scripts(unsigned x, const std::string &v)
+inline void LuaConfig::set_init_scripts(unsigned x, const estring &v)
 {
 	assert(x < m_init_scripts.size());
 	m_init_scripts[x] = v;
@@ -7244,12 +7017,12 @@ inline size_t LuaConfig::init_scripts_size() const
 
 
 
-inline const std::string &LuaConfig::compile_files(unsigned x) const
+inline const estring &LuaConfig::compile_files(unsigned x) const
 {
 	return m_compile_files[x];
 }
 
-inline const std::vector<std::string> &LuaConfig::compile_files() const
+inline const std::vector<estring> &LuaConfig::compile_files() const
 {
 	return m_compile_files;
 }
@@ -7263,19 +7036,19 @@ inline void LuaConfig::clear_compile_files()
 	m_compile_files.clear();
 }
 
-inline std::string *LuaConfig::mutable_compile_files(unsigned x)
+inline estring *LuaConfig::mutable_compile_files(unsigned x)
 {
 	if (x >= m_compile_files.size())
 		m_compile_files.resize(x+1);
 	return &m_compile_files[x];
 }
 
-inline std::vector<std::string> *LuaConfig::mutable_compile_files()
+inline std::vector<estring> *LuaConfig::mutable_compile_files()
 {
 	return &m_compile_files;
 }
 
-inline void LuaConfig::add_compile_files(const std::string &v)
+inline void LuaConfig::add_compile_files(const estring &v)
 {
 	m_compile_files.push_back(v);
 }
@@ -7285,7 +7058,7 @@ inline void LuaConfig::add_compile_files(const char *s)
 	m_compile_files.push_back(s);
 }
 
-inline void LuaConfig::set_compile_files(unsigned x, const std::string &v)
+inline void LuaConfig::set_compile_files(unsigned x, const estring &v)
 {
 	assert(x < m_compile_files.size());
 	m_compile_files[x] = v;
@@ -7303,7 +7076,7 @@ inline size_t NodeConfig::getMaxSize()
 	// optional fixed32 magic, id 0 has maximum size 5
 	// optional string nodename, id 1 has unlimited size
 	// optional bytes pass_hash, id 2 has unlimited size
-	// optional unsigned cpu_freq, id 3 has maximum size 11
+	// optional unsigned cpu_freq, id 3 has maximum size 6
 	// optional WifiConfig station, id 4 has maximum size 12
 	// optional WifiConfig softap, id 5 has maximum size 12
 	// repeated string dns_server, id 6 has unlimited size
@@ -7313,11 +7086,11 @@ inline size_t NodeConfig::getMaxSize()
 	// optional MQTT mqtt, id 10 has maximum size 4294967295
 	// optional fixed16 dmesg_size, id 11 has maximum size 3
 	// optional Influx influx, id 12 has maximum size 12
-	// optional unsigned station2ap_time, id 13 has maximum size 11
+	// optional unsigned station2ap_time, id 13 has maximum size 6
 	// optional string domainname, id 15 has unlimited size
 	// repeated Date holidays, id 16 has unlimited size
 	// repeated AtAction at_actions, id 17 has unlimited size
-	// optional unsigned actions_enable, id 18 has maximum size 12
+	// optional unsigned actions_enable, id 18 has maximum size 7
 	// repeated Trigger triggers, id 19 has unlimited size
 	// repeated UartSettings uart, id 20 has unlimited size
 	// repeated TerminalConfig terminal, id 21 has unlimited size
@@ -7329,12 +7102,12 @@ inline size_t NodeConfig::getMaxSize()
 	// repeated SignalConfig signals, id 31 has unlimited size
 	// repeated FunctionConfig functions, id 32 has unlimited size
 	// repeated StateMachineConfig statemachs, id 33 has unlimited size
-	// deprecated optional unsigned max_on_time, id 34 has maximum size 12
-	// optional unsigned threshold_off, id 35 has maximum size 12
-	// optional unsigned threshold_on, id 36 has maximum size 12
-	// optional unsigned dim_step, id 37 has maximum size 12
+	// deprecated optional unsigned max_on_time, id 34 has maximum size 7
+	// optional unsigned threshold_off, id 35 has maximum size 7
+	// optional unsigned threshold_on, id 36 has maximum size 7
+	// optional unsigned dim_step, id 37 has maximum size 7
 	// optional bool lightctrl, id 38 has maximum size 3
-	// optional unsigned pwm_freq, id 39 has maximum size 12
+	// optional unsigned pwm_freq, id 39 has maximum size 7
 	// repeated AppParam app_params, id 40 has unlimited size
 	// repeated ThresholdConfig thresholds, id 41 has unlimited size
 	// repeated string luafiles, id 42 has unlimited size
@@ -7379,7 +7152,7 @@ inline void NodeConfig::set_magic(uint32_t v)
 
 
 
-inline const std::string &NodeConfig::nodename() const
+inline const estring &NodeConfig::nodename() const
 {
 	return m_nodename;
 }
@@ -7398,7 +7171,7 @@ inline void NodeConfig::clear_nodename()
 	m_nodename.clear();
 }
 
-inline std::string *NodeConfig::mutable_nodename()
+inline estring *NodeConfig::mutable_nodename()
 {
 	return &m_nodename;
 }
@@ -7413,14 +7186,14 @@ inline void NodeConfig::set_nodename(const char *data)
 	m_nodename = data;
 }
 
-inline void NodeConfig::set_nodename(const std::string &v)
+inline void NodeConfig::set_nodename(const estring &v)
 {
 	m_nodename = v;
 }
 
 
 
-inline const std::string &NodeConfig::pass_hash() const
+inline const estring &NodeConfig::pass_hash() const
 {
 	return m_pass_hash;
 }
@@ -7440,7 +7213,7 @@ inline void NodeConfig::clear_pass_hash()
 	m_pass_hash.clear();
 }
 
-inline std::string *NodeConfig::mutable_pass_hash()
+inline estring *NodeConfig::mutable_pass_hash()
 {
 	if (0 == (p_validbits & ((uint32_t)1U << 1))) {
 		p_validbits |= ((uint32_t)1U << 1);
@@ -7455,7 +7228,7 @@ inline void NodeConfig::set_pass_hash(const void *data, size_t s)
 	p_validbits |= ((uint32_t)1U << 1);
 }
 
-inline void NodeConfig::set_pass_hash(const std::string &v)
+inline void NodeConfig::set_pass_hash(const estring &v)
 {
 	m_pass_hash = v;
 	p_validbits |= ((uint32_t)1U << 1);
@@ -7463,7 +7236,7 @@ inline void NodeConfig::set_pass_hash(const std::string &v)
 
 
 
-inline uint64_t NodeConfig::cpu_freq() const
+inline uint32_t NodeConfig::cpu_freq() const
 {
 	return m_cpu_freq;
 }
@@ -7483,7 +7256,7 @@ inline void NodeConfig::clear_cpu_freq()
 	m_cpu_freq = 0;
 }
 
-inline uint64_t *NodeConfig::mutable_cpu_freq()
+inline uint32_t *NodeConfig::mutable_cpu_freq()
 {
 	if (0 == (p_validbits & ((uint32_t)1U << 2))) {
 		p_validbits |= ((uint32_t)1U << 2);
@@ -7492,7 +7265,7 @@ inline uint64_t *NodeConfig::mutable_cpu_freq()
 	return &m_cpu_freq;
 }
 
-inline void NodeConfig::set_cpu_freq(uint64_t v)
+inline void NodeConfig::set_cpu_freq(uint32_t v)
 {
 	m_cpu_freq = v;
 	p_validbits |= ((uint32_t)1U << 2);
@@ -7586,12 +7359,12 @@ inline void NodeConfig::set_softap(const WifiConfig &v)
 
 
 
-inline const std::string &NodeConfig::dns_server(unsigned x) const
+inline const estring &NodeConfig::dns_server(unsigned x) const
 {
 	return m_dns_server[x];
 }
 
-inline const std::vector<std::string> &NodeConfig::dns_server() const
+inline const std::vector<estring> &NodeConfig::dns_server() const
 {
 	return m_dns_server;
 }
@@ -7605,19 +7378,19 @@ inline void NodeConfig::clear_dns_server()
 	m_dns_server.clear();
 }
 
-inline std::string *NodeConfig::mutable_dns_server(unsigned x)
+inline estring *NodeConfig::mutable_dns_server(unsigned x)
 {
 	if (x >= m_dns_server.size())
 		m_dns_server.resize(x+1,"");
 	return &m_dns_server[x];
 }
 
-inline std::vector<std::string> *NodeConfig::mutable_dns_server()
+inline std::vector<estring> *NodeConfig::mutable_dns_server()
 {
 	return &m_dns_server;
 }
 
-inline void NodeConfig::add_dns_server(const std::string &v)
+inline void NodeConfig::add_dns_server(const estring &v)
 {
 	m_dns_server.push_back(v);
 }
@@ -7627,7 +7400,7 @@ inline void NodeConfig::add_dns_server(const char *s)
 	m_dns_server.push_back(s);
 }
 
-inline void NodeConfig::set_dns_server(unsigned x, const std::string &v)
+inline void NodeConfig::set_dns_server(unsigned x, const estring &v)
 {
 	assert(x < m_dns_server.size());
 	m_dns_server[x] = v;
@@ -7640,7 +7413,7 @@ inline size_t NodeConfig::dns_server_size() const
 
 
 
-inline const std::string &NodeConfig::syslog_host() const
+inline const estring &NodeConfig::syslog_host() const
 {
 	return m_syslog_host;
 }
@@ -7659,7 +7432,7 @@ inline void NodeConfig::clear_syslog_host()
 	m_syslog_host.clear();
 }
 
-inline std::string *NodeConfig::mutable_syslog_host()
+inline estring *NodeConfig::mutable_syslog_host()
 {
 	return &m_syslog_host;
 }
@@ -7674,14 +7447,14 @@ inline void NodeConfig::set_syslog_host(const char *data)
 	m_syslog_host = data;
 }
 
-inline void NodeConfig::set_syslog_host(const std::string &v)
+inline void NodeConfig::set_syslog_host(const estring &v)
 {
 	m_syslog_host = v;
 }
 
 
 
-inline const std::string &NodeConfig::sntp_server() const
+inline const estring &NodeConfig::sntp_server() const
 {
 	return m_sntp_server;
 }
@@ -7700,7 +7473,7 @@ inline void NodeConfig::clear_sntp_server()
 	m_sntp_server.clear();
 }
 
-inline std::string *NodeConfig::mutable_sntp_server()
+inline estring *NodeConfig::mutable_sntp_server()
 {
 	return &m_sntp_server;
 }
@@ -7715,14 +7488,14 @@ inline void NodeConfig::set_sntp_server(const char *data)
 	m_sntp_server = data;
 }
 
-inline void NodeConfig::set_sntp_server(const std::string &v)
+inline void NodeConfig::set_sntp_server(const estring &v)
 {
 	m_sntp_server = v;
 }
 
 
 
-inline const std::string &NodeConfig::timezone() const
+inline const estring &NodeConfig::timezone() const
 {
 	return m_timezone;
 }
@@ -7741,7 +7514,7 @@ inline void NodeConfig::clear_timezone()
 	m_timezone.clear();
 }
 
-inline std::string *NodeConfig::mutable_timezone()
+inline estring *NodeConfig::mutable_timezone()
 {
 	return &m_timezone;
 }
@@ -7756,7 +7529,7 @@ inline void NodeConfig::set_timezone(const char *data)
 	m_timezone = data;
 }
 
-inline void NodeConfig::set_timezone(const std::string &v)
+inline void NodeConfig::set_timezone(const estring &v)
 {
 	m_timezone = v;
 }
@@ -7890,7 +7663,7 @@ inline void NodeConfig::set_influx(const Influx &v)
 #endif // CONFIG_INFLUX
 
 
-inline uint64_t NodeConfig::station2ap_time() const
+inline uint32_t NodeConfig::station2ap_time() const
 {
 	return m_station2ap_time;
 }
@@ -7910,7 +7683,7 @@ inline void NodeConfig::clear_station2ap_time()
 	m_station2ap_time = 0;
 }
 
-inline uint64_t *NodeConfig::mutable_station2ap_time()
+inline uint32_t *NodeConfig::mutable_station2ap_time()
 {
 	if (0 == (p_validbits & ((uint32_t)1U << 8))) {
 		p_validbits |= ((uint32_t)1U << 8);
@@ -7919,7 +7692,7 @@ inline uint64_t *NodeConfig::mutable_station2ap_time()
 	return &m_station2ap_time;
 }
 
-inline void NodeConfig::set_station2ap_time(uint64_t v)
+inline void NodeConfig::set_station2ap_time(uint32_t v)
 {
 	m_station2ap_time = v;
 	p_validbits |= ((uint32_t)1U << 8);
@@ -7927,7 +7700,7 @@ inline void NodeConfig::set_station2ap_time(uint64_t v)
 
 
 
-inline const std::string &NodeConfig::domainname() const
+inline const estring &NodeConfig::domainname() const
 {
 	return m_domainname;
 }
@@ -7946,7 +7719,7 @@ inline void NodeConfig::clear_domainname()
 	m_domainname.clear();
 }
 
-inline std::string *NodeConfig::mutable_domainname()
+inline estring *NodeConfig::mutable_domainname()
 {
 	return &m_domainname;
 }
@@ -7961,7 +7734,7 @@ inline void NodeConfig::set_domainname(const char *data)
 	m_domainname = data;
 }
 
-inline void NodeConfig::set_domainname(const std::string &v)
+inline void NodeConfig::set_domainname(const estring &v)
 {
 	m_domainname = v;
 }
@@ -8068,7 +7841,7 @@ inline size_t NodeConfig::at_actions_size() const
 
 
 
-inline uint64_t NodeConfig::actions_enable() const
+inline uint32_t NodeConfig::actions_enable() const
 {
 	return m_actions_enable;
 }
@@ -8088,7 +7861,7 @@ inline void NodeConfig::clear_actions_enable()
 	m_actions_enable = 1;
 }
 
-inline uint64_t *NodeConfig::mutable_actions_enable()
+inline uint32_t *NodeConfig::mutable_actions_enable()
 {
 	if (0 == (p_validbits & ((uint32_t)1U << 9))) {
 		p_validbits |= ((uint32_t)1U << 9);
@@ -8097,7 +7870,7 @@ inline uint64_t *NodeConfig::mutable_actions_enable()
 	return &m_actions_enable;
 }
 
-inline void NodeConfig::set_actions_enable(uint64_t v)
+inline void NodeConfig::set_actions_enable(uint32_t v)
 {
 	m_actions_enable = v;
 	p_validbits |= ((uint32_t)1U << 9);
@@ -8294,12 +8067,12 @@ inline void NodeConfig::set_udp_ctrl_port(uint16_t v)
 
 
 
-inline const std::string &NodeConfig::debugs(unsigned x) const
+inline const estring &NodeConfig::debugs(unsigned x) const
 {
 	return m_debugs[x];
 }
 
-inline const std::vector<std::string> &NodeConfig::debugs() const
+inline const std::vector<estring> &NodeConfig::debugs() const
 {
 	return m_debugs;
 }
@@ -8313,19 +8086,19 @@ inline void NodeConfig::clear_debugs()
 	m_debugs.clear();
 }
 
-inline std::string *NodeConfig::mutable_debugs(unsigned x)
+inline estring *NodeConfig::mutable_debugs(unsigned x)
 {
 	if (x >= m_debugs.size())
 		m_debugs.resize(x+1);
 	return &m_debugs[x];
 }
 
-inline std::vector<std::string> *NodeConfig::mutable_debugs()
+inline std::vector<estring> *NodeConfig::mutable_debugs()
 {
 	return &m_debugs;
 }
 
-inline void NodeConfig::add_debugs(const std::string &v)
+inline void NodeConfig::add_debugs(const estring &v)
 {
 	m_debugs.push_back(v);
 }
@@ -8335,7 +8108,7 @@ inline void NodeConfig::add_debugs(const char *s)
 	m_debugs.push_back(s);
 }
 
-inline void NodeConfig::set_debugs(unsigned x, const std::string &v)
+inline void NodeConfig::set_debugs(unsigned x, const estring &v)
 {
 	assert(x < m_debugs.size());
 	m_debugs[x] = v;
@@ -8644,7 +8417,7 @@ inline size_t NodeConfig::statemachs_size() const
 #endif // CONFIG_STATEMACHINES
 
 
-inline uint64_t NodeConfig::max_on_time() const
+inline uint32_t NodeConfig::max_on_time() const
 {
 	return m_max_on_time;
 }
@@ -8663,14 +8436,14 @@ inline void NodeConfig::clear_max_on_time()
 	m_max_on_time = 0;
 }
 
-inline void NodeConfig::set_max_on_time(uint64_t v)
+inline void NodeConfig::set_max_on_time(uint32_t v)
 {
 	m_max_on_time = v;
 }
 
 
 
-inline uint64_t NodeConfig::threshold_off() const
+inline uint32_t NodeConfig::threshold_off() const
 {
 	return m_threshold_off;
 }
@@ -8690,7 +8463,7 @@ inline void NodeConfig::clear_threshold_off()
 	m_threshold_off = 0;
 }
 
-inline uint64_t *NodeConfig::mutable_threshold_off()
+inline uint32_t *NodeConfig::mutable_threshold_off()
 {
 	if (0 == (p_validbits & ((uint32_t)1U << 13))) {
 		p_validbits |= ((uint32_t)1U << 13);
@@ -8699,7 +8472,7 @@ inline uint64_t *NodeConfig::mutable_threshold_off()
 	return &m_threshold_off;
 }
 
-inline void NodeConfig::set_threshold_off(uint64_t v)
+inline void NodeConfig::set_threshold_off(uint32_t v)
 {
 	m_threshold_off = v;
 	p_validbits |= ((uint32_t)1U << 13);
@@ -8707,7 +8480,7 @@ inline void NodeConfig::set_threshold_off(uint64_t v)
 
 
 
-inline uint64_t NodeConfig::threshold_on() const
+inline uint32_t NodeConfig::threshold_on() const
 {
 	return m_threshold_on;
 }
@@ -8727,7 +8500,7 @@ inline void NodeConfig::clear_threshold_on()
 	m_threshold_on = 0;
 }
 
-inline uint64_t *NodeConfig::mutable_threshold_on()
+inline uint32_t *NodeConfig::mutable_threshold_on()
 {
 	if (0 == (p_validbits & ((uint32_t)1U << 14))) {
 		p_validbits |= ((uint32_t)1U << 14);
@@ -8736,7 +8509,7 @@ inline uint64_t *NodeConfig::mutable_threshold_on()
 	return &m_threshold_on;
 }
 
-inline void NodeConfig::set_threshold_on(uint64_t v)
+inline void NodeConfig::set_threshold_on(uint32_t v)
 {
 	m_threshold_on = v;
 	p_validbits |= ((uint32_t)1U << 14);
@@ -8744,7 +8517,7 @@ inline void NodeConfig::set_threshold_on(uint64_t v)
 
 
 
-inline uint64_t NodeConfig::dim_step() const
+inline uint32_t NodeConfig::dim_step() const
 {
 	return m_dim_step;
 }
@@ -8764,7 +8537,7 @@ inline void NodeConfig::clear_dim_step()
 	m_dim_step = 0;
 }
 
-inline uint64_t *NodeConfig::mutable_dim_step()
+inline uint32_t *NodeConfig::mutable_dim_step()
 {
 	if (0 == (p_validbits & ((uint32_t)1U << 15))) {
 		p_validbits |= ((uint32_t)1U << 15);
@@ -8773,7 +8546,7 @@ inline uint64_t *NodeConfig::mutable_dim_step()
 	return &m_dim_step;
 }
 
-inline void NodeConfig::set_dim_step(uint64_t v)
+inline void NodeConfig::set_dim_step(uint32_t v)
 {
 	m_dim_step = v;
 	p_validbits |= ((uint32_t)1U << 15);
@@ -8818,7 +8591,7 @@ inline void NodeConfig::set_lightctrl(bool v)
 
 
 
-inline uint64_t NodeConfig::pwm_freq() const
+inline uint32_t NodeConfig::pwm_freq() const
 {
 	return m_pwm_freq;
 }
@@ -8838,7 +8611,7 @@ inline void NodeConfig::clear_pwm_freq()
 	m_pwm_freq = 0;
 }
 
-inline uint64_t *NodeConfig::mutable_pwm_freq()
+inline uint32_t *NodeConfig::mutable_pwm_freq()
 {
 	if (0 == (p_validbits & ((uint32_t)1U << 17))) {
 		p_validbits |= ((uint32_t)1U << 17);
@@ -8847,7 +8620,7 @@ inline uint64_t *NodeConfig::mutable_pwm_freq()
 	return &m_pwm_freq;
 }
 
-inline void NodeConfig::set_pwm_freq(uint64_t v)
+inline void NodeConfig::set_pwm_freq(uint32_t v)
 {
 	m_pwm_freq = v;
 	p_validbits |= ((uint32_t)1U << 17);
@@ -8960,12 +8733,12 @@ inline size_t NodeConfig::thresholds_size() const
 
 
 #ifdef CONFIG_LUA
-inline const std::string &NodeConfig::luafiles(unsigned x) const
+inline const estring &NodeConfig::luafiles(unsigned x) const
 {
 	return m_luafiles[x];
 }
 
-inline const std::vector<std::string> &NodeConfig::luafiles() const
+inline const std::vector<estring> &NodeConfig::luafiles() const
 {
 	return m_luafiles;
 }
@@ -8979,19 +8752,19 @@ inline void NodeConfig::clear_luafiles()
 	m_luafiles.clear();
 }
 
-inline std::string *NodeConfig::mutable_luafiles(unsigned x)
+inline estring *NodeConfig::mutable_luafiles(unsigned x)
 {
 	if (x >= m_luafiles.size())
 		m_luafiles.resize(x+1);
 	return &m_luafiles[x];
 }
 
-inline std::vector<std::string> *NodeConfig::mutable_luafiles()
+inline std::vector<estring> *NodeConfig::mutable_luafiles()
 {
 	return &m_luafiles;
 }
 
-inline void NodeConfig::add_luafiles(const std::string &v)
+inline void NodeConfig::add_luafiles(const estring &v)
 {
 	m_luafiles.push_back(v);
 }
@@ -9001,7 +8774,7 @@ inline void NodeConfig::add_luafiles(const char *s)
 	m_luafiles.push_back(s);
 }
 
-inline void NodeConfig::set_luafiles(unsigned x, const std::string &v)
+inline void NodeConfig::set_luafiles(unsigned x, const estring &v)
 {
 	assert(x < m_luafiles.size());
 	m_luafiles[x] = v;

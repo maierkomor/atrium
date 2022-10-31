@@ -13,3 +13,5 @@ clearbuf: clear parse buffer
 writebuf: write parsed xxd buffer to NVS
 nvxxd   : create xxd output of NVS
 xxd     : create xxd output of current config
+backup  : create a backup of the current config in NVM
+restore : restore NVM state from backup

@@ -136,13 +136,13 @@ class EnvNumber : public EnvElement
 	EnvNumber *toNumber() override
 	{ return this; }
 
-	void set(double v);
+	void set(float v);
 
 	int setThresholds(float lo, float hi);
 
 	void writeValue(stream &) const;
 
-	double get() const
+	float get() const
 	{ return m_value; }
 
 	bool isValid() const
@@ -163,7 +163,7 @@ class EnvNumber : public EnvElement
 
 	protected:
 	// must be double to be conforming to JSON spec
-	double m_value;
+	float m_value;
 	float m_high = NAN, m_low = NAN;
 	event_t m_evhi = 0, m_evlo = 0;
 	int8_t m_tst = 0;

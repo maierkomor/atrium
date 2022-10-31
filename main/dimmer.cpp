@@ -264,7 +264,8 @@ const char *dim(Terminal &t, int argc, const char *argv[])
 		else
 			return argc == 2 ? "Invalid argument #1." : "Invalid argument #2.";
 	}
-	t.printf("%g %s\n",f,eptr);
+	t << f;
+	t.println();
 	if ((f < 0) || (f > DIM_MAX))
 		return argc == 2 ? "Invalid argument #1." : "Invalid argument #2.";
 	if (argc == 3)

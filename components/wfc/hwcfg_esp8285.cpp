@@ -31,6 +31,10 @@
 /*
  * options from commandline:
  * 
+ * options from esp8285:
+ * BaseClass       : ""
+ * getMember       : ""
+ * 
  * options from esp8266:
  * Optimize        : "size"
  * 
@@ -46,8 +50,6 @@
  * varintbits      : 32
  * 
  * options from common:
- * BaseClass       : "Message"
- * getMember       : "getMember"
  * wfclib          : "extern"
  * 
  * options from defaults:
@@ -6984,90 +6986,5 @@ int HardwareConfig::setByName(const char *name, const char *value)
 	}
 	#endif // CONFIG_DISPLAY
 	return -327;
-}
-
-Message *HardwareConfig::p_getMember(const char *s, const char *e)
-{
-	if (0 == strncmp("system",s,e-s))
-		return &m_system;
-	if (0 == strncmp("adc",s,e-s))
-		return &m_adc;
-	#ifdef CONFIG_MAX7219
-	if (0 == strncmp("max7219",s,e-s))
-		return &m_max7219;
-	#endif // CONFIG_MAX7219
-	#ifdef CONFIG_NIGHTSKY
-	if (0 == strncmp("tlc5947",s,e-s))
-		return &m_tlc5947;
-	#endif // CONFIG_NIGHTSKY
-	#ifdef CONFIG_LEDSTRIP
-	if (0 == strncmp("ws2812b",s,e-s))
-		return &m_ws2812b;
-	#endif // CONFIG_LEDSTRIP
-	#ifdef CONFIG_DHT
-	if (0 == strncmp("dht",s,e-s))
-		return &m_dht;
-	#endif // CONFIG_DHT
-	#ifdef CONFIG_ONEWIRE
-	if (0 == strncmp("onewire",s,e-s))
-		return &m_onewire;
-	#endif // CONFIG_ONEWIRE
-	#ifdef CONFIG_DISPLAY
-	if (0 == strncmp("display",s,e-s))
-		return &m_display;
-	#endif // CONFIG_DISPLAY
-	return 0;
-}
-
-Message *HardwareConfig::p_getMember(const char *s, const char *e, unsigned x)
-{
-	if (0 == strncmp("gpio[",s,e-s)) {
-		if (x < m_gpio.size())
-			return &m_gpio[x];
-		return 0;
-	}
-	#ifdef CONFIG_BUTTON
-	if (0 == strncmp("button[",s,e-s)) {
-		if (x < m_button.size())
-			return &m_button[x];
-		return 0;
-	}
-	#endif // CONFIG_BUTTON
-	#ifdef CONFIG_RELAY
-	if (0 == strncmp("relay[",s,e-s)) {
-		if (x < m_relay.size())
-			return &m_relay[x];
-		return 0;
-	}
-	#endif // CONFIG_RELAY
-	#ifdef CONFIG_LEDS
-	if (0 == strncmp("led[",s,e-s)) {
-		if (x < m_led.size())
-			return &m_led[x];
-		return 0;
-	}
-	#endif // CONFIG_LEDS
-	#ifdef CONFIG_I2C
-	if (0 == strncmp("i2c[",s,e-s)) {
-		if (x < m_i2c.size())
-			return &m_i2c[x];
-		return 0;
-	}
-	#endif // CONFIG_I2C
-	#ifdef CONFIG_HCSR04
-	if (0 == strncmp("hcsr04[",s,e-s)) {
-		if (x < m_hcsr04.size())
-			return &m_hcsr04[x];
-		return 0;
-	}
-	#endif // CONFIG_HCSR04
-	#ifdef CONFIG_IOEXTENDERS
-	if (0 == strncmp("iocluster[",s,e-s)) {
-		if (x < m_iocluster.size())
-			return &m_iocluster[x];
-		return 0;
-	}
-	#endif // CONFIG_IOEXTENDERS
-	return 0;
 }
 

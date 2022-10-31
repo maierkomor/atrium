@@ -542,6 +542,7 @@ int httpd_setup()
 {
 	bool index_html = false;
 	const char *root = "/flash";
+	uint16_t port = HTTP_PORT;
 #ifdef CONFIG_ROMFS
 	if (-1 != romfs_open("index.html")) {
 		WWW = new HttpServer(root,"/index.html");
@@ -549,9 +550,14 @@ int httpd_setup()
 		index_html = true;
 	}
 #endif
+	auto &c = Config.httpd();
+	if (!c.start())
+		return 0;
 #ifdef HAVE_FS
-	if (Config.httpd().has_root())
+	if (c.has_root())
 		root = Config.httpd().root().c_str();
+	if (c.has_port())
+		port = c.port();
 	char index[64];
 	strcpy(index,root);
 	strcat(index,"/index.html");
@@ -561,7 +567,7 @@ int httpd_setup()
 		WWW->addDirectory(root);
 		const char *upload = "/flash/upload";
 		if (Config.httpd().has_uploaddir())
-			upload = Config.httpd().uploaddir().c_str();
+			upload = c.uploaddir().c_str();
 		if (upload && upload[0]) {
 			if (stat(upload,&st) == -1) {
 				log_dbug(TAG,"creating upload directory");
@@ -604,7 +610,7 @@ int httpd_setup()
 	WWW->addFunction("/webcam.jpeg",webcam_sendframe);
 #endif
 	Sem = xSemaphoreCreateCounting(4,4);
-	return listen_port(HTTP_PORT,m_tcp,httpd_session,"httpd","_http",7,4096);
+	return listen_port(port,m_tcp,httpd_session,"httpd","_http",7,4096);
 }
 
 #endif	// CONFIG_HTTP

@@ -496,6 +496,7 @@ static const char *shell_ls(Terminal &term, int argc, const char *args[])
 		estring pwd = PWD;
 		if (pwd.back() == '/')
 			pwd.resize(pwd.size()-1);
+		term.println(pwd.c_str());
 		DIR *d = opendir(pwd.c_str());
 		if (d == 0) {
 			return strerror(errno);
@@ -963,16 +964,16 @@ static const char *hwconf(Terminal &term, int argc, const char *args[])
 		char arrayname[strlen(args[2])+4];
 		strcpy(arrayname,args[2]);
 		strcat(arrayname,"[+]");
-		return HWConf.setByName(arrayname,0) < 0 ? "Failed" : 0;
+		return HWConf.setByName(arrayname,0) < 0 ? "Failed." : 0;
 	} else if (!strcmp("set",args[1])) {
 		if (argc < 4)
 			return "Missing argument.";
-		return (0 > HWConf.setByName(args[2],args[3])) ? "Failed" : 0;
+		return (0 > HWConf.setByName(args[2],args[3])) ? "Failed." : 0;
 	} else if (!strcmp("reset",args[1])) {
-		return cfg_read_hwcfg() >= 0 ? "Failed" : 0;
+		return cfg_read_hwcfg() >= 0 ? "Failed." : 0;
 	} else if (!strcmp("clear",args[1])) {
 		if (argc == 3)
-			return HWConf.setByName(args[2],0) < 0 ? "Failed" : 0;
+			return HWConf.setByName(args[2],0) < 0 ? "Failed." : 0;
 		if (argc != 2)
 			return "Invalid number of arguments.";
 		HWConf.clear();
@@ -983,14 +984,33 @@ static const char *hwconf(Terminal &term, int argc, const char *args[])
 		HWConf.toMemory(buf,s);
 		print_hex(term,buf,s);
 		free(buf);
-	} else if (!strcmp("print",args[1])) {
-		HWConf.toASCII(term);
-	} else if (!strcmp("show",args[1])) {
-		HWConf.toASCII(term);
+	} else if ((!strcmp("show",args[1])) || !strcmp("print",args[1])) {
+		if (argc == 2)
+			HWConf.toASCII(term);
+#ifdef HAVE_GET_MEMBER
+		else if (Message *m = HWConf.getMember(args[2]))
+			m->toASCII(term);
+		else
+			return "Invalid argument #2.";
+#else
+		else
+			return "Invalid number of arguments.";
+#endif
+		term.println();
 	} else if (!strcmp("json",args[1])) {
-		HWConf.toJSON(term);
+		if (argc == 2)
+			HWConf.toJSON(term);
+#ifdef HAVE_GET_MEMBER
+		else if (Message *m = HWConf.getMember(args[2]))
+			m->toJSON(term);
+		else
+			return "Invalid argument #2.";
+#else
+		else
+			return "Invalid number of arguments.";
+#endif
 	} else if (!strcmp("write",args[1])) {
-		return cfg_store_hwcfg() ? "Failed" : 0;
+		return cfg_store_hwcfg() ? "Failed." : 0;
 #else
 	} else if (!strcmp("clear",args[1])) {
 		if (argc != 2)
@@ -1023,6 +1043,12 @@ static const char *hwconf(Terminal &term, int argc, const char *args[])
 		hwcfgbuf.clear();
 	} else if (!strcmp("xxdbuf",args[1])) {
 		print_hex(term,hwcfgbuf.data(),hwcfgbuf.size());
+	} else if (!strcmp(args[1],"read")) {
+		return cfg_read_hwcfg() ? "Failed." : 0;
+	} else if (!strcmp(args[1],"backup")) {
+		return nvm_copy_blob("hwcfg.bak","hw.cfg") ? "Failed." : 0;
+	} else if (!strcmp(args[1],"restore")) {
+		return nvm_copy_blob("hw.cfg","hwcfg.bak") ? "Failed." : 0;
 	} else {
 		return "Invalid argument #1.";
 	}
@@ -1552,12 +1578,33 @@ static const char *config(Terminal &term, int argc, const char *args[])
 		return help_cmd(term,args[0]);
 	}
 	if (0 == strcmp(args[1],"json")) {
-		Config.toJSON(term);
+		if (argc == 2)
+			Config.toJSON(term);
+#ifdef HAVE_GET_MEMBER
+		else if (Message *m = Config.getMember(args[2]))
+			m->toJSON(term);
+		else
+			return "Invalid argument #2.";
+#else
+		else
+			return "Invalid number of arguments.";
+#endif
 	} else if (0 == strcmp(args[1],"print")) {
 #ifdef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 		term.println("compiled out");
 #else
-		Config.toASCII(term);
+		if (argc == 2)
+			Config.toASCII(term);
+#ifdef HAVE_GET_MEMBER
+		else if (Message *m = Config.getMember(args[2]))
+			m->toASCII(term);
+		else
+			return "Invalid argument #2.";
+#else
+		else
+			return "Invalid number of arguments.";
+#endif
+		term.println();
 #endif
 	} else if (!strcmp("add",args[1])) {
 		if (argc < 3)
@@ -1565,7 +1612,9 @@ static const char *config(Terminal &term, int argc, const char *args[])
 		char arrayname[strlen(args[2])+4];
 		strcpy(arrayname,args[2]);
 		strcat(arrayname,"[+]");
-		return Config.setByName(arrayname,0) < 0 ? "Failed." : 0;
+		if (Config.setByName(arrayname, argc > 3 ? args[3] : 0) < 0)
+			return "Failed.";
+		return 0;
 	} else if (!strcmp("set",args[1])) {
 		if (argc == 4) {
 			if (0 > Config.setByName(args[2],args[3]))
@@ -2449,6 +2498,8 @@ const char *xlua_exe(Terminal &t, const char *);
 const char *shellexe(Terminal &term, char *cmd)
 {
 	PROFILE_FUNCTION();
+	if (*cmd == 0)
+		return 0;
 	log_info(TAG,"execute '%s'",cmd);
 	char *args[8];
 	while ((*cmd == ' ') || (*cmd == '\t'))

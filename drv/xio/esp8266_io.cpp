@@ -239,6 +239,7 @@ int CoreIO::set_lvl(uint8_t num, xio_lvl_t l)
 			GPIO.enable_w1ts = b;
 			return 0;
 		} else if (l == xio_lvl_hiz) {
+			GPIO.out_w1tc = b;
 			GPIO.enable_w1tc = b;
 			return 0;
 		}

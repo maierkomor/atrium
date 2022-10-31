@@ -81,14 +81,16 @@ while True:
 	# commands without arg
 	if com == 'exit':
 		term(0,receivethr)
+	elif com == '':
+                continue
 	elif com == 'help':
 		print("@<node> <command>     : send command to <node>")
 		print("send <command>        : broadcast command to all nodes")
 		print("port <p>              : set UDP port (default: 12719)")
 		print("hwcfg <node> [<file>] : send hardware config to node")
 		print("exit                  : terminate")
-
-	if (len(args) == 1):
+                continue
+	elif (len(args) == 1):
 		print("error: missing argument or unknown command")
 		continue
 	# commands with arguments
@@ -130,7 +132,7 @@ while True:
 				print(e)
 				continue
 			arg += buf.encode('hex')
-		arg += '\r\n\r\n'
+			arg += '\r\n\r\nhwconf writebuf\r\n'
 #		print("%u bytes" % len(arg))
 	else:
 		print("error unkown command '%s'" % com)
@@ -146,3 +148,4 @@ while True:
 		print("error sending: %s" % arg,e)
 	time.sleep(0.5)
 
+#vim:set noexpandtab

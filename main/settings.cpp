@@ -628,6 +628,13 @@ int cfg_read_nodecfg()
 int cfg_read_hwcfg()
 {
 	PROFILE_FUNCTION();
+	uint8_t setup = nvm_read_u8("hwconf",0);
+	log_info(TAG,"hwconf inhibit: %d",setup);
+	if (setup) {
+		log_warn(TAG,"%s: %u: last boot failed - skipping hwconf",cfg_err,setup);
+		return 1;
+	}
+	nvm_store_u8("hwconf",1);
 	size_t s = 0;
 	uint8_t *buf = 0;
 	if (int e = nvm_read_blob("hw.cfg",&buf,&s)) {
@@ -850,7 +857,7 @@ void cfg_activate_triggers()
 				cmd[sp-an] = 0;
 				if (Action *a = action_get(cmd)) {
 					log_dbug(TAG,"%s => %s(%s)",en,cmd,sp+1);
-					event_callback_arg(e,a,strdup(sp+1));
+					event_callback_arg(e,a,sp+1);
 				} else {
 					log_warn(TAG,"unknown action %s",an);
 				}

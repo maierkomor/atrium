@@ -294,7 +294,7 @@ void app_main()
 #ifdef CONFIG_LEDS
 	leds_setup();
 #endif
-	init_fs();
+	fs_init();
 
 #ifdef CONFIG_UART_CONSOLE
 	console_setup();
@@ -371,6 +371,9 @@ void app_main()
 	display_setup();
 	screen_setup();
 #endif // CONFIG_DISPLAY
+
+	// hardware init finished, no reset
+	nvm_store_u8("hwconf",0);
 
 	// activate actions after all events and actions are setup
 	// otherwise this step will fail

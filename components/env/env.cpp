@@ -73,16 +73,16 @@ void EnvBool::writeValue(stream &o) const
 }
 
 
-void EnvNumber::set(double v)
+void EnvNumber::set(float v)
 {
 	m_value = v;
 	if (m_evhi) {
-		if (m_tst < 0) {
+		if (m_tst <= 0) {
 			if (v > m_high) {
 				event_trigger(m_evhi);
 				m_tst = 1;
 			}
-		} else if (m_tst > 0) {
+		} else if (m_tst >= 0) {
 			if (v < m_low) {
 				event_trigger(m_evlo);
 				m_tst = -1;
@@ -99,7 +99,7 @@ void EnvNumber::set(double v)
 
 int EnvNumber::setThresholds(float l, float h)
 {
-	if ((l+FLT_EPSILON >= h) || (l == h))
+	if (l+FLT_EPSILON >= h)
 		return 1;
 	if (m_evhi == 0) {
 		m_evhi = event_register(m_name,"`high");

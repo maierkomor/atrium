@@ -314,6 +314,23 @@ static void led_set_off(void *arg)
 }
 
 
+static void led_toggle(void *arg)
+{
+	LedMode *m = (LedMode *)arg;
+	if (m) {
+		if (m->mode == ledmode_on) {
+			m->mode = ledmode_off;
+			m->state = ModeOffset[ledmode_off];
+			m->update = 0;
+		} else if (m->mode == ledmode_off) {
+			m->mode = ledmode_on;
+			m->state = ModeOffset[ledmode_on];
+			m->update = 0;
+		}
+	}
+}
+
+
 extern "C"
 void statusled_set(ledmode_t m)
 {
@@ -423,6 +440,7 @@ int leds_setup()
 			ctx = new LedMode(name,ledmode_off,gpio,on);
 			action_add(concat(name,"!on"), led_set_on, (void*)ctx, "led on");
 			action_add(concat(name,"!off"), led_set_off, (void*)ctx, "led off");
+			action_add(concat(name,"!toggle"), led_toggle, (void*)ctx, "toggle led");
 		}
 		cyclic_add_task(name,ledmode_subtask,(void*)ctx);
 		log_info(TAG,"added %s at %u",name,gpio);

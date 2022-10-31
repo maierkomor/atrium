@@ -17,9 +17,11 @@
  */
 
 option author="Thomas Maier-Komor";
-option copyright="2018-2021";
+option copyright="2018-2022";
 
 option common {
+	BaseClass=Message;
+	getMember=getMember;
 	id0=true;
 	wfclib=extern;
 }
@@ -64,6 +66,12 @@ option esp8266 : esp {
 	optimize=size;
 	withUnequal=false;
 }
+
+option esp8285 : esp8266 {
+	BaseClass="";
+	getMember="";
+}
+
 
 enum rstrsn_t {
 	unknown = 0;

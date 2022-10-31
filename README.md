@@ -18,7 +18,7 @@ Software services:
 - over-the-air (OTA) updates via http upload and download
 - OTA aware, persistent system configuration
 - MQTT integration (directly integrated with async LWIP)
-- data transmission to InfluxDB via UDP and TCP
+- data transmission to InfluxDB (v1 only) via UDP and TCP
   (directly integrated with async LWIP)
 - tool to send commands to all devices on the network
 - http server with system configuration support
@@ -367,6 +367,45 @@ mosquitto_pub -h mqtt-server -t node/set_mainrelay -m toggle
 ```
 
 
+FTP server:
+===========
+To enable the FTP server, you must explicitly set its start flag.
+Additionally, you can specify its port and root directory, i.e. the
+location in the filesystem, which should be served by the FTP server. If
+your device has SPIFFS, which does not support directories, you can only
+serve the whole filesystem. In that case the implicit default location
+`/flash` is the root directory.
+
+```
+config set ftpd.start true
+```
+
+The ftpd cannot serve files from ROMFS. It currently has no security at
+all. If you turn it on, files can be modified, deleted, and copied
+without any password.
+
+
+HTTP server:
+============
+The http server will automatically look for an `index.html` file in the
+given root directory, and start if one is found, unless the start flag
+is explicitly set to false.
+
+
+INETD - internet services daemon:
+=================================
+The inetd service is implicitly started, when any service is enabled
+that waits for incoming TCP connections. I.e. telnet, httpd, ftpd.
+It does not have a task of its own, but is tightly coupled into the LWIP
+stack to consume as little RAM as possible, unless you explicitly
+configured the socket interface to be used.
+
+The command `inetadm` can be used to temporarily disable services which
+are already running. This will not shut-down daemons that already got
+started by the service, but only reject incoming connections and not
+create new service daemons.
+
+
 A/D Converters:
 ===============
 A/D converter can be sampled via an action on ESP8266 and on ESP32 via
@@ -438,6 +477,13 @@ the Lua environment as callable functions.
 
 Using the `lua!run` action any of those functions can be triggered and
 also be bound to e.g. timer events.
+
+The file `data/lua/ws2812b.lua` shows an example of how to use it with
+an WS2812b LED bar. To run it load the Lua file to a ROMFS partition,
+and execute `luac ws2812b.lua` to compile it. After that you can run the
+script using the `lua!run ws2812b` action. I.e. the file is compiled
+to a function with the same name, which is resolved from Lua's global
+scope.
 
 
 Buliding Atrium yourself:
@@ -612,7 +658,7 @@ To update via telnet you need to perform the following steps:
 
 4. By executing `boot` on the console you can see on which partition the device is running currently and which partition will be used for an update. 
 
-5. By executing `update http://server/path/firmware.app1.bin` you can trigger a download that will update the currently inactive partition.  Please activate the partition only with `boot app1` or so, after the update was successful. If update returns with an error, the update failed, and booting from the relevant partition will most likely not be successful. To get more information about the reason for failure, you can execute `dmesg` to see the last message that were generated during the OTA procedure. If the update ran out of memory, you might want to try to reboot before restarting the update again.
+5. By executing `update http://server/path/firmware.app1` you can trigger a download that will update the currently inactive partition.  Please activate the partition only with `boot app1` or so, after the update was successful. If update returns with an error, the update failed, and booting from the relevant partition will most likely not be successful. To get more information about the reason for failure, you can execute `dmesg` to see the last message that were generated during the OTA procedure. If the update ran out of memory, you might want to try to reboot before restarting the update again.
 
 6. If the relevant project (e.g. s20) has configured a ROMFS partition, then you may also need to update this partition as well. For this execute: `update -r http://server/path/romfs.bin`
 
@@ -622,7 +668,26 @@ To update via telnet you need to perform the following steps:
 
 Never switch boot partition if updating returned an error.  If your system doesn't boot anymore, you will need to flash via serial boot loader.
 
-If your system reports out of memory while flashing, try to turn of some services (e.g. use `dmesg 0`, `mqtt disable`, and `influx stop` via telnet or serial console). This should free enough RAM to make the update possible.
+If your system reports out of memory while flashing, try to turn of some services (e.g. use `dmesg 0`, `mqtt disable`, and `influx stop` via telnet or serial console). This should free enough RAM to make the update possible. Following procedure might help:
+```
+config backup
+config clear timefuses
+config clear triggers
+config clear influx
+config clear mqtt
+dmesg 0
+config write
+reboot
+```
+
+After that there should be enough RAM available for the update to
+complete successfully. You will need about 10k of free RAM. Be sure that
+`config backup` returns `OK`, otherwise you will have to restore your
+configuration manually. After updating and before rebooting, you can
+restore the old configuration using:
+```
+config restore
+```
 
 
 Interface Stability:
@@ -714,9 +779,11 @@ OK
 
 After writing the config to NVS boot the device and wait until it has
 obtained an IP address in your WiFi LAN. Lookup that IP address and dial
-into the device via telnet. Now you can perform the more advance
-configuration easily and interactively. To list the available timers, actions,
-and events execute `timer -l` or `event -l` or `action -l`.
+into the device via telnet or use the nodename of the device suffixed
+with `.local` - e.g. `telnet sensor1.local`. Now you can perform the
+more advance configuration easily and interactively. To list the
+available timers, actions, and events execute `timer -l` or `event -l`
+or `action -l`.
 
 After defining a timer with its timeout in milliseconds, you can attach the
 timer event to appropriate actions. The example below defines a timer with a
@@ -752,7 +819,7 @@ OK
 OK
 ```
 
-Central Control of Atrium Devices:
+Central Control of Atrium Devices (AtriumCtrl):
 ==================================
 If you have a network of several Atrium devices and you may want to add a
 holiday to all of the devices, some kind of central control comes handy.
@@ -760,7 +827,11 @@ For that case `bin/atriumctrl.py` can be used to remotely access all or
 specified devices. Use the `send` commmand to send a command to all
 devices - e.g. `send version`. All devices will execute that command and
 send the answer back. Like this you can perform changes of settings
-quickly for all devices.
+quickly for all devices, or set the holidays centrally, without having
+to access every device individually.
+
+AtrimCtrl can also be used for loading a hardware configuration that was
+created with the `atrimcfg` utility.
 
 
 Displays:
@@ -822,6 +893,7 @@ Known Issues:
 - CMake based builds do not support OTA image generation
 - LED-strip/WS2812b driver relies on RMT infrastructure on ESP32, which
   has timing issues under certain condition. Avoid using channel 0.
+- Lua execution is leaking memory
 
 
 Bugs:

@@ -145,11 +145,10 @@ int LwTcp::write(const char *data, size_t l, bool copy_ignored)
 
 
 ///////////////////////////////////////////////////////////////////////////////
-#else // ESP8266
+#else // !CONFIG_SOCKET_API
 ///////////////////////////////////////////////////////////////////////////////
 
 #include "lwip/inet.h"
-//#include "inetd.h"
 #include "udns.h"
 #include "tcpio.h"
 
@@ -712,7 +711,7 @@ err_t LwTcpListener::handle_accept(void *arg, struct tcp_pcb *pcb, err_t x)
 		LwTcpListener *P = (LwTcpListener *) arg;
 		if (!P->m_enabled) {
 			log_localx(TAG,"%s disabled: rejecting %s:%u",P->m_name,inet_ntoa(pcb->remote_ip),(int)pcb->remote_port);
-			return 0;
+			return 1;
 		}
 		LwTcp *N = new LwTcp(pcb);
 		char name[24];

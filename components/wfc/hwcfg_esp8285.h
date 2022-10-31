@@ -31,6 +31,10 @@
 /*
  * options from commandline:
  * 
+ * options from esp8285:
+ * BaseClass       : ""
+ * getMember       : ""
+ * 
  * options from esp8266:
  * Optimize        : "size"
  * 
@@ -46,8 +50,6 @@
  * varintbits      : 32
  * 
  * options from common:
- * BaseClass       : "Message"
- * getMember       : "getMember"
  * wfclib          : "extern"
  * 
  * options from defaults:
@@ -120,7 +122,6 @@
 #define HAVE_TO_MEMORY 1
 #define HAVE_TO_ASCII 1
 #define HAVE_TO_JSON 1
-#define HAVE_GET_MEMBER 1
 #define HAVE_FROM_MEMORY 1
 #define ON_ERROR_CANCEL 1
 #define HAVE_ENUM_NAMES 1
@@ -197,7 +198,7 @@ typedef uint8_t relay_cfg_t;
 typedef uint16_t i2cdev_t;
 typedef uint8_t ledcfg_t;
 typedef uint16_t gpiocfg_t;
-class SystemConfig : public Message
+class SystemConfig
 {
 	public:
 	SystemConfig();
@@ -468,7 +469,7 @@ class SystemConfig : public Message
 };
 
 
-class TouchpadConfig : public Message
+class TouchpadConfig
 {
 	public:
 	TouchpadConfig();
@@ -639,7 +640,7 @@ class TouchpadConfig : public Message
 };
 
 
-class TouchChannelConfig : public Message
+class TouchChannelConfig
 {
 	public:
 	TouchChannelConfig();
@@ -818,7 +819,7 @@ class TouchChannelConfig : public Message
 };
 
 
-class ButtonConfig : public Message
+class ButtonConfig
 {
 	public:
 	ButtonConfig();
@@ -1030,7 +1031,7 @@ class ButtonConfig : public Message
 };
 
 
-class RelayConfig : public Message
+class RelayConfig
 {
 	public:
 	RelayConfig();
@@ -1229,7 +1230,7 @@ class RelayConfig : public Message
 };
 
 
-class Max7219Config : public Message
+class Max7219Config
 {
 	public:
 	Max7219Config();
@@ -1397,7 +1398,7 @@ class Max7219Config : public Message
 };
 
 
-class Tlc5947Config : public Message
+class Tlc5947Config
 {
 	public:
 	Tlc5947Config();
@@ -1565,7 +1566,7 @@ class Tlc5947Config : public Message
 };
 
 
-class Ws2812bConfig : public Message
+class Ws2812bConfig
 {
 	public:
 	Ws2812bConfig();
@@ -1675,7 +1676,7 @@ class Ws2812bConfig : public Message
 };
 
 
-class DhtConfig : public Message
+class DhtConfig
 {
 	public:
 	DhtConfig();
@@ -1783,7 +1784,7 @@ class DhtConfig : public Message
 };
 
 
-class I2CConfig : public Message
+class I2CConfig
 {
 	public:
 	I2CConfig();
@@ -1974,7 +1975,7 @@ class I2CConfig : public Message
 };
 
 
-class HcSr04Config : public Message
+class HcSr04Config
 {
 	public:
 	HcSr04Config();
@@ -2110,7 +2111,7 @@ class HcSr04Config : public Message
 };
 
 
-class LedConfig : public Message
+class LedConfig
 {
 	public:
 	LedConfig();
@@ -2277,7 +2278,7 @@ class LedConfig : public Message
 };
 
 
-class OneWireConfig : public Message
+class OneWireConfig
 {
 	public:
 	OneWireConfig();
@@ -2405,7 +2406,7 @@ class OneWireConfig : public Message
 };
 
 
-class UartConfig : public Message
+class UartConfig
 {
 	public:
 	UartConfig();
@@ -2501,7 +2502,7 @@ class UartConfig : public Message
 };
 
 
-class AdcChannel : public Message
+class AdcChannel
 {
 	public:
 	AdcChannel();
@@ -2700,7 +2701,7 @@ class AdcChannel : public Message
 };
 
 
-class AdcConfig : public Message
+class AdcConfig
 {
 	public:
 	AdcConfig();
@@ -2847,7 +2848,7 @@ class AdcConfig : public Message
 };
 
 
-class GpioConfig : public Message
+class GpioConfig
 {
 	public:
 	GpioConfig();
@@ -3014,7 +3015,7 @@ class GpioConfig : public Message
 };
 
 
-class DisplayConfig : public Message
+class DisplayConfig
 {
 	public:
 	DisplayConfig();
@@ -3165,7 +3166,7 @@ class DisplayConfig : public Message
 };
 
 
-class GpioCluster : public Message
+class GpioCluster
 {
 	public:
 	GpioCluster();
@@ -3341,7 +3342,7 @@ class GpioCluster : public Message
 };
 
 
-class HardwareConfig : public Message
+class HardwareConfig
 {
 	public:
 	HardwareConfig();
@@ -3815,8 +3816,6 @@ class HardwareConfig : public Message
 	
 	
 	protected:
-	Message *p_getMember(const char *s, const char *e);
-	Message *p_getMember(const char *s, const char *e, unsigned i);
 	//! fixed32 magic, id 0
 	uint32_t m_magic;
 	#ifdef CONFIG_LEDS

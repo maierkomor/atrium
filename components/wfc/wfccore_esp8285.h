@@ -32,9 +32,12 @@
  * options from commandline:
  * wfclib          : "extern"
  * 
- * options from esp32:
- * endian          : "little"
- * Optimize        : "speed"
+ * options from esp8285:
+ * BaseClass       : ""
+ * getMember       : ""
+ * 
+ * options from esp8266:
+ * Optimize        : "size"
  * 
  * options from esp:
  * bytestype       : "estring"
@@ -48,8 +51,6 @@
  * varintbits      : 32
  * 
  * options from common:
- * BaseClass       : "Message"
- * getMember       : "getMember"
  * 
  * options from defaults:
  * AddPrefix       : "add_"
@@ -63,6 +64,7 @@
  * ClearPrefix     : "clear_"
  * copyright       : ""
  * email           : ""
+ * endian          : "unknown"
  * ErrorHandling   : "cancel"
  * fromMemory      : "fromMemory"
  * GetPrefix       : ""
@@ -80,7 +82,7 @@
  * wireput         : ""
  * wiresize        : ""
  * 
- * enabled flags from esp32:
+ * disabled flags from esp8266:
  * 	withUnequal
  * enabled flags from esp:
  * 	enumnames, withEqual
@@ -120,50 +122,7 @@
 
 typedef uint32_t varint_t;
 typedef int32_t varsint_t;
-
-
-class Message
-{
-	public:
-	virtual ~Message() = 0;
-	
-	//! calculate the number ob bytes needed for a serialized representation
-	virtual size_t calcSize() const = 0;
-	
-	/*!
-	* Function for serializing the object to memory.
-	* @param b buffer to serialize the object to
-	* @param s number of bytes available in the buffer
-	* @return number of bytes successfully serialized
-	*/
-	virtual ssize_t toMemory(uint8_t *, ssize_t) const = 0;
-	/*!
-	* output message as JSON to stream
-	* @param json: output stream for JSON
-	* @param indLvl: indention level
-	*/
-	virtual void toJSON(stream &json, unsigned indLvl = 0) const = 0;
-	/*!
-	* output message as ASCII to stream
-	* @param out: output stream
-	* @param indLvl: indention level
-	*/
-	virtual void toASCII(stream &out, size_t indLvl = 0) const = 0;
-	/*!
-	* Get member or submember object of message type.
-	* @param s: start of member name string path
-	* @return: pointer to message object of the relevant element
-	*/
-	Message *getMember(const char *);
-	
-	protected:
-	virtual Message *p_getMember(const char *s, const char *e) = 0;
-	virtual Message *p_getMember(const char *s, const char *e, unsigned x) = 0;
-};
-
-inline Message::~Message()
-{
-}
+typedef _ssize_t ssize_t;
 
 
 /* included from: (WFC_ROOT)/share/write_varint.cct
@@ -175,26 +134,49 @@ extern int write_varint(uint8_t *wire, ssize_t wl, varint_t v);
 
 /* included from: (WFC_ROOT)/share/read_mem.cc
  * function:      read_u64
- * variant:       read_u64_le
- * endian: little
+ * variant:       read_u64_generic
  */
-#define read_u64(wire) (*(uint64_t *)(wire))
+inline uint64_t read_u64(const uint8_t *wire)
+{
+	uint64_t r;
+	r = (uint64_t)*wire++;
+	r |= (uint64_t)*wire++ << 8;
+	r |= (uint64_t)*wire++ << 16;
+	r |= (uint64_t)*wire++ << 24;
+	r |= (uint64_t)*wire++ << 32;
+	r |= (uint64_t)*wire++ << 40;
+	r |= (uint64_t)*wire++ << 48;
+	r |= (uint64_t)*wire << 56;
+	return r;
+}
 
 
 /* included from: (WFC_ROOT)/share/read_mem.cc
  * function:      read_u32
- * variant:       read_u32_le
- * endian: little
+ * variant:       read_u32_generic
  */
-#define read_u32(wire) (*(uint32_t *)(wire))
+inline uint32_t read_u32(const uint8_t *wire)
+{
+	uint32_t r;
+	r = (uint32_t)*wire++;
+	r |= (uint32_t)*wire++ << 8;
+	r |= (uint32_t)*wire++ << 16;
+	r |= (uint32_t)*wire << 24;
+	return r;
+}
 
 
 /* included from: (WFC_ROOT)/share/read_mem.cc
  * function:      read_u16
- * variant:       read_u16_le
- * endian: little
+ * variant:       read_u16_generic
  */
-#define read_u16(wire) (*(uint16_t *)(wire))
+inline uint16_t read_u16(const uint8_t *wire)
+{
+	uint16_t r;
+	r = (uint16_t)wire[0]
+	| (uint16_t)wire[1] << 8;
+	return r;
+}
 
 
 /* included from: (WFC_ROOT)/share/early_decode.cct
@@ -296,29 +278,28 @@ inline int64_t varint_sint(varint_t v)
 
 /* included from: (WFC_ROOT)/share/write_mem.cc
  * function:      write_u16
- * variant:       write_u16_le
- * Optimize: speed
- * endian: little
+ * variant:       write_u16_0
  */
-#define write_u16(w,v) (*(uint16_t*)w) = v
+inline void write_u16(uint8_t *wire, uint16_t v)
+{
+	*wire++ = v & 0xff;
+	v >>= 8;
+	*wire++ = v;
+}
 
 
 /* included from: (WFC_ROOT)/share/write_mem.cc
  * function:      write_u32
- * variant:       write_u32_le
- * Optimize: speed
- * endian: little
+ * variant:       write_u32_0
  */
-#define write_u32(w,v) (*(uint32_t*)w) = v
+extern void write_u32(uint8_t *wire, uint32_t v);
 
 
 /* included from: (WFC_ROOT)/share/write_mem.cc
  * function:      write_u64
- * variant:       write_u64_le
- * Optimize: speed
- * endian: little
+ * variant:       write_u64_generic
  */
-#define write_u64(w,v) (*(uint64_t*)w) = v
+extern void write_u64(uint8_t *wire, uint64_t v);
 
 
 /* included from: (WFC_ROOT)/share/early_decode.cct
@@ -337,18 +318,24 @@ extern unsigned read_varint(const uint8_t *wire, ssize_t wl, varint_t *r);
 
 /* included from: (WFC_ROOT)/share/read_mem.cc
  * function:      read_double
- * variant:       read_double_le
- * endian: little
+ * variant:       read_double_generic
  */
-#define read_double(wire) (*(double *)(wire))
+extern double read_double(const uint8_t *wire);
 
 
 /* included from: (WFC_ROOT)/share/read_mem.cc
  * function:      read_float
- * variant:       read_float_le
- * endian: little
+ * variant:       read_float_generic
  */
-#define read_float(wire) (*(float *)(wire))
+inline float read_float(const uint8_t *wire)
+{
+	union { uint32_t i; float f; } r;
+	r.i = (uint32_t)*wire++;
+	r.i |= (uint32_t)*wire++ << 8;
+	r.i |= (uint32_t)*wire++ << 16;
+	r.i |= (uint32_t)*wire << 24;
+	return r.f;
+}
 
 
 /* included from: (WFC_ROOT)/share/skip_content.cct
@@ -486,8 +473,7 @@ char json_indent(streamtype &json, unsigned indLvl, char fsep, const char *fname
 
 /* included from: (WFC_ROOT)/share/json_string.cct
  * function:      json_cstr
- * variant:       json_cstr_buffered
- * Optimize: speed
+ * variant:       json_cstr_direct
  */
 extern void json_cstr(stream &json, const char *cstr);
 
@@ -695,8 +681,8 @@ extern void send_u32(void (*put)(uint8_t), uint32_t v);
 
 /* included from: (WFC_ROOT)/share/send_data.cct
  * function:      send_u64
- * variant:       send_u64_speed
- * Optimize: speed
+ * variant:       send_u64_size
+ * Optimize: size
  */
 extern void send_u64(void (*put)(uint8_t), uint64_t v);
 
@@ -733,9 +719,7 @@ extern int write_xvarint(uint8_t *wire, ssize_t wl, varint_t v);
 
 /* included from: (WFC_ROOT)/share/place_varint.cc
  * function:      place_varint
- * variant:       place_varint_vi32
- * VarIntBits: 32
- * optimize: speed
+ * variant:       place_varint_generic
  * description: place
  */
 extern void place_varint(uint8_t *w, varint_t v);
@@ -757,8 +741,8 @@ extern void send_u32(estring &put, uint32_t v);
 
 /* included from: (WFC_ROOT)/share/send_data.cct
  * function:      send_u64
- * variant:       send_u64_speed
- * Optimize: speed
+ * variant:       send_u64_size
+ * Optimize: size
  */
 extern void send_u64(estring &put, uint64_t v);
 
@@ -780,21 +764,15 @@ extern void send_xvarint(estring &put, varint_t v);
 
 /* included from: (WFC_ROOT)/share/send_data.cct
  * function:      send_msg
- * variant:       send_msg_fast
- * Optimize: speed
+ * variant:       send_msg
  */
 template <typename S, class C>
 void send_msg(S &str, const C &c)
 {
-	size_t off = str.size();
-	str.append(9,0x80);
-	str.push_back(0x0);
-	c.toString(str);
-	size_t n = str.size() - off - 10;
-	while (n) {
-		str[off++] |= (n&0x7f);
-		n >>= 7;
-	}
+	std::string tmp;
+	c.toString(tmp);
+	send_varint(str,tmp.size());
+	str.append(tmp);
 }
 
 

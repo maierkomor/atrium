@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2021, Thomas Maier-Komor
+ *  Copyright (C) 2018-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -51,7 +51,7 @@ extern "C" {
 #include <sys/stat.h>
 #include <unistd.h>
 
-#define BUFSIZE (16*1024)
+#define BUFSIZE 1024
 #define FTPD_PORT 21
 
 
@@ -335,7 +335,11 @@ cleanup:
 		return;
 	}
 	char *buf = (char*)malloc(BUFSIZE);
-	assert(buf);
+	if (buf == 0) {
+		answer(ctx,"552 unable to allocate mem for reading");
+		log_warn(TAG,"unable to allocate mem for reading");
+		return;
+	}
 	answer(ctx,"150 opened %s",arg);
 	int r, total = 0;
 	do {
@@ -397,9 +401,13 @@ static void store(ftpctx_t *ctx, const char *arg)
 		return;
 	}
 	answer(ctx,"150 created %s",arg);
-	char *buf = (char*)malloc(BUFSIZE);
-	assert(buf);
 	int n, total = 0;
+	char *buf = (char*)malloc(BUFSIZE);
+	if (buf == 0) {
+		answer(ctx,"552 error writing: out of memory");
+		log_warn(TAG,"unable to write to %s for storing: out of memory",arg);
+		goto cleanup;
+	}
 	do {
 		n = ctx->dcon->read(buf,BUFSIZE);
 		if (n > 0) {
@@ -802,20 +810,22 @@ int ftpd_setup()
 {
 	if (!Config.has_ftpd())
 		return 0;
-	const FtpHttpConfig &c = Config.ftpd();
-	uint16_t p = c.port();
-	if (p == 0)
-		p = FTPD_PORT;
-	if (!c.has_root() || (0 == p))
+	FtpHttpConfig *c = Config.mutable_ftpd();
+	if (!c->has_start() || !c->start())
 		return 0;
-	const char *r = c.root().c_str();
+	uint16_t p = FTPD_PORT;
+	if (c->has_port())
+		p = c->port();
+	const char *r = "/flash";
+	if (c->has_root())
+		r = c->root().c_str();
 	DIR *d = opendir(r);
 	if (d == 0) {
 		log_warn(TAG,"error accessing root '%s': %s",r,strerror(errno));
 		return 1;
 	}
 	closedir(d);
-	log_info(TAG,"port %hu, root %s",p,r);
+	log_info(TAG,"port %hu, root '%s'",p,r);
 	return listen_port(FTPD_PORT,m_tcp,ftpd_session,"ftp","ftp",5,4096);
 }
 

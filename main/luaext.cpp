@@ -40,11 +40,16 @@ extern "C" {
 
 #define TAG MODULE_LUA
 
+#ifdef ESP8266
+#define USE_FOPEN
+#endif
+
 using namespace std;
 
 static SemaphoreHandle_t Mtx = 0;
 static lua_State *LS = 0;
 static vector<string> Compiled;
+static void xlua_init();
 
 
 static int f_sin(lua_State *L)
@@ -205,6 +210,10 @@ static int f_setvar(lua_State *L)
 static int f_newvar(lua_State *L)
 {
 	const char *var = luaL_checkstring(L,1);
+	if (RTData->getChild(var)) {
+		lua_pushfstring(L,"newvar('%s'): variable already exists",var);
+		lua_error(L);
+	}
 	switch (lua_type(L,2)) {
 	case LUA_TSTRING:
 		RTData->add(new EnvString(var,lua_tostring(L,2)));
@@ -233,8 +242,8 @@ static int f_getvar(lua_State *L)
 	const char *var = luaL_checkstring(L,1);
 	EnvElement *e = RTData->getChild(var);
 	if (0 == e) {
-		lua_pushfstring(L,"getvar('%s'): no such variable",var);
-		lua_error(L);
+		lua_pushnil(L);
+		return 1;
 	}
 	log_dbug(TAG,"getvar('%s')",var);
 	if (EnvString *s = e->toString()) {
@@ -319,6 +328,8 @@ static int xlua_parse_file(const char *fn, const char *n = 0)
 		romfs_read_at(fd,buf,s,0);
 #endif
 		Lock lock(Mtx);
+		if (LS == 0)
+			xlua_init();
 		int r;
 		if (0 == luaL_loadbuffer(LS,buf,s,vn)) {
 			lua_setglobal(LS,vn);
@@ -336,6 +347,13 @@ static int xlua_parse_file(const char *fn, const char *n = 0)
 	}
 #endif
 #ifdef HAVE_FS
+#ifdef USE_FOPEN
+	// TODO: esp8266 must use fopen, but has too little RAM anyway...
+	/*
+	   if (FILE *f = fopen(fn,O_RDONLY)) {
+	   }
+	   */
+#else
 	fd = open(fn,O_RDONLY);
 	if (fd != -1) {
 		struct stat st;
@@ -362,6 +380,7 @@ static int xlua_parse_file(const char *fn, const char *n = 0)
 		}
 		return 1;
 	}
+#endif // USE_FOPEN
 #endif
 	return 1;
 }
@@ -369,6 +388,8 @@ static int xlua_parse_file(const char *fn, const char *n = 0)
 
 const char *xluac(Terminal &t, int argc, const char *args[])
 {
+	if (LS == 0)
+		xlua_init();
 	if ((argc == 1) || (0 == strcmp(args[1],"-h")))
 		return help_cmd(t,args[0]);
 	if (0 == strcmp(args[1],"-i")) {
@@ -455,12 +476,18 @@ const char *xluac(Terminal &t, int argc, const char *args[])
 
 const char *xlua_exe(Terminal &t, const char *script)
 {
+	if (LS == 0)
+		xlua_init();
 	Lock lock(Mtx);
 	log_dbug(TAG,"execute '%s'",script);
 	const char *r = 0;
-	if (0 != luaL_loadbuffer(LS,script,strlen(script),"script")) {
+	if (lua_getglobal(LS,script)) {
+		log_dbug(TAG,"found global %s",script);
+	} else if (0 == luaL_loadbuffer(LS,script,strlen(script),"cmdline")) {
+	} else {
 		r = "Parser error.";
-	} else if (0 != lua_pcall(LS,0,1,0)) {
+	}
+	if ((r == 0) && (0 != lua_pcall(LS,0,1,0))) {
 		r = "Execution error.";
 	}
 	if (const char *str = lua_tostring(LS,-1)) {
@@ -477,26 +504,40 @@ static void xlua_script(void *arg)
 	if (arg == 0)
 		return;
 	Lock lock(Mtx);
+	if (LS == 0)
+		xlua_init();
 	const char *script = (const char *) arg;
 	log_dbug(TAG,"lua!run '%s'",script);
-	if (0 != luaL_loadbuffer(LS,script,strlen(script),"script"))
+	bool run = true;
+	if (lua_getglobal(LS,script)) {
+		log_dbug(TAG,"found global %s",script);
+	} else if (0 == luaL_loadbuffer(LS,script,strlen(script),"lua!run")) {
+	} else {
+		run = false;
 		log_warn(TAG,"lua!run '%s': parser error",script);
-	else if (0 != lua_pcall(LS,0,1,0))
+	}
+	if (run && (0 != lua_pcall(LS,0,1,0)))
 		log_warn(TAG,"lua!run '%s': exe error",script);
 	if (const char *str = lua_tostring(LS,-1))
 		log_warn(TAG,"lua!run '%s': %s",script,str);
 	lua_pop(LS,1);
+	lua_gc(LS,LUA_GCCOLLECT);
+}
+
+
+static void xlua_init()
+{
+	LS = luaL_newstate();
+	luaopen_base(LS);
+	luaopen_math(LS);
+	luaopen_string(LS);
+	xlua_init_funcs(LS);
 }
 
 
 void xlua_setup()
 {
 	Mtx = xSemaphoreCreateMutex();
-	LS = luaL_newstate();
-	luaopen_base(LS);
-	luaopen_math(LS);
-	luaopen_string(LS);
-	xlua_init_funcs(LS);
 	action_add("lua!run",xlua_script,0,"run argument as Lua script");
 	action_add("lua!file",xlua_script,0,"execute file with Lua interpreter");
 	for (const auto &fn : Config.luafiles())
