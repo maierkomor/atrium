@@ -18,8 +18,6 @@
 
 #include <sdkconfig.h>
 
-#ifdef CONFIG_UART_CONSOLE
-
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
@@ -33,6 +31,23 @@
 #include "log.h"
 #include "shell.h"
 #include "swcfg.h"
+
+using namespace std;
+
+#define TAG MODULE_CON
+
+
+static void console_task(void *con)
+{
+	log_info(TAG,"ready");
+	Terminal *term = (Terminal *)con;
+	for (;;) {
+		shell(*term);
+	}
+}
+
+
+#ifdef CONFIG_UART_CONSOLE
 #include "uart_terminal.h"
 
 #if IDF_VERSION > 32 || defined CONFIG_IDF_TARGET_ESP32
@@ -41,21 +56,7 @@
 #define DRIVER_ARG 0
 #endif
 
-using namespace std;
-
-#define TAG MODULE_CON
-
-static void console_task(void *con)
-{
-	log_info(TAG,"ready");
-	UartTerminal *term = (UartTerminal *)con;
-	for (;;) {
-		shell(*term);
-	}
-}
-
-
-int console_setup(void)
+static inline void uart_console_setup(void)
 {
 	int rx = HWConf.system().console_rx();
 	int tx = HWConf.system().console_tx();
@@ -65,14 +66,62 @@ int console_setup(void)
 		if (!Config.has_pass_hash())
 			con->setPrivLevel(1);
 		BaseType_t r = xTaskCreatePinnedToCore(console_task, "tty", 4096, con, 8, 0, PRO_CPU_NUM);
-		if (r != pdPASS) {
+		if (r != pdPASS)
 			log_error(TAG,"create task: %s",esp_err_to_name(r));
-			return 1;
-		}
+		else
+			log_info(TAG,"console on UART %d/%d ready",rx,tx);
 	}
-	return 0;
 }
-
+#else
+#define uart_console_setup()
 #endif // CONFIG_UART_CONSOLE
 
 
+#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG 
+#include "jtag_terminal.h"
+
+static inline void jtag_console_setup(void)
+{
+	if (HWConf.system().usb_con()) {
+		if (JtagTerminal *con = new JtagTerminal(true)) {
+			if (!Config.has_pass_hash())
+				con->setPrivLevel(1);
+			BaseType_t r = xTaskCreatePinnedToCore(console_task, "jtagtty", 4096, con, 8, 0, PRO_CPU_NUM);
+			if (r != pdPASS)
+				log_error(TAG,"create task: %s",esp_err_to_name(r));
+			else
+				log_info(TAG,"console on JTAG ready");
+		}
+	}
+}
+#else
+#define jtag_console_setup()
+#endif // CONFIG_USB_CONSOLE
+
+
+#ifdef CONFIG_TINYUSB
+#include "cdc_terminal.h"
+
+static inline void cdc_console_setup(void)
+{
+	if (CdcTerminal *con = CdcTerminal::create(true)) {
+		if (!Config.has_pass_hash())
+			con->setPrivLevel(1);
+		BaseType_t r = xTaskCreatePinnedToCore(console_task, "cdctty", 4096, con, 8, 0, PRO_CPU_NUM);
+		if (r != pdPASS)
+			log_error(TAG,"create task: %s",esp_err_to_name(r));
+		else
+			log_info(TAG,"console on CDC ready");
+	}
+}
+#else
+#define cdc_console_setup()
+#endif
+
+
+void console_setup()
+{
+	uart_console_setup();
+	jtag_console_setup();
+//	cdc_console_setup();
+}

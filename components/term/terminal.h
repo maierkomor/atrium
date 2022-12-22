@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -25,6 +25,7 @@
 #include <string.h>
 
 #include "stream.h"
+#include "estring.h"
 
 
 class Terminal : public stream
@@ -36,10 +37,14 @@ class Terminal : public stream
 	, m_plvl(plvl)
 	{ }
 
-	virtual ~Terminal() = 0;
+	~Terminal() override;
+
+	virtual const char *type() const
+	{ return 0; }
 
 	// bare metal read minimum 1 character
-	virtual int read(char *, size_t, bool block = true) = 0;
+	virtual int read(char *, size_t, bool block = true)
+	{ return -1; }
 
 	virtual int disconnect()
 	{ return 0; }
@@ -57,22 +62,22 @@ class Terminal : public stream
 	const char *error() const
 	{ return m_error; }
 
+	const estring &getPwd();
+	int setPwd(const char *pwd);
+
 	virtual bool isInteractive() const
 	{ return true; }
 
 	protected:
-	const char *m_error, *m_pwd;
+	const char *m_error = 0;
+	estring m_pwd;
 
 	private:
+	Terminal(const Terminal &);
+	Terminal &operator = (const Terminal &);
 	uint8_t	m_plvl;
 	bool m_synced = true;
 };
-
-
-inline Terminal::~Terminal()
-{
-
-}
 
 
 class NullTerminal : public Terminal
@@ -82,12 +87,15 @@ class NullTerminal : public Terminal
 	: Terminal()
 	{ }
 
+	const char *type() const override
+	{ return "null"; }
+
 	// bare metal write
-	int write(const char *, size_t n)
+	int write(const char *, size_t n) override
 	{ return n; }
 	
 	// bare metal read minimum 1 character
-	int read(char *, size_t, bool block = true)
+	int read(char *, size_t, bool block = true) override
 	{ return 0; }
 };
 
@@ -111,10 +119,14 @@ typedef enum cmd_ret_e {
 	RET_INV_ARG_15,
 	RET_FAILED,
 	RET_RANGE,
-	RET_MISSING,
+	RET_MISSING_ARG,
 	RET_INV_NUMARG,
+	RET_INVARG,
 	RET_OOM,		// out of memory
 	RET_PERM,		// access denied
+	RET_TIMEOUT,
+	RET_NOT_FOUND,
+	RET_NOT_CONNECTED,
 	RET_ERRNO,
 } cmd_ret_t;
 */

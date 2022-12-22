@@ -42,6 +42,10 @@ class TLC5947
 	{ return m_on; }
 	esp_err_t get_error() const
 	{ return m_err; }
+	bool initialized() const
+	{ return m_initialized; }
+	unsigned get_nleds() const
+	{ return m_nled; }
 
 	private:
 	gpio_num_t m_sin, m_sclk, m_xlat, m_blank;

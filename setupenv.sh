@@ -24,6 +24,7 @@ interactive="1"
 overwrite="0"
 settings=`mktemp`
 installdir=`pwd`/idf
+patchdir=`dirname $(readlink -f $0)`/patches
 
 while getopts "d:fnh" opt; do
 	case ${opt} in
@@ -180,40 +181,9 @@ fi
 #fi
 
 
-XTOOLS_ESP32=`dirname $XTOOLS_ESP32`
-echo "# xtools for esp32" >> $settings
-echo "XTOOLS_ESP32=$XTOOLS_ESP32" >> $settings
-PATH=$PATH:$XTOOLS_ESP32
-
-## ESP32 IDF
-if [ "$IDF_ESP32" == "" ]; then
-	if [ -d "$installdir/idf-esp32" ]; then
-		IDF_ESP32="$installdir/idf-esp32"
-	fi
-fi
-if [ "$IDF_ESP32" == "" ]; then
-	if [ "$installdir" == "" ]; then
-		echo unable to find ESP32 IDF
-		exit 1
-	fi
-	if [ "1" == "$interactive" ]; then
-		echo OK to start download of esp32 IDF? Press CTRL-C to cancel.
-		read
-	else
-		echo starting download of esp32 IDF
-	fi
-	pushd $installdir > /dev/null
-	git clone https://github.com/espressif/esp-idf.git idf-esp32 || exit 1
-	cd idf-esp32
-	git checkout v3.3.6	# was v3.3.5
-	git submodule update --init
-	IDF_PATH=`pwd` pip install -r requirements.txt
-	IDF_PATH=`pwd` bash install.sh
-	IDF_ESP32=`pwd`
-	popd > /dev/null
-fi
-echo "IDF_ESP32=$IDF_ESP32" >> $settings
-
+echo =======
+echo ESP8266
+echo =======
 
 ## ESP8266 IDF
 if [ "$IDF_ESP8266" == "" ]; then
@@ -235,15 +205,83 @@ if [ "$IDF_ESP8266" == "" ]; then
 	pushd $installdir > /dev/null
 	git clone https://github.com/espressif/ESP8266_RTOS_SDK.git idf-esp8266 || exit 1
 	cd idf-esp8266
-	git checkout release/v3.3
-	git submodule update --init
-	IDF_PATH=`pwd` pip install -r requirements.txt
-	IDF_PATH=`pwd` bash install.sh
 	IDF_ESP8266=`pwd`
 	popd > /dev/null
 fi
-echo "IDF_ESP8266=$IDF_ESP8266" >> $settings
 
+pushd "$IDF_ESP8266"
+IDF_PATH=`pwd` python2 tools/idf_tools.py install || exit 1
+IDF_PATH=`pwd` python2 tools/idf_tools.py install-python-env || exit 1
+git pull --recurse-submodule
+git reset --hard v3.3 || exit 1
+git submodule deinit -f --all
+git switch release/v3.3
+git submodule update --init
+echo patching IDF for ESP8266
+patch -t -p1 < $patchdir/idf-esp8266-v3.3.diff || echo PATCHING FAILED!
+popd > /dev/null
+
+echo settings for $IDF_ESP8266
+pushd "$IDF_ESP8266"
+echo IDF_ESP8266=$IDF_ESP8266 >> $settings
+IDF_PATH="$IDF_ESP8266" python2 "$IDF_ESP8266/tools/idf_tools.py" export | sed "s/export //g;s/=/_ESP8266=/g;s/;/\n/g;s/\"//g" >> $settings
+popd > /dev/null
+
+echo ===================
+cat $settings
+echo ===================
+echo
+
+
+## ESP32 IDF
+if [ "$IDF_ESP32" == "" ]; then
+	if [ -d "$installdir/idf-esp32" ]; then
+		IDF_ESP32="$installdir/idf-esp32"
+	fi
+fi
+if [ "$IDF_ESP32" == "" ]; then
+	if [ "$installdir" == "" ]; then
+		echo unable to find ESP32 IDF
+		exit 1
+	fi
+	if [ "1" == "$interactive" ]; then
+		echo OK to start download of esp32 IDF? Press CTRL-C to cancel.
+		read
+	else
+		echo starting download of esp32 IDF
+	fi
+	pushd $installdir > /dev/null
+	git clone https://github.com/espressif/esp-idf.git idf-esp32 || exit 1
+	cd idf-esp32
+	IDF_ESP32=`pwd`
+	popd > /dev/null
+fi
+pushd $IDF_ESP32
+IDF_PATH="$IDF_ESP32" bash install.sh
+IDF_PATH="$IDF_ESP32" python3 tools/idf_tools.py install
+git pull --recurse-submodule
+git reset --hard v4.4.3
+git submodule deinit -f --all
+git switch release/v4.4.3
+git submodule update --init
+echo patching IDF for ESP32
+patch -t -p1 < $patchdir/idf-esp32-v4.4.diff || echo PATCHING FAILED!
+echo patching lwip of ESP32
+cd components/lwip/lwip
+patch -t -p1 < $patchdir/esp32-lwip-v4.4.diff || echo PATCHING FAILED!
+popd > /dev/null
+
+echo ===================
+cat $settings
+echo ===================
+
+echo settings for $IDF_ESP32
+echo IDF_ESP32=$IDF_ESP32 >> $settings
+pushd "$IDF_ESP32"
+source export.sh
+IDF_PATH="$IDF_ESP32" python3 "$IDF_ESP32/tools/idf_tools.py" export | sed "s/export //g;s/=/_ESP32=/g;s/;/\n/g;s/\"//g" >> $settings
+echo >> $settings
+popd > /dev/null
 
 #
 # WFC is still used, but files are generated with a private version
@@ -310,33 +348,17 @@ echo "IDF_ESP8266=$IDF_ESP8266" >> $settings
 
 
 # python modules
-echo checking requirements of ESP32 IDF in $IDF_ESP32
-IDF_PATH=$IDF_ESP32 pip install -r $IDF_ESP32/requirements.txt
+#echo checking requirements of ESP32 IDF in $IDF_ESP32
+#IDF_PATH=$IDF_ESP32 pip install -r $IDF_ESP32/requirements.txt
+#
+#echo checking requirements of ESP8266 IDF in $IDF_ESP8266
+#IDF_PATH=$IDF_ESP8266 pip install -r $IDF_ESP8266/requirements.txt
 
-echo checking requirements of ESP8266 IDF in $IDF_ESP8266
-IDF_PATH=$IDF_ESP8266 pip install -r $IDF_ESP8266/requirements.txt
 
-echo patching IDF for ESP8266
-patchdir=`pwd`/patches
-pushd $IDF_ESP8266
-patch -p1 < $patchdir/idf-esp8266-v3.3.diff || echo PATCHING FAILED!
-popd
-
-echo patching IDF for ESP32
-pushd $IDF_ESP32
-patch -p1 < $patchdir/idf-esp32-v3.3.diff || echo PATCHING FAILED!
-popd
-pushd $IDF_ESP32/components/lwip/lwip
-patch -p1 < $patchdir/esp32-lwip.diff || echo PATCHING FAILED!
-popd
-
-eval `IDF_PATH=$IDF_ESP32 $IDF_ESP32/tools/idf_tools.py export`
-echo "PATH_ESP32:=$PATH" >> $settings
-echo "IDF_PYTHON_ENV_PATH_ESP32:=$IDF_PYTHON_ENV_PATH" >> $settings
-eval `IDF_PATH=$IDF_ESP8266 $IDF_ESP8266/tools/idf_tools.py export`
-echo "PATH_ESP8266:=$PATH" >> $settings
-echo "IDF_PYTHON_ENV_PATH_ESP8266:=$IDF_PYTHON_ENV_PATH" >> $settings
-
+cp $settings settings.sh || exit 1
 mv $settings settings.mk || exit 1
+sed -i 's/:$PATH//' settings.mk
+echo ============================================================
 echo new settings:
+echo ============================================================
 cat settings.mk

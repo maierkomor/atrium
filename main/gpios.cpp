@@ -20,9 +20,9 @@
 #include <sdkconfig.h>
 
 #include "actions.h"
-#include "dataflow.h"
 #include "event.h"
 #include "globals.h"
+#include "hlw8012.h"
 #include "hwcfg.h"
 #include "log.h"
 #include "terminal.h"
@@ -39,7 +39,7 @@
 #define TAG MODULE_GPIO
 
 
-#ifdef CONFIG_IDF_TARGET_ESP32
+#if defined ESP32 && ! defined CONFIG_IOEXTENDERS
 static const char *GpioIntrTypeStr[] = {
 	"disabled",
 	"enabled",
@@ -57,13 +57,12 @@ class Gpio
 	Gpio(const char *name, xio_t gpio, unsigned config)
 	: m_name(name)
 	, m_gpio(gpio)
-#ifdef CONFIG_SIGNAL_PROC
-	, m_sig(0)
-#endif
 	, m_intrev(0)
 	{
 		init(config);
 	}
+
+	static void set(void *);
 
 	private:
 	static void isr_handler(void *);
@@ -72,11 +71,7 @@ class Gpio
 	const char *m_name;
 	xio_t m_gpio;
 	Gpio *m_next;
-#ifdef CONFIG_SIGNAL_PROC
-	IntSignal *m_sig;
-#else
 	bool m_intlvl,m_lvl;		// level at time of interrupt
-#endif
 	event_t m_intrev;
 	static Gpio *First;
 	static void action_sample(void*);
@@ -89,12 +84,52 @@ Gpio *Gpio::First = 0;
 Gpio::Gpio(const GpioConfig &c)
 : m_name(c.name().c_str())
 , m_gpio((xio_t) c.gpio())
-#ifdef CONFIG_SIGNAL_PROC
-, m_sig(0)
-#endif
 , m_intrev(0)
 {
 	init(c.config());
+}
+
+
+void Gpio::set(void *arg)
+{
+	if (arg == 0)
+		return;
+	const char *n = (const char *) arg;
+	const char *c = strchr(n,':');
+	if ((c == 0) || (c[2] != 0))
+		return;
+	Gpio *x = First;
+	while (x) {
+		if (0 == strncmp(n,x->m_name,c-n))
+			break;
+		x = x->m_next;
+	}
+	if (x == 0)
+		return;
+	xio_cfg_t cfg;
+	switch (c[1]) {
+	case '0':
+		xio_set_lvl(x->m_gpio,xio_lvl_0);
+		break;
+	case '1':
+		xio_set_lvl(x->m_gpio,xio_lvl_1);
+		break;
+	case 'z':
+		xio_set_lvl(x->m_gpio,xio_lvl_hiz);
+		break;
+	case 'i':
+		cfg = XIOCFG_INIT;
+		cfg.cfg_io = xio_cfg_io_in;
+		xio_config(x->m_gpio,cfg);
+		break;
+	case 'o':
+		cfg = XIOCFG_INIT;
+		cfg.cfg_io = xio_cfg_io_out;
+		xio_config(x->m_gpio,cfg);
+		break;
+	default:
+		;
+	}
 }
 
 
@@ -128,11 +163,7 @@ void Gpio::action_sample(void *arg)
 {
 	Gpio *g = (Gpio*)arg;
 	int lvl = xio_get_lvl(g->m_gpio);
-#ifdef CONFIG_SIGNAL_PROC
-	g->m_sig->setValue(lvl);
-#else
 	g->m_lvl = lvl;
-#endif
 	log_dbug(TAG,"gpio%d = %d",g->m_gpio,lvl);
 }
 
@@ -167,9 +198,6 @@ void Gpio::init(unsigned config)
 		// configure interrupts
 		log_dbug(TAG,"gpio interrupts");
 		m_intrev = event_register(concat(m_name,"`intr"));
-#ifdef CONFIG_SIGNAL_PROC
-		m_sig = new IntSignal(m_name);
-#endif
 		action_add(concat(m_name,"!sample"),action_sample,(void*)this,"sample gpio");
 		if (xio_set_intr(m_gpio,isr_handler,this))
 			log_warn(TAG,"add ISR for gpio%d",m_gpio);
@@ -181,20 +209,16 @@ void Gpio::isr_handler(void *arg)
 {
 	Gpio *g = (Gpio *)arg;
 	int lvl = xio_get_lvl(g->m_gpio);
-#ifdef CONFIG_SIGNAL_PROC
-	assert(g->m_sig);
-	g->m_sig->setValue(lvl);
-#else
 	g->m_intlvl = lvl;
-#endif
 	event_isr_trigger(g->m_intrev);
 }
 
 
-#ifdef CONFIG_IDF_TARGET_ESP32
+#ifdef ESP32
 void esp32_gpio_status(Terminal &term, gpio_num_t gpio)
 {
 //	uint32_t iomux = read_iomux_conf(gpio);
+/*
 	uint32_t iomux = REG_READ(GPIO_PIN_MUX_REG[gpio]);
 	uint32_t gpiopc = *(uint32_t*)GPIO_REG(gpio);	// pin configuration @0x88+4*n
 	bool level;
@@ -226,6 +250,7 @@ void esp32_gpio_status(Terminal &term, gpio_num_t gpio)
 		,((gpiopc>>10)&1) ? "enabled" : "disabled"
 		,GpioIntrTriggerStr[(gpiopc>>7)&0x7]
 	);
+	*/
 }
 #endif
 
@@ -264,7 +289,7 @@ const char *gpio(Terminal &term, int argc, const char *args[])
 		const char *dir = (d < 0) ? "unknown" : GpioDirStr[d];
 		XioCluster *c = XioCluster::getCluster(l);
 		term.printf("%d (%s/%d) %s %u\n",(int)l,c->getName(),(int)(l-c->getBase()),dir,r);
-#ifdef CONFIG_IDF_TARGET_ESP32
+#ifdef ESP32
 		if (l < 48)
 			esp32_gpio_status(term,(gpio_num_t)l);
 #endif
@@ -319,16 +344,18 @@ const char *gpio(Terminal &term, int argc, const char *args[])
 	if (r & xio_cap_od)
 		term.println("open-drain");
 	return 0;
-#elif defined CONFIG_IDF_TARGET_ESP32
+#elif defined ESP32
 	if (argc == 1) {
+		/*
 		uint64_t enabled = GPIO_ENABLE_REG | ((uint64_t)GPIO_ENABLE1_REG << 32);
 		for (unsigned pin = 0; pin < 32; ++pin)
 			term.printf("pin %2u: gpio 0x%08x=%08x, %s\n"
 				,pin
-				,GPIO_REG(pin)
-				,*(uint32_t*)GPIO_REG(pin)
+				,GPIO_IN_REG(pin)
+				,*(uint32_t*)GPIO_IN_REG(pin)
 				,((enabled>>pin)&1) ? "enabled" : "disabled"
 				);
+		*/
 	} else if ((argc == 2) && (args[1][0] >= '0') && (args[1][0] <= '9')) {
 		long pin = strtol(args[1],0,0);
 		if (!GPIO_IS_VALID_GPIO(pin)) {
@@ -336,12 +363,12 @@ const char *gpio(Terminal &term, int argc, const char *args[])
 		}
 //		uint32_t iomux = read_iomux_conf(pin);
 		uint32_t iomux = REG_READ(GPIO_PIN_MUX_REG[pin]);
-		uint32_t gpiopc = *(uint32_t*)GPIO_REG(pin);	// pin configuration @0x88+4*n
-		bool level;
-		if (pin < 32) 
-			level = (((iomux>>9)&1 ? GPIO_IN_REG : GPIO_OUT_REG) >> pin ) & 1;
-		else
-			level = (((iomux>>9)&1 ? GPIO_IN1_REG : GPIO_OUT1_REG) >> (pin-32) ) & 1;
+		uint32_t gpiopc = 0;//*(uint32_t*)GPIO_REG(pin);	// pin configuration @0x88+4*n
+		bool level = gpio_get_level((gpio_num_t)pin);
+//		if (pin < 32) 
+//			level = (((iomux>>9)&1 ? GPIO_IN_REG : GPIO_OUT_REG) >> pin ) & 1;
+//		else
+//			level = (((iomux>>9)&1 ? GPIO_IN1_REG : GPIO_OUT1_REG) >> (pin-32) ) & 1;
 		term.printf(
 			"pin %2u: iomux 0x%08x, gpiopc 0x%08x\n"
 			"\tfunction   %d\n"
@@ -468,7 +495,7 @@ int gpio_setup()
 }
 
 
-int xio_setup()
+void xio_setup()
 {
 #ifdef CONFIG_IOEXTENDERS
 	// first assign configured clusters
@@ -508,5 +535,12 @@ int xio_setup()
 		new Gpio(n,(xio_t)gpio,c.config());
 		
 	}
-	return 0;
+	action_add("gpio!set",Gpio::set,0,"set gpio <name>:<value>, with value=0,1,z,i,o");
+#ifdef CONFIG_HLW8012
+	if (HWConf.has_hlw8012()) {
+		const auto &c = HWConf.hlw8012();
+		HLW8012 *dev = HLW8012::create(c.sel(),c.cf(),c.cf1());
+		dev->attach(RTData);
+	}
+#endif
 }

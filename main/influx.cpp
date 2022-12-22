@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2021, Thomas Maier-Komor
+ *  Copyright (C) 2020-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -22,10 +22,6 @@
 
 #include "actions.h"
 #include "astream.h"
-#include "dataflow.h"
-#ifdef CONFIG_SIGNAL_PROC
-#include "func.h"
-#endif
 #include "globals.h"
 #include "influx.h"
 #include "env.h"
@@ -72,64 +68,6 @@ static SemaphoreHandle_t Mtx = 0;
 #ifndef CONFIG_IDF_TARGET_ESP8266
 static sys_sem_t LwipSem = 0;
 #endif
-
-
-#ifdef CONFIG_SIGNAL_PROC
-class FnInfluxSend : public Function
-{
-	public:
-	explicit FnInfluxSend(const char *name)
-	: Function(name)
-	, m_sig(0)
-	{
-		action_add(concat(name,"!send"),(void(*)(void*))sendout,this,"send current data");
-	}
-
-	void operator () (DataSignal *);
-	int setParam(unsigned x, DataSignal *s);
-	static void sendout(FnInfluxSend *);
-	static const char FuncName[];
-
-	private:
-	vector<DataSignal *> m_sig;
-};
-
-const char FnInfluxSend::FuncName[] = "influx_send";
-
-int FnInfluxSend::setParam(unsigned x, DataSignal *s)
-{
-	s->addFunction(this);
-	m_sig.push_back(s);
-	return 0;
-}
-
-
-void FnInfluxSend::sendout(FnInfluxSend *o)
-{
-	astream str(128);
-	{
-		Lock lock(Mtx,__FUNCTION__);
-		str.write(Header,HL);
-	}
-	unsigned count = 0;
-	for (auto s : o->m_sig) {
-		if (s->isValid()) {
-			str << s->signalName();
-			str << '=';
-			s->toStream(str);
-			str << ',';
-			++count;
-		}
-	}
-	if (count)
-		influx_send(str.buffer(),str.size()-1);
-}
-
-
-void FnInfluxSend::operator () (DataSignal *s)
-{
-}
-#endif //CONFIG_SIGNAL_PROC
 
 
 static void handle_err(void *arg, err_t e)
@@ -263,7 +201,7 @@ static void influx_connect(const char *hn, const ip_addr_t *addr, void *arg)
 		HL = 0;
 		free(Header);
 		Header = 0;
-		log_error(TAG,"out of memory");
+		log_error(TAG,"Out of memory.");
 		return;
 	}
 	Header = nh;
@@ -534,7 +472,7 @@ static void proc_mon(stream &s)
 		if (LNT > 0)
 			compare_task_sets(st,nt,s);
 	} else {
-		log_error(TAG,"out of memory");
+		log_error(TAG,"Out of memory.");
 	}
 	free(LSt);
 	LSt = st;
@@ -564,7 +502,7 @@ static void send_sys_info(void *)
 }
 
 
-int influx_setup()
+void influx_setup()
 {
 	if (Mtx == 0)
 		Mtx = xSemaphoreCreateMutex();
@@ -572,15 +510,11 @@ int influx_setup()
 	if (LwipSem == 0)
 		LwipSem = xSemaphoreCreateBinary();
 #endif
-#ifdef CONFIG_SIGNAL_PROC
-	new FuncFact<FnInfluxSend>;
-#endif
 	action_add("influx!sysinfo",send_sys_info,0,"send system info to influx");
 	action_add("influx!rtdata",send_rtdata,0,"send runtime data to influx");
 	action_add("influx!init",influx_init,0,"init influx connection");
 	action_add("influx!term",influx_term,0,"init influx connection");
 	log_info(TAG,"setup");
-	return 0;
 }
 
 

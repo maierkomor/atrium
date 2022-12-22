@@ -1,4 +1,6 @@
-set(COMPONENT_SRCS "cyclic.cpp")
-set(COMPONENT_REQUIRES logging)
-set(COMPONENT_ADD_INCLUDEDIRS .)
-register_component()
+#set(COMPONENT_REQUIRES logging)
+idf_component_register(
+	SRCS cyclic.cpp
+	INCLUDE_DIRS .
+	REQUIRES logging streams term
+)

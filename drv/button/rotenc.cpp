@@ -24,9 +24,8 @@
 #include "button.h"
 #include "log.h"
 #include "rotenc.h"
-#include <driver/uart.h>
 #include <esp_timer.h>
-#include <rom/uart.h>
+//#include <driver/uart.h>	// for debugging, if needed
 
 #define TAG MODULE_BUTTON
 

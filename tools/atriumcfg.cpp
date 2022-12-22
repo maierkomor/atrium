@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2021, Thomas Maier-Komor
+ *  Copyright (C) 2020-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -36,7 +36,6 @@
 
 #include "hwcfg.h"
 #include "swcfg.h"
-//#include "strstream.h"
 #include "version.h"
 
 #if defined __MINGW32__ || defined __MINGW64__
@@ -68,10 +67,11 @@ NodeConfig NodeCfg;
 
 bool Software = false;
 char *HwFilename = 0, *SwFilename = 0;
-char *Port;
-const char *Tmpdir;
-char *IdfPath;
+char *Port = 0;
+const char *Tmpdir = 0;
+char *IdfPath = 0;
 int NvsAddr = -1;
+bool ESP32 = false;
 
 /* future work for ESP8266 verification
 const char *PadNames[] = {
@@ -759,7 +759,9 @@ int genpart(const char *pname)
 	close(fd);
 
 	asprintf( &cmd
-		, "%s/components/nvs_flash/nvs_partition_generator/nvs_partition_gen.py --input=%s --output=%s --size 16384"
+		, ESP32
+		? "%s/components/nvs_flash/nvs_partition_generator/nvs_partition_gen.py generate %s %s 16384"
+		: "%s/components/nvs_flash/nvs_partition_generator/nvs_partition_gen.py --input=%s --output=%s --size 16384"
 		, IdfPath
 		, csvfile
 		, pname);
@@ -859,18 +861,12 @@ int isDir(const char *d)
 	if (d == 0)
 		return 1;
 	struct stat st;
-	if (-1 == stat(d,&st)) {
-		printf("Unable to stat directory %s: %s\n",d,strerror(errno));
-		return 1;
-	}
-	if ((st.st_mode & S_IFMT) != S_IFDIR) {
-		printf("%s is not a directory\n",d);
-		return 1;
-	}
-	if (-1 == access(d,R_OK|X_OK)) {
-		printf("Unable to access directory %s: %s\n",d,strerror(errno));
-		return 1;
-	}
+	if (-1 == stat(d,&st))
+		return errno;
+	if ((st.st_mode & S_IFMT) != S_IFDIR)
+		return ENOTDIR;
+	if (-1 == access(d,R_OK|X_OK))
+		return EACCES;
 	return 0;
 }
 
@@ -881,8 +877,25 @@ int set_idf(const char *path)
 		printf("IDF_PATH=%s\n",IdfPath);
 		return 0;
 	}
-	if (isDir(path) != 0)
+	size_t l = strlen(path);
+	if (int e = isDir(path)) {
+		printf("%s\n",strerror(e));
 		return 1;
+	}
+	char tmp[l+32];
+	memcpy(tmp,path,l);
+	strcpy(tmp[l-1] == '/' ? tmp+l-1 : tmp+l,"/components/esp32");
+	ESP32 = (0 == isDir(tmp));
+	if (ESP32) {
+		printf("ESP32 IDF\n");
+	} else {
+		strcpy(tmp[l-1] == '/' ? tmp+l-1 : tmp+l,"/components/esp8266");
+		if (int e  = isDir(tmp)) {
+			printf("%s\n",strerror(e));
+			return 1;
+		}
+		printf("ESP8266 IDF\n");
+	}
 	if (IdfPath)
 		free(IdfPath);
 	IdfPath = strdup(path);
@@ -910,77 +923,6 @@ int nvsaddr(const char *a)
 		return 1;
 	}
 	NvsAddr = l;
-	return 0;
-}
-
-
-int function(const char *a)
-{
-	if (a == 0) {
-		printf("function <name> <type> [<param> ...]\n"
-			"valid function types are:\n");
-		const char **f = FnTypes;
-		while (*f) 
-			printf("\t%s\n",*f++);
-		return 1;
-	}
-	for (auto &s : NodeCfg.functions()) {
-		if (s.name() == a) {
-			printf("signal already exists\n");
-			return 1;
-		}
-	}
-	return 0;
-}
-
-int signal_add(const char *a)
-{
-	if (a == 0) {
-		printf("signal <name> [int|float] [<initial value>]\n");
-		return 1;
-	}
-	char *t = strtok(0," \t");
-	if (t == 0) {
-		printf("need signal type\n");
-		return 1;
-	}
-	char *iv = strtok(0," \t");
-	sigtype_t type = st_invalid;
-	if (0 == strcmp(t,"int")) {
-		type = st_int;
-		if (iv) {
-			char *e;
-			long long ll = strtoll(iv,&e,0);
-			if (*e != 0) {
-				printf("intial value must be an int64 value\n");
-				return 1;
-			}
-		}
-	} else if (0 == strcmp(t,"float")) {
-		type = st_float;
-		if (iv) {
-			char *e;
-			double d = strtod(iv,&e);
-			if (*e != 0) {
-				printf("intial value must be a double value\n");
-				return 1;
-			}
-		}
-	} else {
-		printf("invalid signal type\n");
-		return 1;
-	}
-	for (auto &s : NodeCfg.signals()) {
-		if (s.name() == a) {
-			printf("signal already exists\n");
-			return 1;
-		}
-	}
-	SignalConfig *c = NodeCfg.add_signals();
-	c->set_name(a);
-	c->set_type(type);
-	if (iv)
-		c->set_iv(iv);
 	return 0;
 }
 
@@ -1049,7 +991,6 @@ FuncDesc Functions[] = {
 	{ "exit",	term,		"terminate" },
 	{ "file",	set_filename,	"set name of current file" },
 	{ "flashnvs",	flashnvs,	"flash binary file <binfile> to NVS partition" },
-	{ "function",	function,	"add function named <f> of type <t> with params {p}" },
 	{ "genpart",	genpart,	"generate an NVS partition from current config" },
 	{ "hw",		to_hw,		"switch to hardware configuration" },
 	{ "idf",	set_idf,	"set directory of IDF to <path>" },
@@ -1058,11 +999,11 @@ FuncDesc Functions[] = {
 	{ "passwd",	set_password,	"-c to clear password hash, otherwise calc hash from <pass>" },
 	{ "port",	setport,	"set port for flash programming (default: /dev/ttyUSB0)" },
 	{ "print",	show_config,	"print currecnt configuration" },
+	{ "q",		term,		"alias to exit" },
 	{ "quit",	term,		"alias to exit" },
 	{ "read",	read_config,	"read config from file <filename>" },
 	{ "set",	set_config,	"set field <f> to value <v>" },
 	{ "show",	show_config,	"print current configuration" },
-	{ "signal",	signal_add,	"add signal with name <s> and type <t> and initival value <i>" },
 	{ "size",	print_size,	"print size of current configuration" },
 	{ "sw",		to_sw,		"switch to software configuration" },
 	{ "updatenvs",	updatenvs,	"update NVS partition on target with currenct configuration" },
@@ -1172,7 +1113,9 @@ void readSettings()
 		nl = strchr(k,'\n');
 		if (nl) {
 			*nl = 0;
-			if (0 == isDir(k+7))
+			if (int e = isDir(k+7))
+				printf("%s: %s\n",k+7,strerror(e));
+			else
 				Tmpdir = strdup(k+7);
 			*nl = '\n';
 		}
@@ -1227,7 +1170,7 @@ int main(int argc, char **argv)
 			exit(0);
 		}
 		if (!strcmp(argv[x],"-V")) {
-			printf("atriumcfg, version %s\n",VERSION);
+			printf("atriumcfg, version %s\n",ATRIUM_VERSION);
 			exit(0);
 		}
 		if (read_config(argv[x])) {
@@ -1257,7 +1200,7 @@ int main(int argc, char **argv)
 		}
 		free(line);
 		if (!found)
-			printf("unknown command\n");
+			printf("Unknown command.\n");
 	}
 	return 0;
 }

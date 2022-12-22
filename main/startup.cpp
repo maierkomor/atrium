@@ -22,8 +22,21 @@
 #include <freertos/task.h>
 #include <freertos/event_groups.h>
 
+#ifdef ESP8266
+#ifdef ESP32
+#error conflicting defines: ESP32 and ESP8266
+#endif
+#elif defined ESP32
+#else
+#error ESP familiy not set
+#endif
+
 extern "C" {
+#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
+#include <esp32/clk.h>
+#else
 #include <esp_clk.h>
+#endif
 }
 #include <esp_system.h>
 #include <esp_ota_ops.h>
@@ -32,19 +45,18 @@ extern "C" {
 
 #include <driver/uart.h>
 #include <driver/gpio.h>
-//#include <nvs.h>
-//#include <nvs_flash.h>
 
 #ifdef CONFIG_IDF_TARGET_ESP8266
 #include <spi_flash.h>
 #include <driver/rtc.h>
 #elif defined CONFIG_IDF_TARGET_ESP32
 #include <soc/rtc.h>
+#elif defined CONFIG_IDF_TARGET_ESP32S3
+#include <driver/usb_serial_jtag.h>
 #endif
 
 #ifdef CONFIG_VERIFY_HEAP
-//#define verify_heap() if (!heap_caps_check_integrity_all(true)){printf("corrupt heap\n");heap_caps_dump_all();}
-#define verify_heap() assert(heap_caps_check_integrity_all(true))
+#define verify_heap() if (!heap_caps_check_integrity_all(true)){printf("corrupt heap\n");heap_caps_dump_all();abort();}
 #else
 #define verify_heap()
 #endif
@@ -57,6 +69,7 @@ extern "C" {
 #include "globals.h"
 #include "leds.h"
 #include "log.h"
+#include "mqtt.h"
 #include "netsvc.h"
 #include "nvm.h"
 #include "ota.h"
@@ -93,38 +106,39 @@ using namespace std;
 
 #define TAG MODULE_INIT
 
-int action_setup();
+void action_setup();
 int adc_setup();
-int alarms_setup();
-int button_setup();
-int console_setup();
-int cyclic_setup();
+void alarms_setup();
+void button_setup();
+void console_setup();
+void cyclic_setup();
 int dht_setup();
 int dimmer_setup();
 int display_setup();
 int distance_setup();
 int ftpd_setup();
-int gpio_setup();
+void gpio_setup();
 int hall_setup();
-int httpd_setup();
+void httpd_setup();
 int i2c_setup();
 int inetd_setup();
-int influx_setup();
-int ledstrip_setup();
+void influx_setup();
+void rgbleds_setup();
 int lightctrl_setup();
-int mqtt_setup();
-int nightsky_setup();
+void lora_setup();
 int ow_setup();
-int relay_setup();
+void relay_setup();
 int screen_setup();
 int sm_setup();
+void spi_setup();
 int telnet_setup();
+void tlc5947_setup();
 int touchpads_setup();
 void udns_setup();
 void xlua_setup();
 int udpctrl_setup();
 int webcam_setup();
-int xio_setup();
+void xio_setup();
 
 void settings_setup();
 
@@ -134,12 +148,16 @@ static void system_info()
 	int f = esp_clk_cpu_freq();
 	unsigned mhz;
 	switch (f) {
+#ifdef RTC_CPU_FREQ_80M
 	case RTC_CPU_FREQ_80M:
 		mhz = 80;
 		break;
+#endif
+#ifdef RTC_CPU_FREQ_160M
 	case RTC_CPU_FREQ_160M:
 		mhz = 160;
 		break;
+#endif
 
 #ifdef CONFIG_IDF_TARGET_ESP32
 	case RTC_CPU_FREQ_XTAL:
@@ -280,6 +298,9 @@ void app_main()
 #ifdef CONFIG_I2C
 	i2c_setup();	// must be befor gpio_setup to provide io-cluster
 #endif
+#ifdef CONFIG_SPI
+	spi_setup();	// must be befor gpio_setup to provide io-cluster
+#endif
 	xio_setup();
 	verify_heap();
 	adc_setup();
@@ -351,11 +372,11 @@ void app_main()
 	syslog_setup();
 #endif
 
-#ifdef CONFIG_NIGHTSKY
-	nightsky_setup();
+#ifdef CONFIG_TLC5947
+	tlc5947_setup();
 #endif
-#ifdef CONFIG_LEDSTRIP
-	ledstrip_setup();
+#ifdef CONFIG_RGBLEDS
+	rgbleds_setup();
 #endif
 #ifdef CONFIG_LIGHTCTRL
 	lightctrl_setup();
@@ -382,9 +403,6 @@ void app_main()
 #ifdef CONFIG_LUA
 	xlua_setup();
 #endif
-#ifdef CONFIG_SIGNAL_PROC
-	cfg_init_functions();
-#endif
 	// here all actions and events must be initialized
 	cfg_activate_triggers();
 
@@ -404,6 +422,9 @@ void app_main()
 
 #ifdef CONFIG_SOCKET_API
 	inetd_setup();
+#endif
+#ifdef CONFIG_LORA
+	lora_setup();
 #endif
 #ifdef CONFIG_IDF_TARGET_ESP32
 	esp_ota_mark_app_valid_cancel_rollback();

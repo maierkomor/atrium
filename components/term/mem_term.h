@@ -30,6 +30,9 @@ class MemTerminal : public Terminal
 	explicit MemTerminal(bool = false);
 	~MemTerminal();
 
+	const char *type() const override
+	{ return "mem"; }
+
 	int read(char *, size_t, bool = true) override;
 	int write(const char *b, size_t) override;
 

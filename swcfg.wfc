@@ -356,8 +356,8 @@ message NodeConfig
 
 	// event timer/timefuse
 	repeated EventTimer timefuses = 30;
-	repeated SignalConfig signals = 31	[ ifdef=CONFIG_SIGNAL_PROC ];
-	repeated FunctionConfig functions = 32	[ ifdef=CONFIG_SIGNAL_PROC ];
+	repeated SignalConfig signals = 31	[ ifdef=CONFIG_SIGNAL_PROC, usage=obsolete ];
+	repeated FunctionConfig functions = 32	[ ifdef=CONFIG_SIGNAL_PROC, usage=obsolete ];
 
 	repeated StateMachineConfig statemachs = 33	[ ifdef=CONFIG_STATEMACHINES ];
 

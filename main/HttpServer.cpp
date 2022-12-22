@@ -326,7 +326,7 @@ void HttpServer::handleConnection(LwTcp *con)
 {
 	char *buf = (char *) malloc(HTTP_REQ_SIZE);
 	if (buf == 0) {
-		log_warn(TAG,"out of memory");
+		log_warn(TAG,"Out of memory.");
 		return;
 	}
 	unsigned count = 0;

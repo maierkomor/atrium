@@ -148,7 +148,7 @@ estring::estring(const estring &a)
 , alloc(a.alloc)
 {
 	con_printf("estring(const estring &) %p<=%p %d:%.*s",this,&a,(int)a.len,(int)a.len,a.str);
-	if (a.len) {
+	if (alloc) {
 		str = (char*)malloc(a.alloc);
 		memcpy(str,a.str,len);
 	} else {

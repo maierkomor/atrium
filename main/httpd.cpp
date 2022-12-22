@@ -367,7 +367,7 @@ static void updateFirmware(HttpRequest *r)
 	} else if (!strcmp(part,"hw.cfg") || !strcmp(part,"node.cfg")) {
 		void *tmp = malloc(s);
 		if (tmp == 0) {
-			const char *err = "out of memory";
+			const char *err = "Out of memory.";
 			UpdateState->set(err);
 			log_warn(TAG,err);
 			ans.addContent(err);
@@ -418,7 +418,7 @@ static void updateFirmware(HttpRequest *r)
 	}
 	char *buf = (char*)malloc(FLASHBUFSIZE);
 	if (buf == 0) {
-		UpdateState->set("out of memory");
+		UpdateState->set("Out of memory.");
 		return;
 	}
 	while (s > 0) {
@@ -538,7 +538,7 @@ static void httpd_session(LwTcp *con)
 }
 
 
-int httpd_setup()
+void httpd_setup()
 {
 	bool index_html = false;
 	const char *root = "/flash";
@@ -552,7 +552,7 @@ int httpd_setup()
 #endif
 	auto &c = Config.httpd();
 	if (!c.start())
-		return 0;
+		return;
 #ifdef HAVE_FS
 	if (c.has_root())
 		root = Config.httpd().root().c_str();
@@ -586,7 +586,7 @@ int httpd_setup()
 
 	if (!index_html) {
 		log_info(TAG,"no index.html found");
-		return 1;
+		return;
 	}
 	WWW->addFile("/alarms.html");
 	WWW->addFile("/config.html");
@@ -610,7 +610,7 @@ int httpd_setup()
 	WWW->addFunction("/webcam.jpeg",webcam_sendframe);
 #endif
 	Sem = xSemaphoreCreateCounting(4,4);
-	return listen_port(port,m_tcp,httpd_session,"httpd","_http",7,4096);
+	listen_port(port,m_tcp,httpd_session,"httpd","_http",7,4096);
 }
 
 #endif	// CONFIG_HTTP

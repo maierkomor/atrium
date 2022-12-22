@@ -19,11 +19,7 @@
 #include <sdkconfig.h>
 
 #include "actions.h"
-#include "dataflow.h"
 #include "event.h"
-#ifdef CONFIG_SIGNAL_PROC
-#include "func.h"
-#endif
 #include "globals.h"
 #include "hwcfg.h"
 #include "env.h"
@@ -32,7 +28,7 @@
 #include "netsvc.h"
 #include "profiling.h"
 #include "settings.h"
-#include "sntp.h"
+#include "usntp.h"
 #include "swcfg.h"
 #include "syslog.h"
 #include "terminal.h"
@@ -50,7 +46,6 @@
 
 #ifdef CONFIG_IDF_TARGET_ESP32
 #include <soc/rtc.h>
-#include <rom/md5_hash.h>
 #elif defined CONFIG_IDF_TARGET_ESP8266
 #include <esp_system.h>
 #include <esp_wps.h>
@@ -64,7 +59,7 @@ void esp_yield(void);
 
 //#include <nvs.h>
 //#include <nvs_flash.h>
-#include <tcpip_adapter.h>
+#include <esp_netif.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -73,6 +68,15 @@ void esp_yield(void);
 #include "globals.h"
 #include "wifi.h"
 
+#if IDF_VERSION >= 44
+#include <esp_sntp.h>
+#include <md/esp_md.h>
+#define MD5Init(ctx) esp_md5_init(ctx)
+#define MD5Update(ctx,buf,n) esp_md5_update(ctx,buf,n)
+#define MD5Final(dig,ctx) esp_md5_finish(ctx,dig)
+#else
+#include <rom/md5_hash.h>
+#endif
 
 using namespace std;
 
@@ -408,11 +412,11 @@ int cfg_set_hostname(const char *hn)
 	if (MDNS_up)
 		mdns_free();
 	if (esp_err_t e = mdns_init()) {
-		log_warn(TAG,"mdns init failed: %s",esp_err_to_name(e));
+		log_warn(TAG,"mdns init: %s",esp_err_to_name(e));
 		return 1;
 	}
 	if (esp_err_t e = mdns_hostname_set(hn)) {
-		log_warn(TAG,"set mdns hostname failed: %s",esp_err_to_name(e));
+		log_warn(TAG,"set mdns hostname: %s",esp_err_to_name(e));
 		return 1;
 	}
 	if (esp_err_t e = mdns_instance_name_set(hn)) {
@@ -541,7 +545,7 @@ static void initNodename()
 
 void cfg_init_defaults()
 {
-	log_info(TAG,"setting up defaults");
+	log_info(TAG,"init defaults");
 	Config.clear();
 	Config.set_magic(0xae54edc0);
 	Config.set_actions_enable(true);
@@ -629,7 +633,7 @@ int cfg_read_hwcfg()
 {
 	PROFILE_FUNCTION();
 	uint8_t setup = nvm_read_u8("hwconf",0);
-	log_info(TAG,"hwconf inhibit: %d",setup);
+//	log_info(TAG,"hwconf inhibit: %d",setup);
 	if (setup) {
 		log_warn(TAG,"%s: %u: last boot failed - skipping hwconf",cfg_err,setup);
 		return 1;
@@ -655,7 +659,7 @@ int cfg_read_hwcfg()
 
 int set_cpu_freq(unsigned mhz)
 {
-#ifdef CONFIG_IDF_TARGET_ESP32
+#ifdef ESP32
 	if ((mhz == 80) || (mhz == 160) || (mhz == 240)) {
 		ets_update_cpu_frequency(mhz);
 		return 0;
@@ -670,11 +674,13 @@ int set_cpu_freq(unsigned mhz)
 		return 1;
 	return 0;
 #else
-	return 1;
+#error missing implementation
 #endif
 }
 
 
+extern "C"
+void dns_setserver(uint8_t idx, const ip_addr_t *addr);
 void initDns()
 {
 #ifdef CONFIG_UDNS
@@ -756,61 +762,8 @@ void cfg_activate()
 }
 
 
-#ifdef CONFIG_SIGNAL_PROC
-void cfg_init_functions()
-{
-	for (const auto &f : Config.functions()) {
-		if (!f.has_name() || !f.has_func())
-			continue;
-		const char *fn = f.name().c_str();
-		const char *ft = f.func().c_str();
-		Function *fun = FunctionFactory::create(ft,fn);
-		if (fun == 0) {
-			log_warn(TAG,"unknown function %s",ft);
-			continue;
-		}
-		log_dbug(TAG,"function %s, type %s",fn,ft);
-		unsigned x = 0;
-		for (const auto &p : f.params()) {
-			log_dbug(TAG,"param %s",p.c_str());
-			fun->addParam(p.c_str());
-			/*
-			if (DataSignal *s = DataSignal::getSignal(p.c_str())) {
-				fun->setParam(x,s);
-			} else {
-				fun->addParam(p.c_str());
-			}
-			*/
-			++x;
-		}
-	}
-}
-#endif
-
-
 void cfg_activate_actions()
 {
-#ifdef CONFIG_SIGNAL_PROC
-	for (const auto &s : Config.signals()) {
-		if (!s.has_name() || !s.has_type())
-			continue;
-		DataSignal *d = 0;
-		switch (s.type()) {
-		case st_int:
-			d = new IntSignal(s.name().c_str());
-			break;
-		case st_float:
-			d = new FloatSignal(s.name().c_str());
-			break;
-		default:
-			continue;
-		}
-		if (s.has_iv())
-			d->initFrom(s.iv().c_str());
-		
-	}
-	fn_init_factories();
-#endif
 	for (const auto &t : Config.timefuses()) {
 		if (!t.has_name() || !t.has_time())
 			continue;
@@ -837,10 +790,10 @@ void cfg_activate_triggers()
 				else
 					log_info(TAG,"thresholds for %s [%f,%f]",name,t.low(),t.high());
 			} else {
-				log_warn(TAG,"cannot set thresholds on %s: not a number",name);
+				log_warn(TAG,"set thresholds on %s: not a number",name);
 			}
 		} else {
-			log_warn(TAG,"cannot find %s to set thresholds",name);
+			log_warn(TAG,"set thresholds: %s not found",name);
 		}
 	}
 #endif
@@ -859,7 +812,7 @@ void cfg_activate_triggers()
 					log_dbug(TAG,"%s => %s(%s)",en,cmd,sp+1);
 					event_callback_arg(e,a,sp+1);
 				} else {
-					log_warn(TAG,"unknown action %s",an);
+					log_warn(TAG,"unknown action %s",cmd);
 				}
 			} else {
 				if (Action *a = action_get(an)) {
@@ -998,7 +951,9 @@ void settings_setup()
 {
 	uint8_t setup = nvm_read_u8(cfg_err,0);
 	if (setup)
-		log_warn(TAG,"%s: %u: ignoring configuration",cfg_err,setup);
+		log_warn(TAG,"%s: %u: ignore node.cfg",cfg_err,setup);
+	else
+		log_info(TAG,"%s: 0",cfg_err);
 	set_cfg_err(1);
 	if (setup == 0) {
 		if (cfg_read_nodecfg()) {

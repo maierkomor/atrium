@@ -140,8 +140,12 @@ void uart_setup()
 			}
 			uc.parity = (uart_parity_t) c.config_p();
 			uc.flow_ctrl = (uart_hw_flowcontrol_t) ((c.config_cts()<<1)|c.config_rts());
-#ifdef CONFIG_IDF_TARGET_ESP32
+#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2
+#if IDF_VERSION >= 44
+			uc.source_clk = c.config_ref_tick() ? UART_SCLK_REF_TICK : UART_SCLK_APB;
+#else
 			uc.use_ref_tick = c.config_ref_tick();
+#endif
 #endif
 		} else {
 			// default: 8N1
@@ -149,8 +153,12 @@ void uart_setup()
 			uc.parity = UART_PARITY_DISABLE;
 			uc.stop_bits = UART_STOP_BITS_1;
 			uc.flow_ctrl = UART_HW_FLOWCTRL_DISABLE;
-#ifdef CONFIG_IDF_TARGET_ESP32
+#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2
+#if IDF_VERSION >= 44
+			uc.source_clk = UART_SCLK_APB;
+#else
 			uc.use_ref_tick = false;
+#endif
 #endif
 		}
 		static const char *stop_bits[] = {"","1","1.5","2"};
@@ -171,8 +179,9 @@ void uart_setup()
 #endif
 		}
 	}
-#ifdef CONFIG_IDF_TARGET_ESP32
+#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2
 	// pin setting must be done after param-config and befor driver install!
+	uint8_t uarts = 0;
 	for (const auto &c : HWConf.uart()) {
 		int8_t p = c.port();
 		if (p == -1)
@@ -189,25 +198,36 @@ void uart_setup()
 		int8_t rts = c.rts_gpio();
 		if (rts == -1)
 			rts = UART_PIN_NO_CHANGE;
+		if (p == CONFIG_CONSOLE_UART_NUM)
+			uart_driver_delete((uart_port_t)CONFIG_CONSOLE_UART_NUM);
 		if (esp_err_t e = uart_set_pin((uart_port_t)p,tx,rx,rts,cts))
 			log_warn(TAG,"set uart%d to tx=%d,rx=%d,rtx=%d,cts=%d: %s",p,tx,rx,rts,cts,esp_err_to_name(e));
 		else
 			log_info(TAG,"uart%d at tx=%d,rx=%d,rtx=%d,cts=%d",p,tx,rx,rts,cts);
+		if (esp_err_t e = uart_driver_install((uart_port_t)p,UART_FIFO_LEN*2,UART_FIFO_LEN*2,0,DRIVER_ARG))
+			log_warn(TAG,"uart%d driver: %s",p,esp_err_to_name(e));
+		uarts |= 1<<p;
 	}
 	for (const UartSettings &c : Config.uart()) {
 		uart_port_t port = (uart_port_t) c.port();
-		unsigned rx_buf = c.has_rx_bufsize() ? c.rx_bufsize() : 256;
+		unsigned rx_buf = c.has_rx_bufsize() ? c.rx_bufsize() : UART_FIFO_LEN*2;
 		if (rx_buf <= 128)
 			log_warn(TAG,"rx buf size must be >=128");
-		unsigned tx_buf = c.has_tx_bufsize() ? c.tx_bufsize() : (256+128);
+		unsigned tx_buf = c.has_tx_bufsize() ? c.tx_bufsize() : UART_FIFO_LEN*2;
+		if (uarts & (1<<port))
+			uart_driver_delete((uart_port_t)port);
 		if (esp_err_t e = uart_driver_install(port,rx_buf,tx_buf,0,DRIVER_ARG))
-			log_error(TAG,"uart%d driver: %s",port,esp_err_to_name(e));
+			log_warn(TAG,"uart%d driver: %s",port,esp_err_to_name(e));
 	}
 #endif
 	if (HWConf.system().has_diag_uart()) {
-		uint8_t diag = HWConf.system().diag_uart();
-		log_set_uart(diag);
-		log_info(TAG,"diag on uart %u",diag);
+		int8_t diag = HWConf.system().diag_uart();
+		if (diag == -1) {
+			log_info(TAG,"diag on uart disabled");
+		} else {
+			log_set_uart(diag);
+			log_info(TAG,"diag on uart %u",diag);
+		}
 	}
 #ifdef CONFIG_TERMSERV
 	uint8_t rx_used = 0, tx_used = 0;

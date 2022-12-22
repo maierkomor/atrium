@@ -284,7 +284,7 @@ bool SegmentDisplay::hasChar(char c) const
 }
 
 
-int SegmentDisplay::setPos(uint8_t x, uint8_t y)
+int SegmentDisplay::setPos(uint16_t x, uint16_t y)
 {
 	log_dbug(TAG,"setPos(%u,%u)",x,y);
 //	if ((x >= m_maxx) || (y >= m_maxy))

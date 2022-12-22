@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
 #
-#  Copyright (C) 2018-2020, Thomas Maier-Komor
+#  Copyright (C) 2018-2022, Thomas Maier-Komor
 #  Atrium Firmware Package for ESP
 #
 #  This program is free software: you can redistribute it and/or modify
@@ -28,7 +28,7 @@ Port = 12719
 def receiver():
 	port = 0
 	localip = socket.gethostbyname(socket.getfqdn())
-	t = threading.currentThread()
+	t = threading.current_thread()
 	while getattr(t,"do_run",True):
 		if (port != Port):
 			inp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -82,14 +82,14 @@ while True:
 	if com == 'exit':
 		term(0,receivethr)
 	elif com == '':
-                continue
+				continue
 	elif com == 'help':
-		print("@<node> <command>     : send command to <node>")
-		print("send <command>        : broadcast command to all nodes")
-		print("port <p>              : set UDP port (default: 12719)")
+		print("@<node> <command>	 : send command to <node>")
+		print("send <command>		: broadcast command to all nodes")
+		print("port <p>			  : set UDP port (default: 12719)")
 		print("hwcfg <node> [<file>] : send hardware config to node")
-		print("exit                  : terminate")
-                continue
+		print("exit				  : terminate")
+		continue
 	elif (len(args) == 1):
 		print("error: missing argument or unknown command")
 		continue
@@ -149,3 +149,4 @@ while True:
 	time.sleep(0.5)
 
 #vim:set noexpandtab
+#vim:set ts=8

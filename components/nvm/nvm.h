@@ -32,7 +32,7 @@ float nvm_read_float(const char *, float);
 int nvm_write(const char *name, const uint8_t *buf, size_t s);
 int nvm_read_blob(const char *name, uint8_t **buf, size_t *len);
 int nvm_store_blob(const char *name, const uint8_t *buf, size_t len);
-int nvm_copy_blob(const char *to, const char *from);
+const char *nvm_copy_blob(const char *to, const char *from);
 void nvm_erase_key(const char *name);
 void nvm_erase_all();
 

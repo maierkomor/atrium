@@ -1,0 +1,46 @@
+diff --git a/components/driver/i2c.c b/components/driver/i2c.c
+index f4beb3bcf1..06ed8286e5 100644
+--- a/components/driver/i2c.c
++++ b/components/driver/i2c.c
+@@ -208,7 +208,7 @@ static i2c_clk_alloc_t i2c_clk_alloc[I2C_SCLK_MAX] = {
+ static i2c_obj_t *p_i2c_obj[I2C_NUM_MAX] = {0};
+ static void i2c_isr_handler_default(void *arg);
+ static void IRAM_ATTR i2c_master_cmd_begin_static(i2c_port_t i2c_num, portBASE_TYPE* HPTaskAwoken);
+-static esp_err_t i2c_hw_fsm_reset(i2c_port_t i2c_num);
++esp_err_t i2c_hw_fsm_reset(i2c_port_t i2c_num);
+ 
+ static void i2c_hw_disable(i2c_port_t i2c_num)
+ {
+@@ -614,7 +614,7 @@ static esp_err_t i2c_master_clear_bus(i2c_port_t i2c_num)
+  * If we remove the power supply for the slave during I2C is reading, or directly connect SDA or SCL to ground,
+  * this would cause the I2C FSM get stuck in wrong state, all we can do is to reset the I2C hardware in this case.
+  **/
+-static esp_err_t i2c_hw_fsm_reset(i2c_port_t i2c_num)
++esp_err_t i2c_hw_fsm_reset(i2c_port_t i2c_num)
+ {
+ // A workaround for avoiding cause timeout issue when using
+ // hardware reset.
+diff --git a/components/wpa_supplicant/src/ap/ap_config.h b/components/wpa_supplicant/src/ap/ap_config.h
+index 9dad5f902e..6f90794c64 100644
+--- a/components/wpa_supplicant/src/ap/ap_config.h
++++ b/components/wpa_supplicant/src/ap/ap_config.h
+@@ -11,6 +11,7 @@
+ 
+ #include "common/defs.h"
+ #include "common/wpa_common.h"
++#include "wps/wps.h"
+ 
+ #define MAX_STA_COUNT 4
+ #define MAX_VLAN_ID 4094
+diff --git a/components/wpa_supplicant/src/ap/hostapd.h b/components/wpa_supplicant/src/ap/hostapd.h
+index 5bedf09d0a..06244f3928 100644
+--- a/components/wpa_supplicant/src/ap/hostapd.h
++++ b/components/wpa_supplicant/src/ap/hostapd.h
+@@ -11,6 +11,7 @@
+ 
+ #include "common/defs.h"
+ #include "ap/ap_config.h"
++#include "wps/wps.h"
+ 
+ struct wpa_driver_ops;
+ struct wpa_ctrl_dst;

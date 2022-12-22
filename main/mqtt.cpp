@@ -32,11 +32,7 @@
 
 #ifdef CONFIG_MQTT
 #include "actions.h"
-#ifdef CONFIG_SIGNAL_PROC
-#include "dataflow.h"
-#endif
 #include "event.h"
-#include "func.h"
 #include "globals.h"
 #include "log.h"
 #include "mqtt.h"
@@ -73,7 +69,6 @@
 
 using namespace std;
 
-int mqtt_setup(void);
 static int mqtt_pub_int(const char *t, const char *v, int len, int retain, int qos, bool needlock);
 
 
@@ -85,55 +80,12 @@ static sys_sem_t LwipSem = 0;
 #endif
 
 
-#ifdef CONFIG_SIGNAL_PROC
-class FnMqttSend: public Function
-{
-	public:
-	explicit FnMqttSend(const char *name, bool retain = false)
-	: Function(name)
-	, m_retain(retain)
-	{ }
-
-	void operator () (DataSignal *);
-	int setParam(unsigned x, DataSignal *s);
-
-	const char *type() const
-	{ return FuncName; }
-
-	static const char FuncName[];
-
-	private:
-	bool m_retain;	// currently not usable - no factory
-};
-
-const char FnMqttSend::FuncName[] = "mqtt_send";
-
-
-int FnMqttSend::setParam(unsigned x, DataSignal *s)
-{
-	s->addFunction(this);
-	return 0;
-}
-
-
-void FnMqttSend::operator () (DataSignal *s)
-{
-	if (s == 0)
-		return;
-	char buf[64];
-	mstream str(buf,sizeof(buf));
-	s->toStream(str);
-	log_dbug(TAG,"FnMqttSend: %s %s",s->signalName(),str.c_str());
-	mqtt_pub(s->signalName(),str.c_str(),str.size(),m_retain,0);
-}
-#endif
-
-
 #ifdef FEATURE_QOS
 struct PubReq
 {
 	PubReq(const char *t, const char *v, unsigned l)
 	: topic(strdup(t))
+	, len(l)
 	{
 		value = (char *) malloc(l);
 		memcpy(value,v,l);
@@ -166,7 +118,7 @@ struct PubReq
 
 
 	char *topic;
-	char *value;
+	char *value = 0;
 	unsigned len;
 
 	private:
@@ -234,9 +186,6 @@ MqttClient::MqttClient()
 	signals = RTData->add("mqtt");
 	subscribe(topic,mqtt_exe_action);
 	assert(signals);
-#ifdef CONFIG_SIGNAL_PROC
-	new FuncFact<FnMqttSend>;
-#endif
 }
 
 
@@ -974,7 +923,7 @@ void mqtt_start(void *arg)
 }
 
 
-int mqtt_setup(void)
+void mqtt_setup(void)
 {
 	action_add("mqtt!start",mqtt_start,0,"mqtt start");
 	action_add("mqtt!stop",mqtt_stop,0,"mqtt stop");
@@ -987,7 +936,6 @@ int mqtt_setup(void)
 	LwipSem = xSemaphoreCreateBinary();
 #endif
 	log_dbug(TAG,"initialized");
-	return 0;
 }
 
 

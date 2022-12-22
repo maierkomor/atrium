@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #
-#  Copyright (C) 2018-2020, Thomas Maier-Komor
+#  Copyright (C) 2018-2022, Thomas Maier-Komor
 #  Atrium Firmware Package for ESP
 #
 #  This program is free software: you can redistribute it and/or modify
@@ -20,6 +20,8 @@
 
 ldir=`pwd`/components/memfiles
 
+#echo CONFIG_INTEGRATED_HELP=$CONFIG_INTEGRATED_HELP
+
 # needed to get name of array right
 cd data
 
@@ -27,7 +29,11 @@ if [ ! -d $ldir ]; then
 	mkdir -p $ldir
 fi
 
-cat > memfiles.h.new << EOF
+MEMFILES=`ls -1 man/*.man`
+MEMFILES_H=`mktemp`
+CMAKELISTS=`mktemp`
+
+cat > $MEMFILES_H << EOF
 #ifndef MEMFILES_H
 #define MEMFILES_H
 
@@ -39,13 +45,18 @@ cat > memfiles.h.new << EOF
 
 EOF
 
+cat > $CMAKELISTS << EOF
+set(COMPONENT_ADD_INCLUDEDIRS .)
+set(COMPONENT_SRCS
+EOF
+
 for i in $MEMFILES; do
 	file="$i"
 	filename=`basename "$i"`
 	cpp_file=`echo $filename|sed 's/\.html/_html.cpp/;s/\.man/_man.cpp/'`
 	if [ "$CONFIG_INTEGRATED_HELP" = "y" ]; then
-		echo "extern const char ROMSTR $(echo $filename | sed 's/\./_/g')[];" >> memfiles.h.new
-		echo "#define $(echo $filename | sed 's/\./_/g')_len $(stat --printf='%s' $i)" >> memfiles.h.new
+		echo "extern const char ROMSTR $(echo $filename | sed 's/\./_/g')[];" >> $MEMFILES_H
+		echo "#define $(echo $filename | sed 's/\./_/g')_len $(stat --printf='%s' $i)" >> $MEMFILES_H
 		#echo comparing $file against $ldir/$cpp_file
 		test -e "$ldir/$cpp_file"
 		ex=$?
@@ -61,29 +72,39 @@ for i in $MEMFILES; do
 			sed -i 's/}/ ,0x00}/' "$ldir/$cpp_file"
 			sed -i 's/int .*;//' "$ldir/$cpp_file"
 		fi
+		echo "	$filename" | sed 's/.man/_man.cpp/' >> $CMAKELISTS
 	else
-		echo "#define $(echo $filename | sed 's/\./_/g') 0" >> memfiles.h.new
+		echo "#define $(echo $filename | sed 's/\./_/g') 0" >> $MEMFILES_H
 		rm -f "$ldir/$cpp_file"
 	fi
 	shift
 done
 
-echo >> memfiles.h.new
-echo "#endif" >> memfiles.h.new
+echo >> $MEMFILES_H
+echo "#endif" >> $MEMFILES_H
+echo ")" >> $CMAKELISTS
+echo "register_component()" >> $CMAKELISTS
 
-if [ -e memfiles.h.new -a -e $ldir/memfiles.h ]; then
-	diff memfiles.h.new $ldir/memfiles.h 2>&1 > /dev/null
+if [ -e "$ldir/memfiles.h" ]; then
+	#echo diff "$MEMFILES_H" "$ldir/memfiles.h"
+	diff "$MEMFILES_H" "$ldir/memfiles.h" 2>&1 > /dev/null
 	x="$?"
 else
 	x="1"
 fi
 if [ "$x" == "0" ]; then
 	echo memfiles.h is up-to-date
-	rm memfiles.h.new
+	rm $MEMFILES_H
+	if [ ! -f "$lder/CMakeLists.txt" ]; then
+		mv $CMAKELISTS "$ldir/CMakeLists.txt"
+	else
+		rm $CMAKELISTS
+	fi
 else
 	echo updating memfiles.h
-	if [ -e memfiles.h ]; then
-		rm memfiles.h
+	if [ -e $ldir/memfiles.h ]; then
+		rm $ldir/memfiles.h
 	fi
-	mv memfiles.h.new $ldir/memfiles.h
+	mv $MEMFILES_H "$ldir/memfiles.h"
+	mv $CMAKELISTS "$ldir/CMakeLists.txt"
 fi

@@ -305,7 +305,7 @@ void HttpRequest::fillContent()
 	m_content = (char *)realloc(m_content,m_contlen+1);
 	m_content[m_contlen] = 0;
 	if (m_content == 0) {
-		log_error(TAG,"out of memory");
+		log_error(TAG,"Out of memory.");
 		m_clen0 = 0;
 		return;
 	}

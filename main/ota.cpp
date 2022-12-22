@@ -109,13 +109,13 @@ static int send_http_get(Terminal &t, const char *server, int port, const char *
 		in6.sin6_port = htons(port);
 		a = (struct sockaddr *) &in6;
 		as = sizeof(struct sockaddr_in6);
-		memcpy(&in6.sin6_addr,ip_2_ip6(&ip),sizeof(in6));
+		memcpy(&in6.sin6_addr,ip_2_ip6(&ip),sizeof(in6.sin6_addr));
 	} else {
 		in.sin_family = AF_INET;
 		in.sin_port = htons(port);
 		a = (struct sockaddr *) &in;
 		as = sizeof(struct sockaddr_in);
-		memcpy(&in.sin_addr,ip_2_ip4(&ip),sizeof(in));
+		memcpy(&in.sin_addr,ip_2_ip4(&ip),sizeof(in.sin_addr));
 	}
 	if (-1 == connect(hsock,a,as)) {
 		t.printf("connect to %s failed: %s\n",inet_ntoa(ip),strerror(errno));
@@ -246,7 +246,7 @@ static int socket_to_x(Terminal &t, int hsock, int (*sink)(Terminal&,void*,char*
 {
 	char *buf = (char*)malloc(OTABUF_SIZE), *data;
 	if (buf == 0) {
-		t.println("out of memory");
+		t.println("Out of memory.");
 		return 1;
 	}
 	int ret = 1;
@@ -473,7 +473,7 @@ const char *http_download(Terminal &t, char *addr, const char *fn)
 	}
 	int fd;
 	if (fn[0] != '/') {
-		const char *pwd = getpwd();
+		const char *pwd = t.getPwd().c_str();
 		size_t l = strlen(pwd)+strlen(fn)+1;
 		if (l > 128)
 			return "Failed.";

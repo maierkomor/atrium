@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -16,12 +16,20 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <sdkconfig.h>
+
+#ifdef CONFIG_TLC5947
 #include "tlc5947.h"
 #include "log.h"
 
 #include <stdlib.h>
 #include <strings.h>
+
+#if defined CONFIG_IDF_TARGET_ESP32 && IDF_VERSION >= 40
+#include <esp32/rom/gpio.h>
+#else
 #include <rom/gpio.h>
+#endif
 
 
 #define TAG MODULE_TLC5947
@@ -92,7 +100,7 @@ void TLC5947::commit()
 void TLC5947::on()
 {
 	if (esp_err_t e = gpio_set_level(m_blank,0))
-		log_error(TAG,"unable to set blank to low: %s",esp_err_to_name(e));
+		log_warn(TAG,"unable to set blank to low: %s",esp_err_to_name(e));
 	else
 		m_on = true;
 }
@@ -101,7 +109,7 @@ void TLC5947::on()
 void TLC5947::off()
 {
 	if (esp_err_t e = gpio_set_level(m_blank,1))
-		log_error(TAG,"unable to set blank to high: %s",esp_err_to_name(e));
+		log_warn(TAG,"unable to set blank to high: %s",esp_err_to_name(e));
 	else
 		m_on = false;
 }
@@ -130,3 +138,6 @@ uint16_t TLC5947::get_led(unsigned x)
 	}
 	return m_data[x];
 }
+
+
+#endif // CONFIG_TLC5947

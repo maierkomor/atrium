@@ -129,7 +129,7 @@ static int8_t pos2off(uint8_t posx, uint8_t posy, uint8_t maxx, uint8_t maxy)
 }
 
 
-int HD44780U::setPos(uint8_t x, uint8_t y)
+int HD44780U::setPos(uint16_t x, uint16_t y)
 {
 #if 0
 	if ((m_posx == x) && (m_posy == y) && !m_posinv)

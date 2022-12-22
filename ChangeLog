@@ -1,3 +1,22 @@
+R2212:
+======
+- added action gpio!set for more flexible gpio operation
+- fix regression: error messages of I2C extended commands
+- added support for ESP32S2, ESP32-S3, ESP32-C3
+  (use mkatrium.sh for building)
+- fix use of Lua leaks memory
+- removal of obsolete&incomplete signal/func concept
+- added support for SPI based SSD1309
+- added action gpio!se
+- fixed memory handling bugs
+- minor config restructuring
+- added JTAG USB console
+- update for atriumcfg
+- PWD should be per terminal
+- Lua support for WS2812b LED arrays and TLC5947
+- support single and double quoting of shell arguments
+- fixes for install script setupenv.sh
+
 R2210:
 ======
 - support to print/json sub messages

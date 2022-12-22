@@ -88,7 +88,7 @@ const char ResetReasons[][12] = {
 const char *Weekdays_en[] = { "Su", "Mo", "Tu", "We", "Th", "Fr", "Sa", "wd", "we", "ed", "hd" };
 const char *Weekdays_de[] = { "So", "Mo", "Di", "Mi", "Do", "Fr", "Sa", "wt", "we", "jt", "ft" };
 
-extern "C" const char Version[] = VERSION;
+extern "C" const char Version[] = ATRIUM_VERSION;
 NodeConfig Config;
 HardwareConfig HWConf;
 nvs_handle NVS = 0;
@@ -237,7 +237,7 @@ static int daylight_saving_cet(struct tm *tm)
 }
 
 
-#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP8266
+#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3 || defined CONFIG_IDF_TARGET_ESP8266
 void get_time_of_day(uint8_t *h, uint8_t *m, uint8_t *s, uint8_t *wd, uint8_t *mday, uint8_t *month, unsigned *year)
 {
 	time_t now;

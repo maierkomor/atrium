@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #
-#  Copyright (C) 2018-2021, Thomas Maier-Komor
+#  Copyright (C) 2018-2022, Thomas Maier-Komor
 #  Atrium Firmware Package for ESP
 #
 #  This program is free software: you can redistribute it and/or modify
@@ -42,6 +42,6 @@ esac
 rm build 2>&1 > /dev/null
 ln -s -f build.$PROJECT build || exit 1
 export COMPONENT_PATH=`pwd`/main
-bash bin/mkversion.sh $BUILD_DIR/config/versions.h || exit 1
+bash bin/mkversion.sh main/versions.h || exit 1
 bash bin/genmemfiles.sh || exit 1
 bash bin/link_wfc.sh || exit 1

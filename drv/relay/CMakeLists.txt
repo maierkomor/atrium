@@ -1,4 +1,5 @@
-set(COMPONENT_SRCS "relay.cpp")
-set(COMPONENT_REQUIRES actions logging)
-set(COMPONENT_ADD_INCLUDEDIRS .)
-register_component()
+idf_component_register(
+	SRCS relay.cpp
+	INCLUDE_DIRS .
+	REQUIRES actions env event logging nvm xio
+)

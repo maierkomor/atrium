@@ -19,7 +19,11 @@
 #include "tlc5916.h"
 #include "log.h"
 
+#if defined CONFIG_IDF_TARGET_ESP32 && IDF_VERSION >= 40
+#include <esp32/rom/gpio.h>
+#else
 #include <rom/gpio.h>
+#endif
 
 #define TAG MODULE_TLC5916
 

@@ -358,6 +358,7 @@ SI7021 *SI7021::create(uint8_t bus, uint8_t addr)
 		break;
 	default:
 		log_warn(TAG,"unknown device id %02x",id1[0]);
+		// FALLTHRU
 	case 0x15:
 		typ = "si7021";
 		break;

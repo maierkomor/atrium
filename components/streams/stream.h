@@ -33,7 +33,8 @@ class stream
 	: m_crnl(crnl)
 	{ }
 
-	virtual ~stream() = 0;
+	virtual ~stream()
+	{ }
 
 	stream &operator << (char c)
 	{ print(&c,1); return *this; }
@@ -59,6 +60,14 @@ class stream
 	stream &operator << (uint32_t v)
 	{ return operator << ((uint64_t) v); }
 
+#if defined CONFIG_IDF_TARGET_ESP32C3
+	stream &operator << (int v)
+	{ return operator << ((int64_t) v); }
+
+	stream &operator << (unsigned v)
+	{ return operator << ((uint64_t) v); }
+#endif 
+
 	stream &operator << (double);
 
 	stream &operator << (const char *s)
@@ -80,7 +89,8 @@ class stream
 		return write(&c,1);
 	}
 
-	virtual int write(const char *s, size_t n) = 0;
+	virtual int write(const char *s, size_t n)
+	{ return -1; }
 
 	virtual void sync(bool = true)
 	{ }
@@ -96,10 +106,12 @@ class stream
 };
 
 
+/*
 inline stream::~stream()
 {
 
 }
+*/
 
 
 /*

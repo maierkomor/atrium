@@ -69,8 +69,9 @@ class SSD1306 : public DotMatrix, public I2CDevice
 		return 0;
 	}
 
+	int setFont(const char *) override;
 	int setContrast(uint8_t contrast) override;
-	int setPos(uint8_t x, uint8_t y) override;
+	int setPos(uint16_t x, uint16_t y) override;
 	int setInvert(bool inv) override;
 	int setOn(bool on) override;
 	const char *drvName() const

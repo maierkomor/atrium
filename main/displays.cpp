@@ -28,6 +28,7 @@
 #include "pcf8574.h"
 #include "hd44780u.h"
 #include "ssd1306.h"
+#include "ssd1309.h"
 
 #define TAG MODULE_DISP
 
@@ -67,6 +68,15 @@ int display_setup()
 #ifdef CONFIG_SSD1306
 		} else if (t == dt_ssd1306) {
 			SSD1306 *dev = SSD1306::getInstance();
+			if (dev == 0) {
+				log_warn(TAG,"no ssd1306 found");
+				return 1;
+			}
+			dev->init(maxx,maxy,c.options());
+#endif
+#ifdef CONFIG_SSD1309
+		} else if (t == dt_ssd1309) {
+			SSD1309 *dev = SSD1309::getInstance();
 			if (dev == 0) {
 				log_warn(TAG,"no ssd1306 found");
 				return 1;

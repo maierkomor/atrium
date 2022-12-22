@@ -34,11 +34,12 @@
 #include <rom/gpio.h>
 #include <esp8266/timer_register.h>
 #include <rom/ets_sys.h>
-#elif defined ESP32
+#elif defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32C3
 #if IDF_VERSION >= 40
 #include <esp32/rom/ets_sys.h>
 #include <esp32/rom/gpio.h>
 #else
+//| defined CONFIG_IDF_TARGET_ESP32S3 |
 #include <rom/ets_sys.h>
 #endif
 #endif
@@ -49,7 +50,7 @@
 #include <time.h>
 
 
-#ifdef CONFIG_IDF_TARGET_ESP32
+#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
 #define ENTER_CRITICAL() portDISABLE_INTERRUPTS()
 #define EXIT_CRITICAL() portENABLE_INTERRUPTS()
 #elif defined CONFIG_IDF_TARGET_ESP8266
@@ -58,7 +59,7 @@
 #endif
 
 
-#ifdef ESP32
+#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
 #define gettime() esp_timer_get_time()
 #elif defined ESP8266
 static inline uint64_t gettime()
@@ -187,7 +188,7 @@ int DHT::init(uint8_t pin, uint16_t model)
 		log_warn(TAG,"error configuring gpio");
 		return 2;
 	}
-#ifdef ESP32
+#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2
 	if (esp_err_t e = gpio_reset_pin((gpio_num_t)m_pin)) {
 		log_warn(TAG,"reset pin%u: %s",m_pin,esp_err_to_name(e));
 		return 2;

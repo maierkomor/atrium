@@ -30,7 +30,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
-#ifdef CONFIG_IDF_TARGET_ESP32
+#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
 #include <driver/periph_ctrl.h>
 
 extern "C" esp_err_t i2c_hw_fsm_reset(i2c_port_t);
@@ -369,9 +369,13 @@ int i2c_init(uint8_t port, uint8_t sda, uint8_t scl, unsigned freq, uint8_t xpul
 		return -1;
 	}
 	i2c_config_t conf;
+	bzero(&conf,sizeof(conf));
 	conf.mode = I2C_MODE_MASTER;
 	conf.sda_io_num = (gpio_num_t) sda;
 	conf.scl_io_num = (gpio_num_t) scl;
+#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
+	conf.clk_flags = I2C_SCLK_SRC_FLAG_FOR_NOMAL;
+#endif
 	if (xpullup) {
 		conf.sda_pullup_en = GPIO_PULLUP_DISABLE;
 		conf.scl_pullup_en = GPIO_PULLUP_DISABLE;
@@ -379,7 +383,7 @@ int i2c_init(uint8_t port, uint8_t sda, uint8_t scl, unsigned freq, uint8_t xpul
 		conf.sda_pullup_en = GPIO_PULLUP_ENABLE;
 		conf.scl_pullup_en = GPIO_PULLUP_ENABLE;
 	}
-#ifdef CONFIG_IDF_TARGET_ESP32
+#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
 	conf.master.clk_speed = freq;
 	esp_err_t e = i2c_driver_install((i2c_port_t) port, conf.mode, 0, 0, ESP_INTR_FLAG_IRAM);
 #else
@@ -413,7 +417,7 @@ int i2c_init(uint8_t port, uint8_t sda, uint8_t scl, unsigned freq, uint8_t xpul
 	// For some reason the first bus access may result in a
 	// bus-timeout. The BH1750 drivers deals with that situation, so
 	// keep it the first in the scan!
-#ifdef CONFIG_IDF_TARGET_ESP32
+#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
 	esp_err_t r = i2c_hw_fsm_reset((i2c_port_t)port);
 	assert(r == 0);
 #endif

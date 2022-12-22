@@ -1,6 +1,5 @@
-set(COMPONENT_SRCS "ws2812b.cpp")
-set(COMPONENT_REQUIRES logging)
-set(COMPONENT_ADD_INCLUDEDIRS .)
-register_component(
+idf_component_register(
+	SRCS ws2812b.cpp
+	INCLUDE_DIRS .
 	REQUIRES logging
-	)
+)

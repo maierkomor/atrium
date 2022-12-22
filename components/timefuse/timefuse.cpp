@@ -101,7 +101,7 @@ int timefuse_start(timefuse_t t)
 		event_trigger(t->start);
 		return 0;
 	}
-	log_warn(TAG,"start failure %d",r);
+	log_warn(TAG,"start error %d",r);
 	return 1;
 }
 
@@ -230,7 +230,11 @@ unsigned timefuse_interval_get(const char *n)
 
 int timefuse_interval_set(timefuse_t t, unsigned i)
 {
-	return pdFALSE == xTimerChangePeriod(t->id,i,portMAX_DELAY);
+	if (i % portTICK_PERIOD_MS) {
+		log_warn(TAG,"invalid interval of %ums",i);
+		return 1;
+	}
+	return pdFALSE == xTimerChangePeriod(t->id,i/portTICK_PERIOD_MS,portMAX_DELAY);
 }
 
 
@@ -267,12 +271,34 @@ int timefuse_repeat_set(const char *n, bool r)
 }
 */
 
-timefuse_t timefuse_create(const char *n, uint32_t d_ms, bool repeat)
+
+static void start_action(void *arg)
+{
+	Timer *t = (Timer *)arg;
+	timefuse_start(t);
+
+}
+
+
+static void stop_action(void *arg)
+{
+	Timer *t = (Timer *)arg;
+	timefuse_stop(t);
+}
+
+
+timefuse_t timefuse_create(const char *n, unsigned d_ms, bool repeat)
 {
 	if (Mtx == 0)
 		Mtx = xSemaphoreCreateMutex();
-	if (0 != timefuse_get(n))
+	if (0 != timefuse_get(n)) {
+		log_warn(TAG,"timer %s already defined",n);
 		return 0;
+	}
+	if ((d_ms % portTICK_PERIOD_MS) || (pdMS_TO_TICKS(d_ms) == 0)) {
+		log_warn(TAG,"invalid timer interval %ums",d_ms);
+		return 0;
+	}
 	log_dbug(TAG,"create %s",n);
 	event_t started = event_register(n,"`started");
 	event_t stopped = event_register(n,"`stopped");
@@ -287,8 +313,8 @@ timefuse_t timefuse_create(const char *n, uint32_t d_ms, bool repeat)
 	Lock lock(Mtx);
 	Timer *t = new Timer(strdup(n),id,started,stopped,timeout,Timers);
 	if (t != 0) {
-		action_add(concat(n,"!start"),(void (*)(void*))static_cast<int (*)(timefuse_t)>(timefuse_start),t,"start this timefuse");
-		action_add(concat(n,"!stop"),(void (*)(void*))static_cast<int (*)(timefuse_t)>(timefuse_stop),t,"stop this timefuse");
+		action_add(concat(n,"!start"),start_action,t,"start this timefuse");
+		action_add(concat(n,"!stop"),stop_action,t,"stop this timefuse");
 		Timers = t;
 	}
 	return t;

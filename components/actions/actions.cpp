@@ -31,7 +31,9 @@
 #include <freertos/task.h>
 #include <driver/gpio.h>
 
-#ifdef ESP32
+#if defined CONFIG_IDF_TARGET_ESP32 && IDF_VERSION >= 40
+#include <esp32/rom/gpio.h>
+#else
 #include <rom/gpio.h>
 #endif
 
@@ -201,10 +203,9 @@ static void action_event_cb(void *arg)
 }
 
 
-int action_setup()
+void action_setup()
 {
 	ActionTriggerEvt = event_register("action`trigger");
 	Action *a = action_add("action!execute",action_event_cb,0,0);
 	event_callback(ActionTriggerEvt,a);
-	return 0;
 }

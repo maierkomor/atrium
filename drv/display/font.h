@@ -7,6 +7,8 @@
 #ifndef _FONT_H_
 #define _FONT_H_
 
+#include <stdint.h>
+
 /// Font data stored PER GLYPH
 typedef struct {
   uint16_t bitmapOffset; ///< Pointer into Font->bitmap

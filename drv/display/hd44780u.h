@@ -47,7 +47,7 @@ class HD44780U : public TextDisplay
 	int setDim(uint8_t) override;
 	int setOn(bool) override;
 	void setDisplay(bool on, bool cursor, bool blink);
-	int setPos(uint8_t x, uint8_t y = 0) override;
+	int setPos(uint16_t x, uint16_t y = 0) override;
 	uint8_t maxDim() const override
 	{ return 1; }
 	uint8_t charsPerLine() const override

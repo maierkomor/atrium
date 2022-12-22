@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -24,7 +24,7 @@
 
 #include <driver/gpio.h>
 
-#ifdef CONFIG_IDF_TARGET_ESP32
+#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
 #include <driver/rmt.h>
 #else
 typedef uint8_t rmt_channel_t;
@@ -37,9 +37,6 @@ class WS2812BDrv
 	WS2812BDrv()
 	: m_set(0)
 	, m_cur(0)
-#ifdef CONFIG_IDF_TARGET_ESP32
-	, m_items(0)
-#endif
 	, m_num(0)
 	, m_tmr(0)
 	{ }
@@ -48,6 +45,7 @@ class WS2812BDrv
 	void set_led(size_t l, uint8_t r, uint8_t g, uint8_t b);
 	void set_led(size_t l, uint32_t rgb);
 	void set_leds(uint32_t rgb);
+	uint32_t get_led(unsigned led);
 
 	void update(bool fade = false);
 	void reset();
@@ -60,14 +58,14 @@ class WS2812BDrv
 	void commit();
 
 	uint8_t *m_set, *m_cur;
-#ifdef CONFIG_IDF_TARGET_ESP32
-	rmt_item32_t *m_items;
+#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
+	rmt_item32_t *m_items = 0;
 #endif
 	size_t m_num;
 	TimerHandle_t m_tmr;
 	gpio_num_t m_gpio;
-#ifdef CONFIG_IDF_TARGET_ESP32
-	rmt_channel_t m_ch;	// ignored on CONFIG_IDF_TARGET_ESP8266
+#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
+	rmt_channel_t m_ch;
 #elif defined CONFIG_IDF_TARGET_ESP8266
 	uint8_t m_t0l,m_t0h,m_t1l,m_t1h;
 	uint16_t m_tr;

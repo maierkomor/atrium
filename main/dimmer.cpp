@@ -28,6 +28,16 @@
 #include <driver/pwm.h>
 #elif defined CONFIG_IDF_TARGET_ESP32
 #include <driver/ledc.h>
+#define SPEED_MODE LEDC_HIGH_SPEED_MODE
+#elif defined CONFIG_IDF_TARGET_ESP32S2
+#include <driver/ledc.h>
+#define SPEED_MODE LEDC_LOW_SPEED_MODE
+#elif defined CONFIG_IDF_TARGET_ESP32S3
+#include <driver/ledc.h>
+#define SPEED_MODE LEDC_LOW_SPEED_MODE
+#elif defined CONFIG_IDF_TARGET_ESP32C3
+#include <driver/ledc.h>
+#define SPEED_MODE LEDC_LOW_SPEED_MODE
 #else
 #error missing implementation
 #endif
@@ -222,9 +232,9 @@ unsigned dimmer_fade(void *)
 			log_warn(TAG,"set duty %d",e);
 		if (esp_err_t e = pwm_start())
 			log_warn(TAG,"pwm start %d",e);
-#elif defined CONFIG_IDF_TARGET_ESP32
-		ledc_set_duty(LEDC_HIGH_SPEED_MODE,d->channel,v);
-		ledc_update_duty(LEDC_HIGH_SPEED_MODE,d->channel);
+#elif defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
+		ledc_set_duty(SPEED_MODE,d->channel,v);
+		ledc_update_duty(SPEED_MODE,d->channel);
 #else
 #error missing implementation
 #endif
@@ -389,10 +399,12 @@ int dimmer_setup()
 	uint32_t duties[nleds];
 #elif defined CONFIG_IDF_TARGET_ESP32
 	ledc_timer_config_t tm;
+	bzero(&tm,sizeof(tm));
 	tm.duty_resolution = LEDC_TIMER_10_BIT;
 	tm.freq_hz         = freq;
-	tm.speed_mode      = LEDC_HIGH_SPEED_MODE;
+	tm.speed_mode      = SPEED_MODE;
 	tm.timer_num       = LEDC_TIMER_0;
+	tm.clk_cfg          = LEDC_AUTO_CLK;
 	if (esp_err_t e = ledc_timer_config(&tm)) {
 		log_error(TAG,"timer config %x",e);
 		return e;
@@ -419,18 +431,16 @@ int dimmer_setup()
 		duties[nch] = (conf.config() & 1) ? DIM_MAX : 0;
 		dim->duty = duties[nch];
 		++nch;
-#elif defined CONFIG_IDF_TARGET_ESP32
+#elif defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
 		dim->channel = (ledc_channel_t) conf.pwm_ch();
 		gpio_set_direction(dim->gpio,GPIO_MODE_OUTPUT);
-		if (esp_err_t e = ledc_set_pin(dim->gpio,LEDC_HIGH_SPEED_MODE,dim->channel)) {
-			log_error(TAG,"ledc pin %x",e);
-			return e;
-		}
 		ledc_channel_config_t ch;
+		bzero(&ch,sizeof(ch));
+		ch.gpio_num   = dim->gpio;
 		ch.channel    = dim->channel;
 		ch.duty       = 0;
 		ch.gpio_num   = dim->gpio;
-		ch.speed_mode = LEDC_HIGH_SPEED_MODE;
+		ch.speed_mode = SPEED_MODE;
 		ch.timer_sel  = LEDC_TIMER_0;
 		ch.hpoint     = 0;
 		ch.intr_type  = LEDC_INTR_DISABLE;

@@ -7,15 +7,12 @@ setvar(<name>,<value>)
 	sets the value of variable with <name> to <value>
 getvar(<name>)
 	gets the value of variable with <name>
-Following math functions are supported:
 - sin(<number>)
+	calculates sin
 - log(<number>)
 - cos(<number>)
 - tan(<number>)
 - sqrt(<number>)
-- newvar(<string>)
-- getvar(<string>)
-- setvar(<string>,[<string>,<number>,<bool>])
 - action_activate(<string>)
 - event_trigger(<string>)
 - uptime()

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2021, Thomas Maier-Komor
+ *  Copyright (C) 2018-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -18,7 +18,8 @@
 
 #include <sdkconfig.h>
 
-#ifdef CONFIG_LEDSTRIP
+
+#ifdef CONFIG_RGBLEDS
 // CONFIG_IDF_TARGET_ESP32 rmt does not work before IDF release v3.2!!!
 // CONFIG_IDF_TARGET_ESP8266 for some reason doesn't achieve the necessary performance!!!
 // Placing the critical section in IRAM didn't give any benfit.
@@ -29,9 +30,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <driver/gpio.h>
-#include <rom/gpio.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+
+#if defined CONFIG_IDF_TARGET_ESP32 && IDF_VERSION >= 40
+#include <esp32/rom/gpio.h>
+#else
+#include <rom/gpio.h>
+#endif
 
 #include <esp_attr.h>
 #include <esp_err.h>
@@ -40,7 +46,7 @@
 #define TAG MODULE_WS2812
 
 
-#if defined CONFIG_IDF_TARGET_ESP32
+#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
 // CONFIG_IDF_TARGET_ESP32 at 80MHz, numbers in cycles
 // OK!
 #define T0H	28	// 0.35us
@@ -52,7 +58,7 @@
 extern "C" {
 #include <esp_clk.h>
 }
-#include <driver/rtc.h>
+//#include <driver/rtc.h>
 // ws2812b requirements:
 // 160MHz : 6.25ns per tick
 // 80MHz  : 12.5ns per tick
@@ -89,7 +95,7 @@ extern "C" {
 #error unknwon target
 #endif
 
-#ifdef CONFIG_IDF_TARGET_ESP8266
+#if defined CONFIG_IDF_TARGET_ESP8266
 
 typedef struct rmt_item32_s {
 	uint8_t duration0;
@@ -151,7 +157,7 @@ IRAM_ATTR void ws2812b_reset(unsigned gpio, uint16_t tr)
 
 int WS2812BDrv::init(gpio_num_t gpio, size_t nleds, rmt_channel_t ch)
 {
-#ifdef CONFIG_IDF_TARGET_ESP8266
+#if defined CONFIG_IDF_TARGET_ESP8266
 	int f = esp_clk_cpu_freq();
 	if (f == 160000000) {
 		m_t0l = T0L160;
@@ -178,7 +184,7 @@ int WS2812BDrv::init(gpio_num_t gpio, size_t nleds, rmt_channel_t ch)
 		return 1;
 	}
 	m_cur = m_set+nleds*3;
-#ifdef CONFIG_IDF_TARGET_ESP32
+#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
 	m_items = (rmt_item32_t*) calloc(sizeof(rmt_item32_t),(24*nleds+1/*for reset*/));
 	if (m_items == 0) {
 		log_error(TAG,"out of memory");
@@ -248,6 +254,21 @@ void WS2812BDrv::set_led(unsigned led, uint32_t rgb)
 }
 
 
+uint32_t WS2812BDrv::get_led(unsigned led)
+{
+	if (led >= m_num)
+		return 0;
+	uint8_t *v = m_set+led*3;
+	uint32_t r;
+	r = ((uint32_t)*v) << 8;
+	++v;
+	r |= ((uint32_t)*v) << 16;
+	++v;
+	r |= *v;
+	return r;
+}
+
+
 void WS2812BDrv::set_leds(uint32_t rgb)
 {
 	log_dbug(TAG,"set_leds(%06x)",rgb);
@@ -308,7 +329,7 @@ void WS2812BDrv::commit()
 	//log_info(TAG,"update0");
 	assert(m_set);
 	uint8_t *v = m_cur, *e = m_cur+m_num*3;
-#ifdef CONFIG_IDF_TARGET_ESP8266
+#if defined CONFIG_IDF_TARGET_ESP8266
 	uint8_t tmp[e-v];		// move data to IRAM!
 	memcpy(tmp,v,sizeof(tmp));
 	ws2812b_write(1 << m_gpio,tmp,tmp+sizeof(tmp),m_t0l,m_t0h,m_t1l,m_t1h);
@@ -340,7 +361,7 @@ void WS2812BDrv::commit()
 	r->level1 = 0;
 	assert(r-m_items <= 24*m_num+1);
 	//log_info(TAG,"writing %u items",r-m_items);
-	rmt_write_items(m_ch, m_items, m_num*24+1, true);
+	rmt_write_items(m_ch, m_items, m_num*24+1, false);
 #endif
 }
 
@@ -348,7 +369,7 @@ void WS2812BDrv::commit()
 void WS2812BDrv::reset()
 {
 	//log_info(TAG,"reset0");
-#ifdef CONFIG_IDF_TARGET_ESP32
+#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
 	rmt_item32_t rst;
 	rst.level0 = 0;
 	rst.level1 = 0;

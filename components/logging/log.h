@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2021, Thomas Maier-Komor
+ *  Copyright (C) 2018-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -172,8 +172,10 @@ void dmesg_to_uart(int8_t);
 void log_set_uart(int8_t);
 void writelog(const char *f, ...);
 
+void uart_print(const char *str);
 void con_print(const char *str);
 void con_printf(const char *f, ...);
+void con_printv(const char *f, va_list val);
 void con_write(const char *str, ssize_t l);
 
 void log_fatal(logmod_t m, const char *f, ...);

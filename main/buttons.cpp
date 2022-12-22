@@ -40,7 +40,7 @@ using namespace std;
 #define TAG MODULE_BUTTON
 
 
-int button_setup()
+void button_setup()
 {
 	for (auto &c : *HWConf.mutable_button()) {
 		if (!c.has_name())
@@ -65,12 +65,11 @@ int button_setup()
 		int8_t clk = c.clk();
 		int8_t dt = c.dt();
 		if ((dt != -1) && (clk != -1))
-			RotaryEncoder::create(n,clk,dt,gpio == -1 ? XIO_INVALID : gpio);
+			RotaryEncoder::create(n,(xio_t)clk,(xio_t)dt,gpio == -1 ? XIO_INVALID : (xio_t)gpio);
 		else
 #endif
 			Button::create(n,(xio_t)gpio,pullmode,al);
 	}
-	return 0;
 }
 
 #endif

@@ -29,6 +29,10 @@
 
 #include <stdlib.h>
 
+#ifdef CONFIG_USB_HOST_FS
+#include <esp_vfs_semihost.h>
+#endif
+
 #define MOUNT_POINT "/flash"
 #define DATA_PARTITION "storage"
 
@@ -49,7 +53,7 @@ static void init_spiffs()
 {
 	esp_vfs_spiffs_conf_t conf;
 	bzero(&conf,sizeof(conf));
-	conf.base_path = "/flash";
+	conf.base_path = MOUNT_POINT;
 	conf.partition_label = DATA_PARTITION;
 	conf.max_files = 4;
 	conf.format_if_mount_failed = false;
@@ -82,19 +86,19 @@ static const char *shell_format_spiffs(Terminal &term, const char *arg)
 #include <esp_vfs_fat.h>
 #include <strings.h>
 
-static wl_handle_t SpiFatFs = 0;
+static wl_handle_t SpiFatFs = WL_INVALID_HANDLE;
 
 static void init_fatfs()
 {
 	esp_vfs_fat_mount_config_t fatconf;
 	bzero(&fatconf,sizeof(fatconf));
-	fatconf.format_if_mount_failed = false;
+	fatconf.format_if_mount_failed = true;
 	fatconf.max_files = 4;
-	fatconf.allocation_unit_size = 4096;	// esp-idf >= v3.1
+	fatconf.allocation_unit_size = CONFIG_WL_SECTOR_SIZE;
 	SpiFatFs = WL_INVALID_HANDLE;
 	if (esp_err_t r = esp_vfs_fat_spiflash_mount(MOUNT_POINT, DATA_PARTITION, &fatconf, &SpiFatFs)) {
-		log_error(TAG,"unable to mount flash with fatfs: %s",esp_err_to_name(r));
-		SpiFatFs = 0;
+		log_error(TAG,"mount %s on %s with fatfs: %s", DATA_PARTITION, MOUNT_POINT, esp_err_to_name(r));
+		SpiFatFs = WL_INVALID_HANDLE;
 	} else 
 		log_info(TAG,"mounted fatfs partition " DATA_PARTITION);
 }
@@ -102,17 +106,17 @@ static void init_fatfs()
 
 static int shell_format_fatfs(Terminal &term, const char *arg)
 {
-	if (SpiFatFs)
+	if (SpiFatFs != WL_INVALID_HANDLE)
 		esp_vfs_fat_spiflash_unmount(MOUNT_POINT, SpiFatFs);
 	esp_vfs_fat_mount_config_t fatconf;
 	bzero(&fatconf,sizeof(fatconf));
 	fatconf.format_if_mount_failed = true;
 	fatconf.max_files = 4;
-	fatconf.allocation_unit_size = 4096;	// esp-idf >= v3.1
+	fatconf.allocation_unit_size = CONFIG_WL_SECTOR_SIZE;
 	SpiFatFs = WL_INVALID_HANDLE;
 	if (esp_err_t r = esp_vfs_fat_spiflash_mount(MOUNT_POINT, arg, &fatconf, &SpiFatFs)) {
 		term.printf("unable to mount flash with fatfs: %s\n",esp_err_to_name(r));
-		SpiFatFs = 0;
+		SpiFatFs = WL_INVALID_HANDLE;
 	} else 
 		term.printf("mounted fatfs partition '%s'\n",arg);
 	return 0;
@@ -126,22 +130,22 @@ static int shell_format_fatfs(Terminal &term, const char *arg)
 
 static void init_hwconf()
 {
-	log_info(TAG,"looking for hw.cfg in romfs");
 	int fd = romfs_open("hw.cfg");
 	ssize_t s = romfs_size_fd(fd);
 	if (s <= 0) {
-		log_warn(TAG,"unable to find hw.cfg");
+		log_warn(TAG,"no hw.cfg on ROMFS");
 		return;
 	}
-	char*buf = (char*)malloc(s);
-	if (buf == 0) {
-		log_error(TAG,"not enough RAM to copy hw.cfg");
-		return;
+	if (char *buf = (char*)malloc(s)) {
+		romfs_read_at(fd,buf,s,0);
+		int w = nvm_store_blob("hw.cfg",(uint8_t*)buf,s);
+		free(buf);
+		if (w == 0) {
+			log_info(TAG,"wrote hw.cfg to NVM");
+			return;
+		}
 	}
-	romfs_read_at(fd,buf,s,0);
-	if(0 == nvm_store_blob("hw.cfg",(uint8_t*)buf,s))
-		log_info(TAG,"wrote hw.cfg to NVM");
-	free(buf);
+	log_error(TAG,"read hw.cfg: failed");
 }
 
 
@@ -195,6 +199,13 @@ void fs_init()
 #endif
 #ifdef CONFIG_FATFS
 	init_fatfs();
+#endif
+#ifdef CONFIG_USB_HOST_FS
+	if (esp_err_t e = esp_vfs_semihost_register("/usb")) {
+		log_warn(TAG,"USB semihost failed: %s",esp_err_to_name(e));
+	} else {
+		log_info(TAG,"mounted /usb");
+	}
 #endif
 }
 

@@ -36,6 +36,9 @@
 #if IDF_VERSION < 40
 #include <esp_event_loop.h>
 #endif
+#if IDF_VERSION >= 44
+#include <esp_event_legacy.h>
+#endif
 
 #include <lwip/ip_addr.h>
 
@@ -72,14 +75,14 @@ esp_err_t system_event_sta_disconnected_handle_default(system_event_t *);	// IDF
 static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
 {
 	static uint8_t WifiRetry = 0;
-	log_info(TAG,"esp event %x/%x",event_base,event_id);
+//	log_dbug(TAG,"esp event %s/%x",event_base,event_id);
 	if (event_base == WIFI_EVENT) {
 		if (event_id == WIFI_EVENT_STA_START) {
 			esp_wifi_connect();
 			WifiRetry = 0;
 			StationMode = station_starting;
 		} else if (event_id == WIFI_EVENT_STA_CONNECTED) {
-#if defined CONFIG_LWIP_IPV6 || defined CONFIG_IDF_TARGET_ESP32
+#if defined CONFIG_LWIP_IPV6 || defined ESP32
 			if (esp_err_t e = tcpip_adapter_create_ip6_linklocal(TCPIP_ADAPTER_IF_STA))
 				log_warn(TAG,"create IPv6 linklocal on station: %s",esp_err_to_name(e));
 #endif
@@ -88,6 +91,8 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
 				StationDownTS = uptime();
 			Status &= ~STATUS_WIFI_UP;
 			StationMode = station_stopped;
+		} else if (event_id == WIFI_EVENT_STA_CONNECTED) {
+			log_info(TAG,"station connected");
 		} else if (event_id == WIFI_EVENT_STA_DISCONNECTED) {
 			if (WifiRetry < 255) {
 				esp_wifi_connect();
@@ -99,7 +104,15 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
 			}
 			StationMode = station_stopped;
 		} else if (event_id == WIFI_EVENT_WIFI_READY) {
-			log_info(TAG,"WiFi ready");
+			log_info(TAG,"ready");
+		} else if (event_id == WIFI_EVENT_STA_DISCONNECTED) {
+			log_info(TAG,"station disconnected");
+		} else if (event_id == WIFI_EVENT_AP_STADISCONNECTED) {
+			log_info(TAG,"AP station disconnected");
+		} else if (event_id == WIFI_EVENT_AP_STACONNECTED) {
+			log_info(TAG,"AP station connected");
+		} else if (event_id == WIFI_EVENT_SCAN_DONE) {
+			log_info(TAG,"scan done");
 		} else 
 			log_info(TAG,"unhandled WiFi event %x",event_id);
 	} else if (event_base == IP_EVENT) {
@@ -109,7 +122,7 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
 			ip.addr = event->ip_info.ip.addr;
 			log_info(TAG, "got IPv4 %s", ip4addr_ntoa(&ip));
 			WifiRetry = 0;
-			Status |= STATUS_WIFI_UP;
+			Status |= STATUS_WIFI_UP | STATUS_STATION_UP;
 			StationMode = station_connected;
 			void *arg = malloc(sizeof(event->ip_info.ip.addr));
 			memcpy(arg,&event->ip_info.ip.addr,sizeof(event->ip_info.ip.addr));
@@ -124,14 +137,17 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
 				memcpy(&IP6G,&ip,sizeof(IP6LL));
 			log_info(TAG, "got IPv6 %s", ip6addr_ntoa(&ip));
 			WifiRetry = 0;
-			Status |= STATUS_WIFI_UP;
+			Status |= STATUS_WIFI_UP | STATUS_STATION_UP;
 			StationMode = station_connected;
+			event_trigger_arg(StationUpEv,arg);
 		} else if (event_id == IP_EVENT_STA_LOST_IP) {
 			log_info(TAG, "lost IP");
 			if (0 == StationDownTS)
 				StationDownTS = uptime();
-			Status &= ~STATUS_WIFI_UP;
+			Status &= ~STATUS_STATION_UP;
 			StationMode = station_stopped;
+		} else if (event_id == IP_EVENT_AP_STAIPASSIGNED) {
+			log_info(TAG, "AP assigend IP to station");
 		} else 
 			log_info(TAG,"unhandled IP event %x",event_id);
 	} else
@@ -144,7 +160,7 @@ static esp_err_t wifi_event_handler(system_event_t *event)
 {
 	switch (event->event_id) {
 	case SYSTEM_EVENT_WIFI_READY:
-		log_info(TAG,"WiFi ready");
+		log_info(TAG,"ready");
 		break;
 	case SYSTEM_EVENT_STA_START:
 		log_info(TAG,"station start");
@@ -153,12 +169,12 @@ static esp_err_t wifi_event_handler(system_event_t *event)
 		system_event_sta_start_handle_default(event);	// IDF
 		break;
 	case SYSTEM_EVENT_AP_START:
-		log_info(TAG,"ap start");
+		log_info(TAG,"AP start");
 		Status |= STATUS_WIFI_UP | STATUS_SOFTAP_UP;
 		system_event_ap_start_handle_default(event);	// IDF
 		break;
 	case SYSTEM_EVENT_AP_STOP:
-		log_info(TAG,"ap stop");
+		log_info(TAG,"AP stop");
 		Status &= ~(STATUS_WIFI_UP | STATUS_SOFTAP_UP);
 		system_event_ap_stop_handle_default(event);	// IDF
 		break;
@@ -174,20 +190,24 @@ static esp_err_t wifi_event_handler(system_event_t *event)
 	case SYSTEM_EVENT_STA_CONNECTED:
 		log_info(TAG,"station " MACSTR " connected",MAC2STR(event->event_info.sta_connected.mac));
 		system_event_sta_connected_handle_default(event);	// IDF
-#if defined CONFIG_LWIP_IPV6 || defined CONFIG_IDF_TARGET_ESP32
+#if defined CONFIG_LWIP_IPV6 || defined ESP32
 		if (esp_err_t e = tcpip_adapter_create_ip6_linklocal(TCPIP_ADAPTER_IF_STA))
 			log_warn(TAG,"create IPv6 linklocal on station: %s",esp_err_to_name(e));
 #endif
 		break;
 	case SYSTEM_EVENT_AP_STACONNECTED:
+#ifndef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 		log_info(TAG,"station " MACSTR " connected to esp",MAC2STR(event->event_info.sta_connected.mac));
+#endif
 		// TODO? station disconnects from esp
 		break;
 	case SYSTEM_EVENT_AP_STADISCONNECTED:
+#ifndef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 		log_info(TAG,"station " MACSTR " disconnected from esp",MAC2STR(event->event_info.sta_disconnected.mac));
+#endif
 		// TODO? station disconnects from esp
 		break;
-#if defined CONFIG_LWIP_IPV6 || defined CONFIG_IDF_TARGET_ESP32
+#if defined CONFIG_LWIP_IPV6 || defined ESP32
 	case SYSTEM_EVENT_GOT_IP6:
 #if LWIP_IPV6
 		{
@@ -252,10 +272,14 @@ static esp_err_t wifi_event_handler(system_event_t *event)
 		}
 		break;
 	case SYSTEM_EVENT_AP_STAIPASSIGNED:
-		log_info(TAG,"ap: got station IP");
+#ifndef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
+		log_info(TAG,"AP: assigned IP");
+#endif
 		break;
 	case SYSTEM_EVENT_AP_PROBEREQRECVED:
-		log_info(TAG,"ap: probe request");
+#ifndef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
+		log_info(TAG,"AP: probe request");
+#endif
 		break;
 #ifdef CONFIG_WPS
 	case SYSTEM_EVENT_STA_WPS_ER_SUCCESS:
@@ -367,6 +391,36 @@ static void sc_callback(smartconfig_status_t status, void *pdata)
 		esp_smartconfig_stop();
 		SCstarted = false;
 		break;
+#if IDF_VERSION >= 40
+	case SC_EVENT_GOT_SSID_PSWD:
+		{
+			log_info(TAG,"SC: ssid+pass");
+			smartconfig_event_got_ssid_pswd_t *evt = (smartconfig_event_got_ssid_pswd_t *)pdata;
+			wifi_config_t wifi_config;
+			uint8_t ssid[33], password[65], rvd_data[33];
+			bzero(&wifi_config, sizeof(wifi_config_t));
+			memcpy(wifi_config.sta.ssid, evt->ssid, sizeof(wifi_config.sta.ssid));
+			memcpy(wifi_config.sta.password, evt->password, sizeof(wifi_config.sta.password));
+			wifi_config.sta.bssid_set = evt->bssid_set;
+			if (wifi_config.sta.bssid_set == true)
+				memcpy(wifi_config.sta.bssid, evt->bssid, sizeof(wifi_config.sta.bssid));
+			memcpy(ssid, evt->ssid, sizeof(evt->ssid));
+			memcpy(password, evt->password, sizeof(evt->password));
+			log_dbug(TAG, "ssid: %s", ssid);
+			log_dbug(TAG, "pass: %s", password);
+			if (evt->type == SC_TYPE_ESPTOUCH_V2) {
+				if (esp_err_t e = esp_smartconfig_get_rvd_data(rvd_data, sizeof(rvd_data)))
+					log_warn(TAG,"SC get rvd: %s",esp_err_to_name(e));
+				log_hex(TAG,rv_data,sizeof(rv_data),"rvd:");
+			}
+			if (esp_err_t e = esp_wifi_disconnect())
+				log_warn(TAG,"wifi disconnect: %s",esp_err_to_name(e));
+			if (esp_err_t e = esp_wifi_set_config(WIFI_IF_STA, &wifi_config))
+				log_warn(TAG,"wifi set config: %s",esp_err_to_name(e));
+			esp_wifi_connect();
+		}
+		break;
+#endif
 	default:
 		break;
 	}
@@ -493,8 +547,8 @@ bool wifi_start_station(const char *ssid, const char *pass)
 	} else if (station.has_addr4() || station.has_netmask4()) {
 		log_warn(TAG,"static IP needs address and netmask");
 	}
-	if (ESP_OK != esp_wifi_start()) {
-		log_warn(TAG,"error starting wifi");
+	if (esp_err_t e = esp_wifi_start()) {
+		log_warn(TAG,"start: %s",esp_err_to_name(e));
 		return false;
 	}
 	return true;
@@ -516,7 +570,7 @@ bool wifi_stop_station()
 		WifiStarted = false;
 		return (ESP_OK == esp_wifi_stop());
 	}
-	log_info(TAG,"stopped station");
+	log_info(TAG,"station down");
 	return true;
 }
 
@@ -527,10 +581,10 @@ bool wifi_start_softap(const char *ssid, const char *pass)
 		ssid = Config.nodename().c_str();
 	if (pass == 0)
 		pass = "";
-	log_info(TAG, "start WiFi soft-ap with SSID '%s', pass '%s'",ssid,pass);
+	log_info(TAG, "start AP: SSID '%s', pass '%s'",ssid,pass);
 	wifi_mode_t m = WIFI_MODE_NULL;
 	if (esp_err_t e = esp_wifi_get_mode(&m))
-		log_warn(TAG,"error getting wifi mode: %s",esp_err_to_name(e));
+		log_warn(TAG,"get wifi mode: %s",esp_err_to_name(e));
 	const WifiConfig &softap = Config.softap();
 	if (softap.has_mac() && (softap.mac().size() == 6)) {
 		if (esp_err_t e = esp_wifi_set_mac(WIFI_IF_AP,(const uint8_t *)softap.mac().data()))
@@ -547,13 +601,13 @@ bool wifi_start_softap(const char *ssid, const char *pass)
 	wifi_config.ap.max_connection = 4;
 	wifi_config.ap.beacon_interval = 300;
 	if (esp_err_t e = esp_wifi_set_config(WIFI_IF_AP, &wifi_config))
-		log_warn(TAG,"setting wifi config %s",esp_err_to_name(e));
+		log_warn(TAG,"set wifi config %s",esp_err_to_name(e));
 	if (m == WIFI_MODE_NULL) {
 		if (esp_err_t e = esp_wifi_set_mode(WIFI_MODE_AP))
-			log_warn(TAG,"setting station mode %s",esp_err_to_name(e));
+			log_warn(TAG,"set AP mode %s",esp_err_to_name(e));
 	} else if (m == WIFI_MODE_STA) {
 		if (esp_err_t e = esp_wifi_set_mode(WIFI_MODE_APSTA))
-			log_warn(TAG,"setting station+ap mode %s",esp_err_to_name(e));
+			log_warn(TAG,"set station+ap mode %s",esp_err_to_name(e));
 	}
 	if (!WifiStarted) {
 		if (esp_err_t e = esp_wifi_start())
@@ -575,18 +629,18 @@ bool wifi_stop_softap()
 	}
 	wifi_mode_t m = WIFI_MODE_NULL;
 	if (esp_err_t e = esp_wifi_get_mode(&m))
-		log_warn(TAG,"error getting wifi mode: %s",esp_err_to_name(e));
+		log_warn(TAG,"get wifi mode: %s",esp_err_to_name(e));
 	if (m == WIFI_MODE_APSTA)
 		m = WIFI_MODE_AP;
 	else if (m == WIFI_MODE_AP)
 		m = WIFI_MODE_NULL;
 	if (esp_err_t e = esp_wifi_set_mode(m))
-		log_warn(TAG,"error setting wifi mode %d: 0x%x",m,e);
+		log_warn(TAG,"set wifi mode %d: 0x%x",m,e);
 	if (m == WIFI_MODE_NULL) {
 		WifiStarted = false;
 		return ESP_OK == esp_wifi_stop();
 	}
-	log_info(TAG,"stopped softap");
+	log_info(TAG,"AP down");
 	Status |= STATUS_SOFTAP_UP;
 	return true;
 }
@@ -602,15 +656,17 @@ void wifi_wps_start(void *)
 	esp_wifi_get_mode(&m);
 	if (m != WIFI_MODE_STA) {
 		if (esp_err_t e = esp_wifi_set_mode(WIFI_MODE_STA))
-			log_warn(TAG,"set wifi mode %d: 0x%x",m,e);
+			log_warn(TAG,"set station mode: %d",e);
 		if (esp_err_t e = esp_wifi_start())
-			log_warn(TAG,"error starting wifi: %s",esp_err_to_name(e));
+			log_warn(TAG,"start wifi: %s",esp_err_to_name(e));
 	}
 	esp_wps_config_t config;
 	bzero(&config,sizeof(config));
 	config.wps_type = WPS_TYPE_PBC;
 #ifdef CONFIG_IDF_TARGET_ESP32
+#if IDF_VERSION < 44
 	config.crypto_funcs = &g_wifi_default_wps_crypto_funcs;
+#endif
 #endif
 	const SystemConfig &cfg = HWConf.system();
 	if (cfg.has_manufacturer())
@@ -645,6 +701,7 @@ void wifi_wps_start(void *)
 #endif
 
 
+#if IDF_VERSION < 40
 extern "C"
 esp_err_t esp_event_send(system_event_t *ev)
 {
@@ -654,13 +711,16 @@ esp_err_t esp_event_send(system_event_t *ev)
 	event_trigger_arg(SysWifiEv,arg);
 	return 0;
 }
+#endif
 
 
 extern "C"
 void esp_event_process(void *arg)
 {
 	log_dbug(TAG,"process wifi event");
+#if IDF_VERSION < 40
 	wifi_event_handler((system_event_t *) arg);
+#endif
 }
 
 
@@ -684,28 +744,31 @@ int wifi_setup()
 	esp_netif_init();
 	esp_event_loop_create_default();
 	esp_netif_create_default_wifi_sta();
+	esp_wifi_set_default_wifi_sta_handlers();
 	if (esp_err_t e = esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, 0))
-		log_warn(TAG,"set wifi event handler: %s",esp_err_to_name(e));
+		log_warn(TAG,"set wifi handler: %s",esp_err_to_name(e));
 	if (esp_err_t e = esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, 0))
-		log_warn(TAG,"set got-IP event handler: %s",esp_err_to_name(e));
+		log_warn(TAG,"set got-IP handler: %s",esp_err_to_name(e));
 	if (esp_err_t e = esp_event_handler_register(IP_EVENT, IP_EVENT_GOT_IP6, &event_handler, 0))
-		log_warn(TAG,"set got-IP event handler: %s",esp_err_to_name(e));
+		log_warn(TAG,"set got-IP handler: %s",esp_err_to_name(e));
 	if (esp_err_t e = esp_event_handler_register(IP_EVENT, IP_EVENT_STA_LOST_IP, &event_handler, 0))
-		log_warn(TAG,"set lost-IP event handler: %s",esp_err_to_name(e));
+		log_warn(TAG,"set lost-IP handler: %s",esp_err_to_name(e));
+	if (esp_err_t e = esp_event_handler_register(IP_EVENT, IP_EVENT_AP_STAIPASSIGNED, &event_handler, 0))
+		log_warn(TAG,"set AP IP-assigned handler: %s",esp_err_to_name(e));
 #else
 	tcpip_adapter_init();
 #endif
 
 	wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
 	if (esp_err_t e = esp_wifi_init(&cfg)) {
-		log_warn(TAG,"esp_wifi_init failed: %s",esp_err_to_name(e));
+		log_warn(TAG,"wifi init: %s",esp_err_to_name(e));
 		return 1;
 	}
 	uint8_t mac[6];
 	if (ESP_OK == esp_wifi_get_mac(WIFI_IF_AP,mac)) {
-		log_info(TAG,"soft-ap MAC: %02x:%02x:%02x:%02x:%02x:%02x",mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
+		log_info(TAG,"AP MAC: %02x:%02x:%02x:%02x:%02x:%02x",mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
 	} else {
-		log_info(TAG,"no soft-ap MAC");
+		log_info(TAG,"no AP MAC");
 	}
 	if (ESP_OK == esp_wifi_get_mac(WIFI_IF_STA,mac)) {
 		log_info(TAG,"station MAC: %02x:%02x:%02x:%02x:%02x:%02x",mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);

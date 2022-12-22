@@ -30,6 +30,9 @@ class TcpTerminal : public Terminal
 	explicit TcpTerminal(LwTcp *,bool = false);
 	~TcpTerminal();
 
+	const char *type() const override
+	{ return "tcp"; }
+
 	int read(char *, size_t, bool = true);
 	int write(const char *b, size_t);
 	int disconnect();

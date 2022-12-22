@@ -363,7 +363,7 @@ static void event_task(void *)
 				for (const auto &c : cb) {
 					if (c.enabled) {
 						lock.unlock();
-						log_local(TAG,"\t%s, arg %s",c.action->name,c.arg ? c.arg : "''");
+						log_local(TAG,"\t%s, arg %-16s",c.action->name,c.arg ? c.arg : "''");
 						c.action->activate(e.arg ? e.arg : (c.arg ? strdup((const char *)c.arg) : 0));
 						lock.lock();
 					}

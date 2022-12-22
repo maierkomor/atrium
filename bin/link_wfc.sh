@@ -30,14 +30,18 @@ function checkage() {
 	fi
 }
 
-TARGET=`grep CONFIG_WFC_TARGET "projects/$PROJECT" | sed 's/.*="//;s/"//'`
+if [ -f $SDKCONFIG ]; then
+	TARGET=`grep CONFIG_WFC_TARGET "$SDKCONFIG" | sed 's/.*="//;s/"//'`
+elif [ -f "projects/$PROJECT" ]; then
+	TARGET=`grep CONFIG_WFC_TARGET "projects/$PROJECT" | sed 's/.*="//;s/"//'`
+fi
 
 if [ "$TARGET" == "" ]; then
 	TARGET=$CHIP
 fi
 echo sym-linking wfc generated sources for target $TARGET, project $PROJECT
 
-if [ ! -e components/wfc/hwcfg_$TARGET.cpp ]; then
+if [ ! -f components/wfc/hwcfg_$TARGET.cpp ]; then
 	echo unsupported target $TARGET
 	exit 1
 fi

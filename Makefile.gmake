@@ -64,17 +64,15 @@ ROMFS_FILE	=$(ROMFS_LST:%.lst=%.romfs)
 ROMFS_FILES	=$(shell cat $(ROMFS_LST) 2>/dev/null)
 ROMFS_ADDR	=$(CONFIG_ROMFS_ADDR)
 IDF_VER		:=$(shell cd $(IDF_PATH); git describe --tags 2>/dev/null | sed 's/\.//;s/v//;s/-.*//;s/\..*//')
-CPPFLAGS	=-DIDF_VERSION=$(IDF_VER) -I$(BUILD_DIR_BASE)/config
+CPPFLAGS	=-DIDF_VERSION=$(IDF_VER) -D$(CHIP) -I$(BUILD_DIR_BASE)/config
 BUILD_DIR_BASE	=$(PWD)/build.$(PROJECT)
 PROJECT_ROOT	=$(PWD)
 WFCINC		=$(WFCDIR)/include
 PROJECT_VER	=$(shell bin/mkversion.sh)
 MEMFILES	=$(shell cd data; ls -1 man/*.man)
 ROMFS_PARTITION	=storage
-#CFG_CXX		=tools/atriumcfg.cpp components/streams/strstream.cpp components/streams/estring.cpp tools/hwcfg.cpp tools/swcfg.cpp tools/wfccore.cpp
 CFG_CXX		=tools/atriumcfg.cpp tools/hwcfg.cpp tools/swcfg.cpp tools/wfccore.cpp
 PATH		:=$(PATH_$(CHIP)):$(PATH)
-#PATH		+=:$(PATH_$(CHIP))
 IDF_PYTHON_ENV_PATH	=$(IDF_PYTHON_ENV_PATH_$(CHIP))
 
 ifneq ($(ROMFS_FILES),)
@@ -185,8 +183,11 @@ atriumcfg: bin/atriumcfg$(EXEEXT)
 bin/atriumcfg$(EXEEXT): $(CFG_CXX) tools/version.h tools/pcconfig.h
 	g++ -g -Imain -Icomponents/streams $(CFG_CXX) -leditline -lmd -o $@
 
-tools/version.h:
+always:
+
+tools/version.h: always
 	bash bin/mkversion.sh $@
 
 tools/pcconfig.h: main/Kconfig
 	grep '^config ' main/Kconfig | sed 's/^config /#define CONFIG_/' > $@
+	echo "#define CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG"  >> $@

@@ -102,6 +102,8 @@ message SystemConfig
 	sint8 console_tx = 6	[ default = 0 ];
 	string model_name = 7	[ unset = ""];
 	string model_number = 8	[ unset = ""];
+	bool usb_diag = 9	[ unset = true, ifdef=CONFIG_USB_DIAGLOG ];
+	bool usb_con = 10	[ unset = true, ifdef=CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG ];
 }
 
 
@@ -254,7 +256,7 @@ message I2CConfig
 	sint8 sda = 2		[ unset = -1 ];
 	sint8 scl = 3		[ unset = -1 ];
 	unsigned freq = 4	[ default = 100000 ];
-	bool xpullup = 5;	// have external pull-ups
+	bool xpullup = 5	[ unset = false ];	// have external pull-ups
 	repeated i2cdev_t devices = 6	[ packed = true, ifdef=CONFIG_I2C_XDEV ];
 }
 
@@ -385,7 +387,8 @@ enum disp_t
 	dt_pcf8574_hd44780u = 16;
 	
 	// monochrom displays
-	dt_ssd1306 = 32;
+	dt_ssd1306 = 32;	// I2C
+	dt_ssd1309 = 33;	// 4-wire spi
 }
 
 
@@ -398,35 +401,48 @@ message DisplayConfig
 }
 
 
-/*
-enum spiopt_t
+enum spidrv_t
 {
-	txlsbfirst = 1;
-	rxlsbfirst = 2;
-	mosi_as_miso = 4;	// 3-wire mode, MOSI is also used as MiSO
-	positive_cs = 8;
-	half_duplex = 16;
-
-	pol_hi = 0x100;
-	pha_hi = 0x200;
-}
-
-message SpiBus
-{
-	
-	uint8 options;		// spiopt_t bits
-	uint8 freq = 3;		// in MHz
+	spidrv_invalid = 0;
+	spidrv_sx1276 = 1;
+	spidrv_ssd1309 = 2;
 }
 
 
-message SpiDevice
+bitset spiopt_t
 {
-	sint8 bus = 1		[ unset = -1 ];
-	sint8 cs = 2		[ unset = -1 ];
-	sint8 intr = 3		[ unset = -1 ];
-	spidrv_t drv		[ unset = spidrv_invalid ];
+	bool txlsbfirst : 0;
+	bool rxlsbfirst : 1;
+	bool mosi_as_miso : 2;	// 3-wire mode, MOSI is also used as MiSO
+	bool positive_cs : 3;
+	bool full_duplex : 4; 
+	bool pol_hi : 5;
+	bool pha_hi : 6;
 }
-*/
+
+
+message SpiDeviceConfig
+{
+	spidrv_t drv = 1	[ unset = spidrv_invalid ];
+	sint8 cs = 2		[ unset = -1 ];		// chip select
+	sint8 intr = 3		[ unset = -1 ];		// interrupt
+	sint8 reset = 4		[ unset = -1 ];		// reset
+	sint8 cd = 5		[ unset = -1 ];		// command/data
+}
+
+
+message SpiBusConfig
+{
+	sint8 host = 1		[ unset = -1 ];
+	sint8 mosi = 2		[ unset = -1 ];
+	sint8 miso = 3		[ unset = -1 ];		// miso=-1 for 3-wire
+	sint8 sclk = 4		[ unset = -1 ];		// -1 = cs as clock
+	sint8 wp = 5		[ unset = -1 ];
+	sint8 hold = 6		[ unset = -1 ];
+	spiopt_t options = 7;
+	sint8 dma = 8		[ unset = -1 ];
+	repeated SpiDeviceConfig devices = 9;
+}
 
 
 message GpioCluster
@@ -436,6 +452,26 @@ message GpioCluster
 	uint8 numio = 3		[ unset = 0 ];
 	sint8 int_a = 4		[ unset = -1 ];
 	sint8 int_b = 5		[ unset = -1 ];
+}
+
+
+message Hlw8012Config
+{
+//	string name = 1		[ unset = "" ];
+	sint8 sel = 2		[ unset = -1 ];
+	sint8 cf = 3		[ unset = -1 ];
+	sint8 cf1 = 4		[ unset = -1 ];
+}
+
+
+message SX1276Config
+{
+	sint8 dio0 = 1		[ unset = -1 ];
+	sint8 dio1 = 2		[ unset = -1 ];
+	sint8 dio2 = 3		[ unset = -1 ];
+	sint8 dio3 = 4		[ unset = -1 ];
+	sint8 dio4 = 5		[ unset = -1 ];
+	sint8 dio5 = 6		[ unset = -1 ];
 }
 
 
@@ -449,22 +485,25 @@ message HardwareConfig
 	TouchpadConfig touchpad = 5			[ ifdef=CONFIG_TOUCHPAD ];
 	repeated TouchChannelConfig tp_channel = 6	[ ifdef=CONFIG_TOUCHPAD ];
 	repeated GpioConfig gpio = 7;
-//	repeated SpiBus spibus = 8;
-//	repeated SpiDevice spidev = 9;
+	repeated SpiBusConfig spibus = 8		[ ifdef=CONFIG_SPI ];
 
 	// direct gpio drivers
 	repeated ButtonConfig button = 16	[ ifdef=CONFIG_BUTTON ];
 	repeated RelayConfig relay = 17		[ ifdef=CONFIG_RELAY ];
 	repeated LedConfig led = 18		[ ifdef=CONFIG_LEDS ];
 
+	// direct attached devices
+	Hlw8012Config hlw8012 = 20		[ ifdef=CONFIG_HLW8012 ];
+
 	// high level applicaton drivers
 	Max7219Config max7219 = 32		[ ifdef=CONFIG_MAX7219 ];	// for 7-segment clock
-	Tlc5947Config tlc5947 = 33		[ ifdef=CONFIG_NIGHTSKY ];	// for nightsky LEDs
-	Ws2812bConfig ws2812b = 34		[ ifdef=CONFIG_LEDSTRIP ];	// for ws2812b LED strips
+	Tlc5947Config tlc5947 = 33		[ ifdef=CONFIG_TLC5947 ];	// for nightsky LEDs
+	Ws2812bConfig ws2812b = 34		[ ifdef=CONFIG_RGBLEDS ];	// for ws2812b LED strips
 	DhtConfig dht = 35			[ ifdef=CONFIG_DHT ];
 	repeated I2CConfig i2c = 36		[ ifdef=CONFIG_I2C ];
 	repeated HcSr04Config hcsr04 = 37	[ ifdef=CONFIG_HCSR04 ];
 	OneWireConfig onewire = 38		[ ifdef=CONFIG_ONEWIRE ];
+	SX1276Config sx1276 = 39		[ ifdef=CONFIG_SX1276 ];
 	repeated GpioCluster iocluster = 40	[ ifdef=CONFIG_IOEXTENDERS ];
 
 	DisplayConfig display = 50		[ ifdef=CONFIG_DISPLAY ];

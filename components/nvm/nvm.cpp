@@ -165,23 +165,20 @@ int nvm_store_blob(const char *name, const uint8_t *buf, size_t s)
 }
 
 
-int nvm_copy_blob(const char *to, const char *from)
+const char *nvm_copy_blob(const char *to, const char *from)
 {
 	size_t s = 0;
 	uint8_t *buf = 0;
 	if (int e = nvm_read_blob(from,&buf,&s)) {
-		log_warn(TAG,"read %s: %s",from,esp_err_to_name(e));
-		return e;
+		return esp_err_to_name(e);
 	}
 	esp_err_t e = nvs_set_blob(NVS,to,buf,s);
 	free(buf);
 	if (e)
-		log_warn(TAG,"NVS write %s (%u bytes): %s",to,s,esp_err_to_name(e));
-	else if (esp_err_t e = nvs_commit(NVS))
-		log_warn(TAG,"commit %s: %s",to,esp_err_to_name(e));
-	else
-		return 0;
-	return 1;
+		return esp_err_to_name(e);
+	if (esp_err_t e = nvs_commit(NVS))
+		return esp_err_to_name(e);
+	return 0;
 
 }
 

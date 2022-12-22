@@ -33,15 +33,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <freertos/task.h>
-#include <driver/gpio.h>
-
-#ifdef ESP32
-#if IDF_VERSION >= 40
-#include <esp32/rom/gpio.h>
-#else
-#include <rom/gpio.h>
-#endif
-#endif
+//#include <driver/gpio.h>
 
 #include <vector>
 

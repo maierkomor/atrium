@@ -21,11 +21,40 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <errno.h>
+
+
+Terminal::~Terminal()
+{
+
+}
+
+
+/*
+const char *Terminal::type() const
+{
+	return 0;
+}
+
+
+int Terminal::read(char *, size_t, bool block)
+{
+	return -1;
+}
+*/
 
 
 int Terminal::get_ch(char *c)
 {
 	return read(c,1,true);
+}
+
+
+const estring &Terminal::getPwd()
+{
+	if (m_pwd.empty())
+		m_pwd = "/flash/";
+	return m_pwd;
 }
 
 
@@ -127,46 +156,56 @@ int Terminal::readInput(char *buf, size_t l, bool echo)
 	return eoi-buf;
 }
 
-
-/*
-int arg_invnum(Terminal &t)
+int Terminal::setPwd(const char *cd)
 {
-	t.println("invalid number of arguments");
-	return 1;
+	if (cd == 0)
+		return -EINVAL;
+	if (cd[0] == '/') {
+		m_pwd = cd;
+		if (m_pwd.back() != '/')
+			m_pwd.push_back('/');
+		return 0;
+	}
+#ifdef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
+	return -1;
+#else
+	if (m_pwd.empty())
+		m_pwd = "/flash/";
+	while (cd && cd[0]) {
+		while ((cd[0] == '.') && ((cd[1] == '/') || cd[1] == 0)) {
+			if (cd[1])
+				cd += 2;
+			else
+				++cd;
+		}
+		while ((cd[0] == '.') && (cd[1] == '.') && ((cd[2] == '/') || cd[2] == 0)) {
+			// strip trailing slash
+			if (m_pwd.size() > 1)
+				m_pwd.resize(m_pwd.size()-1);
+			const char *p = m_pwd.c_str();
+			// find last slash
+			const char *ls = strrchr(p,'/');
+			if (p != ls)
+				m_pwd.resize(ls-p + 1);
+			if (cd[2])
+				cd += 3;
+			else
+				cd += 2;
+		}
+		if (cd[0]) {
+			const char *sl = strchr(cd,'/');
+			if (sl) {
+				m_pwd.append(cd,sl-cd+1);
+				cd = sl + 1;
+			} else {
+				m_pwd += cd;
+				m_pwd += '/';
+				cd = 0;
+			}
+		}
+	}
+	if (m_pwd.back() != '/')
+		m_pwd.push_back('/');
+	return 0;
+#endif
 }
-
-
-int arg_invalid(Terminal &t, const char *a)
-{
-	t.printf("invalid argument '%s'\n",a);
-	return 1;
-}
-
-
-int arg_range(Terminal &t, const char *a)
-{
-	t.printf("value '%s' out of range\n",a);
-	return 1;
-}
-
-
-int arg_missing(Terminal &t)
-{
-	t.println("missing argument");
-	return 1;
-}
-
-
-int arg_priv(Terminal &t)
-{
-	t.println("Access denied. Use 'su' to get access.");
-	return 1;
-}
-
-
-int err_oom(Terminal &t)
-{
-	t.println("Out of memory.");
-	return -2;
-}
-*/

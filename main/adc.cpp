@@ -20,7 +20,6 @@
 
 #include "actions.h"
 #include "cyclic.h"
-#include "dataflow.h"
 #include "env.h"
 #include "event.h"
 #include "globals.h"
@@ -39,9 +38,20 @@ struct AdcConversion
 	float scale, offset;
 };
 
-#if defined CONFIG_IDF_TARGET_ESP32
+#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
 #include <driver/rtc_io.h>
+#if defined CONFIG_IDF_TARGET_ESP32
 #include <soc/sens_reg.h>
+#define DEFAULT_ADC_WIDTH ADC_WIDTH_BIT_12
+#elif defined CONFIG_IDF_TARGET_ESP32S2
+#include <soc/sens_reg.h>
+#define DEFAULT_ADC_WIDTH ADC_WIDTH_BIT_13
+#elif defined CONFIG_IDF_TARGET_ESP32S3
+#include <soc/sens_reg.h>
+#define DEFAULT_ADC_WIDTH ADC_WIDTH_BIT_12
+#elif defined CONFIG_IDF_TARGET_ESP32C3
+#define DEFAULT_ADC_WIDTH ADC_WIDTH_BIT_12
+#endif
 
 struct AdcSignal : public EnvNumber
 {
@@ -71,8 +81,11 @@ struct AdcSignal : public EnvNumber
 
 static unsigned NumAdc = 0;
 static AdcSignal **Adcs = 0;
-static EnvNumber *Hall = 0;
 static adc_bits_width_t U2Width;
+
+#if defined CONFIG_IDF_TARGET_ESP32
+static EnvNumber *Hall = 0;
+
 
 static void hall_sample(void *)
 {
@@ -87,7 +100,7 @@ int hall_setup()
 {
 	if (!HWConf.has_adc() || HWConf.adc().hall_name().empty())
 		return 0;
-	if (esp_err_t e = adc1_config_width(ADC_WIDTH_BIT_12)) {
+	if (esp_err_t e = adc1_config_width(DEFAULT_ADC_WIDTH)) {
 		log_error(TAG,"set hall sensor to 12bits: %s",esp_err_to_name(e));
 		return 1;
 	} else {
@@ -114,6 +127,7 @@ const char *hall(Terminal &term, int argc, const char *args[])
 	}
 	return "Invalid argument #1.";
 }
+#endif // CONFIG_IDF_TARGET_ESP32
 
 
 static void adc_sample_cb(void *arg)
@@ -211,6 +225,7 @@ int adc_setup()
 	if (!HWConf.has_adc())
 		return 0;
 	const auto &conf = HWConf.adc();
+#ifndef CONFIG_IDF_TARGET_ESP32C3
 	if (conf.adc1_bits()) {
 		if (esp_err_t e = adc_set_data_width(ADC_UNIT_1,(adc_bits_width_t)conf.adc1_bits()))
 			log_warn(TAG,"set adc1 data width %dbits: %s",conf.adc1_bits()+9,esp_err_to_name(e));
@@ -221,7 +236,8 @@ int adc_setup()
 		else
 			U2Width = (adc_bits_width_t)conf.adc2_bits();
 	} else
-		U2Width = ADC_WIDTH_BIT_12;
+		U2Width = DEFAULT_ADC_WIDTH;
+#endif
 	NumAdc = conf.channels_size();
 	log_info(TAG,"%u channels",NumAdc);
 	Adcs = (AdcSignal **) malloc(sizeof(AdcSignal*)*NumAdc);
@@ -230,7 +246,7 @@ int adc_setup()
 		const AdcChannel &c = conf.channels(x);
 		if (!c.has_ch() || !c.has_unit())
 			continue;
-		char name[8];
+		char name[16];
 		unsigned u = c.unit();
 		if ((u == 0) || (u > 2)) {
 			log_error(TAG,"invalid unit %u",u);
@@ -261,9 +277,11 @@ int adc_setup()
 			else if (rtc_gpio_isolate(gpio))
 				log_warn(TAG,"gpio %u isolate failed",gpio);
 			*/
+#ifdef CONFIG_IDF_TARGET_ESP8266
 		} else if (esp_err_t e = adc_gpio_init(ADC_UNIT_1,(adc_channel_t)ch)) {
 			log_error(TAG,"unable to init channel %u of adc%u: %s",ch,u,esp_err_to_name(e));
 			continue;
+#endif
 		} else if (u == 1) {
 			if (esp_err_t e = adc1_config_channel_atten((adc1_channel_t)ch,(adc_atten_t)c.atten())) {
 				log_warn(TAG,"set adc[%u] atten: %s",ch,esp_err_to_name(e));
@@ -290,8 +308,10 @@ int adc_setup()
 		log_info(TAG,"initialized ADC%u.%u",u,ch);
 	}
 
+#ifndef CONFIG_IDF_TARGET_ESP32C3
 	if (esp_err_t e = adc_set_data_inv(ADC_UNIT_1,true))
 		log_warn(TAG,"set non-inverting mode on ADC1: %s",esp_err_to_name(e));
+#endif
 	return 0;
 }
 
@@ -324,14 +344,14 @@ const char *adc(Terminal &term, int argc, const char *args[])
 
 
 #elif defined CONFIG_IDF_TARGET_ESP8266
-static IntSignal *Adc = 0;
+static EnvNumber *Adc = 0;
 
 
 static void adc_sample_cb(void *arg = 0)
 {
 	uint16_t adc;
 	adc_read(&adc);
-	Adc->setValue(adc);
+	Adc->set(adc);
 }
 
 
@@ -342,7 +362,7 @@ int adc_sample(Terminal &term)
 		return 1;
 	}
 	adc_sample_cb();
-	term.printf("%u\n",Adc->getValue());
+	term.printf("%u\n",(unsigned)Adc->get());
 	return 0;
 }
 
@@ -353,7 +373,7 @@ static int adc_print(Terminal &term)
 		term.println("not initialized");
 		return 1;
 	}
-	term.printf("%u\n",Adc->getValue());
+	term.printf("%u\n",(unsigned)Adc->get());
 	return 0;
 }
 
@@ -385,7 +405,7 @@ int adc_setup()
 		return 1;
 	}
 	const char *n = HWConf.adc().adc_name().c_str();
-	Adc = new IntSignal(n);
+	Adc = new EnvNumber(n);
 	action_add(concat(n,"!sample"),adc_sample_cb,0,"take an ADC sample");
 	return 0;
 }

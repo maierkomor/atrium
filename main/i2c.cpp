@@ -42,7 +42,7 @@
 #define TAG MODULE_I2C
 
 
-#ifdef CONFIG_I2C_XDEV
+#ifdef CONFIG_I2C_XDEV 
 static inline void i2c_scan_device(uint8_t bus, uint8_t addr, i2cdrv_t drv)
 {
 	switch (drv) {
@@ -116,7 +116,7 @@ int i2c_setup(void)
 #endif
 			if (r < 0) 
 				log_warn(TAG,"error %d",r);
-#ifdef CONFIG_I2C_XDEV
+#ifdef CONFIG_I2C_XDEV 
 			for (i2cdev_t d : c.devices()) {
 				i2c_scan_device(bus,d & 0xff,(i2cdrv_t)((d >> 8) & 0xff));
 			}
@@ -151,7 +151,7 @@ const char *i2c(Terminal &term, int argc, const char *args[])
 #ifdef CONFIG_I2C_XCMD
 	while (s) {
 		if (0 == strcmp(s->getName(),args[1]))
-			return s->exeCmd(term,argc-2,args+2) ? "Failed." : 0;
+			return s->exeCmd(term,argc-2,args+2);
 		s = s->getNext();
 	}
 #endif

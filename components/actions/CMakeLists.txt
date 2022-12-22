@@ -1,4 +1,5 @@
-set(COMPONENT_SRCS "actions.cpp")
-set(COMPONENT_REQUIRES logging)
-set(COMPONENT_ADD_INCLUDEDIRS .)
-register_component()
+idf_component_register(
+	SRCS actions.cpp
+	INCLUDE_DIRS .
+	PRIV_REQUIRES event logging
+)

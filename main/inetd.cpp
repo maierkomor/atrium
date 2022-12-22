@@ -40,8 +40,14 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-#ifdef CONFIG_IDF_TARGET_ESP32
+#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S3
 #include <soc/soc.h>
+#elif defined CONFIG_IDF_TARGET_ESP32S2
+#include <soc/soc.h>
+#define APP_CPU_NUM 0
+#elif defined CONFIG_IDF_TARGET_ESP32C3
+#include <soc/soc.h>
+#define APP_CPU_NUM 0
 #else
 #define PRO_CPU_NUM 0
 #endif
@@ -196,6 +202,8 @@ void inet_server(void *ignored)
 			continue;
 		}
 		int sock = p->sock;
+		assert(p->name);
+		assert(strlen(p->name) < 16);
 		log_dbug(TAG,"service %s",p->name);
 		if (p->mode == m_tcp) {
 			struct sockaddr_in6 client_addr;
@@ -213,7 +221,7 @@ void inet_server(void *ignored)
 			if (0 > setsockopt(sock,SOL_SOCKET,SO_RCVTIMEO,&tv,sizeof(tv)))
 				log_warn(TAG,"set receive timeout: %s",strneterr(sock));
 		} else {
-
+			log_warn(TAG,"invalid mode");
 		}
 		char name[configMAX_TASK_NAME_LEN+8];
 		snprintf(name,sizeof(name),"%s%02d",p->name,sock);

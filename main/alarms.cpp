@@ -39,10 +39,6 @@
 
 #include <driver/gpio.h>
 
-#ifdef CONFIG_IDF_TARGET_ESP32
-#include <rom/gpio.h>
-#endif
-
 #include <vector>
 
 // TODO: expand holiday concept to arbitrary categories, for adding
@@ -153,13 +149,13 @@ bool alarms_enabled()
 }
 
 
-int alarms_setup()
+void alarms_setup()
 {
 	Enabled = RTData->add("timers_enabled",(bool)Config.actions_enable());
 	action_add("timer!enable",alarms_set,(void*)1,"enable 'at' execution");
 	action_add("timer!disable",alarms_set,0,"disable 'at' execution");
 	action_add("timer!toggle",alarms_toggle,0,"toggle 'at' execution");
-	return cyclic_add_task("alarms",alarms_loop);
+	cyclic_add_task("alarms",alarms_loop);
 }
 
 

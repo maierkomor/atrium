@@ -133,6 +133,9 @@ class Telnet : public Terminal
 		m_con->close();
 	}
 
+	const char *type() const override
+	{ return "telnet"; }
+
 	int process_input(char in);
 
 	// inherited from Terminal

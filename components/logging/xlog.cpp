@@ -125,31 +125,42 @@ int log_module_disable(const char *m)
 }
 
 
-void log_hex(logmod_t m, const void *d, unsigned n, const char *f, ...)
+void log_hex(logmod_t m, const void *data, unsigned n, const char *f, ...)
 {
+	const char *hex = "0123456789abcdef";
 	if (!Modules[0]&& !Modules[m])
 		return;
+	const uint8_t *d = (const uint8_t *) data;
 	va_list val;
 	va_start(val,f);
 	log_common(ll_debug,m,f,val);
-	char line[32], *at = line;
+	char line[80], *at = line;
+	char ascii[20], *a = ascii;
 	unsigned x = 0;
-	at += sprintf(at,"%3d:",x);
+	*line = 0;
 	while (x != n) {
-		at += sprintf(at," %02x",((uint8_t*)d)[x]);
+		if (*line == 0) {
+			at = line + sprintf(line,"%4d:",x);
+			a = ascii;
+		}
+		*at++ = ' ';
+		*at++ = hex[d[x]>>4];
+		*at++ = hex[d[x]&0xf];
+//		at += sprintf(at," %02x",d[x]);
+		if ((d[x] >= 0x20) && (d[x] <= 0x7e))
+			*a = d[x];
+		else
+			*a = ' ';
+		++a;
 		++x;
-		if ((x & 7) == 0) {
-			if (x == n)
-				break;
+		if (((x & 15) == 0) || (x == n)) {
 			*at = 0;
-			log_common(ll_debug,m,line,val);
-			at = line;
-			at += sprintf(at,"%3d:",x);
-		} else if ((x & 3) == 0)
+			*a = 0;
+			log_direct(ll_debug,m,"%s '%s'",line,ascii);
+			*line = 0;
+		} else if ((x & 7) == 0)
 			*at++ = ' ';
 	}
-	*at = 0;
-	log_common(ll_debug,m,line,val);
 	va_end(val);
 }
 

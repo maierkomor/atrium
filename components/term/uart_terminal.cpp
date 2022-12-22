@@ -28,7 +28,12 @@
 #include <freertos/FreeRTOS.h>
 #include <driver/uart.h>
 #include <driver/gpio.h>
+#if defined CONFIG_IDF_TARGET_ESP32 && IDF_VERSION >= 40
+#include <esp32/rom/gpio.h>
+#else
 #include <rom/gpio.h>
+#endif
+
 extern "C" {
 #include <esp_task_wdt.h>
 }
@@ -76,6 +81,8 @@ void UartTerminal::init(uint8_t uart)
 {
 	m_uart_rx = uart;
 	m_uart_tx = uart;
+//	uart_driver_install((uart_port_t)uart,UART_FIFO_LEN*2,UART_FIFO_LEN*2,0,DRIVER_ARG);
+//	uart_set_baudrate((uart_port_t)uart,115200);
 }
 
 
@@ -83,6 +90,10 @@ void UartTerminal::init(uint8_t rx, uint8_t tx)
 {
 	m_uart_rx = rx;
 	m_uart_tx = tx;
+//	uart_driver_install((uart_port_t)rx,UART_FIFO_LEN*2,UART_FIFO_LEN*2,0,DRIVER_ARG);
+//	uart_set_baudrate((uart_port_t)m_uart_rx,115200);
+//	uart_driver_install((uart_port_t)tx,UART_FIFO_LEN*2,UART_FIFO_LEN*2,0,DRIVER_ARG);
+//	uart_set_baudrate((uart_port_t)m_uart_tx,115200);
 }
 
 

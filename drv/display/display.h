@@ -44,7 +44,7 @@ struct TextDisplay
 	virtual int setCursor(bool)
 	{ return -1; }
 
-	virtual int setPos(uint8_t x, uint8_t y = 0)
+	virtual int setPos(uint16_t x, uint16_t y = 0)
 	{ return -1; }
 
 	virtual uint8_t charsPerLine() const
@@ -96,6 +96,9 @@ struct TextDisplay
 	{ return -1; }
 
 	virtual int setFont(int)
+	{ return -1; }
+
+	virtual int setFont(const char *)
 	{ return -1; }
 
 	void initOK();
@@ -177,7 +180,7 @@ struct SegmentDisplay : public TextDisplay
 	{ return m_drv->setDim(d); }
 
 	// X=0,Y=0: upper left
-	int setPos(uint8_t x, uint8_t y = 0) override;
+	int setPos(uint16_t x, uint16_t y = 0) override;
 
 	// characters per line
 	uint8_t charsPerLine() const override

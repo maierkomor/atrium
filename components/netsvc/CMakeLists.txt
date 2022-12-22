@@ -1,4 +1,5 @@
-set(COMPONENT_SRCS "netsvc.c")
-set(COMPONENT_REQUIRES logging mdns)
-set(COMPONENT_ADD_INCLUDEDIRS .)
-register_component()
+idf_component_register(
+	SRCS netsvc.c tcpio.c lwtcp.cpp udns.cpp usntp.cpp
+	INCLUDE_DIRS .
+	PRIV_REQUIRES actions cyclic event logging
+)

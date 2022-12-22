@@ -22,4 +22,6 @@ typedef enum {
 } fontid_t;
 
 extern const Font Fonts[];
+extern const uint8_t Font6x8[];
+extern const uint16_t SizeofFont6x8;
 #endif

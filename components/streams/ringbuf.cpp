@@ -16,20 +16,16 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef SNTP_H
-#define SNTP_H
+#if 0
+#include "ringbuf.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-int sntp_set_server(const char *server);
-void sntp_set_interval(unsigned itv_ms);
-void sntp_bc_init(void);
-void sntp_mc_init(void);
-int64_t sntp_last_update(void);
-
-#ifdef __cplusplus
+RingBuffer::RingBuffer(unsigned s)
+: m_buf((char *)malloc(s))
+, m_size(s)
+{
+	if (m_buf == 0)
+		m_size = 0;
 }
-#endif
+
+
 #endif

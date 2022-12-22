@@ -19,7 +19,7 @@
 #include "modules.h"
 
 const char ModNames[] =
-	"<undef>\0action\0adc\0alarms\0apds\0bh1750\0bmx\0button\0cam\0ccs811b\0cfg\0con\0cyclic\0dht\0dim\0disp\0ds18b20\0event\0fs\0ftpd\0func\0gpio\0hcsr04\0hd44780u\0hdc1000\0ht16k33\0http\0i2c\0ina219\0inetd\0influx\0init\0led\0ledc\0ledstrip\0log\0lua\0lwtcp\0max7219\0mcp230xx\0mqtt\0nightsky\0ns\0nvm\0ota\0owb\0pca9685\0pcf8574\0relay\0romfs\0screen\0sgp30\0shell\0si7021\0signal\0sm\0sntp\0ssd1306\0telnet\0ti\0timefuse\0tlc5916\0tlc5947\0tp\0uart\0udns\0udpctrl\0wlan\0ws2812\0www\0xio\0";
+	"<undef>\0action\0adc\0alarms\0apds\0bh1750\0bmx\0button\0cam\0ccs811b\0cfg\0con\0cyclic\0dht\0dim\0disp\0ds18b20\0event\0fs\0ftpd\0gpio\0hcsr04\0hd44780u\0hdc1000\0hlw8012\0ht16k33\0http\0i2c\0ina219\0inetd\0influx\0init\0led\0ledc\0ledstrip\0log\0lua\0lwtcp\0max7219\0mcp230xx\0mqtt\0nightsky\0ns\0nvm\0ota\0owb\0pca9685\0pcf8574\0relay\0romfs\0screen\0sgp30\0shell\0si7021\0sm\0sntp\0spi\0ssd130x\0sx1276\0telnet\0ti\0timefuse\0tlc5916\0tlc5947\0tp\0uart\0udns\0udpctrl\0usb\0wlan\0ws2812\0www\0xio\0";
 
 const uint16_t ModNameOff[] = {
 	0,
@@ -42,55 +42,57 @@ const uint16_t ModNameOff[] = {
 	97,	// event
 	103,	// fs
 	106,	// ftpd
-	111,	// func
-	116,	// gpio
-	121,	// hcsr04
-	128,	// hd44780u
-	137,	// hdc1000
-	145,	// ht16k33
-	153,	// http
-	158,	// i2c
-	162,	// ina219
-	169,	// inetd
-	175,	// influx
-	182,	// init
-	187,	// led
-	191,	// ledc
-	196,	// ledstrip
-	205,	// log
-	209,	// lua
-	213,	// lwtcp
-	219,	// max7219
-	227,	// mcp230xx
-	236,	// mqtt
-	241,	// nightsky
-	250,	// ns
-	253,	// nvm
-	257,	// ota
-	261,	// owb
-	265,	// pca9685
-	273,	// pcf8574
-	281,	// relay
-	287,	// romfs
-	293,	// screen
-	300,	// sgp30
-	306,	// shell
-	312,	// si7021
-	319,	// signal
-	326,	// sm
-	329,	// sntp
-	334,	// ssd1306
-	342,	// telnet
-	349,	// ti
-	352,	// timefuse
-	361,	// tlc5916
-	369,	// tlc5947
-	377,	// tp
-	380,	// uart
-	385,	// udns
-	390,	// udpctrl
-	398,	// wlan
-	403,	// ws2812
-	410,	// www
-	414,	// xio
+	111,	// gpio
+	116,	// hcsr04
+	123,	// hd44780u
+	132,	// hdc1000
+	140,	// hlw8012
+	148,	// ht16k33
+	156,	// http
+	161,	// i2c
+	165,	// ina219
+	172,	// inetd
+	178,	// influx
+	185,	// init
+	190,	// led
+	194,	// ledc
+	199,	// ledstrip
+	208,	// log
+	212,	// lua
+	216,	// lwtcp
+	222,	// max7219
+	230,	// mcp230xx
+	239,	// mqtt
+	244,	// nightsky
+	253,	// ns
+	256,	// nvm
+	260,	// ota
+	264,	// owb
+	268,	// pca9685
+	276,	// pcf8574
+	284,	// relay
+	290,	// romfs
+	296,	// screen
+	303,	// sgp30
+	309,	// shell
+	315,	// si7021
+	322,	// sm
+	325,	// sntp
+	330,	// spi
+	334,	// ssd130x
+	342,	// sx1276
+	349,	// telnet
+	356,	// ti
+	359,	// timefuse
+	368,	// tlc5916
+	376,	// tlc5947
+	384,	// tp
+	387,	// uart
+	392,	// udns
+	397,	// udpctrl
+	405,	// usb
+	409,	// wlan
+	414,	// ws2812
+	421,	// www
+	425,	// xio
 };

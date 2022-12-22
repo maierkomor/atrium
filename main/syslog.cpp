@@ -405,7 +405,7 @@ void dmesg_setup()
 {
 	Mtx = xSemaphoreCreateMutex();
 	event_register("syslog`msg");
-	dmesg_resize(2048);
+//	dmesg_resize(2048);
 }
 
 

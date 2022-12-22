@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021, Thomas Maier-Komor
+ *  Copyright (C) 2021-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -21,7 +21,12 @@
 #include "netsvc.h"
 #include "profiling.h"
 
+#ifndef APP_CPU_NUM
+#define APP_CPU_NUM 0
+#endif
+
 #define TAG MODULE_LWTCP
+
 
 #ifdef CONFIG_SOCKET_API
 #include <lwip/sockets.h>
@@ -72,13 +77,13 @@ int LwTcp::connect(ip_addr_t *ip, uint16_t port, bool block)
 		in6.sin6_port = htons(port);
 		a = (struct sockaddr *) &in6;
 		as = sizeof(struct sockaddr_in6);
-		memcpy(&in6.sin6_addr,ip_2_ip6(ip),sizeof(in6));
+		memcpy(&in6.sin6_addr,ip_2_ip6(ip),sizeof(in6.sin6_addr));
 	} else {
 		in.sin_family = AF_INET;
 		in.sin_port = htons(port);
 		a = (struct sockaddr *) &in;
 		as = sizeof(struct sockaddr_in);
-		memcpy(&in.sin_addr,ip_2_ip4(ip),sizeof(in));
+		memcpy(&in.sin_addr,ip_2_ip4(ip),sizeof(in.sin_addr));
 	}
 	if (-1 == lwip_connect(s,a,as)) {
 		log_warn(TAG,"connect to %s failed: %s\n",inet_ntoa(ip),strerror(errno));
@@ -338,7 +343,7 @@ void LwTcp::handle_err(void *arg, err_t e)
 	LwTcp *P = (LwTcp *)arg;
 	if (e == ERR_ISCONN) {
 		assert(P->m_pcb);
-		log_warn(TAG,"already connected to %s:%u",e,inet_ntoa(P->m_pcb->remote_ip),P->m_port);
+		log_warn(TAG,"already connected to %s:%u",esp_err_to_name(e),inet_ntoa(P->m_pcb->remote_ip),P->m_port);
 	} else {
 		log_warn(TAG,"error@%u %d",P->m_port,e);
 		P->m_err = e;
@@ -420,7 +425,7 @@ err_t LwTcp::handle_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *pbuf, err_
 			if (pdFALSE == xSemaphoreGive(P->m_sem)) {
 				log_local(TAG,"m_sem already given");
 			} else {
-				log_devel(TAG,"recv give");
+				log_devel(TAG,"recv give %d",r);
 			}
 		}
 		return r;
@@ -437,6 +442,7 @@ err_t LwTcp::handle_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *pbuf, err_
 	} else {
 		abort();
 	}
+	log_devel(TAG,"recv ok");
 	return 0;
 }
 
@@ -505,6 +511,7 @@ int LwTcp::read(char *buf, size_t l, unsigned timeout)
 				log_local(TAG,"read@%u: timeout",m_port);
 				return 0;
 			}
+			log_devel(TAG,"recv sema");
 			if (pdTRUE != xSemaphoreTakeRecursive(m_mtx,MUTEX_ABORT_TIMEOUT))
 				abort_on_mutex(m_mtx,__FUNCTION__);
 		}

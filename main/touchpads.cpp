@@ -23,7 +23,7 @@
 #ifdef ESP8266
 #error no touchpad hardware on esp8266
 #endif
-#include "dataflow.h"
+#include "env.h"
 #include "event.h"
 #include "globals.h"
 #include "hwcfg.h"
@@ -62,7 +62,7 @@ class TouchPad
 	friend int touchpads_setup();
 
 	const char *m_name;
-	IntSignal *m_sigr, *m_sigf;
+	EnvNumber *m_sigr, *m_sigf;
 	uint16_t m_raw, m_filtered, m_thresh;
 	int8_t m_ch;
 	event_t m_tev,m_uev;
@@ -77,8 +77,8 @@ static uint8_t NumCh;
 
 TouchPad::TouchPad(const char *name, int8_t ch, uint16_t thresh)
 : m_name(name)
-, m_sigr(new IntSignal(concat(name,"_raw")))
-, m_sigf(new IntSignal(concat(name,"_filt")))
+, m_sigr(new EnvNumber(concat(name,"_raw")))
+, m_sigf(new EnvNumber(concat(name,"_filt")))
 , m_thresh(thresh)
 , m_ch(ch)
 {
@@ -109,8 +109,8 @@ void TouchPad::sampleData(uint16_t *r, uint16_t *f)
 		if (Channels[i] == 0)
 			continue;
 		uint8_t ch = Channels[i]->getChannel();
-		Channels[i]->m_sigr->setValue(r[ch]);
-		Channels[i]->m_sigf->setValue(f[ch]);
+		Channels[i]->m_sigr->set(r[ch]);
+		Channels[i]->m_sigf->set(f[ch]);
 		Channels[i]->m_raw = r[ch];
 		uint16_t v = f[ch];
 		uint16_t ov = Channels[i]->m_filtered;

@@ -485,56 +485,77 @@ script using the `lua!run ws2812b` action. I.e. the file is compiled
 to a function with the same name, which is resolved from Lua's global
 scope.
 
+Additonally, the file `data/lua/ledstrip.lua` provides another example
+using the Lua functions of the WS2812b driver. This example assumes that
+there are 100 WS2812b LEDs in the array. Attaching the `ledstrip`
+function to a timer provides continuous update of all 100 LEDs. On an
+ESP32-C3 this takes about 15ms.
 
-Buliding Atrium yourself:
+
+Building Atrium yourself:
 =========================
 To prepare the build environment, run "./setupenv.sh", which will:
 - check some prerequisites that need to be installed manually
-- download the xtools for lx106 (esp8266) and for esp32
-- download and compile wire-format-compiler
-- patch the IDF trees
-- satisfy Python requirements of IDF using pip
+- download and patch the IDFs for ESP8266 and ESP32 family
+- download compilers and tools specified by the IDF
 
-To build a project, run:
+To build a project, use the supplied build script that will handle all
+the prerequisits and the differences between ESP32 and ESP8266:
 ```
-> make PROJECT=<project-name>
+> bash mkatrium.sh <project>
 ```
 
 This will build the project in a subdirectory called `build.<project>`.
 
-To flash a target, run:
+If you want to adjust the build configuration, you can use the menu
+based configuration tool that is provided by calling:
 ```
-> make PROJECT=<project-name> flash
+> bash mkatrium.sh <project> menuconfig
 ```
 
-To build for live update, always do a clean build, by running:
+To flash a target, run:
 ```
-> rm -r build.<project-name>
-> make PROJECT=<project-name> ota
+> bash mkatrium.sh <project-name> flash
 ```
+
+To build ESP8266 images for live update (OTA), execute:
+```
+> bash mkatrium.sh <project-name> ota
+```
+
+To build `atriumcfg` and `mkromfs` tools, execute:
+```
+make tools
+```
+
+The `mkromfs` tool can be used to create a ROMFS partition that contains
+read-only files and cannot be modified during runtime. ROMFS is
+specially designed to be light-weight regarding ROM and RAM usage, and
+therefore is well-suited to be used on ESP8285 devices that provide only
+1MB of flash.
+
+Some example ROMFS partitions are supplied in the binary distribution.
+You can create ROMFS partitions yourself, by calling:
+``
+mkromfs -o name.romfs <files>
+```
+
+ROMFS does not support a directory structure. Therefore every file-name
+must be unique.
 
 Required Tools:
 ===============
+All required tools are installed using the setupenv.sh
+- On Linux:
+	- IDF for ESP32 or ESP8266 respectively (use setupenv.sh to
+	  setup the build-environemtn)
+	- esptool for flashing (shipped with IDF or download from
+	  https://github.com/espressif/esptool
 - On Windows:
+	- building is not supported (and setupenv.sh will probably not work)
 	- Flash download tool:
 		- Download at: https://www.espressif.com/en/support/download/other-tools
 		- https://www.espressif.com/sites/default/files/tools/flash_download_tool_v3.8.5.zip
-- On Linux:
-	- IDF for ESP32 or ESP8266 respectively
-
-
-Building a flash image:
-=======================
-To build you need a properly patched IDF. You can either manually apply
-the appropriate patch from the patches directory to the relevant IDF or
-let it be done automatically with the setup script.
-
-To build the flash image of a specific project run:
-```
-make PROJECT=<project>
-```
-
-Select _components_, then select _application_. Here you can configure software and hardware feature and specify which type of file-system should be used.
 
 
 WFC dependency:
@@ -890,10 +911,10 @@ configuration and not part of the `hwconf` settings.
 Known Issues:
 =============
 - The documentation is incomplete and not completely up-to-date
-- CMake based builds do not support OTA image generation
+- CMake based builds are required for ESP32-S2, but do not work for
+  ESP8266. Use make to build OTA binaries for ESP8266/ESP8285.
 - LED-strip/WS2812b driver relies on RMT infrastructure on ESP32, which
   has timing issues under certain condition. Avoid using channel 0.
-- Lua execution is leaking memory
 
 
 Bugs:

@@ -27,11 +27,11 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
-#include <xtensa/hal.h>
+//#include <xtensa/hal.h>
 #include <freertos/task.h>
 #include <freertos/portmacro.h>
 
-#ifdef CONFIG_IDF_TARGET_ESP32
+#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
 #include <rom/crc.h>
 #define ENTER_CRITICAL() portDISABLE_INTERRUPTS()
 #define EXIT_CRITICAL() portENABLE_INTERRUPTS()

@@ -21,7 +21,7 @@
 #include "cyclic.h"
 #include "netsvc.h"
 #include "log.h"
-#include "sntp.h"
+#include "usntp.h"
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>

@@ -280,7 +280,7 @@ static void retrive(ftpctx_t *ctx, const char *arg)
 	strcat(fn,ctx->wd);
 	strcat(fn,arg);
 #ifdef USE_FOPEN
-	FILE *f = fopen(fn,"r");
+	FILE *f = fopen(fn,"w+");
 	if (f == 0) {
 		answer(ctx,"552 unable to open %s: %s",arg,strerror(errno));
 		log_warn(TAG,"unable to open %s: %s",fn,strerror(errno));
@@ -434,7 +434,7 @@ cleanup:
 	free(buf);
 	fclose(f);
 #else
-	int fd = open(fn,O_CREAT|O_WRONLY,0666);
+	int fd = creat(fn,0666);
 	if (fd == -1) {
 		answer(ctx,"552 unable to create %s: %s",arg,strerror(errno));
 		log_warn(TAG,"unable to open %s for storing: %s",fn,strerror(errno));

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2021, Thomas Maier-Komor
+ *  Copyright (C) 2018-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -36,6 +36,15 @@
 #include <driver/hw_timer.h>
 #endif
 
+#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+#include <driver/usb_serial_jtag.h>
+#endif
+
+#ifdef CONFIG_ESP_CONSOLE_USB_CDC
+#include <tusb_cdc_acm.h>
+#include <tusb_console.h>
+#endif
+
 #include <assert.h>
 #include <stdarg.h>
 #include <string.h>
@@ -69,6 +78,7 @@
 #define ANSI_CYAN	"\033[0;36m"
 #define ANSI_DEFAULT	"\033[0;00m"
 
+extern void log_usb(const char *, size_t n);
 
 static SemaphoreHandle_t UartLock;
 #if CONFIG_CONSOLE_UART_NONE != 1
@@ -78,7 +88,7 @@ static uart_port_t LogUart = (uart_port_t) -1;
 #endif
 
 #ifdef HAVE_FS
-static SemaphoreHandle_t FileLock;
+static SemaphoreHandle_t FileLock = 0;
 static int LogFile = -1;
 #endif
 
@@ -104,9 +114,13 @@ void con_print(const char *str)
 			abort_on_mutex(UartLock,__FUNCTION__);
 		uart_write_bytes(LogUart,str,s);
 		uart_write_bytes(LogUart,"\r\n",2);
-//		uart_wait_tx_done((uart_port_t)LogUart,portMAX_DELAY);
+		uart_wait_tx_done((uart_port_t)LogUart,portMAX_DELAY);
 		xSemaphoreGive(UartLock);
 	}
+#endif
+#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	usb_serial_jtag_write_bytes(str,strlen(str),portMAX_DELAY);
+	usb_serial_jtag_write_bytes("\r\n",2,portMAX_DELAY);
 #endif
 }
 
@@ -125,8 +139,29 @@ void con_printf(const char *f, ...)
 		if (n > sizeof(buf))
 			n = sizeof(buf);
 		con_write(buf,n);
+		//uart_wait_tx_done((uart_port_t)LogUart,portMAX_DELAY);
 	}
-//	uart_wait_tx_done((uart_port_t)LogUart,portMAX_DELAY);
+#endif
+}
+
+
+void con_printv(const char *f, va_list val) 
+{
+#if CONFIG_CONSOLE_UART_NONE != 1
+	if (LogUart == -1)
+		return;
+	char buf[256];
+	int n = vsnprintf(buf,sizeof(buf),f,val);
+	if (n > 0) {
+		if (n > sizeof(buf))
+			n = sizeof(buf);
+		if (pdFALSE == xSemaphoreTake(UartLock,MUTEX_ABORT_TIMEOUT))
+			abort_on_mutex(UartLock,__FUNCTION__);
+		uart_write_bytes(LogUart,buf,n);
+		uart_write_bytes(LogUart,"\r\n",2);
+		uart_wait_tx_done((uart_port_t)LogUart,portMAX_DELAY);
+		xSemaphoreGive(UartLock);
+	}
 #endif
 }
 
@@ -154,14 +189,21 @@ void log_setup()
 
 	UartLock = xSemaphoreCreateMutex();
 
-#if CONFIG_UART_CONSOLE_NONE == 1
-	LogUart = -1;
-#else
+#if CONFIG_UART_CONSOLE_NONE != 1 && CONFIG_CONSOLE_UART_NUM != -1
 	uart_driver_install((uart_port_t)CONFIG_CONSOLE_UART_NUM,UART_FIFO_LEN*2,UART_FIFO_LEN*2,0,DRIVER_ARG);
 #endif
 
-#ifdef HAVE_FS
-	FileLock = xSemaphoreCreateMutex();
+#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	usb_serial_jtag_driver_config_t cfg;
+	bzero(&cfg,sizeof(cfg));
+	cfg.rx_buffer_size = 256;
+	cfg.tx_buffer_size = 768;
+	esp_err_t e = usb_serial_jtag_driver_install(&cfg);
+	if (e)
+		con_printf("jtag init: %s",esp_err_to_name(e));
+#endif
+#ifdef CONFIG_ESP_CONSOLE_USB_CDC
+	esp_tusb_init_console(TINYUSB_CDC_ACM_0);
 #endif
 }
 
@@ -179,6 +221,8 @@ void set_logfile(const char *fn)
 {
 	if (LogFile != -1)
 		close(LogFile);
+	if (FileLock == 0)
+		FileLock = xSemaphoreCreateMutex();
 	LogFile = open(fn,O_WRONLY|O_CREAT,0666);
 	if (LogFile == -1)
 		log_error("log","unable to open logfile %s: %s",fn,strerror(errno));
@@ -244,6 +288,9 @@ void log_common(log_level_t l, logmod_t m, const char *f, va_list val)
 #ifdef CONFIG_SYSLOG
 	if ((l != ll_local) && (m != MODULE_LOG) && (m != MODULE_LWTCP))
 		log_syslog(l,m,buf+p,s-p-2,&tv);
+#endif
+#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	usb_serial_jtag_write_bytes(buf,s,0);
 #endif
 }
 
@@ -311,7 +358,7 @@ void log_info(logmod_t m, const char *f, ...)
 }
 
 
-static inline void uart_print(const char *str)
+void uart_print(const char *str)
 {
 	uart_write_bytes(LogUart,str,strlen(str));
 	uart_write_bytes(LogUart,"\r\n",2);
@@ -323,7 +370,7 @@ void abort_on_mutex(SemaphoreHandle_t mtx, const char *usage)
 	uart_print(usage ? usage : "<null>");
 	uart_print(__FUNCTION__);
 	TaskHandle_t h = xSemaphoreGetMutexHolder(mtx);
-#ifdef CONFIG_IDF_TARGET_ESP32
+#if defined ESP32
 	uart_print(pcTaskGetTaskName(0));
 	uart_print(pcTaskGetTaskName(h));
 #else
@@ -332,9 +379,12 @@ void abort_on_mutex(SemaphoreHandle_t mtx, const char *usage)
 //	uart_printf("%s: task %s hanging on task %s\n",usage,pcTaskGetName(0),pcTaskGetName(h));
 #endif
 	uart_wait_tx_done((uart_port_t)LogUart,portMAX_DELAY);
+#if 0
+//#if defined CONFIG_FREERTOS_USE_TRACE_FACILITY && defined CONFIG_FREERTOS_USE_STATS_FORMATTING_FUNCTIONS
 	char buf[512];
 	vTaskList(buf);
 	con_print(buf);
 	uart_wait_tx_done((uart_port_t)LogUart,portMAX_DELAY);
+#endif
 	abort();
 }

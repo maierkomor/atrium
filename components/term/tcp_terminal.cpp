@@ -67,7 +67,7 @@ int TcpTerminal::write(const char *buf, size_t s)
 int TcpTerminal::read(char *buf, size_t s, bool block)
 {
 	int n = m_con->read(buf, s, block ? portMAX_DELAY : 0);
-//	log_info("tcpterm","recv: %d",n);
+	//log_info(logmod_lwtcp,"recv: %d",n);
 	if (n < 0) {
 		m_error = "unknown error";
 	} else {

@@ -426,7 +426,7 @@ static int parseAnswert(struct pbuf *p, size_t off, const ip_addr_t *sender)
 			return -off;
 		}
 		log_devel(TAG,"IPv4 %s",ip2str(&ip));
-#if defined CONFIG_LWIP_IPV6 || defined CONFIG_IDF_TARGET_ESP32
+#if defined CONFIG_LWIP_IPV6 || defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
 	} else if (((a.rr_class & 0x7fff) == TYPE_ADDR6) && (a.rdlen == 16)) {
 		if (4 != pbuf_copy_partial(p,ip_2_ip6(&ip),a.rdlen,off)) {
 			log_devel(TAG,"copy failed");
@@ -514,7 +514,7 @@ static inline void sendOwnIp(uint8_t *q, uint16_t ql, uint16_t id, const ip_addr
 	r = udp_send(MPCB,p2);
 	if (r)
 		log_warn(TAG,"sendto MPCB %s:%d %s",ip2str(qip),port,strlwiperr(r));
-#if defined CONFIG_LWIP_IPV6 || defined CONFIG_IDF_TARGET_ESP32
+#if defined CONFIG_LWIP_IPV6 || defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
 	/* causes routing error... why?
 	pbuf_copy(p2,p);
 	r = udp_send(MPCB6,p2);
@@ -532,7 +532,7 @@ static inline void sendOwnIp(uint8_t *q, uint16_t ql, uint16_t id, const ip_addr
 
 static inline void sendOwnIp6(uint8_t *q, uint16_t ql, uint16_t id, const ip_addr_t *qip, uint16_t port)
 {
-#if defined CONFIG_LWIP_IPV6 || defined CONFIG_IDF_TARGET_ESP32
+#if defined CONFIG_LWIP_IPV6 || defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
 	// caller ensures: Ctx != 0, State == mdns_up
 	if (ip6_addr_isany_val(IP6G))
 		return;
@@ -622,7 +622,7 @@ static void sendOwnHostname(uint8_t *q, uint16_t ql, uint16_t id)
 static void sendHostInfo(uint8_t *q, uint16_t ql, uint16_t id)
 {
 	log_dbug(TAG,"send own hostinfo");
-#ifdef CONFIG_IDF_TARGET_ESP32
+#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
 	const char cpu[] = "esp32";
 	const char os[] = "freertos";
 #elif CONFIG_IDF_TARGET_ESP8266
@@ -1018,7 +1018,7 @@ static err_t sendSelfQuery()
 }
 
 
-#if defined CONFIG_IDF_TARGET_ESP32
+#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
 static void udns_cyclic_fn(void *arg)
 {
 	// no LWIP_LOCK as cyclic is called from tcpip_task via dns_tmr
@@ -1145,7 +1145,7 @@ static inline void mdns_init_fn(void *)
 			log_warn(TAG,"connect ff02::fb: %s",strlwiperr(e));
 	}
 #endif
-#if defined CONFIG_LWIP_IGMP || defined CONFIG_IDF_TARGET_ESP32
+#if defined CONFIG_LWIP_IGMP || defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
 	if (MPCB == 0) {
 		MPCB = udp_new_ip_type(IPADDR_TYPE_ANY);
 		udp_set_multicast_ttl(MPCB,255);
@@ -1249,7 +1249,7 @@ extern "C"
 void dns_tmr()
 {
 //	log_info(TAG,"dns_tmr");
-#if defined CONFIG_LWIP_IGMP || defined CONFIG_IDF_TARGET_ESP32
+#if defined CONFIG_LWIP_IGMP || defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
 //	LWIP_LOCK();
 //	udns_cyclic(0);
 //	LWIP_UNLOCK();
@@ -1278,27 +1278,26 @@ void dns_init()
 
 
 extern "C"
-int dns_setserver(uint8_t idx, const ip_addr_t *addr)
+void dns_setserver(uint8_t idx, const ip_addr_t *addr)
 {
 	assert(Mtx);
 	if (idx >= sizeof(NameServer)/sizeof(NameServer[0]))
-		return 1;
+		return;
 	if (addr == 0) {
 		NameServer[idx] = ip_addr_any;
-		return 0;
+		return;
 	}
 	Lock lock(Mtx,__FUNCTION__);
 	for (auto &ns : NameServer) {
 		if (ip_addr_cmp(&ns,addr))
-			return 0;
+			return;
 		if (ip_addr_isany(&ns)) {
 			char ipstr[40];
 			log_info(TAG,"add nameserver %s",ip2str_r(addr,ipstr,sizeof(ipstr)));
 			ns = *addr;
-			return 0;
+			return;
 		}
 	}
-	return 1;
 }
 
 
@@ -1350,7 +1349,7 @@ int udns(Terminal &t, int argc, const char *argv[])
 			t.printf("%-15s %s\n",ip4addr_ntoa_r(ip_2_ip4(&e->ip),ipstr,sizeof(ipstr)),e->host);
 		e = e->next;
 	}
-#if defined CONFIG_LWIP_IPV6 || defined CONFIG_IDF_TARGET_ESP32
+#if defined CONFIG_LWIP_IPV6 || defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
 	e = CacheS;
 	while (e) {
 		if (IP_IS_V6(&e->ip))

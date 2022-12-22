@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2021, Thomas Maier-Komor
+ *  Copyright (C) 2018-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -18,13 +18,9 @@
 
 #include <sdkconfig.h>
 
-#ifdef CONFIG_LEDSTRIP
+#ifdef CONFIG_RGBLEDS
 
 #include "actions.h"
-#include "dataflow.h"
-#ifdef CONFIG_SIGNAL_PROC
-#include "func.h"
-#endif
 #include "globals.h"
 #include "hwcfg.h"
 #include "log.h"
@@ -32,6 +28,15 @@
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+
+#ifdef CONFIG_LUA
+#include "luaext.h"
+extern "C" {
+#include "lua.h"
+#include "lualib.h"
+#include "lauxlib.h"
+}
+#endif
 
 /*
 #define BLACK	0X000000
@@ -177,87 +182,9 @@ static void ledstrip_task(void *arg)
 }
 #endif
 
-#ifdef CONFIG_SIGNAL_PROC 
-class FnLedstripSet : public Function
-{
-	public:
-	FnLedstripSet(const char *name)
-	: Function(name)
-	, m_led(0)
-	, m_sig(0)
-	{ }
-
-	const char *type() const
-	{ return FuncName; }
-
-	static Function *create(const char *, int argc, const char *args[]);
-
-	int addParam(const char *);
-
-	void operator() (DataSignal *);
-
-	static const char FuncName[];
-	
-	private:
-	uint8_t m_led;
-	IntSignal *m_sig;
-};
 
 
-const char FnLedstripSet::FuncName[] = "ws2812b_set";
-
-
-int FnLedstripSet::addParam(const char *p)
-{
-	log_dbug(TAG,"addParam(%s)",p);
-	char *e;
-	long l = strtol(p,&e,0);
-	if (e == p) {
-		DataSignal *s = DataSignal::getSignal(p);
-		if (s == 0) {
-			log_warn(TAG,"%s is not a signal",p);
-			return 1;
-		}
-		IntSignal *i = s->toIntSignal();
-		if (i == 0) {
-			log_warn(TAG,"%s is not an integer",p);
-			return 1;
-		}
-		i->addFunction(this);
-		m_sig = i;
-	} if ((l < 0) || (l > UINT8_MAX)) {
-		log_warn(TAG,"value %ld out of range%s",l);
-		return 1;
-	} else {
-		m_led = l;
-	}
-	return 0;
-}
-
-
-void FnLedstripSet::operator() (DataSignal *s)
-{
-	uint32_t v;
-	IntSignal *i = m_sig;
-	if (s != 0)
-		i = s->toIntSignal();
-	if (i == 0) {
-		log_dbug(TAG,"no value to set");
-		return;
-	}
-	v = i->getValue();
-	log_dbug(TAG,"setting %d to 0x%x",m_led,v);
-	if (m_led == 0)
-		LED_Strip->set_leds(v);
-	else
-		LED_Strip->set_led(m_led-1,v);
-	LED_Strip->update(true);
-}
-
-#endif // CONFIG_SIGNAL_PROC
-
-
-static int rgbname_value(const char *n, uint32_t *v)
+static int rgbname_value(const char *n, unsigned long *v)
 {
 	for (const auto &r : RgbNames) {
 		if (0 == strcmp(n,r.name)) {
@@ -272,7 +199,6 @@ static int rgbname_value(const char *n, uint32_t *v)
 
 static void ledstrip_action_set(void *arg)
 {
-	log_dbug(TAG,"action_set");
 	char *a = (char *) arg;
 	if (a == 0) {
 		log_dbug(TAG,"set: missing argument");
@@ -282,12 +208,12 @@ static void ledstrip_action_set(void *arg)
 	char *e;
 	unsigned long led = strtoul(a,&e,0);
 	if (e == a) {
-		unsigned value;
+		unsigned long value;
 		if (rgbname_value(a,&value))
 			return;
 		LED_Strip->set_leds(value);
 	} else if (char *c = strchr(a,',')) {
-		uint32_t value = strtoul(c+1,&e,0);
+		unsigned long value = strtoul(c+1,&e,0);
 		if ((c+1 == e) && rgbname_value(c+1,&value))
 			return;
 		LED_Strip->set_led(led,value);
@@ -298,45 +224,111 @@ static void ledstrip_action_set(void *arg)
 }
 
 
-int ledstrip_setup()
+static void ledstrip_action_write(void *arg)
+{
+	log_dbug(TAG,"action_write");
+	char *a = (char *) arg;
+	if (a == 0) {
+		log_dbug(TAG,"set: missing argument");
+		return;
+	}
+	char *e = a;
+	int led = 0;
+	do {
+		unsigned long value = strtoul(a,&e,0);
+		if (e != a)
+			LED_Strip->set_led(led,value);
+		++led;
+		a = e + 1;
+	} while (*e == ',');
+	LED_Strip->update();
+}
+
+
+#ifdef CONFIG_LUA
+int luax_rgbleds_get(lua_State *L)
+{
+	if (LED_Strip == 0) {
+		log_warn(TAG,"Lua: no strip");
+		return 0;
+	}
+	int idx = luaL_checkinteger(L,1);
+	uint32_t v = LED_Strip->get_led(idx);
+	lua_seti(L,1,v);
+	return 1;
+}
+
+
+int luax_rgbleds_set(lua_State *L)
+{
+	if (LED_Strip == 0) {
+		log_warn(TAG,"Lua: no strip");
+		return 0;
+	}
+	int idx = luaL_checkinteger(L,1);
+	if (lua_isinteger(L,2)) {
+		int val = lua_tointeger(L,2);
+		LED_Strip->set_led(idx,val);
+	} else {
+		LED_Strip->set_leds(idx);
+	}
+	LED_Strip->update();
+	return 0;
+}
+
+
+int luax_rgbleds_write(lua_State *L)
+{
+	if (LED_Strip == 0) {
+		log_warn(TAG,"Lua: no strip");
+		return 0;
+	}
+	luaL_checktype(L,1,LUA_TTABLE);
+	size_t n = lua_rawlen(L,1);
+	for (int x = 0; x < n; ++x) {
+		lua_rawgeti(L,1,x);
+		long l = lua_tonumber(L,-1);
+		LED_Strip->set_led(x,l);
+		lua_pop(L,1);
+	}
+	LED_Strip->update();
+	return 0;
+}
+
+static LuaFn Functions[] = {
+	{ "rgbleds_get", luax_rgbleds_get, "WS2812b: get LED value" },
+	{ "rgbleds_set", luax_rgbleds_set, "WS2812b: set LED value (i,v) or set LEDs value (v)" },
+	{ "rgbleds_write", luax_rgbleds_write, "WS2812b: write LED values (v,...)"  },
+	{ 0, 0, 0 }
+};
+#endif
+
+
+void rgbleds_setup()
 {
 	if (!HWConf.has_ws2812b())
-		return 1;
+		return;
 	const Ws2812bConfig &c = HWConf.ws2812b();
 	if ((!c.has_gpio() || (0 == c.nleds()))) {
 		log_dbug(TAG,"incomplete config");
-		return 1;
+		return;
 	}
 	log_dbug(TAG,"setup");
 	unsigned nleds = c.nleds();
 	LED_Strip = new WS2812BDrv;
-	action_add("ledstrip!set",ledstrip_action_set,0,"set color of led(s) on strip");
+	action_add("rgbleds!set",ledstrip_action_set,0,"set color of led(s) on strip");
+	action_add("rgbleds!write",ledstrip_action_write,0,"write multiple values to LEDs");
 #ifdef CONFIG_IDF_TARGET_ESP32
 	if (LED_Strip->init((gpio_num_t)c.gpio(),nleds),(rmt_channel_t)c.ch())
-		return 1;
+		return;
 #else
 	if (LED_Strip->init((gpio_num_t)c.gpio(),nleds))
-		return 1;
+		return;
 #endif
-	LED_Strip->set_leds(0xffffff);
-#if 0
-	BaseType_t r = xTaskCreatePinnedToCore(&ledstrip_task, "ledstrip", 4096, (void*)(unsigned)c.nleds(), 15, NULL, APP_CPU_NUM);
-	if (r != pdPASS) {
-		log_error(TAG,"task creation failed: %s",esp_err_to_name(r));
-		return 1;
-	}
-#elif 0
-	/*
-	char name[24];
-	new FnLedstripSet("ws2812b_strip",0);
-	for (unsigned l = 1; l <= nleds; ++l) {
-		sprintf(name,"ws2812b_led%u",l);
-		new FnLedstripSet(name,l);
-	}
-	*/
-	new FuncFact<FnLedstripSet>;
+	LED_Strip->set_leds(0);
+#ifdef CONFIG_LUA
+	xlua_add_funcs("rgbleds",Functions);
 #endif
-	return 0;
 }
 
 #endif

@@ -39,7 +39,7 @@ HC_SR04::HC_SR04(xio_t trigger, xio_t echo)
 , m_echo(echo)
 {
 	xio_set_hi(m_trigger);
-	char name[16];
+	char name[32];
 	sprintf(name,"hcsr04@%d,%d",(int)trigger,(int)echo);
 	m_name = strdup(name);
 }

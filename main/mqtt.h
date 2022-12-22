@@ -23,6 +23,7 @@
 extern "C" {
 #endif
 
+void mqtt_setup(void);
 void mqtt_start(void* = 0);
 void mqtt_stop(void* = 0);
 int mqtt_pub(const char *t, const char *v, int len, int retain, int qos);

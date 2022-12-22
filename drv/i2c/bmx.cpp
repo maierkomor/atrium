@@ -18,8 +18,6 @@
 
 #include <sdkconfig.h>
 
-#ifdef CONFIG_BMX280
-
 // This drivers operates the BME280 in I2C mode.
 // Connect CSB to 3.3V to enable I2C mode.
 // Connect SDO to either GND or VCC to select the base address.
@@ -73,6 +71,8 @@
 
 #define TAG MODULE_BMX
 
+
+#ifdef CONFIG_BMX280
 
 BMP280::BMP280(uint8_t port, uint8_t addr, const char *n)
 : I2CDevice(port,addr,n ? n : drvName())
@@ -487,6 +487,8 @@ int BME280::init()
 	H6 = (int8_t)calib_h[6];
 	return 0;
 }
+#endif	// CONFIG_BMX280
+
 
 
 #ifdef CONFIG_BME680
@@ -626,12 +628,14 @@ static int create_device(uint8_t bus, uint8_t addr, uint8_t id)
 {
 	I2CDevice *s = 0;
 	switch (id) {
+#ifdef CONFIG_BMX280
 	case 0x58:
 		s = new BMP280(bus,addr);
 		break;
 	case 0x60:
 		s = new BME280(bus,addr);
 		break;
+#endif
 #ifdef CONFIG_BME680
 	case 0x61:
 		s = new BME680(bus,addr);
@@ -664,4 +668,3 @@ unsigned bmx_scan(uint8_t port)
 	return num;
 }
 
-#endif

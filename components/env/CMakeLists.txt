@@ -1,4 +1,5 @@
-set(COMPONENT_SRCS "ujson.cpp")
-set(COMPONENT_REQUIRES streams)
-set(COMPONENT_ADD_INCLUDEDIRS .)
-register_component()
+idf_component_register(
+	SRCS env.cpp
+	INCLUDE_DIRS .
+	REQUIRES event streams
+)

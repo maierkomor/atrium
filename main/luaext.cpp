@@ -30,15 +30,24 @@ extern "C" {
 #include "env.h"
 #include "globals.h"
 #include "log.h"
+#include "luaext.h"
+#include "profiling.h"
 #include "romfs.h"
 #include "shell.h"
 #include "strstream.h"
 #include "swcfg.h"
 #include "terminal.h"
 
-#include <vector>
+#include <set>
 
 #define TAG MODULE_LUA
+
+#if defined CONFIG_FATFS || defined CONFIG_SPIFFS
+#define HAVE_FS
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 
 #ifdef ESP8266
 #define USE_FOPEN
@@ -46,55 +55,27 @@ extern "C" {
 
 using namespace std;
 
+struct LuaFns {
+	LuaFns(const char *m, const LuaFn *f)
+	: module(m)
+	, fns(f)
+	, next(List)
+	{
+		List = this;
+	}
+
+	const char *module;
+	const LuaFn *fns;
+	LuaFns *next;
+	static LuaFns *List;
+};
+
 static SemaphoreHandle_t Mtx = 0;
 static lua_State *LS = 0;
-static vector<string> Compiled;
+static set<string> Compiled;
 static void xlua_init();
 
-
-static int f_sin(lua_State *L)
-{
-	float f = luaL_checknumber(L,1);
-	lua_pop(L,1);
-	lua_pushnumber(L,sinf(f));
-	return 1;
-}
-
-
-static int f_cos(lua_State *L)
-{
-	float f = luaL_checknumber(L,1);
-	lua_pop(L,1);
-	lua_pushnumber(L,cosf(f));
-	return 1;
-}
-
-
-static int f_tan(lua_State *L)
-{
-	float f = luaL_checknumber(L,1);
-	lua_pop(L,1);
-	lua_pushnumber(L,tanf(f));
-	return 1;
-}
-
-
-static int f_sqrt(lua_State *L)
-{
-	float f = luaL_checknumber(L,1);
-	lua_pop(L,1);
-	lua_pushnumber(L,sqrtf(f));
-	return 1;
-}
-
-
-static int f_log(lua_State *L)
-{
-	float f = luaL_checknumber(L,1);
-	lua_pop(L,1);
-	lua_pushnumber(L,logf(f));
-	return 1;
-}
+LuaFns *LuaFns::List = 0;
 
 
 static int f_event_trigger(lua_State *L)
@@ -147,6 +128,7 @@ static int f_action_activate(lua_State *L)
 int f_warn(lua_State *L)
 {
 	const char *s = luaL_checkstring(L,1);
+	lua_pop(L,1);
 	log_direct(ll_warn,TAG,"%s",s);
 	return 0;
 }
@@ -155,6 +137,7 @@ int f_warn(lua_State *L)
 int f_info(lua_State *L)
 {
 	const char *s = luaL_checkstring(L,1);
+	lua_pop(L,1);
 	log_direct(ll_info,TAG,"%s",s);
 	return 0;
 }
@@ -163,6 +146,7 @@ int f_info(lua_State *L)
 int f_dbug(lua_State *L)
 {
 	const char *s = luaL_checkstring(L,1);
+	lua_pop(L,1);
 	log_direct(ll_debug,TAG,"%s",s);
 	return 0;
 }
@@ -241,6 +225,7 @@ static int f_getvar(lua_State *L)
 {
 	const char *var = luaL_checkstring(L,1);
 	EnvElement *e = RTData->getChild(var);
+	lua_pop(L,1);
 	if (0 == e) {
 		lua_pushnil(L);
 		return 1;
@@ -274,34 +259,53 @@ static int f_print(lua_State *L)
 }
 
 
-static const luaL_Reg Functions[] = {
-	{ "getvar", f_getvar },
-	{ "setvar", f_setvar },
-	{ "newvar", f_newvar },
-	{ "con_print", f_print },
-	{ "sin", f_sin },
-	{ "cos", f_cos },
-	{ "tan", f_tan },
-	{ "log", f_log },
-	{ "sqrt", f_sqrt },
-	{ "action_activate", f_action_activate },
-	{ "event_trigger", f_event_trigger },
-	{ "log_warn", f_warn },
-	{ "log_info", f_info },
-	{ "log_dbug", f_dbug },
-	{ "uptime", f_uptime },
-	{ 0, 0 },
+static int f_random(lua_State *L)
+{
+	lua_pushinteger(L,random());
+	return 1;
+}
+
+
+int luax_disp_max_x(lua_State *L);
+int luax_disp_max_y(lua_State *L);
+int luax_disp_draw_rect(lua_State *L);
+int luax_disp_set_cursor(lua_State *L);
+int luax_disp_set_font(lua_State *L);
+int luax_disp_write(lua_State *L);
+int luax_rgbleds_get(lua_State *L);
+int luax_rgbleds_set(lua_State *L);
+int luax_rgbleds_write(lua_State *L);
+int luax_tlc5947_get(lua_State *L);
+int luax_tlc5947_set(lua_State *L);
+int luax_tlc5947_write(lua_State *L);
+
+static const LuaFn CoreFunctions[] = {
+	{ "getvar", f_getvar, "get variable visible via env command" },
+	{ "setvar", f_setvar, "set variable visible via env command" },
+	{ "newvar", f_newvar, "create variable visible via env command"  },
+	{ "con_print", f_print, "print to console" },
+	{ "random", f_random, "create random integer number" },
+	{ "action_activate", f_action_activate, "activate an action (action[,arg])" },
+	{ "event_trigger", f_event_trigger, "trigger an event (event[,arg])" },
+	{ "log_warn", f_warn, "write warning to log" },
+	{ "log_info", f_info, "write information to log" },
+	{ "log_dbug", f_dbug, "write debug message to log" },
+	{ "uptime", f_uptime, "query uptime" },
+	{ 0, 0, 0 },
 };
 
 
-static void xlua_init_funcs(lua_State *L)
+int xlua_add_funcs(const char *name, const LuaFn *f)
 {
-	const luaL_Reg *f = Functions;
+	new LuaFns(name,f);
+	if (LS == 0)
+		return 0;
 	while (f->name) {
-		lua_pushcfunction(L,f->func);
-		lua_setglobal(L,f->name);
+		lua_pushcfunction(LS,f->func);
+		lua_setglobal(LS,f->name);
 		++f;
 	}
+	return 0;
 }
 
 
@@ -333,7 +337,7 @@ static int xlua_parse_file(const char *fn, const char *n = 0)
 		int r;
 		if (0 == luaL_loadbuffer(LS,buf,s,vn)) {
 			lua_setglobal(LS,vn);
-			Compiled.push_back(vn);
+			Compiled.insert(vn);
 			r = 0;
 		} else {
 			r = 1;
@@ -357,16 +361,15 @@ static int xlua_parse_file(const char *fn, const char *n = 0)
 	fd = open(fn,O_RDONLY);
 	if (fd != -1) {
 		struct stat st;
-		const char *err = 0;
 		if (0 == fstat(fd,&st)) {
-			const char *buf = (const char *) malloc(st.st_size);
-			int n = read(fd,buf,st.st_size);
+			char *buf = (char *) malloc(st.st_size);
+			int n = pread(fd,buf,st.st_size,0);
 			close(fd);
 			if (st.st_size == n) {
 				Lock lock(Mtx);
 				if (0 == luaL_loadbuffer(LS,buf,st.st_size,vn)) {
 					lua_setglobal(LS,vn);
-					Compiled.push_back(vn);
+					Compiled.insert(vn);
 					return 0;
 				}
 				log_warn(TAG,"parse %s: %s",fn,lua_tostring(LS,-1));
@@ -393,8 +396,16 @@ const char *xluac(Terminal &t, int argc, const char *args[])
 	if ((argc == 1) || (0 == strcmp(args[1],"-h")))
 		return help_cmd(t,args[0]);
 	if (0 == strcmp(args[1],"-i")) {
-		for (auto &x : Functions)
-			t.println(x.name);
+		LuaFns *fn = LuaFns::List;
+		while (fn) {
+			t.printf("%s functions:\n",fn->module);
+			const LuaFn *f = fn->fns;
+			while (f->name) {
+				t.printf("%-16s: %s\n",f->name,f->descr);
+				++f;
+			}
+			fn = fn->next;
+		}
 		return 0;
 	}
 	if (0 == strcmp(args[1],"-l")) {
@@ -427,7 +438,7 @@ const char *xluac(Terminal &t, int argc, const char *args[])
 		const char *r;
 		if (0 == luaL_loadbuffer(LS,buf,s,vn)) {
 			lua_setglobal(LS,vn);
-			Compiled.push_back(vn);
+			Compiled.insert(vn);
 			r = 0;
 		} else {
 			t.println(lua_tostring(LS,-1));
@@ -441,24 +452,36 @@ const char *xluac(Terminal &t, int argc, const char *args[])
 	}
 #endif
 #ifdef HAVE_FS
-	fd = open(args[1],O_RDONLY);
+	const char *fn = args[1];
+	const estring &pwd = t.getPwd();
+	size_t pl = pwd.size();
+	size_t fl = strlen(fn) + 1;
+	char fp[pl+fl+1];
+	fp[0] = 0;
+	if (fn[0] != '/') {
+		memcpy(fp,pwd.data(),pl);
+		fp[pl] = '/';
+		memcpy(fp+pl+1,fn,fl);
+	} else 
+		memcpy(fp,fn,fl);
+	fd = open(fp,O_RDONLY);
 	if (fd != -1) {
 		struct stat st;
 		const char *err = 0;
 		if (0 == fstat(fd,&st)) {
-			const char *buf = (const char *) malloc(st.st_size);
-			int n = read(fd,buf,st.st_size);
+			char *buf = (char *) malloc(st.st_size);
+			int n = pread(fd,buf,st.st_size,0);
 			close(fd);
 			if (st.st_size == n) {
 				Lock lock(Mtx);
 				if (0 == luaL_loadbuffer(LS,buf,st.st_size,vn)) {
 					lua_setglobal(LS,vn);
-					Compiled.push_back(vn);
+					Compiled.insert(vn);
 					return 0;
 				}
 				t.println(lua_tostring(LS,-1));
 				lua_pop(LS,1);
-				return 1;
+				return "";
 			} else {
 				err = "read error";
 			}
@@ -467,7 +490,9 @@ const char *xluac(Terminal &t, int argc, const char *args[])
 			err = "cannot stat file";
 		}
 		t.println(err);
-		return 1;
+		return err;
+	} else {
+		log_warn(TAG,"open %s: %s",args[1],strerror(errno));
 	}
 #endif
 	return "Invalid argument #1.";
@@ -479,6 +504,7 @@ const char *xlua_exe(Terminal &t, const char *script)
 	if (LS == 0)
 		xlua_init();
 	Lock lock(Mtx);
+	PROFILE_FUNCTION();
 	log_dbug(TAG,"execute '%s'",script);
 	const char *r = 0;
 	if (lua_getglobal(LS,script)) {
@@ -494,7 +520,8 @@ const char *xlua_exe(Terminal &t, const char *script)
 		t.println(str);
 		r = "";
 	}
-	lua_pop(LS,1);
+	lua_settop(LS,0);
+	lua_gc(LS,LUA_GCCOLLECT);
 	return r;
 }
 
@@ -506,6 +533,7 @@ static void xlua_script(void *arg)
 	Lock lock(Mtx);
 	if (LS == 0)
 		xlua_init();
+	PROFILE_FUNCTION();
 	const char *script = (const char *) arg;
 	log_dbug(TAG,"lua!run '%s'",script);
 	bool run = true;
@@ -518,20 +546,40 @@ static void xlua_script(void *arg)
 	}
 	if (run && (0 != lua_pcall(LS,0,1,0)))
 		log_warn(TAG,"lua!run '%s': exe error",script);
-	if (const char *str = lua_tostring(LS,-1))
+	if (const char *str = lua_tostring(LS,-1)) {
 		log_warn(TAG,"lua!run '%s': %s",script,str);
+		lua_pop(LS,1);
+	}
 	lua_pop(LS,1);
 	lua_gc(LS,LUA_GCCOLLECT);
+	free(arg);
 }
 
 
 static void xlua_init()
 {
-	LS = luaL_newstate();
-	luaopen_base(LS);
-	luaopen_math(LS);
-	luaopen_string(LS);
-	xlua_init_funcs(LS);
+	if (LS == 0) {
+		LS = luaL_newstate();
+		luaL_requiref(LS,"base",luaopen_base,1);
+		lua_pop(LS,1);
+		luaL_requiref(LS,"math",luaopen_math,1);
+		lua_pop(LS,1);
+		luaL_requiref(LS,"string",luaopen_string,1);
+		lua_pop(LS,1);
+		luaL_requiref(LS,"table",luaopen_table,1);
+		lua_pop(LS,1);
+		xlua_add_funcs("core",CoreFunctions);
+		LuaFns *l = LuaFns::List;
+		while (l) {
+			const LuaFn *f = l->fns;
+			while (f->name) {
+				lua_pushcfunction(LS,f->func);
+				lua_setglobal(LS,f->name);
+				++f;
+			}
+			l = l->next;
+		}
+	}
 }
 
 
@@ -539,7 +587,6 @@ void xlua_setup()
 {
 	Mtx = xSemaphoreCreateMutex();
 	action_add("lua!run",xlua_script,0,"run argument as Lua script");
-	action_add("lua!file",xlua_script,0,"execute file with Lua interpreter");
 	for (const auto &fn : Config.luafiles())
 		xlua_parse_file(fn.c_str());
 }

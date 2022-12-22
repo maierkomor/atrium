@@ -8,12 +8,6 @@ config WFC_TARGET
 	help
 		name of WFC configuration target
 
-config FUNCTION_TIMING
-	bool "instrument for performance analysis"
-	default false
-	help
-		enable for performance analysis only - negative impact for general use
-
 config VERIFY_HEAP
 	bool "verify heap"
 	depends on IDF_TARGET_ESP32
@@ -24,13 +18,8 @@ config APP_PARAMS
 	help
 		enable to add application parameters as key/value pairs in Config.app_params
 
-config SIGNAL_PROC
-	bool "signal processing infrastructure (Buggy, ALPHA!)"
-	default false
-	help
-		infrastructure for dynamic signal definition and processing
-
 config LUA
+	depends on !IDF_TARGET_ESP8266
 	bool "support Lua scripts processing"
 	default true
 	help
@@ -73,13 +62,14 @@ config SOCKET_API
 	bool "socket API"
 	default false
 	help
-		use LWIP supplied socket API instead of native LwIP binding
+		Use LWIP supplied socket API instead of native LwIP binding.
+		Do not enable, unless you exactly know why.
 
 config UDNS
 	bool "uDNS"
-	default false
+	default true
 	help
-		integrated micro DNS and MDNS implementation (requires patch for ESP-IDF)
+		integrated micro DNS and MDNS implementation (requires patch for ESP-IDF, which is applied via setupenv.sh)
 
 config MQTT
 	bool "MQTT"
@@ -102,40 +92,44 @@ config HOLIDAYS
 
 config HTTP
 	bool "http"
+	default true
 	help
 		http server
 
 config FTP
 	depends on SPIFFS || FATFS
 	bool "ftp"
+	default false
 	help
 		ftp server
 
 config TELNET
 	bool "telnet"
+	default true
 	help
 		telnet server
 
 config TERMSERV
 	bool "uart terminal server"
+	default false
 	help
 		UART terminal server function
 
 config SYSLOG
 	bool "syslog"
-	default false
+	default true
 	help
 		send log messages to syslog host
 
 config INFLUX
 	bool "influx"
-	default false
+	default true
 	help
 		Support for sending measurements as UDP packets to Influx DB 
 
 config OTA
 	bool "ota"
-	default false
+	default true
 	help
 		over-the-air update support
 
@@ -174,7 +168,7 @@ config SPIFFS
 	help
 		SPI Flash File-System
 config FATFS
-	depends on IDF_TARGET_ESP32
+	depends on IDF_TARGET_ESP32 || IDF_TARGET_ESP32S2 || IDF_TARGET_ESP32S3 || IDF_TARGET_ESP32C3
 	bool "fatfs"
 	default false
 	help
@@ -184,9 +178,44 @@ config ROMFS
 	default true
 	help
 		ROM file-system
+
+config ROMFS_VFS
+	bool "romfs on VFS"
+	depends on ROMFS
+	default true
+	help
+		mount ROM file-system into VFS under its partition name
+
+config ROMFS_VFS_NUMFDS
+	int "number of file-descriptors"
+	depends on ROMFS_VFS
+	default 4
+	help
+		maximum number of parallel open files
+
+config USB_HOST_FS
+	bool "USB host filesystem via openocd"
+	default false
+	depends on DEVEL
+	help
+		"mount openocd host filesystem to /usb"
 endmenu # filesystem
 
 menu "hardware support"
+
+config USB_DIAGLOG
+	depends on CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG || CONFIG_TINYUSB_CDC_ENABLED
+	bool "diag output to USB serial"
+	default true
+	help
+		output diagnostic log to USB serial connections
+
+config USB_CONSOLE
+	depends on CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG || CONFIG_TINYUSB_CDC_ENABLED
+	bool "diag output to USB serial"
+	default true
+	help
+		output diagnostic log to USB serial connections
 
 config IOEXTENDERS
 	bool "I/O extenders"
@@ -227,7 +256,7 @@ config ONEWIRE
 		1-wire driver support (right now only DS18x20)
 
 config TOUCHPAD
-	depends on IDF_TARGET_ESP32
+	depends on IDF_TARGET_ESP32 || IDF_TARGET_ESP32S2
 	bool	"touchpad"
 	default true
 	help
@@ -248,13 +277,13 @@ config MAX7219
 		"4-6 digit 7-segment display"
 
 config HT16K33
-	depends on DISPLAY && I2C
+	depends on DISPLAY && I2C_XDEV
 	bool "HT16K33 driver"
 	help
 		"4-8 digit for 7/14-segment displays"
 
 config SSD1306
-	depends on DISPLAY && I2C
+	depends on DISPLAY && I2C_XDEV
 	bool "SSD1306 driver"
 	help
 		"OLED displays based on SSD1306"
@@ -265,18 +294,18 @@ config DHT
 	help
 		temperature/humidity measurement with a DHT-xx sensor
 
+config HLW8012
+	bool	"HLW8012"
+	depends on DEVEL
+	default false
+	help
+		HLW8012 power/voltage/current monitor
+
 config I2C
 	bool "I2C bus"
 	default false
 	help
-		I2C bus with BMP280 (temperature, pressure) and BME280 (temperature, humidity, pressure)
-
-config I2C_XDEV
-	bool "explicit I2C device configuration"
-	depends on I2C
-	default true
-	help
-		support for configuring devices that cannot be detected automatically
+		I2C bus infrastructure
 
 config I2C_XCMD
 	bool "extended command support for I2C devices"
@@ -285,54 +314,12 @@ config I2C_XCMD
 	help
 		provide extended commands for configuring I2C devices
 
-config BMX280
+config I2C_XDEV
+	bool "explicit I2C device configuration"
 	depends on I2C
-	bool "BMx280"
-	default false
-	help
-		I2C driver for BME280 and BMP280 air sensor (temperature, humidity, pressure)
-
-config BME680
-	depends on BMX280
-	bool "BME680"
-	default false
-	help
-		I2C driver for BME680 air sensor (temperature, humidity, pressure, electric resistance)
-
-config HDC1000
-	depends on I2C
-	bool "HDC1000"
 	default true
 	help
-		I2C driver for HDC1000 sensor (temperature,humidity)
-
-config APDS9930
-	depends on I2C
-	bool "APDS9930"
-	default true
-	help
-		I2C driver for APDS-9930 sensor (lux,proximity)
-
-config SGP30
-	depends on I2C
-	bool "SGP30"
-	default false
-	help
-		I2C driver for SGP30 sensor (TVOC,CO2)
-
-config SI7021
-	depends on I2C
-	bool "SI7021"
-	default true
-	help
-		I2C driver for HTU21/SI7021/SI7020/SI7013 (temperature,humidity)
-
-config CCS811B
-	depends on I2C
-	bool "CCS811B"
-	default true
-	help
-		I2C driver for CCS811B sensor (TVOC,CO2)
+		support for configuring devices that cannot be detected automatically
 
 config PCA9685
 	depends on I2C_XDEV
@@ -362,6 +349,62 @@ config MCP2301X
 	help
 		I2C driver for MCP2301x devices (16-port GPIO expander)
 
+config INA2XX
+	bool "ina219"
+	depends on I2C_XDEV
+	default true
+	help
+		I2C driver for INA219 (current/voltage sensor)
+
+config SI7021
+	depends on I2C_XDEV
+	bool "SI7021"
+	default true
+	help
+		I2C driver for HTU21/SI7021/SI7020/SI7013 (temperature,humidity)
+
+config BMX280
+	depends on I2C
+	bool "BMx280"
+	default false
+	help
+		I2C driver for BME280 and BMP280 air sensor (temperature, humidity, pressure)
+
+config BME680
+	depends on I2C
+	bool "BME680"
+	default false
+	help
+		I2C driver for BME680 air sensor (temperature, humidity, pressure, electric resistance)
+
+config HDC1000
+	depends on I2C
+	bool "HDC1000"
+	default true
+	help
+		I2C driver for HDC1000 sensor (temperature,humidity)
+
+config APDS9930
+	depends on I2C
+	bool "APDS9930"
+	default true
+	help
+		I2C driver for APDS-9930 sensor (lux,proximity)
+
+config SGP30
+	depends on I2C
+	bool "SGP30"
+	default false
+	help
+		I2C driver for SGP30 sensor (TVOC,CO2)
+
+config CCS811B
+	depends on I2C
+	bool "CCS811B"
+	default true
+	help
+		I2C driver for CCS811B sensor (TVOC,CO2)
+
 config BH1750
 	bool "bh1750"
 	depends on I2C
@@ -369,12 +412,27 @@ config BH1750
 	help
 		I2C driver for BH1750 (illuminance sensor)
 
-config INA2XX
-	bool "ina219"
-	depends on I2C
-	default true
+config SPI
+	bool "SPI"
+	depends on IDF_TARGET_ESP32 || IDF_TARGET_ESP32S2
+	default false
+	depends on DEVEL
 	help
-		I2C driver for INA219 (current/voltage sensor)
+		SPI driver infrastructure
+
+config SX1276
+	bool "SX1276"
+	default false
+	depends on SPI
+	help
+		dirver for SPI attached SX1276
+
+config SSD1309
+	bool "SSD1309"
+	default false
+	depends on SPI
+	help
+		dirver for 4-wire SPI attached SSD1309 display
 
 config HCSR04
 	bool "HC-SR04"
@@ -388,23 +446,39 @@ config DIMMER
 	help
 		multi-channel PWM dimmer (esp32: hardware, esp8266: software)
 
-config LEDSTRIP
-	#depends on SIGNAL_PROC		(TODO)
-	bool	"LED strip support"
+config RGBLEDS
+	bool	"RGB-LED array support"
 	default false
 	help
-		LED stripes based on WS8212b
+		LED array based on WS8212b
 
 config CAMERA
 	depends on IDF_TARGET_ESP32
 	bool	"ESP32 camera support"
 	default false
 
-config NIGHTSKY
+config TLC5947 
 	bool	"TLC5947 based led control"
 	default false
 
 endmenu # harware support
 
+
+
+menu "development tools and experimental/alpha drivers (disable all)"
+
+config DEVEL
+	bool "drivers under development"
+	default false
+	help
+		show drivers under development
+
+config FUNCTION_TIMING
+	bool "instrument for performance analysis"
+	default false
+	help
+		enable for performance analysis only - negative impact for general use
+
+endmenu # experimental stuff
 
 endmenu

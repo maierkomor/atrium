@@ -47,11 +47,11 @@ typedef enum logmod_e {
 	logmod_event          =  17,
 	logmod_fs             =  18,
 	logmod_ftpd           =  19,
-	logmod_func           =  20,
-	logmod_gpio           =  21,
-	logmod_hcsr04         =  22,
-	logmod_hd44780u       =  23,
-	logmod_hdc1000        =  24,
+	logmod_gpio           =  20,
+	logmod_hcsr04         =  21,
+	logmod_hd44780u       =  22,
+	logmod_hdc1000        =  23,
+	logmod_hlw8012        =  24,
 	logmod_ht16k33        =  25,
 	logmod_http           =  26,
 	logmod_i2c            =  27,
@@ -81,23 +81,25 @@ typedef enum logmod_e {
 	logmod_sgp30          =  51,
 	logmod_shell          =  52,
 	logmod_si7021         =  53,
-	logmod_signal         =  54,
-	logmod_sm             =  55,
-	logmod_sntp           =  56,
-	logmod_ssd1306        =  57,
-	logmod_telnet         =  58,
-	logmod_ti             =  59,
-	logmod_timefuse       =  60,
-	logmod_tlc5916        =  61,
-	logmod_tlc5947        =  62,
-	logmod_tp             =  63,
-	logmod_uart           =  64,
-	logmod_udns           =  65,
-	logmod_udpctrl        =  66,
-	logmod_wlan           =  67,
-	logmod_ws2812         =  68,
-	logmod_www            =  69,
-	logmod_xio            =  70,
+	logmod_sm             =  54,
+	logmod_sntp           =  55,
+	logmod_spi            =  56,
+	logmod_ssd130x        =  57,
+	logmod_sx1276         =  58,
+	logmod_telnet         =  59,
+	logmod_ti             =  60,
+	logmod_timefuse       =  61,
+	logmod_tlc5916        =  62,
+	logmod_tlc5947        =  63,
+	logmod_tp             =  64,
+	logmod_uart           =  65,
+	logmod_udns           =  66,
+	logmod_udpctrl        =  67,
+	logmod_usb            =  68,
+	logmod_wlan           =  69,
+	logmod_ws2812         =  70,
+	logmod_www            =  71,
+	logmod_xio            =  72,
 } logmod_t;
 
 // module defines
@@ -120,11 +122,11 @@ typedef enum logmod_e {
 #define MODULE_EVENT           logmod_event
 #define MODULE_FS              logmod_fs
 #define MODULE_FTPD            logmod_ftpd
-#define MODULE_FUNC            logmod_func
 #define MODULE_GPIO            logmod_gpio
 #define MODULE_HCSR04          logmod_hcsr04
 #define MODULE_HD44780U        logmod_hd44780u
 #define MODULE_HDC1000         logmod_hdc1000
+#define MODULE_HLW8012         logmod_hlw8012
 #define MODULE_HT16K33         logmod_ht16k33
 #define MODULE_HTTP            logmod_http
 #define MODULE_I2C             logmod_i2c
@@ -154,10 +156,11 @@ typedef enum logmod_e {
 #define MODULE_SGP30           logmod_sgp30
 #define MODULE_SHELL           logmod_shell
 #define MODULE_SI7021          logmod_si7021
-#define MODULE_SIGNAL          logmod_signal
 #define MODULE_SM              logmod_sm
 #define MODULE_SNTP            logmod_sntp
-#define MODULE_SSD1306         logmod_ssd1306
+#define MODULE_SPI             logmod_spi
+#define MODULE_SSD130X         logmod_ssd130x
+#define MODULE_SX1276          logmod_sx1276
 #define MODULE_TELNET          logmod_telnet
 #define MODULE_TI              logmod_ti
 #define MODULE_TIMEFUSE        logmod_timefuse
@@ -167,12 +170,13 @@ typedef enum logmod_e {
 #define MODULE_UART            logmod_uart
 #define MODULE_UDNS            logmod_udns
 #define MODULE_UDPCTRL         logmod_udpctrl
+#define MODULE_USB             logmod_usb
 #define MODULE_WLAN            logmod_wlan
 #define MODULE_WS2812          logmod_ws2812
 #define MODULE_WWW             logmod_www
 #define MODULE_XIO             logmod_xio
-#define MAX_MODULE_ID           70
-#define NUM_MODULES             71
+#define MAX_MODULE_ID           72
+#define NUM_MODULES             73
 
 #ifdef USE_MODULE
 #define TAG USE_MODULE

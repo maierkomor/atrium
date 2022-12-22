@@ -29,6 +29,15 @@
 #include "log.h"
 #include "env.h"
 
+#ifdef CONFIG_LUA
+#include "luaext.h"
+extern "C" {
+#include "lua.h"
+#include "lualib.h"
+#include "lauxlib.h"
+}
+#endif
+
 #include <sys/time.h>
 #include <time.h>
 
@@ -215,7 +224,7 @@ void Screen::display_date()
 void Screen::display_version()
 {
 	if (DotMatrix *dm = disp->toDotMatrix()) {
-		dm->drawRect(0,0,dm->maxX(),dm->maxY());
+		dm->drawRect(1,0,dm->maxX()-2,dm->maxY());
 		dm->setXY(10,1);
 		dm->setFont(font_sanslight16);
 		dm->write("Atrium");
@@ -226,7 +235,7 @@ void Screen::display_version()
 		if (dm->maxY() >= 48) {
 			dm->setXY(10,48);
 			dm->setFont(font_tomthumb);
-			dm->write("(C) 2021, T. Maier-Komor");
+			dm->write("(C) 2021-2022, T.Maier-Komor");
 		}
 		return;
 	}
@@ -415,8 +424,7 @@ static unsigned clock_iter(void *arg)
 		}
 		break;
 	case cm_stopwatch:
-		if (Ctx->sw_pause == 0)
-			Ctx->display_sw();
+		Ctx->display_sw();
 		d = 20;
 		break;
 	default:
@@ -463,6 +471,138 @@ static unsigned clock_iter(void *arg)
 }
 
 
+#ifdef CONFIG_LUA
+int luax_disp_max_x(lua_State *L)
+{
+	TextDisplay *disp = TextDisplay::getFirst();
+	if (disp == 0) {
+		lua_pushfstring(L,"no display");
+		lua_error(L);
+	}
+	DotMatrix *dm = disp->toDotMatrix();
+	if (dm == 0) {
+		lua_pushfstring(L,"no dot-matrix");
+		lua_error(L);
+	}
+	lua_pushinteger(L, dm->maxX());
+	return 1;
+}
+
+
+int luax_disp_max_y(lua_State *L)
+{
+	TextDisplay *disp = TextDisplay::getFirst();
+	if (disp == 0) {
+		lua_pushfstring(L,"no display");
+		lua_error(L);
+	}
+	DotMatrix *dm = disp->toDotMatrix();
+	if (dm == 0) {
+		lua_pushfstring(L,"no dot-matrix");
+		lua_error(L);
+	}
+	lua_pushinteger(L, dm->maxY());
+	return 1;
+}
+
+
+int luax_disp_set_cursor(lua_State *L)
+{
+	int x = luaL_checkinteger(L,1);
+	int y = luaL_checkinteger(L,2);
+	TextDisplay *disp = TextDisplay::getFirst();
+	if (disp == 0) {
+		lua_pushfstring(L,"no display");
+		lua_error(L);
+	}
+	if (-1 == disp->setPos(x,y)) {
+		lua_pushfstring(L,"invalid argument");
+		lua_error(L);
+	}
+	return 0;
+}
+
+
+int luax_disp_draw_rect(lua_State *L)
+{
+	int x = luaL_checkinteger(L,1);
+	int y = luaL_checkinteger(L,2);
+	int w = luaL_checkinteger(L,3);
+	int h = luaL_checkinteger(L,4);
+	TextDisplay *disp = TextDisplay::getFirst();
+	if (disp == 0) {
+		lua_pushfstring(L,"no display");
+		lua_error(L);
+	}
+	DotMatrix *dm = disp->toDotMatrix();
+	if (dm == 0) {
+		lua_pushfstring(L,"no dot-matrix");
+		lua_error(L);
+	}
+	if (-1 == dm->drawRect(x,y,w,h)) {
+		lua_pushfstring(L,"invalid argument");
+		lua_error(L);
+	}
+	return 0;
+}
+
+
+int luax_disp_set_font(lua_State *L)
+{
+	const char *fn = luaL_checkstring(L,1);
+	TextDisplay *disp = TextDisplay::getFirst();
+	if (disp == 0) {
+		lua_pushfstring(L,"no display");
+		lua_error(L);
+	}
+	if (-1 == disp->setFont(fn)) {
+		lua_pushfstring(L,"invalid font");
+		lua_error(L);
+	}
+	return 0;
+}
+
+
+int luax_disp_write(lua_State *L)
+{
+	const char *txt = luaL_checkstring(L,1);
+	TextDisplay *disp = TextDisplay::getFirst();
+	if (disp == 0) {
+		lua_pushfstring(L,"no display");
+		lua_error(L);
+	}
+	if (-1 == disp->write(txt)) {
+		lua_pushfstring(L,"invalid argument");
+		lua_error(L);
+	}
+	return 0;
+
+}
+
+
+int luax_disp_clear(lua_State *L)
+{
+	if (TextDisplay *disp = TextDisplay::getFirst()) {
+		disp->clear();
+	}
+	return 0;
+}
+
+
+static const LuaFn Functions[] = {
+	{ "disp_max_x", luax_disp_max_x, "get x resolution" },
+	{ "disp_max_y", luax_disp_max_y, "get y resolution" },
+	{ "disp_draw_rect", luax_disp_draw_rect, "draw recangle (x,y,w,h)" },
+	{ "disp_set_cursor", luax_disp_set_cursor, "set cursor position (x,y)" },
+	{ "disp_set_font", luax_disp_set_font, "set font (fontname)" },
+	{ "disp_write", luax_disp_write, "write text at cursor position with font" },
+	{ "disp_clear", luax_disp_clear , "clear the screen" },
+	{ 0, 0, 0 },
+};
+
+#endif
+
+
 int screen_setup()
 {
 	TextDisplay *d = TextDisplay::getFirst();
@@ -489,6 +629,9 @@ int screen_setup()
 	Ctx->modech = true;
 	d->clear();
 	cyclic_add_task("display", clock_iter, Ctx);
+#ifdef CONFIG_LUA
+	//xlua_add_funcs("screen",Functions);	-- TODO display mode Lua is missing
+#endif
 	log_info(TAG,"ready");
 	return 0;
 }

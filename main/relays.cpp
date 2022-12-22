@@ -126,11 +126,11 @@ static void mqtt_callback(const char *topic, const void *data, size_t len)
 #endif
 
 
-int relay_setup()
+void relay_setup()
 {
 	if (Relay::first()) {
 		log_warn(TAG,"duplicate init");
-		return 0;
+		return;
 	}
 	unsigned numrel = 0;
 	for (auto &c : *HWConf.mutable_relay()) {
@@ -186,8 +186,7 @@ int relay_setup()
 		}
 	}
 	if (numrel)
-		action_add("relay!set",relay_set_state,0,"set relay state - argument: '<name>:{on,off,toggle}'");
-	return 0;
+		action_add("relay!set",relay_set_state,0,"set relay state: '<name>:{on,off,toggle}'");
 }
 
 
@@ -195,7 +194,7 @@ const char *relay(Terminal &term, int argc, const char *args[])
 {
 	Relay *r = Relay::first();
 	if (r == 0) {
-		term.printf("no relays\n");
+		term.println("no relays");
 	} else if (argc == 1) {
 		while (r) {
 			term.printf("relay '%s' at gpio%d is %s\n",r->name(),r->gpio(),r->is_on() ? "on" : "off");
