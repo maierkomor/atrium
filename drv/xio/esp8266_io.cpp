@@ -210,7 +210,7 @@ int CoreIO::get_lvl(uint8_t num)
 int CoreIO::set_hi(uint8_t num)
 {
 	if (uint16_t b = 1 << num) {
-		GPIO.out_w1ts = b;
+		GPIO.out_w1ts |= b;
 		return 0;
 	}
 	return -EINVAL;
@@ -220,7 +220,7 @@ int CoreIO::set_hi(uint8_t num)
 int CoreIO::set_lo(uint8_t num)
 {
 	if (uint16_t b = 1 << num) {
-		GPIO.out_w1tc = b;
+		GPIO.out_w1tc |= b;
 		return 0;
 	}
 	return -EINVAL;
@@ -231,16 +231,16 @@ int CoreIO::set_lvl(uint8_t num, xio_lvl_t l)
 {
 	if (uint16_t b = 1 << num) {
 		if (l == xio_lvl_0) {
-			GPIO.out_w1tc = b;
-			GPIO.enable_w1ts = b;
+			GPIO.out_w1tc |= b;
+			GPIO.enable_w1ts |= b;
 			return 0;
 		} else if (l == xio_lvl_1) {
-			GPIO.out_w1ts = b;
-			GPIO.enable_w1ts = b;
+			GPIO.out_w1ts |= b;
+			GPIO.enable_w1ts |= b;
 			return 0;
 		} else if (l == xio_lvl_hiz) {
-			GPIO.out_w1tc = b;
-			GPIO.enable_w1tc = b;
+			GPIO.out_w1tc |= b;
+			GPIO.enable_w1tc |= b;
 			return 0;
 		}
 	}
@@ -252,8 +252,8 @@ int CoreIO::setm(uint32_t values, uint32_t mask)
 {
 	if (mask >> 16)
 		return -EINVAL;
-	GPIO.out_w1ts = values & mask;
-	GPIO.out_w1tc = values ^ mask;
+	GPIO.out_w1ts |= values & mask;
+	GPIO.out_w1tc |= values ^ mask;
 	return 0;
 }
 
