@@ -157,12 +157,12 @@ unsigned cyclic_execute()
 }
 
 
-#ifdef CONFIG_IDF_TARGET_ESP32
+#ifdef ESP32
 static void cyclic_task(void *)
 {
 	for (;;) {
 		unsigned d = cyclic_execute();
-		vTaskDelay(d * portTICK_PERIOD_MS);
+		vTaskDelay(d / portTICK_PERIOD_MS);
 	}
 }
 #endif
@@ -171,7 +171,7 @@ static void cyclic_task(void *)
 void cyclic_setup()
 {
 	Mtx = xSemaphoreCreateMutex();
-#ifdef CONFIG_IDF_TARGET_ESP32
+#ifdef ESP32
 	BaseType_t r = xTaskCreatePinnedToCore(cyclic_task, "cyclic", 8192, (void*)0, 20, NULL, 1);
 	if (r != pdPASS)
 		log_error(TAG,"create task: %d",r);

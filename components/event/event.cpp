@@ -309,7 +309,7 @@ void event_isr_trigger_arg(event_t id,void *arg)
 
 static void event_task(void *)
 {
-#ifdef CONFIG_IDF_TARGET_ESP32
+#ifdef ESP32
 	#ifdef CONFIG_VERIFY_HEAP
 	#define dt 100
 	#else
@@ -329,7 +329,7 @@ static void event_task(void *)
 		}
 		if (r == pdFALSE) {
 			// timeout: process cyclic
-#ifdef CONFIG_IDF_TARGET_ESP32
+#ifdef ESP32
 			// cyclic has its own task
 	#ifdef CONFIG_VERIFY_HEAP
 			heap_caps_check_integrity_all(true);
