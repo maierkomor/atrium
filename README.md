@@ -536,7 +536,7 @@ therefore is well-suited to be used on ESP8285 devices that provide only
 
 Some example ROMFS partitions are supplied in the binary distribution.
 You can create ROMFS partitions yourself, by calling:
-``
+```
 mkromfs -o name.romfs <files>
 ```
 
