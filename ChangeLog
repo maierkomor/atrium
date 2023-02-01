@@ -1,3 +1,17 @@
+R2301:
+======
+- Lua integration enhancements
+- fix for cyclic interval timing on ESP32-xx
+- fix for ESP8266 GPIO handling with IO-expander
+- fix WS2812B always using channel 0
+- updates for atriumcfg tool
+- added Lua support for ADC
+- added WS2812b multi-bus support
+- added TCA9555 driver (IO-expander, DEVEL/alpha-state, untested yet)
+- fix for argument event handling
+- support ADC digital to physical conversion on ESP32*
+- added OTA server config for simplified updates
+
 R2212:
 ======
 - added action gpio!set for more flexible gpio operation

@@ -19,6 +19,7 @@
 #ifndef BUTTON_DRV_H
 #define BUTTON_DRV_H
 
+#include <env.h>
 #include <event.h>
 #include "xio.h"
 
@@ -34,6 +35,8 @@ class Button
 {
 	public:
 	static Button *create(const char *name, xio_t gpio, xio_cfg_pull_t mode, bool active_high);
+
+	void attach(class EnvObject *);
 
 	int32_t pressed_at() const
 	{ return m_tpressed; }
@@ -65,6 +68,8 @@ class Button
 	typedef enum btnst_e { btn_unknown = 0, btn_pressed, btn_released } btnst_t;
 
 	const char *m_name;
+	EnvBool m_pressed;
+	EnvNumber m_ptime;
 	int32_t m_tpressed;
 	xio_t m_gpio;
 	int8_t m_presslvl;

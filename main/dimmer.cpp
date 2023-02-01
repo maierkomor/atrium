@@ -59,6 +59,15 @@
 #include "swcfg.h"
 #include "terminal.h"
 
+#ifdef CONFIG_LUA
+#include "luaext.h"
+extern "C" {
+#include "lua.h"
+#include "lualib.h"
+#include "lauxlib.h"
+}
+#endif
+
 
 #ifdef CONFIG_IDF_TARGET_ESP8266
 #define DIM_MAX Period
@@ -96,12 +105,13 @@ struct Dimmer
 	bool invert;
 	gpio_num_t gpio;
 	ledc_channel_t channel;
+	static Dimmer *get(const char *name);
 };
 
 static Dimmer *Dimmers = 0;
 
 
-static Dimmer *get_dimmer(const char *name)
+Dimmer *Dimmer::get(const char *name)
 {
 	Dimmer *d = Dimmers;
 	while (d && strcmp(d->name,name))
@@ -112,7 +122,7 @@ static Dimmer *get_dimmer(const char *name)
 
 static const char *dimmer_set_value(const char *name, unsigned v)
 {
-	Dimmer *d = get_dimmer(name);
+	Dimmer *d = Dimmer::get(name);
 	if (d == 0)
 		return "Unknown dimmer.";
 	if (v > DIM_MAX)
@@ -124,7 +134,7 @@ static const char *dimmer_set_value(const char *name, unsigned v)
 
 int dimmer_set_perc(const char *name, float v)
 {
-	if (Dimmer *d = get_dimmer(name)) {
+	if (Dimmer *d = Dimmer::get(name)) {
 		if ((v >= 0) && (v <= 100)) {
 			d->env->set(v);
 			return 0;
@@ -157,7 +167,7 @@ void dim_set(void *arg)
 			memcpy(name,str,s-str);
 			name[s-str-1] = 0;
 			log_dbug(TAG,"set %s %2.1f%%",name,v);
-			if (Dimmer *d = get_dimmer(name))
+			if (Dimmer *d = Dimmer::get(name))
 				d->env->set(v);
 		} else {
 			log_dbug(TAG,"set %2.1f%%",v);
@@ -342,7 +352,7 @@ static void dimmers_restore(void *)
 static void dimmer_on(void *p)
 {
 	Dimmer *d = (Dimmer *)p;
-	d->env->set(100);
+	d->env->set(DIM_MAX);
 }
 
 
@@ -366,6 +376,26 @@ static void dimmer_inc(void *p)
 	Dimmer *d = (Dimmer *)p;
 	d->env->set(d->env->get() + DIM_INC);
 }
+#endif
+
+
+#ifdef CONFIG_LUA
+static int luax_dimmer_set(lua_State *L)
+{
+	const char *n = luaL_checkstring(L,1);
+	int v = luaL_checkinteger(L,2);
+	if (const char *err = dimmer_set_value(n,v)) {
+		lua_pushstring(L,err);
+		lua_error(L);
+	}
+	return 0;
+}
+
+
+static LuaFn Functions[] = {
+	{ "dimmer_set", luax_dimmer_set, "set dimmer value" },
+	{ 0, 0, 0 }
+};
 #endif
 
 
@@ -457,8 +487,8 @@ int dimmer_setup()
 		action_add(concat(dim->name,"!off"),dimmer_off,dim,"turn off with PWM ramp");
 		action_add(concat(dim->name,"!dec"),dimmer_dec,dim,"decrement dimmer value");
 		action_add(concat(dim->name,"!inc"),dimmer_inc,dim,"increment dimmer value");
-		action_add(concat(dim->name,"!backup"),dimmer_backup,dim,"increment dimmer value");
-		action_add(concat(dim->name,"!restore"),dimmer_restore,dim,"increment dimmer value");
+		action_add(concat(dim->name,"!backup"),dimmer_backup,dim,"backup dimmer value");
+		action_add(concat(dim->name,"!restore"),dimmer_restore,dim,"restore dimmer value");
 #endif
 #ifdef CONFIG_MQTT
 		char topic[strlen(dim->name)+5] = "set_";
@@ -472,6 +502,9 @@ int dimmer_setup()
 	action_add("all_dimmers!off",dimmers_off,0,"backup dimmer and fade off");
 	action_add("all_dimmers!restore",dimmers_restore,0,"restore dimmer from backup");
 	action_add("dim!set",dim_set,0,"set dimmer(s) <d> to value <v>: arg = [<d>:]<v>");
+#endif
+#ifdef CONFIG_LUA
+	xlua_add_funcs("dimmer",Functions);
 #endif
 #ifdef CONFIG_IDF_TARGET_ESP8266
 	if (esp_err_t e = pwm_init(Period,duties,nch,pins)) {

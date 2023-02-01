@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2022, Thomas Maier-Komor
+ *  Copyright (C) 2018-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -21,6 +21,7 @@
 #ifdef CONFIG_RGBLEDS
 
 #include "actions.h"
+#include "event.h"
 #include "globals.h"
 #include "hwcfg.h"
 #include "log.h"
@@ -59,7 +60,7 @@ extern "C" {
 #define CYAN	0x002020
 #define PURPLE	0x100010
 
-#define TAG MODULE_LEDSTRIP
+#define TAG MODULE_RGBLEDS
 
 struct RgbName
 {
@@ -67,8 +68,6 @@ struct RgbName
 	const char *name;
 };
 
-
-static WS2812BDrv *LED_Strip = 0;
 
 static const RgbName RgbNames[] = {
 	{ BLACK, "black" },
@@ -83,107 +82,6 @@ static const RgbName RgbNames[] = {
 };
 
 
-#if 0 // demo mode
-static uint32_t ColorMap[] = {
-	BLACK, WHITE, RED, GREEN, BLUE, MAGENTA, YELLOW, CYAN, PURPLE
-};
-
-static void ledstrip_task(void *arg)
-{
-	uint8_t numleds = (uint8_t) (unsigned) arg;
-	uint8_t off = 0;
-	LED_Strip->reset();
-	log_dbug(TAG,"0");
-	vTaskDelay(1000/portTICK_PERIOD_MS);
-	LED_Strip->set_leds(WHITE);
-	log_dbug(TAG,"1");
-	LED_Strip->update();
-	vTaskDelay(1000/portTICK_PERIOD_MS);
-	LED_Strip->set_leds(BLACK);
-	log_dbug(TAG,"2");
-	LED_Strip->update();
-	vTaskDelay(1000/portTICK_PERIOD_MS);
-	for (unsigned x = 0; x < 256; ++x) {
-		log_dbug(TAG,"3");
-		LED_Strip->set_leds(x << 16 | x << 8 | x);
-		LED_Strip->update();
-		vTaskDelay(50/portTICK_PERIOD_MS);
-	}
-	for (;;) {
-		for (int i = 0; i < numleds; ++i)
-			LED_Strip->set_led(i,ColorMap[(i+off)%(sizeof(ColorMap)/sizeof(ColorMap[0]))]);
-		log_dbug(TAG,"4");
-		LED_Strip->update();
-		if (++off == sizeof(ColorMap)/sizeof(ColorMap[0]))
-			off = 0;
-		vTaskDelay(1000/portTICK_PERIOD_MS);
-
-		for (int i = 0; i < numleds; ++i)
-			LED_Strip->set_led(i,1<<i);
-		LED_Strip->update();
-		vTaskDelay(1000/portTICK_PERIOD_MS);
-	}
-}
-
-#elif 0
-
-static void execute_op(ledaction_t a, uint32_t arg)
-{
-	switch (a) {
-	case la_nop:
-		break;
-	case la_disp:
-		// TODO
-		break;
-	case la_set:
-		LED_Strip->set_leds(arg>>24,arg&0xffffff);
-		break;
-	case la_setall:
-		LED_Strip->set_leds(arg);
-		break;
-	case la_delay:
-		vTaskDelay(arg);
-		break;
-		/*
-	case la_setrd:
-		LED_Strip->set_leds((arg<<16)&0xff0000);
-		break;
-	case la_setgr:
-		LED_Strip->set_leds((arg<<8)&0xff00);
-		break;
-	case la_setbl:
-		LED_Strip->set_leds((arg)&0xff);
-		break;
-		*/
-	case la_update:
-		LED_Strip->update();
-		break;
-	case la_fade:
-		LED_Strip->update(true);
-	case la_mode:
-		break;
-	case la_jump:
-		break;
-	case la_mode:
-		break;
-	default:
-		log_warn(TAG,"unknown ledstrip command %d",a);
-	}
-}
-
-static void ledstrip_task(void *arg)
-{
-	for (;;) {
-		uint32_t r = esp_random();
-		LED_Strip->set_leds(r&0xff0000);
-		vTaskDelay((((r&0x1f)<<3)+20)/portTICK_PERIOD_MS);
-		LED_Strip->update();
-	}
-}
-#endif
-
-
-
 static int rgbname_value(const char *n, unsigned long *v)
 {
 	for (const auto &r : RgbNames) {
@@ -192,35 +90,74 @@ static int rgbname_value(const char *n, unsigned long *v)
 			return 0;
 		}
 	}
-	log_warn(TAG,"unknown color name %s",n);
+	char *e;
+	long l = strtol(n,&e,0);
+	if ((e != n) && ((l & 0xff000000) == 0)) {
+		*v = l;
+		return 0;
+	}
+	log_warn(TAG,"invalid color '%s'",n);
 	return 1;
 }
 
 
 static void ledstrip_action_set(void *arg)
 {
-	char *a = (char *) arg;
-	if (a == 0) {
+	char *arg0 = (char *) arg;
+	if (arg == 0) {
 		log_dbug(TAG,"set: missing argument");
 		return;
 	}
-	log_dbug(TAG,"set %s",a);
-	char *e;
-	unsigned long led = strtoul(a,&e,0);
-	if (e == a) {
-		unsigned long value;
-		if (rgbname_value(a,&value))
-			return;
-		LED_Strip->set_leds(value);
-	} else if (char *c = strchr(a,',')) {
-		unsigned long value = strtoul(c+1,&e,0);
-		if ((c+1 == e) && rgbname_value(c+1,&value))
-			return;
-		LED_Strip->set_led(led,value);
-	} else {
-		LED_Strip->set_leds(led);
+	log_dbug(TAG,"set %s",arg0);
+	const char *arg1 = 0, *arg2 = 0;
+	if (char *c1 = strchr(arg0,',')) {
+		*c1 = 0;
+		arg1 = c1+1;
+		if (char *c2 = strchr(arg1,',')) {
+			*c2 = 0;
+			arg2 = c2+1;
+		}
 	}
-	LED_Strip->update();
+	const char *idx = 0, *val = 0;
+	WS2812BDrv *drv = WS2812BDrv::get_bus(arg0);
+	if (drv == 0) {
+		drv = WS2812BDrv::first();
+		if (drv == 0)
+			return;
+		if (arg2)
+			return;
+		if (arg1) {
+			idx = arg0;
+			val = arg1;
+		} else {
+			val = arg0;
+		}
+	} else if (arg2) {
+		idx = arg1;
+		val = arg2;
+	} else {
+		val = arg1;
+	}
+	char *e;
+	int led;
+
+	if (idx) {
+		led = strtoul(idx,&e,0);
+		if (e == idx)
+			led = -1;
+	} else {
+		led = -1;
+	}
+	assert(val);
+	unsigned long value;
+	if (rgbname_value(val,&value))
+		return;
+	if (led == -1) {
+		drv->set_leds(value);
+	} else {
+		drv->set_led(led,value);
+	}
+	drv->update();
 }
 
 
@@ -232,28 +169,50 @@ static void ledstrip_action_write(void *arg)
 		log_dbug(TAG,"set: missing argument");
 		return;
 	}
+	WS2812BDrv *drv;
+	if (char *c = strchr(a,',')) {
+		*c = 0;
+		drv = WS2812BDrv::get_bus(a);
+		if (drv) {
+			a = c+1;
+		} else {
+			*c = ',';
+			drv = WS2812BDrv::first();
+		}
+	} else {
+		drv = WS2812BDrv::first();
+	}
+	if (drv == 0)
+		return;
 	char *e = a;
 	int led = 0;
 	do {
-		unsigned long value = strtoul(a,&e,0);
-		if (e != a)
-			LED_Strip->set_led(led,value);
+		unsigned long value;
+		if (rgbname_value(a,&value))
+			break;
+		drv->set_led(led,value);
 		++led;
 		a = e + 1;
 	} while (*e == ',');
-	LED_Strip->update();
+	drv->update();
 }
 
 
 #ifdef CONFIG_LUA
 int luax_rgbleds_get(lua_State *L)
 {
-	if (LED_Strip == 0) {
-		log_warn(TAG,"Lua: no strip");
-		return 0;
+	WS2812BDrv *drv;
+	if (lua_isstring(L,1)) {
+		drv = WS2812BDrv::get_bus(lua_tostring(L,1));
+	} else {
+		drv = WS2812BDrv::first();
+	}
+	if (0 == drv) {
+		lua_pushliteral(L,"Invalid bus.");
+		lua_error(L);
 	}
 	int idx = luaL_checkinteger(L,1);
-	uint32_t v = LED_Strip->get_led(idx);
+	uint32_t v = drv->get_led(idx);
 	lua_seti(L,1,v);
 	return 1;
 }
@@ -261,44 +220,106 @@ int luax_rgbleds_get(lua_State *L)
 
 int luax_rgbleds_set(lua_State *L)
 {
-	if (LED_Strip == 0) {
-		log_warn(TAG,"Lua: no strip");
+	// (val) : one value for all leds on primary bus
+	// (idx,val) : set led at idx to value on primary bus
+	// (bus,val)
+	// (bus,idx,val)
+	WS2812BDrv *drv = 0;
+	unsigned arg = 1;
+	if (lua_isstring(L,arg)) {
+		drv = WS2812BDrv::get_bus(lua_tostring(L,1));
+		if (drv) {
+			++arg;
+		} else if (lua_isstring(L,2)) {
+			lua_pushliteral(L,"Invalid bus.");
+			lua_error(L);
+		}
+	}
+	if (drv == 0) {
+		drv = WS2812BDrv::first();
+		if (0 == drv) {
+			lua_pushliteral(L,"No bus.");
+			lua_error(L);
+		}
+	}
+	unsigned idx = 0;
+	if (lua_isinteger(L,arg)) {
+		idx = lua_tointeger(L,arg);
+	} else if (lua_isstring(L,arg)) {
+		unsigned long v;
+		if (rgbname_value(lua_tostring(L,arg),&v)) {
+			lua_pushliteral(L,"Invalid argument.");
+			lua_error(L);
+		}
+		drv->set_leds(v);
+		drv->update();
 		return 0;
-	}
-	int idx = luaL_checkinteger(L,1);
-	if (lua_isinteger(L,2)) {
-		int val = lua_tointeger(L,2);
-		LED_Strip->set_led(idx,val);
 	} else {
-		LED_Strip->set_leds(idx);
+		lua_pushliteral(L,"Invalid argument.");
+		lua_error(L);
 	}
-	LED_Strip->update();
+	++arg;
+	if (lua_isinteger(L,arg)) {
+		int val = lua_tointeger(L,arg);
+		drv->set_led(idx,val);
+	} else {
+		drv->set_leds(idx);
+	}
+	drv->update();
 	return 0;
 }
 
 
 int luax_rgbleds_write(lua_State *L)
 {
-	if (LED_Strip == 0) {
-		log_warn(TAG,"Lua: no strip");
-		return 0;
+	WS2812BDrv *drv;
+	unsigned arg;
+	if (lua_isstring(L,1)) {
+		drv = WS2812BDrv::get_bus(lua_tostring(L,1));
+		arg = 2;
+	} else {
+		drv = WS2812BDrv::first();
+		arg = 1;
 	}
-	luaL_checktype(L,1,LUA_TTABLE);
-	size_t n = lua_rawlen(L,1);
+	if (0 == drv) {
+		lua_pushliteral(L,"Invalid bus.");
+		lua_error(L);
+	}
+	luaL_checktype(L,arg,LUA_TTABLE);
+	size_t n = lua_rawlen(L,arg);
 	for (int x = 0; x < n; ++x) {
-		lua_rawgeti(L,1,x);
+		lua_rawgeti(L,arg,x);
 		long l = lua_tonumber(L,-1);
-		LED_Strip->set_led(x,l);
-		lua_pop(L,1);
+		drv->set_led(x,l);
+		lua_pop(L,arg);
 	}
-	LED_Strip->update();
+	drv->update();
 	return 0;
 }
 
+
+int luax_rgbleds_num(lua_State *L)
+{
+	WS2812BDrv *drv;
+	if (lua_isstring(L,1)) {
+		drv = WS2812BDrv::get_bus(lua_tostring(L,1));
+	} else {
+		drv = WS2812BDrv::first();
+	}
+	if (0 == drv) {
+		lua_pushliteral(L,"Invalid bus.");
+		lua_error(L);
+	}
+	lua_pushinteger(L,drv->num_leds());
+	return 1;
+}
+
+
 static LuaFn Functions[] = {
-	{ "rgbleds_get", luax_rgbleds_get, "WS2812b: get LED value" },
-	{ "rgbleds_set", luax_rgbleds_set, "WS2812b: set LED value (i,v) or set LEDs value (v)" },
-	{ "rgbleds_write", luax_rgbleds_write, "WS2812b: write LED values (v,...)"  },
+	{ "rgbleds_get", luax_rgbleds_get, "WS2812b: get LED value ([bus,]idx)" },
+	{ "rgbleds_set", luax_rgbleds_set, "WS2812b: set LEDs value ([[bus,]idx,]val)" },
+	{ "rgbleds_write", luax_rgbleds_write, "WS2812b: write LED values ([bus,]v,...)"  },
+	{ "rgbleds_num", luax_rgbleds_num, "WS2812b: return number of LEDs ([bus])"  },
 	{ 0, 0, 0 }
 };
 #endif
@@ -306,29 +327,43 @@ static LuaFn Functions[] = {
 
 void rgbleds_setup()
 {
-	if (!HWConf.has_ws2812b())
-		return;
-	const Ws2812bConfig &c = HWConf.ws2812b();
-	if ((!c.has_gpio() || (0 == c.nleds()))) {
-		log_dbug(TAG,"incomplete config");
-		return;
-	}
-	log_dbug(TAG,"setup");
-	unsigned nleds = c.nleds();
-	LED_Strip = new WS2812BDrv;
-	action_add("rgbleds!set",ledstrip_action_set,0,"set color of led(s) on strip");
-	action_add("rgbleds!write",ledstrip_action_write,0,"write multiple values to LEDs");
-#ifdef CONFIG_IDF_TARGET_ESP32
-	if (LED_Strip->init((gpio_num_t)c.gpio(),nleds),(rmt_channel_t)c.ch())
-		return;
+	unsigned num = 0;
+	for (const auto &c : HWConf.ws2812b()) {
+#ifdef CONFIG_IDF_TARGET_ESP8266
+		if ((!c.has_gpio() || (0 == c.nleds())))
 #else
-	if (LED_Strip->init((gpio_num_t)c.gpio(),nleds))
-		return;
+		if ((!c.has_gpio() || (0 == c.nleds())) || !c.has_ch())
 #endif
-	LED_Strip->set_leds(0);
+		{
+			log_dbug(TAG,"incomplete config");
+			continue;
+		}
+		size_t nl = c.name().size();
+		char name[nl < 16 ? 16 : nl + 1];
+		strcpy(name,c.name().c_str());
+		gpio_num_t gpio = (gpio_num_t) c.gpio();
+		if (name[0] == 0)
+			sprintf(name,"ws2812b@%u",gpio);
+		log_dbug(TAG,"setup %s",name);
+		unsigned nleds = c.nleds();
+		WS2812BDrv *drv = new WS2812BDrv(name);
+#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
+		if (drv->init((gpio_num_t)c.gpio(),nleds,(rmt_channel_t)c.ch()))
+			continue;
+#else
+		if (drv->init((gpio_num_t)c.gpio(),nleds))
+			continue;
+#endif
+		++num;
+		drv->set_leds(0);
+	}
+	if (num) {
+		action_add("rgbleds!set",ledstrip_action_set,0,"set color of led(s) on strip");
+		action_add("rgbleds!write",ledstrip_action_write,0,"write multiple values to LEDs");
 #ifdef CONFIG_LUA
-	xlua_add_funcs("rgbleds",Functions);
+		xlua_add_funcs("rgbleds",Functions);
 #endif
+	}
 }
 
 #endif

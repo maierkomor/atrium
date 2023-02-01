@@ -1213,7 +1213,6 @@ CONFIG_THRESHOLDS=y
 CONFIG_UART_CONSOLE=y
 CONFIG_INTEGRATED_HELP=y
 CONFIG_HWCONF_DYNAMIC=y
-# CONFIG_SOCKET_API is not set
 CONFIG_UDNS=y
 CONFIG_MQTT=y
 CONFIG_AT_ACTIONS=y
@@ -1281,6 +1280,7 @@ CONFIG_TLC5947=y
 #
 # CONFIG_DEVEL is not set
 # CONFIG_FUNCTION_TIMING is not set
+# CONFIG_SOCKET_API is not set
 # end of development tools and experimental/alpha drivers (disable all)
 # end of Atrium
 # end of Component config

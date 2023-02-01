@@ -28,6 +28,8 @@ struct LuaFn
 	const char *descr;
 };
 
+
 int xlua_add_funcs(const char *name, const LuaFn *f);
+unsigned xlua_render(struct Screen *ctx);
 
 #endif

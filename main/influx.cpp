@@ -49,6 +49,12 @@
 #undef write
 #endif
 
+#if 0
+#define log_devel log_dbug
+#else
+#define log_devel(...)
+#endif
+
 using namespace std;
 
 #define TAG MODULE_INFLUX
@@ -338,7 +344,7 @@ int influx_send(const char *data, size_t l)
 			influx_init();
 		return 0;
 	}
-	log_dbug(TAG,"send '%.*s'",l,data);
+	log_devel(TAG,"send '%.*s'",l,data);
 	Lock lock(Mtx,__FUNCTION__);
 #ifdef CONFIG_IDF_TARGET_ESP8266
 	LWIP_LOCK();
@@ -513,7 +519,7 @@ void influx_setup()
 	action_add("influx!sysinfo",send_sys_info,0,"send system info to influx");
 	action_add("influx!rtdata",send_rtdata,0,"send runtime data to influx");
 	action_add("influx!init",influx_init,0,"init influx connection");
-	action_add("influx!term",influx_term,0,"init influx connection");
+	action_add("influx!term",influx_term,0,"term influx connection");
 	log_info(TAG,"setup");
 }
 
@@ -550,7 +556,8 @@ const char *influx(Terminal &term, int argc, const char *args[])
 		if (!strcmp("init",args[1])) {
 			if (State == stopped)
 				State = offline;
-			return action_dispatch("influx!init",0) ? "Failed." : 0;
+			action_dispatch("influx!init",0);
+			return 0;
 		} else if (0 == strcmp(args[1],"clear")) {
 			Config.clear_influx();
 		} else if (0 == strcmp(args[1],"stop")) {

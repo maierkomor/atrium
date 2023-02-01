@@ -171,13 +171,13 @@ int PCF8574::config(uint8_t io, xio_cfg_t cfg)
 		return -1;
 	}
 
-	if (cfg.cfg_pull != xio_cfg_pull_keep)
+	if ((cfg.cfg_pull != xio_cfg_pull_keep) && (cfg.cfg_pull != xio_cfg_pull_none))
 		return -1;
 
-	if (cfg.cfg_intr != xio_cfg_intr_keep)
+	if ((cfg.cfg_intr != xio_cfg_intr_keep) && (cfg.cfg_intr != xio_cfg_intr_disable))
 		return -1;
 
-	if (cfg.cfg_wakeup != xio_cfg_wakeup_keep)
+	if ((cfg.cfg_wakeup != xio_cfg_wakeup_keep) && (cfg.cfg_wakeup != xio_cfg_wakeup_disable))
 		return -1;
 	return xio_cap_edgeintr|xio_cap_lvl0intr|xio_cap_lvl1intr;
 

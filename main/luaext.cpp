@@ -33,10 +33,12 @@ extern "C" {
 #include "luaext.h"
 #include "profiling.h"
 #include "romfs.h"
+#include "screen.h"
 #include "shell.h"
 #include "strstream.h"
 #include "swcfg.h"
 #include "terminal.h"
+#include "timefuse.h"
 
 #include <set>
 
@@ -78,11 +80,29 @@ static void xlua_init();
 LuaFns *LuaFns::List = 0;
 
 
+static int f_event_create(lua_State *L)
+{
+	const char *n = luaL_checkstring(L,1);
+	const char *a = strchr(n,'`');
+	if (a == 0) {
+		lua_pushliteral(L,"Invalid argument #1.");
+		lua_error(L);
+	}
+	int e = event_register(n);
+	if (e == 0) {
+		lua_pushliteral(L,"Error registering event.");
+		lua_error(L);
+	}
+	lua_pushinteger(L,e);
+	return 1;
+}
+
+
 static int f_event_trigger(lua_State *L)
 {
 	const char *arg = 0;
 	if (lua_type(L,2) == LUA_TSTRING) {
-		arg = lua_tostring(L,2);
+		arg = strdup(lua_tostring(L,2));
 	}
 	switch (lua_type(L,1)) {
 	case LUA_TSTRING:
@@ -109,18 +129,15 @@ static int f_action_activate(lua_State *L)
 {
 	const char *an = luaL_checkstring(L,1);
 	const char *arg = 0;
-	if (lua_type(L,2) == LUA_TSTRING) {
-		arg = lua_tostring(L,2);
-	}
 	Action *a = action_get(an);
-	lua_pop(L,1);
 	if (a == 0) {
 		lua_pushfstring(L,"unknwon action '%s'",an);
 		lua_error(L);
 	}
+	if (lua_type(L,2) == LUA_TSTRING) {
+		arg = strdup(lua_tostring(L,2));
+	}
 	a->activate((void*)arg);
-	if (arg)
-		lua_pop(L,1);
 	return 0;
 }
 
@@ -155,6 +172,13 @@ int f_dbug(lua_State *L)
 int f_uptime(lua_State *L)
 {
 	lua_pushnumber(L,(float)timestamp()*1E-6);
+	return 1;
+}
+
+
+int f_timestamp(lua_State *L)
+{
+	lua_pushinteger(L,timestamp()&UINT32_MAX);
 	return 1;
 }
 
@@ -266,6 +290,44 @@ static int f_random(lua_State *L)
 }
 
 
+static int f_tmr_create(lua_State *L)
+{
+	const char *n = luaL_checkstring(L,1);
+	int iv = luaL_checkinteger(L,2);
+	if (iv < 10) {
+		lua_pushliteral(L,"Invalid argument #2.");
+		lua_error(L);
+	}
+	if (timefuse_create(n,iv,false) == 0) {
+		lua_pushliteral(L,"Invalid argument #1.");
+		lua_error(L);
+	}
+	return 0;
+}
+
+
+static int f_tmr_start(lua_State *L)
+{
+	const char *n = luaL_checkstring(L,1);
+	if (timefuse_start(n)) {
+		lua_pushliteral(L,"Invalid argument #1.");
+		lua_error(L);
+	}
+	return 0;
+}
+
+
+static int f_tmr_stop(lua_State *L)
+{
+	const char *n = luaL_checkstring(L,1);
+	if (timefuse_stop(n)) {
+		lua_pushliteral(L,"Invalid argument #1.");
+		lua_error(L);
+	}
+	return 0;
+}
+
+
 int luax_disp_max_x(lua_State *L);
 int luax_disp_max_y(lua_State *L);
 int luax_disp_draw_rect(lua_State *L);
@@ -282,15 +344,21 @@ int luax_tlc5947_write(lua_State *L);
 static const LuaFn CoreFunctions[] = {
 	{ "getvar", f_getvar, "get variable visible via env command" },
 	{ "setvar", f_setvar, "set variable visible via env command" },
-	{ "newvar", f_newvar, "create variable visible via env command"  },
+	{ "newvar", f_newvar, "create variable visible via env command" },
 	{ "con_print", f_print, "print to console" },
-	{ "random", f_random, "create random integer number" },
+	// math.random yields a float....
+	{ "random", f_random, "create a 32-bit integer random number" },
 	{ "action_activate", f_action_activate, "activate an action (action[,arg])" },
 	{ "event_trigger", f_event_trigger, "trigger an event (event[,arg])" },
+	{ "event_create", f_event_create, "create an event (event) = <int>" },
 	{ "log_warn", f_warn, "write warning to log" },
 	{ "log_info", f_info, "write information to log" },
 	{ "log_dbug", f_dbug, "write debug message to log" },
-	{ "uptime", f_uptime, "query uptime" },
+	{ "uptime", f_uptime, "returns uptime as float in seconds" },
+	{ "timestamp", f_timestamp, "returns timestamp as 32-bit us (will wrap)" },
+	{ "tmr_create", f_tmr_create, "creates a timer" },
+	{ "tmr_start", f_tmr_start, "start a timer" },
+	{ "tmr_stop", f_tmr_stop, "stop a timer" },
 	{ 0, 0, 0 },
 };
 
@@ -367,6 +435,8 @@ static int xlua_parse_file(const char *fn, const char *n = 0)
 			close(fd);
 			if (st.st_size == n) {
 				Lock lock(Mtx);
+				if (LS == 0)
+					xlua_init();
 				if (0 == luaL_loadbuffer(LS,buf,st.st_size,vn)) {
 					lua_setglobal(LS,vn);
 					Compiled.insert(vn);
@@ -499,6 +569,28 @@ const char *xluac(Terminal &t, int argc, const char *args[])
 }
 
 
+unsigned xlua_render(Screen *ctx)
+{
+	unsigned d = 50;
+	if (lua_getglobal(LS,"render_screen")) {
+		if (0 != lua_pcall(LS,0,1,0)) {
+			log_dbug(TAG,"lua render_screen: exe error");
+			if (const char *str = lua_tostring(LS,-1))
+				log_warn(TAG,"render_screen: %s",str);
+			ctx->mode = (clockmode_t) (ctx->mode + 1);
+		} else if (int x = lua_tointeger(LS,-1)) {
+			if (x > 10)
+				d = x;
+		}
+		lua_settop(LS,0);
+		lua_gc(LS,LUA_GCCOLLECT);
+	} else {
+		ctx->mode = (clockmode_t) (ctx->mode + 1);
+	}
+	return d;
+}
+
+
 const char *xlua_exe(Terminal &t, const char *script)
 {
 	if (LS == 0)
@@ -550,7 +642,7 @@ static void xlua_script(void *arg)
 		log_warn(TAG,"lua!run '%s': %s",script,str);
 		lua_pop(LS,1);
 	}
-	lua_pop(LS,1);
+	lua_settop(LS,0);
 	lua_gc(LS,LUA_GCCOLLECT);
 	free(arg);
 }

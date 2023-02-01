@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2022, Thomas Maier-Komor
+ *  Copyright (C) 2018-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -287,8 +287,16 @@ static const char *event(Terminal &t, int argc, const char *args[])
 				event_trigger(e);
 				return 0;
 			}
+			return "Invalid argument #2.";
 		}
 	} else if (argc == 4) {
+		if (!strcmp(args[1],"-t")) {
+			if (event_t e = event_id(args[2])) {
+				event_trigger_arg(e,strdup(args[3]));
+				return 0;
+			}
+			return "Invalid argument #2.";
+		}
 		if (0 == t.getPrivLevel())
 			return "Access denied.";
 		Action *a = action_get(args[3]);
@@ -629,13 +637,13 @@ static const char *shell_cp(Terminal &term, int argc, const char *args[])
 	from += args[1];
 	int f = open(from.c_str(),O_RDONLY);
 	if (f == -1) {
-		term.printf("could not open %s: %s",from.c_str(),strerror(errno));
+		term.printf("could not open %s: %s\n",from.c_str(),strerror(errno));
 		return "";
 	}
 	int t = open(to.c_str(),O_CREAT|O_WRONLY|O_TRUNC,0666);
 	if (t == -1) {
 		close(f);
-		term.printf("could not open %s: %s",to.c_str(),strerror(errno));
+		term.printf("could not open %s: %s\n",to.c_str(),strerror(errno));
 		return "";
 	}
 	char buf[512];
@@ -645,7 +653,7 @@ static const char *shell_cp(Terminal &term, int argc, const char *args[])
 		if (w < 0) {
 			close(t);
 			close(f);
-			term.printf("writing to %s: %s",to.c_str(),strerror(errno));
+			term.printf("writing to %s: %s\n",to.c_str(),strerror(errno));
 			return "";
 		}
 		n = read(f,buf,sizeof(buf));
@@ -654,7 +662,7 @@ static const char *shell_cp(Terminal &term, int argc, const char *args[])
 	close(t);
 	close(f);
 	if (n < 0) {
-		term.printf("reading from %s: %s",from.c_str(),strerror(e));
+		term.printf("reading from %s: %s\n",from.c_str(),strerror(e));
 		return "";
 	}
 	return 0;
@@ -1807,13 +1815,19 @@ static const char *update(Terminal &term, int argc, const char *args[])
 	UBaseType_t p = uxTaskPriorityGet(0);
 	vTaskPrioritySet(0, 11);
 	const char *r = 0;
-	if ((argc == 3) && (0 == strcmp(args[1],"-b"))) {
-		r = perform_ota(term,(char*)args[2],true);
-		if (r == 0) {
-			term.println("rebooting...");
-			term.disconnect();
-			vTaskDelay(400);
-			esp_restart();
+	if (argc == 3) {
+		if (0 == strcmp(args[1],"-b")) {
+			r = perform_ota(term,(char*)args[2],true);
+			if (r == 0) {
+				term.println("rebooting...");
+				term.disconnect();
+				vTaskDelay(400);
+				esp_restart();
+			}
+		} else if (0 == strcmp(args[1],"-v")) {
+			return ota_from_server(term,Config.otasrv().c_str(),args[2]);
+		} else {
+			return "Invalid argument #1.";
 		}
 	} else if ((argc == 4) && (0 == strcmp(args[1],"-p"))) {
 		r = update_part(term,(char*)args[3],args[2]);
@@ -2186,9 +2200,11 @@ static const char *version(Terminal &term, int argc, const char *args[])
 	if (argc != 1)
 		return "Invalid number of arguments.";
 	term.printf("Atrium Version %s\n"
+		"firmware config %s\n"
 		"build on " __DATE__ ", " __TIME__ "\n"
 		"IDF version: %s\n"
 		, Version
+		, FwCfg
 		, esp_get_idf_version()
 		);
 	return 0;

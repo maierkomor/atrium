@@ -31,5 +31,7 @@ happening.
 - core network services start (uDNS,SNTP,Syslog,MQTT,Influx)
 - init remaining drivers
 - start display driver and application
-- activate user-configured actions (depends on all defined actions)
+- setup state-machines
+- activate user-configured actions (depends on all defined actions and
+  events)
 - start remaining network services (Telnet,HTTP,FTP,UDP remote-control port)

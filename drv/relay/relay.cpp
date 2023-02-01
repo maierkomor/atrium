@@ -62,6 +62,10 @@ static void relay_toggle(void *R)
 Relay::Relay(const char *name, xio_t gpio, uint32_t minitv, bool onlvl)
 : m_next(Relays)
 , m_name(name)
+, m_envon("on",0.0)
+, m_envlon("laston","")
+, m_envloff("lastoff","")
+, m_envst("state","init")
 , m_minitv(minitv + 1) // must not be 0, interval should be at least minitv - so+1
 , m_gpio(gpio)
 , m_onev(event_register(name,"`on"))
@@ -80,10 +84,10 @@ Relay::Relay(const char *name, xio_t gpio, uint32_t minitv, bool onlvl)
 void Relay::attach(class EnvObject *root)
 {
 	EnvObject *o = root->add(m_name);
-	m_envon = o->add("on",0.0);
-	m_envst = o->add("state","init");
-	m_envlon = o->add("laston","");
-	m_envloff = o->add("lastoff","");
+	o->add(&m_envon);
+	o->add(&m_envst);
+	o->add(&m_envlon);
+	o->add(&m_envloff);
 }
 
 
@@ -175,13 +179,13 @@ void Relay::sync()
 		char ltime[40];
 		localtimestr(ltime);
 		if (m_state) {
-			m_envst->set("on");
-			m_envon->set(1);
-			m_envlon->set(ltime);
+			m_envst.set("on");
+			m_envon.set(1);
+			m_envlon.set(ltime);
 		} else {
-			m_envst->set("off");
-			m_envon->set(-1);
-			m_envloff->set(ltime);
+			m_envst.set("off");
+			m_envon.set(-1);
+			m_envloff.set(ltime);
 		}
 		m_tlt = esp_timer_get_time() / 1000;
 		m_cb(this);

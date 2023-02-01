@@ -127,6 +127,7 @@ unsigned INA219::cyclic(void *arg)
 {
 	INA219 *dev = (INA219 *)arg;
 	uint8_t data[2];
+	int16_t bus = 0, shunt = 0, amp = 0;
 	switch (dev->m_st) {
 	case st_read:
 		dev->m_st = st_off;
@@ -134,27 +135,25 @@ unsigned INA219::cyclic(void *arg)
 		/* FALLTHRU */
 	case st_cont:
 		if (0 == i2c_w1rd(dev->m_bus,dev->m_addr,INA_REG_SHUNT,data,sizeof(data))) {
-			int16_t shunt = (int16_t) ((data[0] << 8) | data[1]);
-//			log_dbug(TAG,"shunt %d",shunt);
+			shunt = (int16_t) ((data[0] << 8) | data[1]);
 			dev->m_shunt->set(((float)shunt)*1E-2);
 		} else {
 			dev->m_shunt->set(NAN);
 		}
 		if (0 == i2c_w1rd(dev->m_bus,dev->m_addr,INA_REG_AMP,data,sizeof(data))) {
-			int16_t amp = (int16_t) ((data[0] << 8) | data[1]);
-//			log_dbug(TAG,"amp %d",amp);
+			amp = (int16_t) ((data[0] << 8) | data[1]);
 			dev->m_amp->set((float)amp/100);
 		} else {
 			dev->m_amp->set(NAN);
 		}
 		if (0 == i2c_w1rd(dev->m_bus,dev->m_addr,INA_REG_BUS,data,sizeof(data))) {
-			int16_t bus = (int16_t) ((data[0] << 8) | data[1]);
+			bus = (int16_t) ((data[0] << 8) | data[1]);
 			bus >>= 3;
 			dev->m_volt->set((float)bus*0.004);
-//			log_dbug(TAG,"bus %d",bus);
 		} else {
 			dev->m_volt->set(NAN);
 		}
+		log_dbug(TAG,"bus %d, shunt %d, amp %d",bus,shunt,amp);
 		break;
 	case st_trigger:
 		{
@@ -226,7 +225,7 @@ const char *INA219::exeCmd(Terminal &term, int argc, const char **args)
 			"badc <b>: set badc bits (valid values: 9..12)\n"
 			"sadc <r>: set sadc (9..12bits or 2,4,8,16,32,64,128 samples)\n"
 			"cal <c> : set calibration value (0..65535)\n"
-			"mode <m>: set mode (off, bus, shunt, both)\n"
+			"mode <m>: set mode (off, bus, shunt, both, bus1, shunt1, both1)\n"
 			);
 		return 0;
 	}
@@ -333,12 +332,21 @@ const char *INA219::exeCmd(Terminal &term, int argc, const char **args)
 			} else if (0 == strcmp(args[1],"bus")) {
 				m_conf &= ~CONF_MODE;
 				m_conf |= CONF_MODE_CONT | CONF_MODE_BUS;
+			} else if (0 == strcmp(args[1],"bus1")) {
+				m_conf &= ~CONF_MODE;
+				m_conf |= CONF_MODE_BUS;
 			} else if (0 == strcmp(args[1],"shunt")) {
 				m_conf &= ~CONF_MODE;
 				m_conf |= CONF_MODE_CONT | CONF_MODE_SHUNT;
+			} else if (0 == strcmp(args[1],"shunt1")) {
+				m_conf &= ~CONF_MODE;
+				m_conf |= CONF_MODE_SHUNT;
 			} else if (0 == strcmp(args[1],"both")) {
 				m_conf &= ~CONF_MODE;
 				m_conf |= CONF_MODE_CONT | CONF_MODE_BUS | CONF_MODE_SHUNT;
+			} else if (0 == strcmp(args[1],"both1")) {
+				m_conf &= ~CONF_MODE;
+				m_conf |= CONF_MODE_BUS | CONF_MODE_SHUNT;
 			} else {
 				return "Invalid argument #2.";
 			}

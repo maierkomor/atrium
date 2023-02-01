@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2017-2022, Thomas Maier-Komor
+ *  Copyright (C) 2017-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -42,6 +42,8 @@ void runtimedata_to_json(class stream &json);
 void get_time_of_day(uint8_t *h, uint8_t *m, uint8_t *s = 0, uint8_t *wd = 0, uint8_t *md = 0, uint8_t *mon = 0, unsigned *year = 0);
 #endif
 
+extern "C" const char Version[];
+extern "C" const char FwCfg[];
 extern const char ResetReasons[][12];
 extern const char *Weekdays_en[];
 extern const char *Weekdays_de[];

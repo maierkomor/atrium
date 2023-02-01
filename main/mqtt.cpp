@@ -71,6 +71,12 @@ using namespace std;
 
 static int mqtt_pub_int(const char *t, const char *v, int len, int retain, int qos, bool needlock);
 
+#if 0
+#define log_devel log_dbug
+#else
+#define log_devel(...)
+#endif
+
 
 #define TAG MODULE_MQTT
 static struct MqttClient *Client = 0;
@@ -343,7 +349,7 @@ static void parse_conack(uint8_t *buf, size_t rlen)
 		uint16_t status = buf[0] << 8 | buf[1];
 		if (status == 0) {
 			assert(Client->pcb != 0);
-			log_dbug(TAG,"CONACK OK");
+			log_devel(TAG,"CONACK OK");
 			Client->state = running;
 			mqtt_pub_int("version",Version,0,1,1,false);
 			mqtt_pub_int("reset_reason",ResetReasons[(int)esp_reset_reason()],0,1,1,false);
@@ -375,7 +381,7 @@ static void parse_puback(uint8_t *buf, size_t rlen)
 			if ((rlen == 4) && (buf[2] & 0x80)) {
 				log_warn(TAG,"PUBACK for pid %x, topic %s failed: reason %x",(unsigned)pid,x->second.topic,buf[2]);
 			} else {
-				log_dbug(TAG,"PUBACK %x for %s",(unsigned)pid,x->second.topic);
+				log_devel(TAG,"PUBACK %x for %s",(unsigned)pid,x->second.topic);
 			}
 			Client->pubs.erase(x);
 		} else {
@@ -392,7 +398,7 @@ static void parse_suback(uint8_t *buf, size_t rlen)
 {
 	if (rlen == 3) {
 		uint16_t pid = buf[0] << 8 | buf[1];
-		log_dbug(TAG,"SUBACK %x",(unsigned)pid);
+		log_devel(TAG,"SUBACK %x",(unsigned)pid);
 		if (buf[2] & 0x80) {
 			const char *t = "<unknown>";
 			auto x = Client->subs.find(pid);
@@ -417,9 +423,9 @@ static err_t handle_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *pbuf, err_
 	}
 	assert(pcb);
 	if (0 == pbuf) {
-		log_dbug(TAG,"recv: pbuf=0, err=%d",e);
+		log_devel(TAG,"recv: pbuf=0, err=%d",e);
 		if (e == ERR_OK) {
-			log_dbug(TAG,"connection closed");
+			log_devel(TAG,"connection closed");
 			// connection has been closed
 			tcp_close(pcb);
 			Client->pcb = 0;
@@ -447,7 +453,7 @@ static err_t handle_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *pbuf, err_
 			}
 			rlen |= tmp << 7;
 		}
-		log_dbug(TAG,"type= %x, rlen = %u",type,rlen);
+		log_devel(TAG,"type= %x, rlen = %u",type,rlen);
 		bool alloc = false;
 		uint8_t *buf = pbuf_at(pbuf,++off);
 		if (pbuf_of(pbuf,off) != pbuf_of(pbuf,off+rlen-1)) {
@@ -562,7 +568,7 @@ static err_t handle_connect(void *arg, struct tcp_pcb *pcb, err_t x)
 	}
 	if (b-tmp != sizeof(tmp))
 		log_warn(TAG,"connect fill %d!=%d",b-tmp,sizeof(tmp));
-	log_dbug(TAG,"connect write %d",sizeof(tmp));
+	log_devel(TAG,"connect write %d",sizeof(tmp));
 	err_t e = tcp_write(pcb,tmp,sizeof(tmp),TCP_WRITE_FLAG_COPY);
 	if (e) {
 		log_warn(TAG,"connect: write error %s",strlwiperr(e));
@@ -603,7 +609,7 @@ static int mqtt_pub_int(const char *t, const char *v, int len, int retain, int q
 #endif
 	}
 	memcpy(b,v,len);
-	log_dbug(TAG,"publish %s %.*s",t,len,v);
+	log_devel(TAG,"publish %s %.*s",t,len,v);
 #ifdef CONFIG_IDF_TARGET_ESP8266
 	uint8_t flags = TCP_WRITE_FLAG_COPY;
 	if (more)
@@ -719,10 +725,11 @@ static void mqtt_pub_uptime(void * = 0)
 		n += snprintf(value+n,sizeof(value)-n,"%d:%02u",h,m);
 	}
 	if ((n > 0) && (n <= sizeof(value))) {
-		if (err_t e = mqtt_pub("uptime",value,n,0,4))
+		if (err_t e = mqtt_pub("uptime",value,n,0,4)) {
 			log_warn(TAG,"publish 'uptime' failed: %d",e);
-		else
-			log_dbug(TAG,"published uptime %s",value);
+		} else {
+			log_devel(TAG,"published uptime %s",value);
+		}
 	}
 }
 

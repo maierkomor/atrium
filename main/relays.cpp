@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2021, Thomas Maier-Komor
+ *  Copyright (C) 2020-2022, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -33,6 +33,15 @@
 #include "terminal.h"
 
 #include <string.h>
+
+#ifdef CONFIG_LUA
+#include "luaext.h"
+extern "C" {
+#include "lua.h"
+#include "lualib.h"
+#include "lauxlib.h"
+}
+#endif
 
 using namespace std;
 
@@ -126,6 +135,46 @@ static void mqtt_callback(const char *topic, const void *data, size_t len)
 #endif
 
 
+#ifdef CONFIG_LUA
+static int luax_relay_set(lua_State *L)
+{
+	const char *n = luaL_checkstring(L,1);
+	int v = luaL_checkinteger(L,2);
+	if ((v < 0) || (v > 1)) {
+		lua_pushliteral(L,"Invalid argument #2.");
+		lua_error(L);
+	}
+	if (Relay *r = Relay::get(n)) {
+		r->set(v);
+	} else {
+		lua_pushliteral(L,"Invalid argument #1.");
+		lua_error(L);
+	}
+	return 0;
+}
+
+
+static int luax_relay_toggle(lua_State *L)
+{
+	const char *n = luaL_checkstring(L,1);
+	if (Relay *r = Relay::get(n)) {
+		r->toggle();
+	} else {
+		lua_pushliteral(L,"Invalid argument #1.");
+		lua_error(L);
+	}
+	return 0;
+}
+
+
+static LuaFn Functions[] = {
+	{ "relay_set", luax_relay_set, "turn relay on/off" },
+	{ "relay_toggle", luax_relay_toggle, "toggle relay state" },
+	{ 0, 0, 0 }
+};
+#endif
+
+
 void relay_setup()
 {
 	if (Relay::first()) {
@@ -185,8 +234,12 @@ void relay_setup()
 			r->setInterlock(r);
 		}
 	}
-	if (numrel)
+	if (numrel) {
 		action_add("relay!set",relay_set_state,0,"set relay state: '<name>:{on,off,toggle}'");
+#ifdef CONFIG_LUA
+		xlua_add_funcs("relay",Functions);
+#endif
+	}
 }
 
 

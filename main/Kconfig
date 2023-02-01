@@ -58,13 +58,6 @@ config HWCONF_DYNAMIC
 	help
 		support for configuring and modifying driver online
 
-config SOCKET_API
-	bool "socket API"
-	default false
-	help
-		Use LWIP supplied socket API instead of native LwIP binding.
-		Do not enable, unless you exactly know why.
-
 config UDNS
 	bool "uDNS"
 	default true
@@ -196,7 +189,7 @@ config ROMFS_VFS_NUMFDS
 config USB_HOST_FS
 	bool "USB host filesystem via openocd"
 	default false
-	depends on DEVEL
+	depends on DEVEL && (IDF_TARGET_ESP32S2 || IDF_TARGET_ESP32S3 || IDF_TARGET_ESP32C3)
 	help
 		"mount openocd host filesystem to /usb"
 endmenu # filesystem
@@ -335,6 +328,13 @@ config PCF8574
 	help
 		I2C driver for PCF8574 (GPIO expander), used as bridge for HD44780U
 
+config TCA9555
+	depends on I2C_XDEV && DEVEL
+	bool "tca9555"
+	default true
+	help
+		I2C driver for TCA9555 (GPIO expander)
+
 config MCP2300X
 	depends on I2C_XDEV
 	bool "mcp2300x"
@@ -416,12 +416,12 @@ config SPI
 	bool "SPI"
 	depends on IDF_TARGET_ESP32 || IDF_TARGET_ESP32S2
 	default false
-	depends on DEVEL
 	help
 		SPI driver infrastructure
 
 config SX1276
 	bool "SX1276"
+	depends on DEVEL
 	default false
 	depends on SPI
 	help
@@ -478,6 +478,13 @@ config FUNCTION_TIMING
 	default false
 	help
 		enable for performance analysis only - negative impact for general use
+
+config SOCKET_API
+	bool "socket API"
+	default false
+	help
+		Use LWIP supplied socket API instead of native LwIP binding.
+		Do not enable, unless you exactly know why.
 
 endmenu # experimental stuff
 

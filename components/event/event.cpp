@@ -36,7 +36,11 @@ using namespace std;
 
 struct Event {
 	event_t id;
-	void *arg;
+	void *arg = 0;
+	Event(event_t i = 0, void *a = 0)
+	: id(i)
+	, arg(a)
+	{ }
 };
 
 
@@ -141,8 +145,10 @@ int event_trigger_en(trigger_t t, bool en)
 {
 	event_t e = t >> 16;
 	uint16_t c = t;
-	if ((e == 0) || (e >= EventHandlers.size()) ||  (c >= EventHandlers[e].callbacks.size()))
+	if ((e == 0) || (e >= EventHandlers.size()) ||  (c >= EventHandlers[e].callbacks.size())) {
+		log_warn(TAG,"cannot %sable event %d",en?"en":"dis",t);
 		return 1;
+	}
 	EventHandlers[e].callbacks[c].enabled = en;
 	return 0;
 }
@@ -152,10 +158,15 @@ trigger_t event_callback(const char *event, const char *action)
 {
 	const char *x = 0;
 	if (event_t e = event_id(event)) {
-		if (Action *a = action_get(action))
+		if (const char *sp = strchr(action,' ')) {
+			++sp;
+			char tmp[sp-action];
+			memcpy(tmp,action,sizeof(tmp));
+			if (Action *a = action_get(tmp))
+				return event_callback_arg(e,a,strdup(sp));
+		} else if (Action *a = action_get(action))
 			return event_callback(e,a);
-		else
-			x = action;
+		x = action;
 	} else {
 		x = event;
 	}
@@ -175,7 +186,6 @@ trigger_t event_callback_arg(const char *event, const char *action, const char *
 	} else {
 		x = event;
 	}
-	assert(x);
 	log_warn(TAG,"callback arg invalid %s",x);
 	return 0;
 }
@@ -255,7 +265,7 @@ void event_trigger(event_t id)
 		log_warn(TAG,"trigger 0");
 		return;
 	}
-	struct Event e = {id,0};
+	Event e(id);
 	BaseType_t r = xQueueSend(EventsQ,&e,1000);
 	if (r != pdTRUE) {
 		log_dbug(TAG,"lost event %d",id);
@@ -267,7 +277,7 @@ void event_trigger(event_t id)
 
 void event_trigger_nd(event_t id)	// no-debug version for syslog only
 {
-	struct Event e = {id,0};
+	Event e(id);
 	BaseType_t r = xQueueSend(EventsQ,&e,1000);
 	if (r != pdTRUE)
 		++Lost;
@@ -276,34 +286,37 @@ void event_trigger_nd(event_t id)	// no-debug version for syslog only
 
 void event_trigger_arg(event_t id, void *arg)
 {
-	assert(id != 0);
-	struct Event e = {id,arg};
-	log_dbug(TAG,"trigger %d %p",id,arg);
-	BaseType_t r = xQueueSend(EventsQ,&e,1000);
-	if (r != pdTRUE)
-		++Lost;
+	if (id != 0) {
+		Event e(id,arg);
+		log_dbug(TAG,"trigger %d %p",id,arg);
+		BaseType_t r = xQueueSend(EventsQ,&e,1000);
+		if (r != pdTRUE)
+			++Lost;
+	}
 }
 
 
 void event_isr_trigger(event_t id)
 {
 	// ! don't log from ISR
-	assert(id != 0);
-	Event e = {id,0};
-	BaseType_t r = xQueueSendFromISR(EventsQ,&e,0);
- 	if (r != pdTRUE)
-		++Lost;
+	if (id != 0) {
+		Event e(id);
+		BaseType_t r = xQueueSendFromISR(EventsQ,&e,0);
+		if (r != pdTRUE)
+			++Lost;
+	}
 }
 
 
-void event_isr_trigger_arg(event_t id,void *arg)
+void event_isr_trigger_arg(event_t id, void *arg)
 {
 	// ! don't log from ISR
-	assert(id != 0);
-	Event e = {id,arg};
-	BaseType_t r = xQueueSendFromISR(EventsQ,&e,0);
-	if (r != pdTRUE)
-		++Lost;
+	if (id != 0) {
+		Event e(id,arg);
+		BaseType_t r = xQueueSendFromISR(EventsQ,&e,0);
+		if (r != pdTRUE)
+			++Lost;
+	}
 }
 
 
@@ -321,7 +334,6 @@ static void event_task(void *)
 #endif
 	for (;;) {
 		Event e;
-		e.id = 0;
 		BaseType_t r = xQueueReceive(EventsQ,&e,dt);
 		if (Lost) {
 			log_warn(TAG,"lost %u events",(unsigned)Lost);

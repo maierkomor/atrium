@@ -16,6 +16,7 @@ idf_component_register(
 	sgp30.cpp
 	si7021.cpp
 	ssd1306.cpp
+	tca9555.cpp
 	ti.cpp
 	INCLUDE_DIRS .
 	REQUIRES actions cyclic event display env logging nvm term xio

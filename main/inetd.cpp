@@ -318,14 +318,13 @@ const char *inetadm(Terminal &term, int argc, const char *args[])
 		return 0;
 	}
 	if (!strcmp(args[1],"-d")) {
-		term.printf("disable service\n");
 		if (p->sock == -1) {
 			return "Already disabled.";
 		}
 		FD_CLR(p->sock,&PortFDs);
 		close(p->sock);
 		p->sock = -1;
-		term.printf("service closed\n");
+		term.println("disabled service");
 #ifdef CONFIG_MDNS
 		mdns_service_remove(p->service, p->mode == m_tcp ? "_tcp" : "_udp");
 #endif

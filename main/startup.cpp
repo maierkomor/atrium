@@ -385,6 +385,13 @@ void app_main()
 	webcam_setup();
 #endif
 
+	// activate actions after all events and actions are setup
+	// otherwise this step will fail
+	cfg_activate_actions();
+
+#ifdef CONFIG_LUA
+	xlua_setup();
+#endif
 #ifdef CONFIG_STATEMACHINES
 	sm_setup();
 #endif
@@ -395,14 +402,6 @@ void app_main()
 
 	// hardware init finished, no reset
 	nvm_store_u8("hwconf",0);
-
-	// activate actions after all events and actions are setup
-	// otherwise this step will fail
-	cfg_activate_actions();
-
-#ifdef CONFIG_LUA
-	xlua_setup();
-#endif
 	// here all actions and events must be initialized
 	cfg_activate_triggers();
 

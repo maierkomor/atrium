@@ -655,8 +655,8 @@ make bin/atriumcfg
 bin/atriumcfg
 ```
 
-Over-the-Air update:
-====================
+Over-the-Air (OTA) updates:
+===========================
 To build binaries for an OTA update, you have to build your project with target `ota` for ESP8266 to get binaries for the approrpiate partitions. For ESP32 all binaries can be used for any patition with OTA updates.
 ```
 make PROJECT=<projectname> ota
@@ -708,6 +708,34 @@ configuration manually. After updating and before rebooting, you can
 restore the old configuration using:
 ```
 config restore
+```
+
+OTA server:
+-----------
+An OTA server should provide firmware images via HTTP at the specified
+location. Additionally, the OTA server can be set via in the `otasrv`
+config setting, which simplifies the ota update command. If the `otasrv`
+variable is set the update command only needs the version, you intend to
+update to, and the update command will the pick the coorect file for the
+relevant partition ($ext) and firmware configuration (project name,
+$fwcfg) as follow:
+
+```
+$otasrv/$fwcfg/atrium-$version.$ext
+```
+
+The `otasrv` setting should be of the format: `http://server/path`.
+Below should be a subdirectory for the relevant firmware/project
+configuration, which in turn includes the firmware file named
+`atrium-<version>.<ext>`. The extension part is for ESP32 devices
+always `.bin`, as the firmware can be stored on any partition. For
+ESP8266 family, the filename extension must match the partition name, as
+it needs to be linked with the correct addresses.
+
+To use this, the update command should be executed with the option `-v`
+and the relevant version name:
+```
+update -v <version>
 ```
 
 

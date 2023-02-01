@@ -69,7 +69,7 @@ static inline void uart_console_setup(void)
 		if (r != pdPASS)
 			log_error(TAG,"create task: %s",esp_err_to_name(r));
 		else
-			log_info(TAG,"console on UART %d/%d ready",rx,tx);
+			log_info(TAG,"console on UART %d/%d",rx,tx);
 	}
 }
 #else
@@ -90,7 +90,7 @@ static inline void jtag_console_setup(void)
 			if (r != pdPASS)
 				log_error(TAG,"create task: %s",esp_err_to_name(r));
 			else
-				log_info(TAG,"console on JTAG ready");
+				log_info(TAG,"console on JTAG");
 		}
 	}
 }
@@ -111,7 +111,7 @@ static inline void cdc_console_setup(void)
 		if (r != pdPASS)
 			log_error(TAG,"create task: %s",esp_err_to_name(r));
 		else
-			log_info(TAG,"console on CDC ready");
+			log_info(TAG,"console on CDC");
 	}
 }
 #else

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2022, Thomas Maier-Komor
+ *  Copyright (C) 2018-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -35,6 +35,9 @@
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
+
+#define STRINGIFY(x) #x
+#define TOSTRING(x) STRINGIFY(x)
 
 using namespace std;
 
@@ -89,6 +92,8 @@ const char *Weekdays_en[] = { "Su", "Mo", "Tu", "We", "Th", "Fr", "Sa", "wd", "w
 const char *Weekdays_de[] = { "So", "Mo", "Di", "Mi", "Do", "Fr", "Sa", "wt", "we", "jt", "ft" };
 
 extern "C" const char Version[] = ATRIUM_VERSION;
+//extern "C" const char FwCfg[] = TOSTRING(FWCFG);
+extern "C" const char FwCfg[] = FWCFG;
 NodeConfig Config;
 HardwareConfig HWConf;
 nvs_handle NVS = 0;

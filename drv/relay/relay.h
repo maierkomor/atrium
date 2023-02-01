@@ -22,6 +22,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/timers.h>
 
+#include <env.h>
 #include <event.h>
 
 #include "xio.h"
@@ -81,8 +82,8 @@ class Relay
 	Relay *m_next = 0, *m_interlock = 0;
 	const char *m_name;
 	void (*m_cb)(Relay *) = 0;
-	class EnvNumber *m_envon = 0;
-	class EnvString *m_envlon = 0, *m_envloff = 0, *m_envst = 0;
+	class EnvNumber m_envon;
+	class EnvString m_envlon, m_envloff, m_envst;
 	TimerHandle_t m_tmr;
 	uint32_t m_tlt = 0		// time of last toggle
 		, m_minitv = 0;		// minimum toggle interval

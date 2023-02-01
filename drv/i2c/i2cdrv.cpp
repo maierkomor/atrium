@@ -385,7 +385,9 @@ int i2c_init(uint8_t port, uint8_t sda, uint8_t scl, unsigned freq, uint8_t xpul
 	}
 #if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
 	conf.master.clk_speed = freq;
-	esp_err_t e = i2c_driver_install((i2c_port_t) port, conf.mode, 0, 0, ESP_INTR_FLAG_IRAM);
+	// IRAM ISR placements seems to be unsupported on IDF v4.4.x
+//	esp_err_t e = i2c_driver_install((i2c_port_t) port, conf.mode, 0, 0, ESP_INTR_FLAG_IRAM);
+	esp_err_t e = i2c_driver_install((i2c_port_t) port, conf.mode, 0, 0, 0);
 #else
 	esp_err_t e = i2c_driver_install((i2c_port_t) port, conf.mode);
 #endif

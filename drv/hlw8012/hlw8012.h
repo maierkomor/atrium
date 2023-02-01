@@ -46,7 +46,7 @@ class HLW8012
 
 	uint64_t m_tscf[3];
 	uint64_t m_tscf1[3];
-	char m_name[12];
+	char m_name[16];
 	class EnvNumber *m_curr = 0, *m_volt = 0, *m_power = 0;
 	gpio_num_t m_sel, m_cf, m_cf1;
 	event_t m_ep = 0, m_ev = 0, m_ec = 0;

@@ -61,21 +61,21 @@ typedef enum logmod_e {
 	logmod_init           =  31,
 	logmod_led            =  32,
 	logmod_ledc           =  33,
-	logmod_ledstrip       =  34,
-	logmod_log            =  35,
-	logmod_lua            =  36,
-	logmod_lwtcp          =  37,
-	logmod_max7219        =  38,
-	logmod_mcp230xx       =  39,
-	logmod_mqtt           =  40,
-	logmod_nightsky       =  41,
-	logmod_ns             =  42,
-	logmod_nvm            =  43,
-	logmod_ota            =  44,
-	logmod_owb            =  45,
-	logmod_pca9685        =  46,
-	logmod_pcf8574        =  47,
-	logmod_relay          =  48,
+	logmod_log            =  34,
+	logmod_lua            =  35,
+	logmod_lwtcp          =  36,
+	logmod_max7219        =  37,
+	logmod_mcp230xx       =  38,
+	logmod_mqtt           =  39,
+	logmod_nightsky       =  40,
+	logmod_ns             =  41,
+	logmod_nvm            =  42,
+	logmod_ota            =  43,
+	logmod_owb            =  44,
+	logmod_pca9685        =  45,
+	logmod_pcf8574        =  46,
+	logmod_relay          =  47,
+	logmod_rgbleds        =  48,
 	logmod_romfs          =  49,
 	logmod_screen         =  50,
 	logmod_sgp30          =  51,
@@ -86,20 +86,21 @@ typedef enum logmod_e {
 	logmod_spi            =  56,
 	logmod_ssd130x        =  57,
 	logmod_sx1276         =  58,
-	logmod_telnet         =  59,
-	logmod_ti             =  60,
-	logmod_timefuse       =  61,
-	logmod_tlc5916        =  62,
-	logmod_tlc5947        =  63,
-	logmod_tp             =  64,
-	logmod_uart           =  65,
-	logmod_udns           =  66,
-	logmod_udpctrl        =  67,
-	logmod_usb            =  68,
-	logmod_wlan           =  69,
-	logmod_ws2812         =  70,
-	logmod_www            =  71,
-	logmod_xio            =  72,
+	logmod_tca9555        =  59,
+	logmod_telnet         =  60,
+	logmod_ti             =  61,
+	logmod_timefuse       =  62,
+	logmod_tlc5916        =  63,
+	logmod_tlc5947        =  64,
+	logmod_tp             =  65,
+	logmod_uart           =  66,
+	logmod_udns           =  67,
+	logmod_udpctrl        =  68,
+	logmod_usb            =  69,
+	logmod_wlan           =  70,
+	logmod_ws2812         =  71,
+	logmod_www            =  72,
+	logmod_xio            =  73,
 } logmod_t;
 
 // module defines
@@ -136,7 +137,6 @@ typedef enum logmod_e {
 #define MODULE_INIT            logmod_init
 #define MODULE_LED             logmod_led
 #define MODULE_LEDC            logmod_ledc
-#define MODULE_LEDSTRIP        logmod_ledstrip
 #define MODULE_LOG             logmod_log
 #define MODULE_LUA             logmod_lua
 #define MODULE_LWTCP           logmod_lwtcp
@@ -151,6 +151,7 @@ typedef enum logmod_e {
 #define MODULE_PCA9685         logmod_pca9685
 #define MODULE_PCF8574         logmod_pcf8574
 #define MODULE_RELAY           logmod_relay
+#define MODULE_RGBLEDS         logmod_rgbleds
 #define MODULE_ROMFS           logmod_romfs
 #define MODULE_SCREEN          logmod_screen
 #define MODULE_SGP30           logmod_sgp30
@@ -161,6 +162,7 @@ typedef enum logmod_e {
 #define MODULE_SPI             logmod_spi
 #define MODULE_SSD130X         logmod_ssd130x
 #define MODULE_SX1276          logmod_sx1276
+#define MODULE_TCA9555         logmod_tca9555
 #define MODULE_TELNET          logmod_telnet
 #define MODULE_TI              logmod_ti
 #define MODULE_TIMEFUSE        logmod_timefuse
@@ -175,8 +177,8 @@ typedef enum logmod_e {
 #define MODULE_WS2812          logmod_ws2812
 #define MODULE_WWW             logmod_www
 #define MODULE_XIO             logmod_xio
-#define MAX_MODULE_ID           72
-#define NUM_MODULES             73
+#define MAX_MODULE_ID           73
+#define NUM_MODULES             74
 
 #ifdef USE_MODULE
 #define TAG USE_MODULE

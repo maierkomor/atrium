@@ -55,23 +55,24 @@ const char *inetadm(Terminal &term, int argc, const char *args[])
 	if (l == 0)
 		return "Invalid argument #2.";;
 	bool e = l->isEnabled();
+	const char *r;
 	if (!strcmp(args[1],"-e")) {
 		if (e) {
 			return "Already enabled.";
 		}
 		l->enable(true);
-		term.printf("enabled service\n");
-		return 0;
-	}
-	if (!strcmp(args[1],"-d")) {
+		r = "enabled service";
+	} else if (!strcmp(args[1],"-d")) {
 		if (!e) {
 			return "Already disabled.";
 		}
 		l->enable(false);
-		term.println("disabled service");
-		return 0;
+		r = "disabled service";
+	} else {
+		return "Invalid argument #1.";;
 	}
-	return "Invalid argument #1.";;
+	term.println(r);
+	return 0;
 }
 
 #endif

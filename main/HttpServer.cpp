@@ -45,6 +45,12 @@
 #undef write
 #endif
 
+#if 0
+#define log_devel log_dbug
+#else
+#define log_devel(...)
+#endif
+
 using namespace std;
 
 
@@ -188,7 +194,7 @@ bool HttpServer::runFile(HttpRequest *req)
 		log_warn(TAG,"wwwroot not set");
 		return false;
 	}
-	log_dbug(TAG,"found file %s",uri);
+	log_devel(TAG,"found file %s",uri);
 	size_t rl = strlen(m_wwwroot);
 	if (m_wwwroot[rl-1] == '/')
 		--rl;
@@ -196,7 +202,7 @@ bool HttpServer::runFile(HttpRequest *req)
 	char fn[ul+rl+1];
 	memcpy(fn,m_wwwroot,rl);
 	memcpy(fn+rl,uri,ul+1);
-	log_dbug(TAG,"open(%s)",fn);
+	log_devel(TAG,"open(%s)",fn);
 	HttpResponse ans;
 	int fd = open(fn,O_RDONLY);
 	if (fd == -1) {
@@ -264,7 +270,7 @@ void HttpServer::performGET(HttpRequest *req)
 
 void HttpServer::performPOST(HttpRequest *req)
 {
-	log_dbug(TAG,"POST %s",req->getURI());
+	log_devel(TAG,"POST %s",req->getURI());
 	if (!runFunction(req)) {
 		HttpResponse ans;
 		ans.setResult(HTTP_NOT_FOUND);
@@ -277,7 +283,7 @@ void HttpServer::performPUT(HttpRequest *req)
 {
 #if defined CONFIG_FATFS || defined CONFIG_SPIFFS
 	const char *uri = req->getURI();
-	log_dbug(TAG,"put request %s",uri);
+	log_devel(TAG,"put request %s",uri);
 	const char *sl = strrchr(uri,'/');
 	char fn[strlen(m_wwwroot)+strlen(sl)];
 	int fd = open(fn,O_CREAT|O_WRONLY,0666);

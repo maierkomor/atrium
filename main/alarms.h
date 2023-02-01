@@ -23,7 +23,7 @@
 #include "actions.h"
 
 
-typedef enum { Sun = 0, Mon, Tue, Wed, Thu, Fri, Sat, WD, WE, ED, weekdays_max } weekdays_t;
+typedef enum { Sun = 0, Mon, Tue, Wed, Thu, Fri, Sat, WD, WE, ED, HD, weekdays_max } weekdays_t;
 
 #ifdef __cplusplus
 #include <vector>

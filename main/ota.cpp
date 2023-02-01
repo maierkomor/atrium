@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2021, Thomas Maier-Komor
+ *  Copyright (C) 2018-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -20,6 +20,7 @@
 
 #ifdef CONFIG_OTA
 
+#include "globals.h"
 #include "leds.h"
 #include "log.h"
 #include "lwtcp.h"
@@ -213,7 +214,6 @@ static int send_http_get(Terminal &t, LwTcp &P, const char *server, int port, co
 		t.printf("unable to send get: %s\n",P.error());
     		return -1;
 	}
-	t.println("sent GET");
 	return res;
 }
 
@@ -304,12 +304,9 @@ static int socket_to_x(Terminal &t, LwTcp &P, int (*sink)(Terminal&,void*,char*,
 			result = "server 404: file not found";
 			goto done;
 		}
-		t.printf("unexpected header\n%128s\n",buf);
-		char *nl = strchr(buf,'\n');
-		if (nl) {
+		if (char *nl = strchr(buf,'\n'))
 			*nl = 0;
-			t.printf("unexpted answer: %s\n",buf);
-		}
+		t.printf("unexpected answer: %s\n",buf);
 		goto done;
 	}
 	if (const char *cl = strstr(buf+8,"Content-Length:")) {
@@ -325,9 +322,9 @@ static int socket_to_x(Terminal &t, LwTcp &P, int (*sink)(Terminal&,void*,char*,
 	}
 	r -= (data-buf);
 	while (r > 0) {
-		log_dbug(TAG,"sink %u",r);
-		if (int e = sink(t,arg,data,r)) {
-			log_warn(TAG,"sink error %d",e);
+//		log_dbug(TAG,"sink %u",r);
+		if (sink(t,arg,data,r)) {
+//			log_warn(TAG,"sink error %d",e);
 			goto done;
 		}
 		numD += r;
@@ -345,7 +342,6 @@ static int socket_to_x(Terminal &t, LwTcp &P, int (*sink)(Terminal&,void*,char*,
 		log_warn(TAG,"read error %d",r);
 	} else if (numD != contlen) {
 		result = "\nincomplete";
-		log_warn(TAG,"incomplete");
 	} else {
 		ret = 0;
 	}
@@ -359,6 +355,8 @@ done:
 
 #endif
 
+
+#ifndef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 static int file_to_flash(Terminal &t, int fd, esp_ota_handle_t ota)
 {
 	size_t numD = 0;
@@ -383,7 +381,7 @@ static int file_to_flash(Terminal &t, int fd, esp_ota_handle_t ota)
 		numD += n;
 		esp_err_t err = esp_ota_write(ota,buf,n);
 		if (err != ESP_OK) {
-			t.printf("ota write failed: %s\n",esp_err_to_name(err));
+			t.printf("OTA write failed: %s\n",esp_err_to_name(err));
 			break;
 		}
 		if (ia)
@@ -394,6 +392,7 @@ static int file_to_flash(Terminal &t, int fd, esp_ota_handle_t ota)
 	free(buf);
 	return r;
 }
+#endif	// CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 
 
 static int http_to(Terminal &t, char *addr, int (*sink)(Terminal &,void*,char*,size_t), void *arg)
@@ -564,38 +563,39 @@ const char *perform_ota(Terminal &t, char *source, bool changeboot)
 {
 	statusled_set(ledmode_pulse_often);
 	vTaskPrioritySet(0,10);
-	const esp_partition_t *bootp = esp_ota_get_boot_partition();
-	const esp_partition_t *runp = esp_ota_get_running_partition();
 	bool ia = t.isInteractive();
+	const esp_partition_t *bootp = esp_ota_get_boot_partition();
+#ifdef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
+	const esp_partition_t *runp = esp_ota_get_running_partition();
 	if (ia)
 		t.printf("running on '%s' at 0x%08x\n"
 			,runp->label
 			,runp->address);
 	if (bootp != runp)
 		t.printf("boot partition: '%s' at 0x%08x\n",bootp->label,bootp->address);
+#endif
+	int result;
+	esp_ota_handle_t ota = 0;
 	const esp_partition_t *updatep = esp_ota_get_next_update_partition(NULL);
 	if (updatep == 0) {
 		t.println("no OTA partition");
-		statusled_set(ledmode_pulse_seldom);
-		return "Failed.";
+		goto failed;
 	}
 	if (ia) {
 		t.printf("erasing '%s' at 0x%08x\n",updatep->label,updatep->address);
 		t.sync();
 	}
-	log_dbug(TAG,"erase");
-	esp_ota_handle_t ota = 0;
-	esp_err_t err = esp_ota_begin(updatep, OTA_SIZE_UNKNOWN, &ota);
-	if (err != ESP_OK) {
-		t.printf("esp_ota_begin failed: %s\n",esp_err_to_name(err));
-		statusled_set(ledmode_pulse_seldom);
-		return "Failed.";
+	if (esp_err_t err = esp_ota_begin(updatep, OTA_SIZE_UNKNOWN, &ota)) {
+		t.printf("OTA begin: %s\n",esp_err_to_name(err));
+		goto failed;
 	}
 
-	int result;
 	if ((0 == memcmp(source,"http://",7)) || (0 == memcmp(source,"https://",8))) {
 		result = http_to(t,source,to_ota,(void*)ota);
 	} else {
+#ifdef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
+		return "Invalid OTA link.";
+#else
 		t.printf("open file %s\n",source);
 		int fd = open(source,O_RDONLY);
 		if (fd == -1) {
@@ -604,32 +604,47 @@ const char *perform_ota(Terminal &t, char *source, bool changeboot)
 		}
 		result = file_to_flash(t,fd,ota);
 		close(fd);
+#endif
 	}
 	if (result)
-		return "Failed.";
-	t.printf("verify ota\n");
+		goto failed;
+	t.printf("verify\n");
 	t.sync();
 	if (esp_err_t e = esp_ota_end(ota)) {
 		log_warn(TAG,"esp_ota_end: %s\n",esp_err_to_name(e));
 		t.printf("ota verify: %s\n",esp_err_to_name(e));
-		statusled_set(ledmode_pulse_seldom);
-		return "Failed.";
-	}
-	log_dbug(TAG,"verify=OK");
-	if (result) {
-		statusled_set(ledmode_pulse_seldom);
-		return "Failed.";
+		goto failed;
 	}
 	if (changeboot && (bootp != updatep)) {
 		int err = esp_ota_set_boot_partition(updatep);
 		if (err != ESP_OK) {
 			t.printf("set boot failed: %s\n",esp_err_to_name(err));
-			statusled_set(ledmode_pulse_seldom);
-			return "Failed.";
+			goto failed;
 		}
 	}
 	statusled_set(ledmode_off);
 	return 0;
+failed:
+	statusled_set(ledmode_pulse_seldom);
+	return "Failed.";
+}
+
+
+const char *ota_from_server(Terminal &term, const char *server, const char *version)
+{
+	if ((server[0] == 0) || strncmp(server,"http://",7))
+		return "OTA server invalid";
+#ifdef ESP32
+	const char *fext = "bin";
+#else
+	const esp_partition_t *u = esp_ota_get_next_update_partition(NULL);
+	if (u == 0)
+		return "No update partition.";
+	const char *fext = u->label;
+#endif
+	char src[strlen(server)+strlen(version)+32];
+	snprintf(src,sizeof(src),"%s/%s/atrium-%s.%s",server,FwCfg,version,fext);
+	return perform_ota(term,src,true);
 }
 
 

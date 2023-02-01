@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021-2022, Thomas Maier-Komor
+ *  Copyright (C) 2021-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -28,6 +28,7 @@
 #include "pca9685.h"
 #include "pcf8574.h"
 #include "si7021.h"
+#include "tca9555.h"
 #include "log.h"
 #include "terminal.h"
 #include "env.h"
@@ -84,6 +85,11 @@ static inline void i2c_scan_device(uint8_t bus, uint8_t addr, i2cdrv_t drv)
 		break;
 	case i2cdrv_pca9685_xclk_pnp:
 		PCA9685::create(bus,addr,true,true,true);
+		break;
+#endif
+#ifdef CONFIG_TCA9555
+	case i2cdrv_tca9555:
+		TCA9555::create(bus,addr);
 		break;
 #endif
 #ifdef CONFIG_INA2XX

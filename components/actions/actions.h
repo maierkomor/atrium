@@ -30,7 +30,6 @@ class Action
 	const char *name;
 	const char *text = 0;	// descriptive help text
 	uint32_t min = UINT32_MAX, max = 0, sum = 0, num = 0;
-	unsigned ev;
 
 	Action(const char *n, void (*f)(void*),void *a, const char *t);
 	Action(const char *n);
@@ -52,7 +51,7 @@ const char *action_text(const char *name);
 Action *action_get(const char *name);
 int action_activate(const char *name);
 int action_activate_arg(const char *name, void *arg);
-int action_dispatch(const char *name, size_t l);	// execute action via event queue
+void action_dispatch(const char *name, size_t l);	// execute action via event queue
 int action_exists(const char *name);
 void action_iterate(void (*)(void*,const Action *),void *);
 void actions_setup();

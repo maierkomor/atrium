@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2022, Thomas Maier-Komor
+ *  Copyright (C) 2018-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -95,6 +95,9 @@ extern "C" {
 #error unknwon target
 #endif
 
+WS2812BDrv *WS2812BDrv::First = 0;
+
+
 #if defined CONFIG_IDF_TARGET_ESP8266
 
 typedef struct rmt_item32_s {
@@ -157,6 +160,7 @@ IRAM_ATTR void ws2812b_reset(unsigned gpio, uint16_t tr)
 
 int WS2812BDrv::init(gpio_num_t gpio, size_t nleds, rmt_channel_t ch)
 {
+	log_dbug(TAG,"init(%u,%u,%u)",gpio,nleds,ch);
 #if defined CONFIG_IDF_TARGET_ESP8266
 	int f = esp_clk_cpu_freq();
 	if (f == 160000000) {
@@ -180,14 +184,18 @@ int WS2812BDrv::init(gpio_num_t gpio, size_t nleds, rmt_channel_t ch)
 	m_gpio = gpio;
 	m_set = (uint8_t*) calloc(1,nleds*3*2);
 	if (m_set == 0) {
-		log_error(TAG,"out of memory");
+		log_error(TAG,"Out of memory.");
 		return 1;
 	}
 	m_cur = m_set+nleds*3;
 #if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
+	if (ch == (rmt_channel_t)-1) {
+		log_warn(TAG,"channel not set");
+		return 1;
+	}
 	m_items = (rmt_item32_t*) calloc(sizeof(rmt_item32_t),(24*nleds+1/*for reset*/));
 	if (m_items == 0) {
-		log_error(TAG,"out of memory");
+		log_error(TAG,"Out of memory.");
 		return 1;
 	}
 	m_ch = ch;
@@ -207,9 +215,10 @@ int WS2812BDrv::init(gpio_num_t gpio, size_t nleds, rmt_channel_t ch)
 		return 1;
 	}
 	if (esp_err_t e = rmt_driver_install(m_ch, 0, 0)) {
-		log_warn(TAG,"rmt driver install %s",esp_err_to_name(e));
+		log_warn(TAG,"rmt driver install on channel %u: %s",m_ch,esp_err_to_name(e));
 		return 1;
 	}
+	log_dbug(TAG,"rmt driver installed on channel %u",m_ch);
 #else
 	gpio_pad_select_gpio(m_gpio);
 	if (esp_err_t e = gpio_set_direction(m_gpio, GPIO_MODE_OUTPUT)) {
@@ -226,13 +235,24 @@ int WS2812BDrv::init(gpio_num_t gpio, size_t nleds, rmt_channel_t ch)
 }
 
 
+WS2812BDrv *WS2812BDrv::get_bus(const char *n)
+{
+	WS2812BDrv *drv = First;
+	while (drv && strcmp(drv->m_name,n))
+		drv = drv->m_next;
+	if (0 == drv)
+		log_dbug(TAG,"invalud bus %s",n);
+	return drv;
+}
+
+
 void WS2812BDrv::set_led(unsigned led, uint8_t r, uint8_t g, uint8_t b)
 {
 	if (led >= m_num) {
 		log_warn(TAG,"LED inaccessible");
 		return;
 	}
-	log_dbug(TAG,"set(%u,%u,%u,%u)",led,r,g,b);
+	log_dbug(TAG,"%s: set(%u,%u,%u,%u)",m_name,led,r,g,b);
 	uint8_t *v = m_set+led*3;
 	*v++ = g;
 	*v++ = r;
@@ -246,7 +266,7 @@ void WS2812BDrv::set_led(unsigned led, uint32_t rgb)
 		log_warn(TAG,"LED inaccessible");
 		return;
 	}
-	log_dbug(TAG,"set(%u,%06x)",led,rgb);
+	log_dbug(TAG,"%s: set(%u,%06x)",m_name,led,rgb);
 	uint8_t *v = m_set+led*3;
 	*v++ = (rgb >> 8) & 0xff;
 	*v++ = (rgb >> 16) & 0xff;
@@ -271,7 +291,7 @@ uint32_t WS2812BDrv::get_led(unsigned led)
 
 void WS2812BDrv::set_leds(uint32_t rgb)
 {
-	log_dbug(TAG,"set_leds(%06x)",rgb);
+	log_dbug(TAG,"%s: set_leds(%06x)",m_name,rgb);
 	uint8_t *v = m_set;
 	uint8_t b = rgb & 0xff;
 	rgb >>= 8;

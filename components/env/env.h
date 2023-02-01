@@ -175,6 +175,7 @@ class EnvString : public EnvElement
 {
 	public:
 	EnvString(const char *name, const char *v, const char *dim = 0);
+	~EnvString();		// deletion is not supported
 
 	EnvString *toString()
 	{ return this; }
@@ -188,7 +189,6 @@ class EnvString : public EnvElement
 	{ return m_value; }
 
 	private:
-	~EnvString();		// deletion is not supported
 	EnvString(const EnvString &);
 	EnvString &operator = (const EnvString &);
 	char *m_value;

@@ -70,6 +70,7 @@ option esp8266 : esp {
 option esp8285 : esp8266 {
 	BaseClass="";
 	getMember="";
+//	/NodeConfig/otasrv : used = false;
 }
 
 
@@ -353,6 +354,7 @@ message NodeConfig
 
 	FtpHttpConfig ftpd = 24			[ ifdef=CONFIG_FTP ];
 	FtpHttpConfig httpd = 25		[ ifdef=CONFIG_HTTP ];
+	string otasrv = 26;
 
 	// event timer/timefuse
 	repeated EventTimer timefuses = 30;

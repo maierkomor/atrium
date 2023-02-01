@@ -810,7 +810,7 @@ void cfg_activate_triggers()
 				cmd[sp-an] = 0;
 				if (Action *a = action_get(cmd)) {
 					log_dbug(TAG,"%s => %s(%s)",en,cmd,sp+1);
-					event_callback_arg(e,a,sp+1);
+					event_callback_arg(e,a,strdup(sp+1));
 				} else {
 					log_warn(TAG,"unknown action %s",cmd);
 				}

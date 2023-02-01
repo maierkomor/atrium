@@ -124,9 +124,7 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
 			WifiRetry = 0;
 			Status |= STATUS_WIFI_UP | STATUS_STATION_UP;
 			StationMode = station_connected;
-			void *arg = malloc(sizeof(event->ip_info.ip.addr));
-			memcpy(arg,&event->ip_info.ip.addr,sizeof(event->ip_info.ip.addr));
-			event_trigger_arg(StationUpEv,arg);
+			event_trigger(StationUpEv);
 		} else if (event_id == IP_EVENT_GOT_IP6) {
 			ip_event_got_ip6_t* event = (ip_event_got_ip6_t*) event_data;
 			ip6_addr_t ip;
@@ -139,7 +137,7 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
 			WifiRetry = 0;
 			Status |= STATUS_WIFI_UP | STATUS_STATION_UP;
 			StationMode = station_connected;
-			event_trigger_arg(StationUpEv,arg);
+			event_trigger(StationUpEv);
 		} else if (event_id == IP_EVENT_STA_LOST_IP) {
 			log_info(TAG, "lost IP");
 			if (0 == StationDownTS)

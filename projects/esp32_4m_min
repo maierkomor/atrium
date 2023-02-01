@@ -1345,7 +1345,6 @@ CONFIG_WFC_TARGET="esp32"
 # CONFIG_UART_CONSOLE is not set
 # CONFIG_INTEGRATED_HELP is not set
 # CONFIG_HWCONF_DYNAMIC is not set
-# CONFIG_SOCKET_API is not set
 CONFIG_UDNS=y
 # CONFIG_MQTT is not set
 # CONFIG_AT_ACTIONS is not set
@@ -1380,6 +1379,7 @@ CONFIG_UDNS=y
 # CONFIG_DISPLAY is not set
 # CONFIG_DHT is not set
 # CONFIG_I2C is not set
+# CONFIG_SPI is not set
 # CONFIG_HCSR04 is not set
 # CONFIG_DIMMER is not set
 # CONFIG_RGBLEDS is not set
@@ -1392,6 +1392,7 @@ CONFIG_UDNS=y
 #
 # CONFIG_DEVEL is not set
 # CONFIG_FUNCTION_TIMING is not set
+# CONFIG_SOCKET_API is not set
 # end of development tools and experimental/alpha drivers (disable all)
 # end of Atrium
 # end of Component config

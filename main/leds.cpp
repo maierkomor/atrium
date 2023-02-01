@@ -35,6 +35,21 @@
 
 #include <string.h>
 
+#ifdef CONFIG_LUA
+#include "luaext.h"
+extern "C" {
+#include "lua.h"
+#include "lualib.h"
+#include "lauxlib.h"
+}
+#endif
+
+#ifdef ESP32
+#define stacksize 2560
+#else
+#define stacksize 1536
+#endif
+
 #if defined CONFIG_IDF_TARGET_ESP32 && IDF_VERSION >= 40
 #include <esp32/rom/gpio.h>
 #else
@@ -48,7 +63,10 @@ struct LedMode
 {
 	LedMode(const char *n, ledmode_t m, xio_t g, bool o);
 
+	void set_mode(ledmode_t m);
 	int set_mode(const char *m);
+	static LedMode *get(const char *n);
+	int toggle();
 
 	LedMode *next = 0;
 	const char *name;
@@ -180,19 +198,50 @@ LedMode::LedMode(const char *n, ledmode_t m, xio_t g, bool o)
 }
 
 
+LedMode *LedMode::get(const char *n)
+{
+	LedMode *l = First;
+	while (l && strcmp(l->name,n))
+		l = l->next;
+	return l;
+}
+
+
+void LedMode::set_mode(ledmode_t m)
+{
+	mode = ledmode_auto;
+	state = ModeOffset[m];
+	update = 0;
+	log_dbug(TAG,"led %s mode %s, offset %u",name,ModeNames[m],state);
+}
+
+
 int LedMode::set_mode(const char *m)
 {
 	for (int i = 0; i < sizeof(ModeNames)/sizeof(ModeNames[0]); ++i) {
 		if (0 == strcmp(ModeNames[i],m)) {
-			mode = ledmode_auto;
-			state = ModeOffset[i];
-			log_dbug(TAG,"led %s mode %s, offset %u",name,m,state);
-			update = 0;
+			set_mode((ledmode_t) i);
 			return 0;
 		}
 	}
 	log_warn(TAG,"invalid mode %s",m);
 	return 1;
+}
+
+
+int LedMode::toggle()
+{
+	if (mode == ledmode_on) {
+		mode = ledmode_off;
+		state = ModeOffset[ledmode_off];
+	} else if (mode == ledmode_off) {
+		mode = ledmode_on;
+		state = ModeOffset[ledmode_on];
+	} else {
+		return 1;
+	}
+	update = 0;
+	return 0;
 }
 
 
@@ -266,17 +315,17 @@ static void led_set_mode(void *arg)
 	char name[sp-a+1];
 	memcpy(name,a,sp-a);
 	name[sp-a] = 0;
-	LedMode *m = LedMode::First;
 	++sp;
+	LedMode *m = LedMode::get(name);
 	log_dbug(TAG,"set %s to %s",name,sp);
-	while (m) {
-		if (0 == strcmp(m->name,name)) {
-			m->set_mode(sp);
-			return;
-		}
-		m = m->next;
+	if (m) {
+		if (m->set_mode(sp))
+			a = sp;
+		else
+			a = 0;
 	}
-	log_warn(TAG,"led!set invalid arg '%s'",a);
+	if (a)
+		log_warn(TAG,"led!set invalid arg '%s'",a);
 }
 
 
@@ -316,18 +365,8 @@ static void led_set_off(void *arg)
 
 static void led_toggle(void *arg)
 {
-	LedMode *m = (LedMode *)arg;
-	if (m) {
-		if (m->mode == ledmode_on) {
-			m->mode = ledmode_off;
-			m->state = ModeOffset[ledmode_off];
-			m->update = 0;
-		} else if (m->mode == ledmode_off) {
-			m->mode = ledmode_on;
-			m->state = ModeOffset[ledmode_on];
-			m->update = 0;
-		}
-	}
+	if (LedMode *m = (LedMode *)arg)
+		m->toggle();
 }
 
 
@@ -399,18 +438,61 @@ const char *led_set(Terminal &term, int argc, const char *args[])
 	return "Invalid argument #1.";
 }
 
-#ifdef CONFIG_IDF_TARGET_ESP32
-#define stacksize 2560
-#else
-#define stacksize 1536
+
+#ifdef CONFIG_LUA
+static int luax_led_set(lua_State *L)
+{
+	const char *n = luaL_checkstring(L,1);
+	LedMode *l = LedMode::get(n);
+	if (l == 0) {
+		lua_pushliteral(L,"Invalid argument #1.");
+		lua_error(L);
+	}
+	if (lua_isinteger(L,2)) {
+		int v = lua_tointeger(L,2);
+		if ((v < 0) || (v > 1)) {
+			lua_pushliteral(L,"Invalid argument #2.");
+			lua_error(L);
+		}
+		l->set_mode((ledmode_t)((int)ledmode_off + v));
+	} else {
+		const char *v = luaL_checkstring(L,2);
+		if (l->set_mode(v)) {
+			lua_pushliteral(L,"Invalid argument #2.");
+			lua_error(L);
+		}
+	}
+	return 0;
+}
+
+
+static int luax_led_toggle(lua_State *L)
+{
+	const char *n = luaL_checkstring(L,1);
+	if (LedMode *l = LedMode::get(n)) {
+		l->toggle();
+	} else {
+		lua_pushliteral(L,"Invalid argument #1.");
+		lua_error(L);
+	}
+	return 0;
+}
+
+
+static LuaFn Functions[] = {
+	{ "led_set", luax_led_set, "turn LED on/off" },
+	{ "led_toggle", luax_led_toggle, "toggle LED" },
+	{ 0, 0, 0 }
+};
 #endif
+
 
 int leds_setup()
 {
 	bool have_st = false;
 	unsigned numled = 0;
 	for (const LedConfig &c : HWConf.led()) {
-		if ((c.pwm_ch() != -1) || (c.gpio() == -1))	// these are handled in the dimmer
+		if ((c.gpio() == -1) || (c.pwm_ch() != -1))	// these are handled in the dimmer
 			continue;
 		const auto &n = c.name();
 		const char *name = n.c_str();
@@ -446,8 +528,12 @@ int leds_setup()
 		log_info(TAG,"added %s at %u",name,gpio);
 		++numled;
 	}
-	if (numled)
+	if (numled) {
 		action_add("led!set",led_set_mode,0,"set LED mode (on,off,slow,fast,once,twice)");
+#ifdef CONFIG_LUA
+		xlua_add_funcs("led",Functions);
+#endif
+	}
 	return 0;
 }
 

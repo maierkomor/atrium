@@ -16,20 +16,35 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef OTA_H
-#define OTA_H
+#ifndef SCREEN_H
+#define SCREEN_H
 
-#include <stdbool.h>
+#include <stdint.h>
 
-#ifdef __cplusplus
-class Terminal;
 
-const char *ota_from_server(Terminal &term, const char *server, const char *version);
-const char *perform_ota(Terminal &t, char *source, bool changeboot);
-const char *update_romfs(Terminal &t, char *source);
-const char *update_part(Terminal &t, char *source, const char *dest);
-const char *http_download(Terminal &t, char *addr, const char *fn);
-const char *boot(Terminal &t, int argc, const char *args[]);
-#endif
+typedef enum clockmode {
+	cm_version,
+	cm_time,
+	cm_date,
+	cm_stopwatch,
+	cm_lua,
+	CLOCK_MODE_MAX,
+} clockmode_t;
+
+struct Screen
+{
+	class TextDisplay *disp;
+	uint32_t sw_start = 0, sw_delta = 0, sw_pause = 0, modestart = 0;
+	uint8_t display[8];
+	uint8_t digits;
+	clockmode_t mode = cm_time;
+	bool modech = false;
+
+	void display_time();
+	void display_date();
+	void display_data();
+	void display_sw();
+	void display_version();
+};
 
 #endif

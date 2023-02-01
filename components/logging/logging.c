@@ -272,7 +272,7 @@ void log_common(log_level_t l, logmod_t m, const char *f, va_list val)
 	buf[s++] = '\n';
 	if (LogUart >= 0) {
 		if (pdTRUE != xSemaphoreTake(UartLock,MUTEX_ABORT_TIMEOUT))
-			abort_on_mutex(UartLock,__FILE__);
+			abort_on_mutex(UartLock,__BASE_FILE__);
 		uart_write_bytes((uart_port_t)LogUart,buf,s);
 		if (l <= ll_warn)
 			uart_wait_tx_done((uart_port_t)LogUart,portMAX_DELAY);

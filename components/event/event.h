@@ -79,6 +79,10 @@ void event_init(void);
 int event_trigger_en(trigger_t t, bool en);
 void event_trigger(event_t e);
 void event_trigger_nd(event_t id);	// no-debug version for syslog only
+
+// Argument must be malloc()'ed by the caller.
+// It will be free()'ed by the event infrastructure, because their might
+// be != 1 event consumers...
 void event_trigger_arg(event_t e, void *);
 void event_isr_trigger(event_t e);
 void event_isr_trigger_arg(event_t e, void *);

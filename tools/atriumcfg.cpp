@@ -500,8 +500,7 @@ int verify_hw()
 			ret = 1;
 		}
 	}
-	if (HwCfg.has_ws2812b()) {
-		const Ws2812bConfig &c = HwCfg.ws2812b();
+	for (const auto &c : HwCfg.ws2812b()) {
 		int8_t gpio = c.gpio();
 		if (check_gpio(gpio,gpios)) {
 			ret = 1;
@@ -634,10 +633,21 @@ int to_sw(const char *arg)
 int show_config(const char *arg)
 {
 	stringstream ss;
-	if (Software)
-		NodeCfg.toASCII(ss);
-	else
-		HwCfg.toASCII(ss);
+	if (Software) {
+		if (arg == 0)
+			NodeCfg.toASCII(ss);
+		else if (Message *m = NodeCfg.getMember(arg))
+			m->toASCII(ss);
+		else
+			return 1;
+	} else {
+		if (arg == 0)
+			HwCfg.toASCII(ss);
+		else if (Message *m = HwCfg.getMember(arg))
+			m->toASCII(ss);
+		else
+			return 1;
+	}
 	string s = ss.str();
 	write(STDOUT_FILENO,s.data(),s.size());
 	write(STDOUT_FILENO,"\n",1);
@@ -648,10 +658,21 @@ int show_config(const char *arg)
 int json_config(const char *arg)
 {
 	stringstream ss;
-	if (Software)
-		NodeCfg.toJSON(ss);
-	else
-		HwCfg.toJSON(ss);
+	if (Software) {
+		if (arg == 0)
+			NodeCfg.toJSON(ss);
+		else if (Message *m = NodeCfg.getMember(arg))
+			m->toJSON(ss);
+		else
+			return 1;
+	} else {
+		if (arg == 0)
+			HwCfg.toJSON(ss);
+		else if (Message *m = HwCfg.getMember(arg))
+			m->toJSON(ss);
+		else
+			return 1;
+	}
 	string s = ss.str();
 	write(STDOUT_FILENO,s.data(),s.size());
 	write(STDOUT_FILENO,"\n",1);

@@ -19,7 +19,7 @@
 #include "modules.h"
 
 const char ModNames[] =
-	"<undef>\0action\0adc\0alarms\0apds\0bh1750\0bmx\0button\0cam\0ccs811b\0cfg\0con\0cyclic\0dht\0dim\0disp\0ds18b20\0event\0fs\0ftpd\0gpio\0hcsr04\0hd44780u\0hdc1000\0hlw8012\0ht16k33\0http\0i2c\0ina219\0inetd\0influx\0init\0led\0ledc\0ledstrip\0log\0lua\0lwtcp\0max7219\0mcp230xx\0mqtt\0nightsky\0ns\0nvm\0ota\0owb\0pca9685\0pcf8574\0relay\0romfs\0screen\0sgp30\0shell\0si7021\0sm\0sntp\0spi\0ssd130x\0sx1276\0telnet\0ti\0timefuse\0tlc5916\0tlc5947\0tp\0uart\0udns\0udpctrl\0usb\0wlan\0ws2812\0www\0xio\0";
+	"<undef>\0action\0adc\0alarms\0apds\0bh1750\0bmx\0button\0cam\0ccs811b\0cfg\0con\0cyclic\0dht\0dim\0disp\0ds18b20\0event\0fs\0ftpd\0gpio\0hcsr04\0hd44780u\0hdc1000\0hlw8012\0ht16k33\0http\0i2c\0ina219\0inetd\0influx\0init\0led\0ledc\0log\0lua\0lwtcp\0max7219\0mcp230xx\0mqtt\0nightsky\0ns\0nvm\0ota\0owb\0pca9685\0pcf8574\0relay\0rgbleds\0romfs\0screen\0sgp30\0shell\0si7021\0sm\0sntp\0spi\0ssd130x\0sx1276\0tca9555\0telnet\0ti\0timefuse\0tlc5916\0tlc5947\0tp\0uart\0udns\0udpctrl\0usb\0wlan\0ws2812\0www\0xio\0";
 
 const uint16_t ModNameOff[] = {
 	0,
@@ -56,43 +56,44 @@ const uint16_t ModNameOff[] = {
 	185,	// init
 	190,	// led
 	194,	// ledc
-	199,	// ledstrip
-	208,	// log
-	212,	// lua
-	216,	// lwtcp
-	222,	// max7219
-	230,	// mcp230xx
-	239,	// mqtt
-	244,	// nightsky
-	253,	// ns
-	256,	// nvm
-	260,	// ota
-	264,	// owb
-	268,	// pca9685
-	276,	// pcf8574
-	284,	// relay
-	290,	// romfs
-	296,	// screen
-	303,	// sgp30
-	309,	// shell
-	315,	// si7021
-	322,	// sm
-	325,	// sntp
-	330,	// spi
-	334,	// ssd130x
-	342,	// sx1276
-	349,	// telnet
-	356,	// ti
-	359,	// timefuse
-	368,	// tlc5916
-	376,	// tlc5947
-	384,	// tp
-	387,	// uart
-	392,	// udns
-	397,	// udpctrl
-	405,	// usb
-	409,	// wlan
-	414,	// ws2812
-	421,	// www
-	425,	// xio
+	199,	// log
+	203,	// lua
+	207,	// lwtcp
+	213,	// max7219
+	221,	// mcp230xx
+	230,	// mqtt
+	235,	// nightsky
+	244,	// ns
+	247,	// nvm
+	251,	// ota
+	255,	// owb
+	259,	// pca9685
+	267,	// pcf8574
+	275,	// relay
+	281,	// rgbleds
+	289,	// romfs
+	295,	// screen
+	302,	// sgp30
+	308,	// shell
+	314,	// si7021
+	321,	// sm
+	324,	// sntp
+	329,	// spi
+	333,	// ssd130x
+	341,	// sx1276
+	348,	// tca9555
+	356,	// telnet
+	363,	// ti
+	366,	// timefuse
+	375,	// tlc5916
+	383,	// tlc5947
+	391,	// tp
+	394,	// uart
+	399,	// udns
+	404,	// udpctrl
+	412,	// usb
+	416,	// wlan
+	421,	// ws2812
+	428,	// www
+	432,	// xio
 };

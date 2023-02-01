@@ -323,7 +323,7 @@ static void handle_input(con_st_t &state, char c, uart_port_t tx)
 
 const char *uart_termcon(Terminal &term, int argc, const char *args[])
 {
-	if (argc > 2)
+	if (argc != 2)
 		return "Invalid number of arguments.";
 	if (0 == strcmp("-l",args[1])) {
 		Term *t = Terminals;
@@ -334,26 +334,22 @@ const char *uart_termcon(Terminal &term, int argc, const char *args[])
 		return 0;
 	}
 	Term *t = Terminals;
-	if (argc == 2) {
-		if ((args[1][0] >= '0') && (args[1][0] <= '9') && (args[1][1] == 0)) {
-			int con = args[1][0] - '0';
-			while (con) {
-				if (t == 0)
-					return "Invalid argument #1.";
-				t = t->next;
-				--con;
-			}
-		} else {
-			while (t && strcmp(t->name,args[1]))
-				t = t->next;
+	if ((args[1][0] >= '0') && (args[1][0] <= '9') && (args[1][1] == 0)) {
+		int con = args[1][0] - '0';
+		while (con) {
+			if (t == 0)
+				return "Invalid argument #1.";
+			t = t->next;
+			--con;
 		}
+	} else {
+		while (t && strcmp(t->name,args[1]))
+			t = t->next;
 	}
-	if (t == 0) {
+	if (t == 0)
 		return "No such terminal.";
-	}
-	if (t->connected) {
+	if (t->connected)
 		return "Already connected.";
-	}
 	t->connected = true;
 	uart_port_t rx = (uart_port_t) t->rx;
 	uart_port_t tx = (uart_port_t) t->tx;

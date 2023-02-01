@@ -55,7 +55,6 @@ static event_t ActionTriggerEvt = 0;
 
 Action::Action(const char *n)
 : name(n)
-, ev(0)
 , func(0)
 {
 //	log_dbug(TAG,"Action(%s)",n);
@@ -65,12 +64,10 @@ Action::Action(const char *n)
 Action::Action(const char *n, void (*f)(void*),void *a, const char *t)
 : name(n)
 , text(t)
-, ev(event_register("*trigger`",n))
 , func(f)
 , arg(a)
 {
 //	log_dbug(TAG,"Action(%s,...)",n);
-	event_callback(ev,this);
 }
 
 
@@ -156,33 +153,14 @@ int action_activate_arg(const char *name, void *arg)
 }
 
 
-int action_dispatch(const char *n, size_t l)
+void action_dispatch(const char *name, size_t l)
 {
 	if (l == 0)
-		l = strlen(n);
-	size_t nl = l;
-	const char *e = strchr(n,' ');
-	if (e)
-		nl = e-n;
-	char name[nl+1];		// temporary for search
-	name[nl] = 0;
-	memcpy(name,n,nl);
-	Action *a = action_get(name);
-	if (a == 0) {
-		log_warn(TAG,"dispatch unknown '%s'",name);
-		return 1;
-	}
-	log_dbug(TAG,"dispatch %s",name);
-	char *arg = 0;
-	if (e) {
-		size_t al = l - nl;
-		arg = (char *) malloc(al);
-		--al;
-		memcpy(arg,e+1,al);
-		arg[al] = 0;
-	}
-	event_trigger_arg(a->ev,arg);
-	return 0;
+		l = strlen(name);
+	char *arg = (char *) malloc(l+1);
+	arg[l] = 0;
+	memcpy(arg,name,l);
+	event_trigger_arg(ActionTriggerEvt,arg);
 }
 
 
@@ -196,10 +174,22 @@ void action_iterate(void (*f)(void*,const Action *),void *p)
 
 static void action_event_cb(void *arg)
 {
-	Action *a = (Action *)arg;
-	assert(a);
-	log_dbug(TAG,"action %s",a->name);
-	a->activate();
+	const char *as = (const char *)arg;
+	size_t al = strlen(as);
+	char tmp[al+1];
+	memcpy(tmp,as,sizeof(tmp));
+	char *sp = strchr(tmp,' ');
+	if (sp) {
+		*sp = 0;
+		++sp;
+	}
+	Action *a = action_get(tmp);
+	if (a == 0) {
+		log_warn(TAG,"request to execute non-existing action %s",tmp);
+	} else {
+		log_dbug(TAG,"action %s",a->name);
+		a->activate(sp);
+	}
 }
 
 

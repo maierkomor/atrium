@@ -2,6 +2,10 @@ cmake_minimum_required(VERSION 3.5)
 #execute_process(COMMAND bin/prebuild.sh)
 add_compile_definitions(ESP$ENV{ESP_FAM})
 add_compile_definitions(IDF_VERSION=$ENV{IDF_VERSION})
+add_compile_definitions(FWCFG="$ENV{FWCFG}")
+#set(FWCFG $ENV{FWCFG})	# ignored - for whatever reason...
+
+#add_compile_definitions(FWCFG="$ENV{FWCFG}")
 set(PROJECT_VER $ENV{VER})	# ignored - for whatever reason...
 set(INCLUDE_DIRS components/logging drv/dht drv/bme280 drv/ws8212b)
 set(EXTRA_COMPONENT_DIRS drv/button drv/dht drv/display drv/hc-sr04

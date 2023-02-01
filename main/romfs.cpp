@@ -21,11 +21,12 @@
 #include "romfs.h"
 
 #include <assert.h>
+#include <dirent.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
-#include <fcntl.h>
 #include <unistd.h>
-#include <dirent.h>
 
 #include "log.h"
 #include <esp_vfs.h>
@@ -207,6 +208,7 @@ struct fd_t {
 };
 fd_t FDs[CONFIG_ROMFS_VFS_NUMFDS];
 
+#ifndef CONFIG_IDF_TARGET_ESP8266
 static int romfs_vfs_pread(int fd, void *dest, size_t size, off_t off)
 {
 	if ((fd < 0) || (fd > CONFIG_ROMFS_VFS_NUMFDS) || (FDs[fd].idx == -1)) {
@@ -218,7 +220,7 @@ static int romfs_vfs_pread(int fd, void *dest, size_t size, off_t off)
 	log_dbug(TAG,"romfs_vfs_pread(%d,...,%u,%u) = %d",fd,size,off,n);
 	return n;
 }
-
+#endif
 
 static int romfs_vfs_read(int fd, void *dest, size_t size)
 {
@@ -507,7 +509,6 @@ void romfs_setup()
 	bzero(&vfs,sizeof(vfs));
 	vfs.open = romfs_vfs_open;
 	vfs.read = romfs_vfs_read;
-	vfs.pread = romfs_vfs_pread;
 	vfs.lseek = romfs_vfs_lseek;
 	vfs.close = romfs_vfs_close;
 	vfs.closedir = romfs_vfs_closedir;
@@ -516,6 +517,9 @@ void romfs_setup()
 	vfs.readdir_r = romfs_vfs_readdir_r;
 	vfs.fstat = romfs_vfs_fstat;
 	vfs.stat = romfs_vfs_stat;
+#ifndef CONFIG_IDF_TARGET_ESP8266
+	vfs.pread = romfs_vfs_pread;
+#endif
 	if (esp_err_t e = esp_vfs_register(mountpoint,&vfs,0))
 		log_warn(TAG,"VFS register for patitions %s: %s",p->label,esp_err_to_name(e));
 	else

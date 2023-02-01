@@ -22,6 +22,7 @@
 
 #include "actions.h"
 #include "button.h"
+#include "env.h"
 #include "event.h"
 #include "log.h"
 
@@ -36,6 +37,8 @@
 
 Button::Button(const char *name, xio_t gpio, xio_cfg_pull_t mode, bool active_high)
 : m_name(name)
+, m_pressed("pressed",false)
+, m_ptime("ptime",0.0,"ms")
 , m_gpio(gpio)
 , m_presslvl((int8_t)active_high)
 , m_rev(event_register(name,"`released"))
@@ -45,6 +48,15 @@ Button::Button(const char *name, xio_t gpio, xio_cfg_pull_t mode, bool active_hi
 , m_lev(event_register(name,"`long"))
 { 
 	log_info(TAG,"button %s at gpio %u",name,gpio);
+}
+
+
+void Button::attach(EnvObject *root)
+{
+	EnvObject *o = root->add(m_name);
+	o->add(&m_pressed);
+	o->add(&m_ptime);
+
 }
 
 
@@ -83,6 +95,8 @@ void Button::press_ev(void *arg)
 	b->m_tpressed = now;
 	if (b->m_st != btn_released) {
 		b->m_st = btn_released;
+		b->m_pressed.set(true);
+		b->m_ptime.set(0);
 		event_trigger(b->m_pev);
 	}
 }
@@ -97,6 +111,8 @@ void Button::release_ev(void *arg)
 		event_t ev = 0;
 		unsigned dt = now - b->m_tpressed;
 		b->m_st = btn_released;
+		b->m_pressed.set(false);
+		b->m_ptime.set((float)dt);
 		event_trigger(b->m_rev);
 		if ((dt >= BUTTON_SHORT_START) && (dt < BUTTON_SHORT_END)) {
 			ev = b->m_sev;
@@ -121,6 +137,8 @@ void IRAM_ATTR Button::intr(void *arg)
 	if (xio_get_lvl(b->m_gpio) == b->m_presslvl) {
 		b->m_tpressed = now;
 		ev = b->m_pev;
+		b->m_pressed.set(true);
+		b->m_ptime.set(0.0);
 	} else {
 		ev = b->m_rev;
 		unsigned dt = now - b->m_tpressed;
@@ -128,6 +146,8 @@ void IRAM_ATTR Button::intr(void *arg)
 			// fast debounce
 			return;
 		}
+		b->m_pressed.set(false);
+		b->m_ptime.set((float)dt);
 		b->m_tpressed = 0;
 		if (dt < BUTTON_SHORT_END) {
 			xev = b->m_sev;

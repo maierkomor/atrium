@@ -36,6 +36,15 @@
 #include <esp8266/gpio_struct.h>
 #endif
 
+#ifdef CONFIG_LUA
+#include "luaext.h"
+extern "C" {
+#include "lua.h"
+#include "lualib.h"
+#include "lauxlib.h"
+}
+#endif
+
 #define TAG MODULE_GPIO
 
 
@@ -64,13 +73,21 @@ class Gpio
 
 	static void set(void *);
 
+	static Gpio *get(const char *);
+
+	int get_lvl()
+	{ return xio_get_lvl(m_gpio); }
+
+	void set_lvl(int lvl)
+	{ xio_set_lvl(m_gpio,(xio_lvl_t)lvl); }
+
 	private:
 	static void isr_handler(void *);
 	void init(unsigned);
 
 	const char *m_name;
 	xio_t m_gpio;
-	Gpio *m_next;
+	Gpio *m_next;			// set in init()
 	bool m_intlvl,m_lvl;		// level at time of interrupt
 	event_t m_intrev;
 	static Gpio *First;
@@ -87,6 +104,15 @@ Gpio::Gpio(const GpioConfig &c)
 , m_intrev(0)
 {
 	init(c.config());
+}
+
+
+Gpio *Gpio::get(const char *n)
+{
+	Gpio *r = First;
+	while (r && strcmp(r->m_name,n))
+		r = r->m_next;
+	return r;
 }
 
 
@@ -270,8 +296,14 @@ const char *gpio(Terminal &term, int argc, const char *args[])
 			term.printf("cluster %s: %u IOs\n",n,c->numIOs());
 			for (int i = 0; i < c->numIOs(); ++i) {
 				int d = c->get_dir(i);
-				if (d != -1)
-					term.printf("%u (%s/%d): %s\n",gpio,n,i,d == 0?"in":(d==1?"out":"od"));
+				if (d != -1) {
+					const char *dir[] = {"in: 0","in: 1","out","od"};
+					if (d)
+						++d;
+					else
+						d = c->get_lvl(i);
+					term.printf("%2u (%s/%d): %s\n",gpio,n,i,dir[d]);
+				}
 				++gpio;
 			}
 		}
@@ -495,6 +527,47 @@ int gpio_setup()
 }
 
 
+#ifdef CONFIG_LUA
+static int luax_gpio_set(lua_State *L)
+{
+	int v = luaL_checkinteger(L,2);
+	if ((v < 0) || (v > 1)) {
+		lua_pushliteral(L,"Invalid argument #2.");
+		lua_error(L);
+	}
+	const char *n = luaL_checkstring(L,1);
+	Gpio *g = Gpio::get(n);
+	if (g == 0) {
+		lua_pushliteral(L,"Invalid argument #1.");
+		lua_error(L);
+	}
+	g->set_lvl((xio_lvl_t)v);
+	return 0;
+}
+
+
+static int luax_gpio_get(lua_State *L)
+{
+	const char *n = luaL_checkstring(L,1);
+	Gpio *g = Gpio::get(n);
+	if (g == 0) {
+		lua_pushliteral(L,"Invalid argument #1.");
+		lua_error(L);
+	}
+	int lvl = g->get_lvl();
+	lua_pushinteger(L,lvl);
+	return 1;
+}
+
+
+static LuaFn Functions[] = {
+	{ "gpio_set", luax_gpio_set, "set gpio level" },
+	{ "gpio_get", luax_gpio_get, "get gpio level" },
+	{ 0, 0, 0 }
+};
+#endif
+
+
 void xio_setup()
 {
 #ifdef CONFIG_IOEXTENDERS
@@ -536,6 +609,9 @@ void xio_setup()
 		
 	}
 	action_add("gpio!set",Gpio::set,0,"set gpio <name>:<value>, with value=0,1,z,i,o");
+#ifdef CONFIG_LUA
+	xlua_add_funcs("gpio",Functions);
+#endif
 #ifdef CONFIG_HLW8012
 	if (HWConf.has_hlw8012()) {
 		const auto &c = HWConf.hlw8012();

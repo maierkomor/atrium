@@ -23,11 +23,14 @@
 #include "actions.h"
 #include "cyclic.h"
 #include "display.h"
+#include "env.h"
 #include "fonts_ssd1306.h"
 #include "globals.h"
 #include "hwcfg.h"
 #include "log.h"
-#include "env.h"
+#include "luaext.h"
+#include "profiling.h"
+#include "screen.h"
 
 #ifdef CONFIG_LUA
 #include "luaext.h"
@@ -40,31 +43,6 @@ extern "C" {
 
 #include <sys/time.h>
 #include <time.h>
-
-typedef enum clockmode {
-	cm_version,
-	cm_time,
-	cm_date,
-	cm_stopwatch,
-	CLOCK_MODE_MAX,
-} clockmode_t;
-
-
-struct Screen
-{
-	TextDisplay *disp;
-	uint32_t sw_start = 0, sw_delta = 0, sw_pause = 0, modestart = 0;
-	uint8_t display[8];
-	uint8_t digits;
-	clockmode_t mode = cm_time;
-	bool modech = false;
-
-	void display_time();
-	void display_date();
-	void display_data();
-	void display_sw();
-	void display_version();
-};
 
 extern const char Version[];
 
@@ -266,6 +244,7 @@ void Screen::display_version()
 
 void Screen::display_sw()
 {
+	PROFILE_FUNCTION();
 	bool colon = disp->hasChar(':');
 	uint32_t dt;
 	if (sw_pause) {
@@ -427,6 +406,13 @@ static unsigned clock_iter(void *arg)
 		Ctx->display_sw();
 		d = 20;
 		break;
+	case cm_lua:
+#ifdef CONFIG_LUA
+		d = xlua_render(Ctx);
+#else
+		Ctx->mode = (clockmode_t)((int)Ctx->mode + 1);
+#endif
+		break;
 	default:
 		if (EnvElement *e = RTData->getChild(Ctx->mode-CLOCK_MODE_MAX)) {
 			dim = e->getDimension();
@@ -476,12 +462,12 @@ int luax_disp_max_x(lua_State *L)
 {
 	TextDisplay *disp = TextDisplay::getFirst();
 	if (disp == 0) {
-		lua_pushfstring(L,"no display");
+		lua_pushstring(L,"no display");
 		lua_error(L);
 	}
 	DotMatrix *dm = disp->toDotMatrix();
 	if (dm == 0) {
-		lua_pushfstring(L,"no dot-matrix");
+		lua_pushstring(L,"no dot-matrix");
 		lua_error(L);
 	}
 	lua_pushinteger(L, dm->maxX());
@@ -493,12 +479,12 @@ int luax_disp_max_y(lua_State *L)
 {
 	TextDisplay *disp = TextDisplay::getFirst();
 	if (disp == 0) {
-		lua_pushfstring(L,"no display");
+		lua_pushstring(L,"no display");
 		lua_error(L);
 	}
 	DotMatrix *dm = disp->toDotMatrix();
 	if (dm == 0) {
-		lua_pushfstring(L,"no dot-matrix");
+		lua_pushstring(L,"no dot-matrix");
 		lua_error(L);
 	}
 	lua_pushinteger(L, dm->maxY());
@@ -512,11 +498,11 @@ int luax_disp_set_cursor(lua_State *L)
 	int y = luaL_checkinteger(L,2);
 	TextDisplay *disp = TextDisplay::getFirst();
 	if (disp == 0) {
-		lua_pushfstring(L,"no display");
+		lua_pushstring(L,"no display");
 		lua_error(L);
 	}
 	if (-1 == disp->setPos(x,y)) {
-		lua_pushfstring(L,"invalid argument");
+		lua_pushstring(L,"invalid argument");
 		lua_error(L);
 	}
 	return 0;
@@ -531,16 +517,16 @@ int luax_disp_draw_rect(lua_State *L)
 	int h = luaL_checkinteger(L,4);
 	TextDisplay *disp = TextDisplay::getFirst();
 	if (disp == 0) {
-		lua_pushfstring(L,"no display");
+		lua_pushstring(L,"no display");
 		lua_error(L);
 	}
 	DotMatrix *dm = disp->toDotMatrix();
 	if (dm == 0) {
-		lua_pushfstring(L,"no dot-matrix");
+		lua_pushstring(L,"no dot-matrix");
 		lua_error(L);
 	}
 	if (-1 == dm->drawRect(x,y,w,h)) {
-		lua_pushfstring(L,"invalid argument");
+		lua_pushstring(L,"invalid argument");
 		lua_error(L);
 	}
 	return 0;
@@ -552,11 +538,11 @@ int luax_disp_set_font(lua_State *L)
 	const char *fn = luaL_checkstring(L,1);
 	TextDisplay *disp = TextDisplay::getFirst();
 	if (disp == 0) {
-		lua_pushfstring(L,"no display");
+		lua_pushstring(L,"no display");
 		lua_error(L);
 	}
 	if (-1 == disp->setFont(fn)) {
-		lua_pushfstring(L,"invalid font");
+		lua_pushstring(L,"invalid font");
 		lua_error(L);
 	}
 	return 0;
@@ -568,11 +554,11 @@ int luax_disp_write(lua_State *L)
 	const char *txt = luaL_checkstring(L,1);
 	TextDisplay *disp = TextDisplay::getFirst();
 	if (disp == 0) {
-		lua_pushfstring(L,"no display");
+		lua_pushstring(L,"no display");
 		lua_error(L);
 	}
 	if (-1 == disp->write(txt)) {
-		lua_pushfstring(L,"invalid argument");
+		lua_pushstring(L,"invalid argument");
 		lua_error(L);
 	}
 	return 0;
@@ -597,7 +583,7 @@ static const LuaFn Functions[] = {
 	{ "disp_set_font", luax_disp_set_font, "set font (fontname)" },
 	{ "disp_write", luax_disp_write, "write text at cursor position with font" },
 	{ "disp_clear", luax_disp_clear , "clear the screen" },
-	{ 0, 0, 0 },
+	{ 0, 0, 0 }
 };
 
 #endif
@@ -630,7 +616,7 @@ int screen_setup()
 	d->clear();
 	cyclic_add_task("display", clock_iter, Ctx);
 #ifdef CONFIG_LUA
-	//xlua_add_funcs("screen",Functions);	-- TODO display mode Lua is missing
+	xlua_add_funcs("screen",Functions);	// TODO display mode Lua is missing
 #endif
 	log_info(TAG,"ready");
 	return 0;

@@ -98,6 +98,7 @@ class StateMachine
 	int8_t m_st = -1;
 	static StateMachine *First;
 	friend void sm_set_state(void*);
+	friend void sm_set_next(void*);
 };
 
 
@@ -106,15 +107,17 @@ StateMachine *StateMachine::First = 0;
 
 void State::init(const StateConfig &cfg, const char *stname)
 {
-//	log_dbug(TAG,"init state %s",stname);
+	log_dbug(TAG,"init state %s",stname);
 //	name = stname;
 	name = cfg.name().c_str();
 	enter = event_register(stname,"`enter");
 	exit = event_register(stname,"`exit");
 	for (const auto &x : cfg.conds()) {
 		event_t e = event_id(x.event().c_str());
-		if (e == 0)
+		if (e == 0) {
+			log_warn(TAG,"unknown event %s requested for state %s",x.event().c_str(),stname);
 			continue;
+		}
 		for (const auto &ac : x.action()) {
 			char an[ac.size()+1];
 			strcpy(an,ac.c_str());
@@ -125,7 +128,7 @@ void State::init(const StateConfig &cfg, const char *stname)
 				log_dbug(TAG,"adding %s => %s",event_name(e),a->name);
 				trigger_t t;
 				if (sp) {
-					t = event_callback_arg(e,a,sp+1);
+					t = event_callback_arg(e,a,strdup(sp+1));
 				} else {
 					t = event_callback(e,a);
 				}
@@ -155,13 +158,35 @@ void sm_set_state(void *arg)
 	while (m) {
 		if (0 == strcmp(sm,m->m_name.c_str())) {
 			m->switch_state(st);
-			break;
+			return;
 		}
 		m = m->m_next;
 	}
-	if (m == 0)
-		log_warn(TAG,"switch state of %s to %s: unknown state-machine",sm,st);
-	free(arg);
+	log_warn(TAG,"switch state of %s to %s: unknown state-machine",sm,st);
+}
+
+
+void sm_set_next(void *arg)
+{
+	if (0 == arg) 
+		return;
+	char *sm = (char *) arg;
+	log_dbug(TAG,"next state of %s",sm);
+	StateMachine *m = StateMachine::first();
+	while (m) {
+		if (0 == strcmp(sm,m->m_name.c_str())) {
+			if (!m->m_states.empty()) {
+				unsigned x = m->m_st;
+				++x;
+				if (x == m->m_states.size())
+					x = 0;
+				m->switch_state(m->m_states[x].name.c_str());
+			}
+			return;
+		}
+		m = m->m_next;
+	}
+	log_warn(TAG,"next state of %s: unknown state-machine",sm);
 }
 
 
@@ -169,8 +194,10 @@ StateMachine::StateMachine(const char *n)
 : m_name(n)
 , m_next(First)
 {
-	if (0 == First)
+	if (0 == First) {
 		action_add("sm!set",sm_set_state,0,"set state of state-machine to <machine>:<state>");
+		action_add("sm!next",sm_set_next,0,"set next state of state-machine <machine>");
+	}
 	First = this;
 }
 
@@ -182,6 +209,7 @@ StateMachine::StateMachine(const StateMachineConfig &cfg)
 	if (0 == First) {
 		log_dbug(TAG,"add sm!set");
 		action_add("sm!set",sm_set_state,0,"set state of state-machine to <machine>:<state>");
+		action_add("sm!next",sm_set_next,0,"set next state of state-machine <machine>");
 	}
 	for (const auto &st : cfg.states())
 		addState(st);
@@ -213,6 +241,7 @@ void StateMachine::addState(const StateConfig &st)
 
 void StateMachine::addState(const char *n)
 {
+	log_dbug(TAG,"sm %s add state %s",m_name.c_str(),n);
 	size_t mnl = m_name.size();
 	const char *mn = m_name.c_str();
 	size_t stnl = strlen(n)+1;
@@ -323,7 +352,7 @@ const char *sm_cmd(Terminal &term, int argc, const char *args[])
 		if (argc == 5)
 			t = event_callback(e,a);
 		else
-			t = event_callback_arg(e,a,args[5]);
+			t = event_callback_arg(e,a,strdup(args[5]));
 		event_trigger_en(t,false);
 		s->conds.push_back(t);
 		strcpy(arg,args[4]);

@@ -74,7 +74,7 @@ RotaryEncoder *RotaryEncoder::create(const char *name, xio_t clk, xio_t dt, xio_
 			event_callback(fev,a);
 			event_callback(rev,a);
 		} else {
-			log_error(TAG,"xio%u lacks interrupt and event support",clk);
+			log_warn(TAG,"xio%u lacks interrupt and event support",clk);
 		}
 	}
 	if (xio_set_intr(dt,dtIntr,dev)) {
@@ -85,7 +85,7 @@ RotaryEncoder *RotaryEncoder::create(const char *name, xio_t clk, xio_t dt, xio_
 			event_callback(fev,a);
 			event_callback(rev,a);
 		} else {
-			log_error(TAG,"xio%u lacks interrupt and event support",dt);
+			log_warn(TAG,"xio%u lacks interrupt and event support",dt);
 		}
 	}
 	if (sw != XIO_INVALID)
@@ -97,14 +97,14 @@ RotaryEncoder *RotaryEncoder::create(const char *name, xio_t clk, xio_t dt, xio_
 				event_callback(fev,a);
 				event_callback(rev,a);
 			} else {
-				log_error(TAG,"xio%u lacks interrupt and event support",dt);
+				log_warn(TAG,"xio%u lacks interrupt and event support",dt);
 			}
 		}
 	return dev;
 }
 
 
-void IRAM_ATTR RotaryEncoder::sw_ev(void *arg)
+void RotaryEncoder::sw_ev(void *arg)
 {
 	int32_t now = esp_timer_get_time() / 1000;
 	RotaryEncoder *dev = static_cast<RotaryEncoder*>(arg);
@@ -220,7 +220,7 @@ static const uint8_t Dirs[] = {0,1,1,1,1,0,2,2,0,2,0,0,1,0,2,0};	//1=R,2=L
  */
 
 const char *Hex = "0123456789abcdef";
-void IRAM_ATTR RotaryEncoder::clkIntr(void *arg)
+void RotaryEncoder::clkIntr(void *arg)
 {
 	// no log_* from ISRs!
 	RotaryEncoder *dev = static_cast<RotaryEncoder*>(arg);
@@ -253,7 +253,7 @@ void IRAM_ATTR RotaryEncoder::clkIntr(void *arg)
 }
 
 
-void IRAM_ATTR RotaryEncoder::clk_ev(void *arg)
+void RotaryEncoder::clk_ev(void *arg)
 {
 	// no log_* from ISRs!
 	RotaryEncoder *dev = static_cast<RotaryEncoder*>(arg);

@@ -310,7 +310,7 @@ void log_syslog(log_level_t lvl, logmod_t module, const char *msg, size_t ml, st
 	if (ml > INT8_MAX)	// could be UINT8_MAX, reserved for now
 		ml = INT8_MAX;
 	if (pdTRUE != xSemaphoreTake(Mtx,MUTEX_ABORT_TIMEOUT))
-		abort_on_mutex(Mtx,__FILE__);
+		abort_on_mutex(Mtx,__BASE_FILE__);
 	bool trigger = false;
 	if (LogMsg *m = Ctx->create_msg()) {
 		m->flags = lvl;

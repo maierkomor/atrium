@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2022, Thomas Maier-Komor
+ *  Copyright (C) 2018-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -201,6 +201,7 @@ message Ws2812bConfig
 	sint8 gpio = 1		[ unset = -1 ];
 	sint8 ch = 2		[ unset = -1 ];
 	uint8 nleds = 3		[ unset = 0 ];
+	string name = 4		[ unset = "" ];
 }
 
 
@@ -237,6 +238,7 @@ enum i2cdrv_t {
 	i2cdrv_ht16k33 = 10;
 	i2cdrv_ina219 = 11;
 	i2cdrv_si7021 = 12;
+	i2cdrv_tca9555 = 13;
 }
 
 
@@ -323,6 +325,10 @@ message AdcChannel
 	// sliding window requires window-size*2 bytes additional RAM
 	bool slide = 7		[ default = false ];
 	*/
+
+	float scale = 8		[ default = 1 ];
+	float offset = 9	[ default = 0 ];
+	string dim = 10;
 }
 
 
@@ -348,7 +354,9 @@ message AdcConfig
 
 bitset gpiocfg_t
 {
+	// xio_cfg_io_t: 0=in, 1=out, 2=od
 	uint8 mode : 0..1;
+	// xio_cfg_intr_t: 0=disable, 1=rise, 2=fall, 3=edges, 4=lvl0, 5=lvl1
 	uint8 intrtype : 2..4;
 	bool setinit : 5;
 	bool initlvl : 6;
@@ -498,7 +506,7 @@ message HardwareConfig
 	// high level applicaton drivers
 	Max7219Config max7219 = 32		[ ifdef=CONFIG_MAX7219 ];	// for 7-segment clock
 	Tlc5947Config tlc5947 = 33		[ ifdef=CONFIG_TLC5947 ];	// for nightsky LEDs
-	Ws2812bConfig ws2812b = 34		[ ifdef=CONFIG_RGBLEDS ];	// for ws2812b LED strips
+	repeated Ws2812bConfig ws2812b = 34	[ ifdef=CONFIG_RGBLEDS ];	// for ws2812b LED strips
 	DhtConfig dht = 35			[ ifdef=CONFIG_DHT ];
 	repeated I2CConfig i2c = 36		[ ifdef=CONFIG_I2C ];
 	repeated HcSr04Config hcsr04 = 37	[ ifdef=CONFIG_HCSR04 ];
