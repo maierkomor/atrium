@@ -380,7 +380,7 @@ int verify_hw()
 			ret = 1;
 		}
 	}
-	for (auto g: HwCfg.gpio()) {
+	for (auto g: HwCfg.gpios()) {
 		int gpio = g.gpio();
 		if (g.name().empty() && (gpio == -1)) {
 			// empty config

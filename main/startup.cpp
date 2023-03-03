@@ -279,7 +279,8 @@ void app_main()
 	verify_heap();
 
 	log_info(TAG,"Atrium Firmware for ESP based systems");
-	log_info(TAG,"Copyright 2019-2022, Thomas Maier-Komor, License: GPLv3");
+	log_info(TAG,"%s, %s",Copyright,License);
+	log_info(TAG,Copyright);
 	log_info(TAG,"Version %s",Version);
 	log_info(TAG,"IDF: %s",esp_get_idf_version());
 	system_info();

@@ -87,12 +87,14 @@ static int rgbname_value(const char *n, unsigned long *v)
 	for (const auto &r : RgbNames) {
 		if (0 == strcmp(n,r.name)) {
 			*v = r.value;
+			log_dbug(TAG,"named color %s",n);
 			return 0;
 		}
 	}
 	char *e;
 	long l = strtol(n,&e,0);
 	if ((e != n) && ((l & 0xff000000) == 0)) {
+		log_dbug(TAG,"integer color %s",n);
 		*v = l;
 		return 0;
 	}
@@ -245,6 +247,7 @@ int luax_rgbleds_set(lua_State *L)
 	unsigned idx = 0;
 	if (lua_isinteger(L,arg)) {
 		idx = lua_tointeger(L,arg);
+		++arg;
 	} else if (lua_isstring(L,arg)) {
 		unsigned long v;
 		if (rgbname_value(lua_tostring(L,arg),&v)) {
@@ -258,8 +261,14 @@ int luax_rgbleds_set(lua_State *L)
 		lua_pushliteral(L,"Invalid argument.");
 		lua_error(L);
 	}
-	++arg;
-	if (lua_isinteger(L,arg)) {
+	if (lua_isstring(L,arg)) {
+		unsigned long v;
+		if (rgbname_value(lua_tostring(L,arg),&v)) {
+			lua_pushliteral(L,"Invalid argument.");
+			lua_error(L);
+		}
+		drv->set_led(idx,v);
+	} else if (lua_isinteger(L,arg)) {
 		int val = lua_tointeger(L,arg);
 		drv->set_led(idx,val);
 	} else {

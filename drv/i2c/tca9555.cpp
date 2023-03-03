@@ -26,8 +26,8 @@
 #include <string.h>
 
 
-#define DEV_ADDR_MIN	(0x20 << 1)
-#define DEV_ADDR_MAX	(0x28 << 1)	// out of range
+#define DEV_ADDR_MIN	0x20
+#define DEV_ADDR_MAX	0x28	// out of range
 
 #define REG_IN_0	0
 #define REG_IN_1	1
@@ -48,16 +48,22 @@ TCA9555 *TCA9555::Instance = 0;
 TCA9555 *TCA9555::create(uint8_t bus, uint8_t addr)
 {
 	uint8_t data[6];
-	if (i2c_w1rd(bus,addr<<1,0,data,sizeof(data))) {
+	if ((addr < DEV_ADDR_MIN) || (addr >= DEV_ADDR_MAX)) {
+		log_warn(TAG,"address %x out of range",addr);
+		return 0;
+	}
+	addr <<= 1;
+	if (i2c_w1rd(bus,addr,REG_CFG_0,&data[0],2)) {
 		log_warn(TAG,"no response from %u/0x%x",bus,addr);
 		return 0;
 	}
+	log_info(TAG,"device at %x",addr);
 	// restore power-off state after reset
 	uint8_t init[] = { addr, REG_OUT_0, 0xff, 0xff, 0x0, 0x0, 0xff, 0xff };
 	if (i2c_write(bus,init,sizeof(init),1,1))
 		log_warn(TAG,"reset failed");
 	log_dbug(TAG,"device at %u/0x%x",bus,addr);
-	TCA9555 *dev = new TCA9555(bus,addr<<1);
+	TCA9555 *dev = new TCA9555(bus,addr);
 	if (Instance) {
 		TCA9555 *i = Instance;
 		while (i->m_next)
@@ -184,10 +190,11 @@ int TCA9555::set_intr(uint8_t, xio_intrhdlr_t, void*)
 
 int TCA9555::config(uint8_t io, xio_cfg_t cfg)
 {
-	log_dbug(TAG,"config %x",cfg);
+	log_dbug(TAG,"config %d,0x%x",io,cfg);
 	if (io >> 4)
 		return -1;
 	if (cfg.cfg_io == xio_cfg_io_keep) {
+		log_dbug(TAG,"io keep");
 	} else if (cfg.cfg_io == xio_cfg_io_in) {
 		if ((m_cfg & (1 << io)) == 0) {
 			m_cfg |= (1 << io);
@@ -196,16 +203,18 @@ int TCA9555::config(uint8_t io, xio_cfg_t cfg)
 				(uint8_t)(io & 8 ? REG_CFG_1 : REG_CFG_0),
 				(uint8_t)(io & 8 ? m_cfg >> 8 : m_cfg)
 			};
+			log_dbug(TAG,"io in");
 			i2c_write(m_bus,data,sizeof(data),1,1);
 		}
 	} else if (cfg.cfg_io == xio_cfg_io_out) {
-		if ((m_cfg & (1 << io)) == 1) {
+		if ((m_cfg & (1 << io)) != 0) {
 			m_cfg &= ~(1 << io);
 			uint8_t data[] = {
 				m_addr,
 				(uint8_t)(io & 8 ? REG_CFG_1 : REG_CFG_0),
 				(uint8_t)(io & 8 ? m_cfg >> 8 : m_cfg)
 			};
+			log_dbug(TAG,"io out");
 			i2c_write(m_bus,data,sizeof(data),1,1);
 		}
 	} else if (cfg.cfg_io == xio_cfg_io_od) {

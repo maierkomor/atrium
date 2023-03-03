@@ -191,6 +191,8 @@ static void influx_init(void * = 0)
 static void influx_connect(const char *hn, const ip_addr_t *addr, void *arg)
 {
 	// connect is called from tcpip_task as callback
+	if (addr == 0)
+		return;
 	Lock lock(Mtx,__FUNCTION__);
 	if ((State == connecting) || (State == running)) {
 		log_dbug(TAG,"invalid state %d",State);
@@ -205,8 +207,10 @@ static void influx_connect(const char *hn, const ip_addr_t *addr, void *arg)
 	char *nh = (char*)realloc(Header,hl+1);			// 1 for \0
 	if (nh == 0) {
 		HL = 0;
-		free(Header);
-		Header = 0;
+		if (Header) {
+			free(Header);
+			Header = 0;
+		}
 		log_error(TAG,"Out of memory.");
 		return;
 	}
@@ -230,7 +234,7 @@ static void influx_connect(const char *hn, const ip_addr_t *addr, void *arg)
 			if (err_t e = udp_connect(UPCB,addr,port)) {
 				log_warn(TAG,"listen %s %d",addrstr,e);
 			} else {
-				log_info(TAG,"listen %s:%u",addrstr,port);
+				log_info(TAG,"listen %s:%d",addrstr,port);
 			}
 			State = running;
 		}
@@ -254,7 +258,8 @@ static void influx_connect(const char *hn, const ip_addr_t *addr, void *arg)
 				"Content-Type: application/x-www-form-urlencoded\n"
 				"Host: " << i.hostname() << ':' << i.port() << "\n"
 				"Content-Length: ";
-			free(TcpHdr);
+			if (TcpHdr)
+				free(TcpHdr);
 			THL = str.size();
 			TcpHdr = str.take();
 		}
@@ -410,7 +415,7 @@ static char send_elements(EnvObject *o, stream &str, char comma)
 static void send_rtdata(void *)
 {
 	if (State != running) {
-		log_dbug(TAG,"rtdata: invalid state %d",State);
+		log_dbug(TAG,"rtdata: state %d",State);
 		if (State != connecting) {
 			influx_init();
 		}
@@ -480,7 +485,8 @@ static void proc_mon(stream &s)
 	} else {
 		log_error(TAG,"Out of memory.");
 	}
-	free(LSt);
+	if (LSt)
+		free(LSt);
 	LSt = st;
 	LNT = nt;
 }
@@ -516,8 +522,8 @@ void influx_setup()
 	if (LwipSem == 0)
 		LwipSem = xSemaphoreCreateBinary();
 #endif
-	action_add("influx!sysinfo",send_sys_info,0,"send system info to influx");
-	action_add("influx!rtdata",send_rtdata,0,"send runtime data to influx");
+	action_add("influx!sysinfo",send_sys_info,0,"send system info");
+	action_add("influx!rtdata",send_rtdata,0,"send runtime data");
 	action_add("influx!init",influx_init,0,"init influx connection");
 	action_add("influx!term",influx_term,0,"term influx connection");
 	log_info(TAG,"setup");

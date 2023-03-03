@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2022, Thomas Maier-Komor
+ *  Copyright (C) 2020-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -20,6 +20,7 @@
 #include <sdkconfig.h>
 
 #include "actions.h"
+#include "env.h"
 #include "event.h"
 #include "globals.h"
 #include "hlw8012.h"
@@ -58,13 +59,14 @@ static const char *GpioIntrTypeStr[] = {
 #endif
 
 
+#ifdef CONFIG_GPIOS
 class Gpio
 {
 	public:
 	Gpio(const GpioConfig &);
 
 	Gpio(const char *name, xio_t gpio, unsigned config)
-	: m_name(name)
+	: m_env(name,false)
 	, m_gpio(gpio)
 	, m_intrev(0)
 	{
@@ -76,22 +78,38 @@ class Gpio
 	static Gpio *get(const char *);
 
 	int get_lvl()
-	{ return xio_get_lvl(m_gpio); }
+	{
+		int lvl = xio_get_lvl(m_gpio);
+		m_env.set(lvl != 0);
+		return lvl;
+	}
+
+	const char *name() const
+	{ return m_env.name(); }
 
 	void set_lvl(int lvl)
 	{ xio_set_lvl(m_gpio,(xio_lvl_t)lvl); }
 
+	void attach(EnvObject *r)
+	{ r->add(&m_env); }
+
+	static void isr_update(Gpio *o)
+	{ o->m_env.set(o->m_intlvl); }
+
 	private:
 	static void isr_handler(void *);
 	void init(unsigned);
+	static void action_sample(void *);
+	static void action_set0(void *);
+	static void action_set1(void *);
+	static void action_toggle(void *);
 
-	const char *m_name;
+	EnvBool m_env;
 	xio_t m_gpio;
 	Gpio *m_next;			// set in init()
-	bool m_intlvl,m_lvl;		// level at time of interrupt
+	bool m_intlvl;			// level at time of interrupt
 	event_t m_intrev;
 	static Gpio *First;
-	static void action_sample(void*);
 };
 
 
@@ -99,7 +117,7 @@ Gpio *Gpio::First = 0;
 
 
 Gpio::Gpio(const GpioConfig &c)
-: m_name(c.name().c_str())
+: m_env(c.name().c_str(),false)
 , m_gpio((xio_t) c.gpio())
 , m_intrev(0)
 {
@@ -110,7 +128,7 @@ Gpio::Gpio(const GpioConfig &c)
 Gpio *Gpio::get(const char *n)
 {
 	Gpio *r = First;
-	while (r && strcmp(r->m_name,n))
+	while (r && strcmp(r->m_env.name(),n))
 		r = r->m_next;
 	return r;
 }
@@ -124,14 +142,11 @@ void Gpio::set(void *arg)
 	const char *c = strchr(n,':');
 	if ((c == 0) || (c[2] != 0))
 		return;
-	Gpio *x = First;
-	while (x) {
-		if (0 == strncmp(n,x->m_name,c-n))
-			break;
-		x = x->m_next;
-	}
-	if (x == 0)
+	Gpio *x = Gpio::get(n);
+	if (x == 0) {
+		log_dbug(TAG,"unknown gpio %s",n);
 		return;
+	}
 	xio_cfg_t cfg;
 	switch (c[1]) {
 	case '0':
@@ -153,56 +168,60 @@ void Gpio::set(void *arg)
 		cfg.cfg_io = xio_cfg_io_out;
 		xio_config(x->m_gpio,cfg);
 		break;
+	case 't':
+		xio_set_lvl(x->m_gpio,(xio_lvl_t)(xio_get_lvl(x->m_gpio)^1));
+		break;
 	default:
 		;
 	}
 }
 
 
-static void gpio_action_set0(void *arg)
-{
-	xio_t gpio = (xio_t)(unsigned)arg;
-	xio_set_lo(gpio);
-	log_dbug(TAG,"gpio%d <= 0",gpio);
-}
-
-
-static void gpio_action_set1(void *arg)
-{
-	xio_t gpio = (xio_t)(unsigned)arg;
-	xio_set_hi(gpio);
-	log_dbug(TAG,"gpio%d <= 1",gpio);
-}
-
-
-static void gpio_action_toggle(void *arg)
-{
-	unsigned v = (unsigned)arg;
-	xio_t gpio = (xio_t)(unsigned)v;
-	unsigned lvl = xio_get_lvl(gpio)^1;
-	xio_set_lvl(gpio,(xio_lvl_t)lvl);
-	log_dbug(TAG,"gpio%d <= %d",gpio,lvl);
-}
-
-
 void Gpio::action_sample(void *arg)
 {
-	Gpio *g = (Gpio*)arg;
-	int lvl = xio_get_lvl(g->m_gpio);
-	g->m_lvl = lvl;
-	log_dbug(TAG,"gpio%d = %d",g->m_gpio,lvl);
+	Gpio *gpio = (Gpio *)arg;
+	int lvl = gpio->get_lvl();
+	log_dbug(TAG,"%s = %d",gpio->name(),lvl);
+}
+
+
+void Gpio::action_set0(void *arg)
+{
+	Gpio *gpio = (Gpio *)arg;
+	xio_set_lo(gpio->m_gpio);
+	log_dbug(TAG,"%s <= 0",gpio->name());
+}
+
+
+void Gpio::action_set1(void *arg)
+{
+	Gpio *gpio = (Gpio *)arg;
+	xio_set_hi(gpio->m_gpio);
+	log_dbug(TAG,"%s <= 1",gpio->name());
+}
+
+
+void Gpio::action_toggle(void *arg)
+{
+	Gpio *gpio = (Gpio *)arg;
+	unsigned lvl = xio_get_lvl(gpio->m_gpio)^1;
+	xio_set_lvl(gpio->m_gpio,(xio_lvl_t)lvl);
+	log_dbug(TAG,"%s <= %d",gpio->name(),lvl);
 }
 
 
 void Gpio::init(unsigned config)
 {
-	log_info(TAG,"gpio%d named %s",m_gpio,m_name);
+	log_info(TAG,"gpio%d named %s",m_gpio,m_env.name());
 	m_next = First;
 	First = this;
 	xio_cfg_t cfg = XIOCFG_INIT;
 	cfg.cfg_io = (xio_cfg_io_t)((config & 0x3));
-	cfg.cfg_intr = (xio_cfg_intr_t)(((config >> 2) & 0x3));
-	cfg.cfg_pull = (xio_cfg_pull_t)(((config >> 7) & 3) + 1);
+	cfg.cfg_intr = (xio_cfg_intr_t)(((config >> 2) & 0x7));
+	if (config & (1<<7))
+		cfg.cfg_pull = xio_cfg_pull_up;
+	else if (config & (1<<7))
+		cfg.cfg_pull = xio_cfg_pull_down;
 	if (0 > xio_config(m_gpio,cfg)) {
 		log_warn(TAG,"config gpio %u failed",m_gpio);
 		return;
@@ -213,20 +232,31 @@ void Gpio::init(unsigned config)
 		if (xio_set_lvl(m_gpio,(xio_lvl_t)lvl))
 			log_warn(TAG,"set level %d on gpio %d failed",lvl,m_gpio);
 	}
-	if (config & 0x3) {	// not input
+	const char *name = m_env.name();
+	Action *a = 0;
+	if ((config & 0x3) == 0) {	// input
+		a = action_add(concat(name,"!sample"),Gpio::action_sample,(void*)this,"sample gpio input");
+	} else if (config & 0x3) {	// not input, not disabled
 		// configured as output
 		log_dbug(TAG,"gpio output actions");
-		action_add(concat(m_name,"!set_1"),gpio_action_set1,(void*)(unsigned)m_gpio,"set gpio high");
-		action_add(concat(m_name,"!set_0"),gpio_action_set0,(void*)(unsigned)m_gpio,"set gpio low");
-		action_add(concat(m_name,"!toggle"),gpio_action_toggle,(void*)(unsigned)m_gpio,"toggle gpio");
+		action_add(concat(name,"!set_1"),Gpio::action_set1,(void*)(unsigned)m_gpio,"set gpio high");
+		action_add(concat(name,"!set_0"),Gpio::action_set0,(void*)(unsigned)m_gpio,"set gpio low");
+		action_add(concat(name,"!toggle"),Gpio::action_toggle,(void*)(unsigned)m_gpio,"toggle gpio");
 	}
 	if ((config >> 2) & 0x3) {
 		// configure interrupts
 		log_dbug(TAG,"gpio interrupts");
-		m_intrev = event_register(concat(m_name,"`intr"));
-		action_add(concat(m_name,"!sample"),action_sample,(void*)this,"sample gpio");
-		if (xio_set_intr(m_gpio,isr_handler,this))
-			log_warn(TAG,"add ISR for gpio%d",m_gpio);
+		m_intrev = event_register(concat(name,"`intr"));
+		if (a == 0)
+			log_warn(TAG,"gpio%d: interrupts only work on inputs",m_gpio);
+		else if (xio_set_intr(m_gpio,isr_handler,this))
+			log_warn(TAG,"failed to add ISR for gpio%d",m_gpio);
+		else if (0 == event_callback(m_intrev,a))
+			log_warn(TAG,"failed to add ISR update handler for gpio%d",m_gpio);
+//		else if (xio_intr_enable(m_gpio))
+//			log_warn(TAG,"failed to enable ISR on gpio%d",m_gpio);
+		else
+			log_info(TAG,"enabled interrupts on gpio%d",m_gpio);
 	}
 }
 
@@ -235,9 +265,10 @@ void Gpio::isr_handler(void *arg)
 {
 	Gpio *g = (Gpio *)arg;
 	int lvl = xio_get_lvl(g->m_gpio);
-	g->m_intlvl = lvl;
+	g->m_intlvl = (lvl != 0);
 	event_isr_trigger(g->m_intrev);
 }
+#endif
 
 
 #ifdef ESP32
@@ -293,6 +324,7 @@ const char *gpio(Terminal &term, int argc, const char *args[])
 		while (cl != e) {
 			XioCluster *c = *cl++;
 			const char *n = c->getName();
+			assert(n);
 			term.printf("cluster %s: %u IOs\n",n,c->numIOs());
 			for (int i = 0; i < c->numIOs(); ++i) {
 				int d = c->get_dir(i);
@@ -302,6 +334,7 @@ const char *gpio(Terminal &term, int argc, const char *args[])
 						++d;
 					else
 						d = c->get_lvl(i);
+					assert(dir[d]);
 					term.printf("%2u (%s/%d): %s\n",gpio,n,i,dir[d]);
 				}
 				++gpio;
@@ -368,7 +401,7 @@ const char *gpio(Terminal &term, int argc, const char *args[])
 	if (r == -1)
 		return "Failed.";
 	if (r == 0)
-		term.println("none");
+		term.println("no-pull");
 	if (r & xio_cap_pullup)
 		term.println("pullup");
 	if (r & xio_cap_pulldown)
@@ -527,7 +560,7 @@ int gpio_setup()
 }
 
 
-#ifdef CONFIG_LUA
+#if defined CONFIG_GPIOS && defined CONFIG_LUA
 static int luax_gpio_set(lua_State *L)
 {
 	int v = luaL_checkinteger(L,2);
@@ -600,16 +633,18 @@ void xio_setup()
 		++funcs;
 	}
 #endif
-	for (const auto &c : HWConf.gpio()) {
+#ifdef CONFIG_GPIOS
+	for (const auto &c : HWConf.gpios()) {
 		const char *n = c.name().c_str();
 		int8_t gpio = c.gpio();
 		if ((gpio == -1) || (n[0] == 0))
 			continue;
-		new Gpio(n,(xio_t)gpio,c.config());
-		
+		Gpio *dev = new Gpio(n,(xio_t)gpio,c.config());
+		dev->attach(RTData);
 	}
-	action_add("gpio!set",Gpio::set,0,"set gpio <name>:<value>, with value=0,1,z,i,o");
-#ifdef CONFIG_LUA
+	action_add("gpio!set",Gpio::set,0,"set gpio <name>:<value>, with value=0,1,z,i,o,t");
+#endif
+#if defined CONFIG_GPIOS && defined CONFIG_LUA
 	xlua_add_funcs("gpio",Functions);
 #endif
 #ifdef CONFIG_HLW8012

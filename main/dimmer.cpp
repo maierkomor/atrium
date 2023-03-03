@@ -178,7 +178,7 @@ void dim_set(void *arg)
 			}
 		}
 	} else {
-		log_warn(TAG,"action dim!set invalid arg %s",str);
+		log_warn(TAG,"dim!set: invalid arg %s",str);
 	}
 }
 

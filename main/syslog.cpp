@@ -239,6 +239,8 @@ done:
 static void syslog_hostip(const char *hn, const ip_addr_t *ip, void *arg)
 {
 	// no LWIP_LOCK as called from tcpip_task
+	if (ip == 0)
+		return;
 	char ipstr[32];
 	inet_ntoa_r(*ip,ipstr,sizeof(ipstr));
 	log_info(TAG,"connect %s at %s",hn,ipstr);

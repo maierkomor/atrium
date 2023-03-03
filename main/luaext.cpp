@@ -80,6 +80,34 @@ static void xlua_init();
 LuaFns *LuaFns::List = 0;
 
 
+static int f_event_attach(lua_State *L)
+{
+	const char *e = luaL_checkstring(L,1);
+	const char *a = luaL_checkstring(L,2);
+	log_dbug(TAG,"event_attach(%s,%s,...)",e,a);
+	event_t eid = event_id(e);
+	if (eid == 0) {
+		lua_pushliteral(L,"Invalid argument #1.");
+		lua_error(L);
+	}
+	Action *x = action_get(a);
+	if (x == 0) {
+		lua_pushliteral(L,"Invalid argument #2.");
+		lua_error(L);
+	}
+	const char *arg = lua_tostring(L,3);
+	if (arg)
+		log_dbug(TAG,"event_attach(%s,%s,%s)",e,a,arg);
+	int r = arg ? event_callback_arg(eid,x,strdup(arg)) : event_callback(eid,x);
+	if (r == 0) {
+		lua_pushfstring(L,"event_attach(%s,%s,%s): failed",e,a,arg);
+		lua_error(L);
+	}
+	lua_pop(L,arg ? 3 : 2);
+	return 0;
+}
+
+
 static int f_event_create(lua_State *L)
 {
 	const char *n = luaL_checkstring(L,1);
@@ -298,18 +326,37 @@ static int f_tmr_create(lua_State *L)
 		lua_pushliteral(L,"Invalid argument #2.");
 		lua_error(L);
 	}
-	if (timefuse_create(n,iv,false) == 0) {
-		lua_pushliteral(L,"Invalid argument #1.");
-		lua_error(L);
+	if (timefuse_t t = timefuse_create(n,iv,false)) {
+		lua_pop(L,2);
+		lua_pushinteger(L,(int)t);
+		return 1;
 	}
+	lua_pushliteral(L,"Invalid argument #1.");
+	lua_error(L);
 	return 0;
+}
+
+
+static int f_tmr_getid(lua_State *L)
+{
+	const char *n = luaL_checkstring(L,1);
+	timefuse_t id = timefuse_get(n);
+	lua_pushinteger(L,(int)id);
+	return 1;
 }
 
 
 static int f_tmr_start(lua_State *L)
 {
-	const char *n = luaL_checkstring(L,1);
-	if (timefuse_start(n)) {
+	int r;
+	if (lua_isinteger(L,1)) {
+		int t = lua_tointeger(L,1);
+		r = timefuse_start((timefuse_t)t);
+	} else {
+		const char *n = luaL_checkstring(L,1);
+		r = timefuse_start(n);
+	}
+	if (r) {
 		lua_pushliteral(L,"Invalid argument #1.");
 		lua_error(L);
 	}
@@ -319,8 +366,15 @@ static int f_tmr_start(lua_State *L)
 
 static int f_tmr_stop(lua_State *L)
 {
-	const char *n = luaL_checkstring(L,1);
-	if (timefuse_stop(n)) {
+	int r;
+	if (lua_isinteger(L,1)) {
+		int t = lua_tointeger(L,1);
+		r = timefuse_stop((timefuse_t)t);
+	} else {
+		const char *n = luaL_checkstring(L,1);
+		r = timefuse_stop(n);
+	}
+	if (r) {
 		lua_pushliteral(L,"Invalid argument #1.");
 		lua_error(L);
 	}
@@ -342,13 +396,14 @@ int luax_tlc5947_set(lua_State *L);
 int luax_tlc5947_write(lua_State *L);
 
 static const LuaFn CoreFunctions[] = {
-	{ "getvar", f_getvar, "get variable visible via env command" },
-	{ "setvar", f_setvar, "set variable visible via env command" },
-	{ "newvar", f_newvar, "create variable visible via env command" },
+	{ "var_get", f_getvar, "get variable visible via env command" },
+	{ "var_set", f_setvar, "set variable visible via env command" },
+	{ "var_new", f_newvar, "create variable visible via env command" },
 	{ "con_print", f_print, "print to console" },
 	// math.random yields a float....
 	{ "random", f_random, "create a 32-bit integer random number" },
 	{ "action_activate", f_action_activate, "activate an action (action[,arg])" },
+	{ "event_attach", f_event_attach, "attach an action to an event (event,action[,arg])" },
 	{ "event_trigger", f_event_trigger, "trigger an event (event[,arg])" },
 	{ "event_create", f_event_create, "create an event (event) = <int>" },
 	{ "log_warn", f_warn, "write warning to log" },
@@ -356,7 +411,8 @@ static const LuaFn CoreFunctions[] = {
 	{ "log_dbug", f_dbug, "write debug message to log" },
 	{ "uptime", f_uptime, "returns uptime as float in seconds" },
 	{ "timestamp", f_timestamp, "returns timestamp as 32-bit us (will wrap)" },
-	{ "tmr_create", f_tmr_create, "creates a timer" },
+	{ "tmr_create", f_tmr_create, "creates a timer (name,interval)" },
+	{ "tmr_getid", f_tmr_getid, "queries the id of a timer, returns 0 if non-existent" },
 	{ "tmr_start", f_tmr_start, "start a timer" },
 	{ "tmr_stop", f_tmr_stop, "stop a timer" },
 	{ 0, 0, 0 },
@@ -591,6 +647,29 @@ unsigned xlua_render(Screen *ctx)
 }
 
 
+void xlua_run(const char *s, size_t l)
+{
+	if (LS == 0)
+		xlua_init();
+	bool exe = false;
+	if (l < 64) {
+		char tmp[l+1];
+		tmp[l] = 0;
+		memcpy(tmp,s,l);
+		if (lua_getglobal(LS,tmp))
+			exe = true;
+	}
+	if (!exe) {
+		if (0 == luaL_loadbuffer(LS,s,l,"mqtt"))
+			exe = true;
+	}
+	if (exe) {
+		if (int e = lua_pcall(LS,0,1,0))
+			log_warn(TAG,"Lua execution error %d",e);
+	}
+}
+
+
 const char *xlua_exe(Terminal &t, const char *script)
 {
 	if (LS == 0)
@@ -605,12 +684,15 @@ const char *xlua_exe(Terminal &t, const char *script)
 	} else {
 		r = "Parser error.";
 	}
-	if ((r == 0) && (0 != lua_pcall(LS,0,1,0))) {
-		r = "Execution error.";
+	if (r == 0) {
+		if (int e = lua_pcall(LS,0,1,0)) {
+			r = "Execution error.";
+			log_warn(TAG,"Lua execution error %d",e);
+		}
 	}
 	if (const char *str = lua_tostring(LS,-1)) {
 		t.println(str);
-		r = "";
+//		r = "";
 	}
 	lua_settop(LS,0);
 	lua_gc(LS,LUA_GCCOLLECT);
@@ -640,7 +722,6 @@ static void xlua_script(void *arg)
 		log_warn(TAG,"lua!run '%s': exe error",script);
 	if (const char *str = lua_tostring(LS,-1)) {
 		log_warn(TAG,"lua!run '%s': %s",script,str);
-		lua_pop(LS,1);
 	}
 	lua_settop(LS,0);
 	lua_gc(LS,LUA_GCCOLLECT);
@@ -679,8 +760,17 @@ void xlua_setup()
 {
 	Mtx = xSemaphoreCreateMutex();
 	action_add("lua!run",xlua_script,0,"run argument as Lua script");
-	for (const auto &fn : Config.luafiles())
-		xlua_parse_file(fn.c_str());
+	for (const auto &fn : Config.luafiles()) {
+		const char *f = fn.c_str();
+		if (f[0] == '/') {
+			xlua_parse_file(f);
+		} else {
+			char tmp[fn.size()+8];
+			memcpy(tmp,"/flash/",7);
+			memcpy(tmp+7,f,fn.size()+1);
+			xlua_parse_file(tmp);
+		}
+	}
 }
 
 #endif

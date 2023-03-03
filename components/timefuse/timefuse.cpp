@@ -96,6 +96,7 @@ timefuse_t timefuse_get(const char *n)
 
 int timefuse_start(timefuse_t t)
 {
+	log_dbug(TAG,"start %d",t);
 	BaseType_t r = xTimerStart(t->id,portMAX_DELAY);
 	if (pdTRUE == r) {
 		event_trigger(t->start);

@@ -59,6 +59,15 @@
 
 #include <map>
 
+#ifdef CONFIG_LUA
+#include "luaext.h"
+extern "C" {
+#include "lua.h"
+#include "lualib.h"
+#include "lauxlib.h"
+}
+#endif
+
 #define CONNECT 	0x10
 #define CONACK		0x20
 #define PUBLISH		0x30
@@ -179,6 +188,14 @@ static void mqtt_exe_action(const char *t, const void *d, size_t l)
 }
 
 
+#ifdef CONFIG_LUA
+static void mqtt_exe_lua(const char *t, const void *d, size_t l)
+{
+	xlua_run((const char *)d,l);
+}
+#endif
+
+
 MqttClient::MqttClient()
 : pcb(0)
 , mtx(xSemaphoreCreateMutex())
@@ -191,6 +208,10 @@ MqttClient::MqttClient()
 	memcpy(topic+HostnameLen+1,"action",7);
 	signals = RTData->add("mqtt");
 	subscribe(topic,mqtt_exe_action);
+#ifdef CONFIG_LUA
+	memcpy(topic+HostnameLen+1,"lua",4);
+	subscribe(topic,mqtt_exe_lua);
+#endif
 	assert(signals);
 }
 
@@ -853,7 +874,8 @@ static void mqtt_connect(const char *hn, const ip_addr_t *addr, void *arg)
 	Lock lock(Client->mtx,__FUNCTION__);
 	if ((Client->state != connecting) && (Client->state != running)) {
 		Client->state = connecting;
-		assert(addr);
+		if (addr == 0)
+			return;
 		uint16_t port = (uint16_t)(unsigned)arg;
 		if (Client->pcb) {
 			log_warn(TAG,"connect with PCB");

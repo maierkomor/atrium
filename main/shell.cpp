@@ -221,6 +221,18 @@ static int get_ip(const char *str, uint8_t *ip)
 }
 
 
+static void print_ele(Terminal &t, EnvElement *e)
+{
+	t << ' ';
+	e->writeValue(t);
+	if (const char *d = e->getDimension()) {
+		t << ' ';
+		t.print(d);
+	}
+	t.println();
+}
+
+
 static void print_obj(Terminal &t, EnvObject *o, int indent)
 {
 	unsigned c = 0;
@@ -231,10 +243,12 @@ static void print_obj(Terminal &t, EnvObject *o, int indent)
 		for (int i = 0; i < indent; ++i)
 			t << "    ";
 		t << n;
+		t << ':';
 		if (EnvObject *c = e->toObject()) {
-			t << ":\n";
+			t << '\n';
 			print_obj(t,c,indent+1);
 		} else {
+			/*
 			t << ": ";
 			e->writeValue(t);
 			if (const char *d = e->getDimension()) {
@@ -242,6 +256,8 @@ static void print_obj(Terminal &t, EnvObject *o, int indent)
 				t.print(d);
 			}
 			t << '\n';
+			*/
+			print_ele(t,e);
 		}
 	}
 }
@@ -249,10 +265,23 @@ static void print_obj(Terminal &t, EnvObject *o, int indent)
 
 static const char *env(Terminal &t, int argc, const char *args[])
 {
+	const char *r = 0;
 	rtd_lock();
-	print_obj(t,RTData,0); 
+	if (argc == 1) {
+		print_obj(t,RTData,0); 
+	} else if (argc == 2) {
+		EnvElement *c = RTData->getChild(args[1]);
+		if (c == 0)
+			r = "Invalid argument #1.";
+		else if (EnvObject *o = c->toObject())
+			print_obj(t,o,0); 
+		else
+			print_ele(t,c);
+	} else {
+		r = "Invalid number of arguments.";
+	}
 	rtd_unlock();
-	return 0;
+	return r;
 }
 
 
@@ -1538,13 +1567,17 @@ static const char *download(Terminal &term, int argc, const char *args[])
 
 static const char *nslookup(Terminal &term, int argc, const char *args[])
 {
-	if (argc != 2) {
+	if (argc != 2)
 		return "Invalid number of arguments.";
-	}
 	ip_addr_t ip;
 	if (err_t e = resolve_hostname(args[1],&ip))
 		return strlwiperr(e);
-	return inet_ntoa(ip);
+	if (ip_addr_isany_val(ip))
+		return "Unknown host.";
+	char tmp[60];
+	ipaddr_ntoa_r(&ip,tmp,sizeof(tmp));
+	term.println(tmp);
+	return 0;
 }
 
 
@@ -1803,9 +1836,6 @@ static const char *print_data(Terminal &term, int argc, const char *args[])
 
 
 #ifdef CONFIG_OTA
-//#ifdef close
-//#undef close
-//#endif
 static const char *update(Terminal &term, int argc, const char *args[])
 {
 	if (argc == 1)
@@ -2200,10 +2230,14 @@ static const char *version(Terminal &term, int argc, const char *args[])
 	if (argc != 1)
 		return "Invalid number of arguments.";
 	term.printf("Atrium Version %s\n"
+		"%s\n"
+		"%s\n"
 		"firmware config %s\n"
 		"build on " __DATE__ ", " __TIME__ "\n"
 		"IDF version: %s\n"
 		, Version
+		, Copyright
+		, License
 		, FwCfg
 		, esp_get_idf_version()
 		);
@@ -2497,6 +2531,7 @@ const char *shellexe(Terminal &term, char *cmd)
 				++at;
 				lps = dquote;
 			} else if ((*at == ' ') || (*at == '\t')) {
+				++at;
 				continue;
 			} else {
 				lps = normal;;
@@ -2542,7 +2577,7 @@ const char *shellexe(Terminal &term, char *cmd)
 			if ((ExeNames[i].flags & EXEFLAG_INTERACTIVE) && !term.isInteractive()) {
 				term.println("Cannot execute interactive command.");
 			}
-			if (!Config.pass_hash().empty() && ((ExeNames[i].flags & 1) > term.getPrivLevel())) {
+			if (!Config.pass_hash().empty() && ((ExeNames[i].flags & EXEFLAG_ADMIN) > term.getPrivLevel())) {
 				term.println("Access denied.");
 			}
 			if ((n == 2) && (0 == strcmp("-h",args[1])))

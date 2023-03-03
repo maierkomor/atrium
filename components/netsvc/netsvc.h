@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2021, Thomas Maier-Komor
+ *  Copyright (C) 2018-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -55,7 +55,7 @@ int sethostname(const char *h, size_t l);
 int setdomainname(const char *h, size_t l);
 const char *strlwiperr(int);
 
-const char *ip2str(const ip_addr_t *ip);
+//const char *ip2str(const ip_addr_t *ip);
 const char *ip2str_r(const ip_addr_t *ip, char *out, size_t n);
 
 #if LWIP_TCPIP_CORE_LOCKING == 1

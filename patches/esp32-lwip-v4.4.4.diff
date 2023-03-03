@@ -1,0 +1,76 @@
+diff --git a/src/core/dns.c b/src/core/dns.c
+index bd02aa83..42ae5f1d 100644
+--- a/src/core/dns.c
++++ b/src/core/dns.c
+@@ -289,7 +289,7 @@ static err_t dns_lookup_local(const char *hostname, ip_addr_t *addr LWIP_DNS_ADD
+ 
+ /* forward declarations */
+ static void dns_recv(void *s, struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *addr, u16_t port);
+-static void dns_check_entries(void);
++//static void dns_check_entries(void);
+ static void dns_call_found(u8_t idx, ip_addr_t *addr);
+ 
+ /*-----------------------------------------------------------------------------
+@@ -317,6 +317,7 @@ const ip_addr_t dns_mquery_v6group = DNS_MQUERY_IPV6_GROUP_INIT;
+  * Initialize the resolver: set up the UDP pcb and configure the default server
+  * (if DNS_SERVER_ADDRESS is set).
+  */
++#if 0
+ void
+ dns_init(void)
+ {
+@@ -387,6 +388,7 @@ dns_setserver(u8_t numdns, const ip_addr_t *dnsserver)
+     }
+   }
+ }
++#endif
+ 
+ #if ESP_DNS
+ void 
+@@ -443,6 +445,7 @@ static void dns_timeout_cb(void *arg)
+  * The DNS resolver client timer - handle retries and timeouts and should
+  * be called every DNS_TMR_INTERVAL milliseconds (every second by default).
+  */
++#if 0
+ void
+ dns_tmr(void)
+ {
+@@ -466,6 +469,7 @@ dns_tmr(void)
+   }
+ #endif/* ESP_LWIP_DNS_TIMERS_ONDEMAND */
+ }
++#endif
+ 
+ #if DNS_LOCAL_HOSTLIST
+ static void
+@@ -1199,6 +1203,7 @@ dns_check_entry(u8_t i)
+ /**
+  * Call dns_check_entry for each entry in dns_table - check all entries.
+  */
++#if 0
+ static void
+ dns_check_entries(void)
+ {
+@@ -1208,6 +1213,7 @@ dns_check_entries(void)
+     dns_check_entry(i);
+   }
+ }
++#endif
+ 
+ /**
+  * Save TTL and call dns_call_found for correct response.
+@@ -1607,12 +1613,14 @@ dns_enqueue(const char *name, size_t hostnamelen, dns_found_callback found,
+  * @param callback_arg argument to pass to the callback function
+  * @return a err_t return code.
+  */
++#if 0
+ err_t
+ dns_gethostbyname(const char *hostname, ip_addr_t *addr, dns_found_callback found,
+                   void *callback_arg)
+ {
+   return dns_gethostbyname_addrtype(hostname, addr, found, callback_arg, LWIP_DNS_ADDRTYPE_DEFAULT);
+ }
++#endif
+ 
+ #if ESP_DNS
+ static bool dns_server_is_set (void)

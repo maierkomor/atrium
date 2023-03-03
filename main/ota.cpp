@@ -61,10 +61,10 @@ extern "C" {
 #include <string.h>
 #include <unistd.h>
 
-#ifdef CONFIG_IDF_TARGET_ESP32
-#define OTABUF_SIZE 8192
+#ifdef ESP32
+#define OTABUF_SIZE 8192 //(1460*16)
 #else
-#define OTABUF_SIZE 2048
+#define OTABUF_SIZE 1460
 #endif
 
 #define TAG MODULE_OTA
@@ -78,7 +78,6 @@ static char *skip_http_header(Terminal &t, char *text, int len)
 	}
 	data += 4;
 	data[-1] = 0;
-	//t.printf("header:\n%s\n",text);
 	if (strstr(text,"200 OK\r\n"))
 		return data;
 	t.printf("http error: %s\n",text);
@@ -96,6 +95,9 @@ static int send_http_get(Terminal &t, const char *server, int port, const char *
 		t.printf("unable to resolve ip of %s: %s\n",server,strlwiperr(e));
 		return -1;
 	}
+	char ipaddr[32];
+	inet_ntoa_r(ip,ipaddr,sizeof(ipaddr));
+	t.printf("contacting %s",ipaddr);
 	int hsock = socket(AF_INET, SOCK_STREAM, 0);
 	if (hsock == -1) {
 		t.printf("unable to create download socket: %s\n",strerror(errno));
@@ -169,9 +171,8 @@ static int send_http_get(Terminal &t, const char *server, int port, const char *
 
 #else // ESP8266
 
-static int send_http_get(Terminal &t, LwTcp &P, const char *server, int port, const char *filename, const char *auth)
+static const char *send_http_get(Terminal &t, LwTcp &P, const char *server, int port, const char *filename, const char *auth)
 {
-	log_dbug(TAG,"get: %s, auth=%s\n", filename, auth ? auth : "0");
 	t.printf("get: %s, auth=%s\n", filename, auth ? auth : "0");
 	char http_request[512];
 	int get_len = snprintf(http_request,sizeof(http_request),
@@ -180,23 +181,23 @@ static int send_http_get(Terminal &t, LwTcp &P, const char *server, int port, co
 		"User-Agent: atrium\r\n"
 		, filename, server, port);
 	if (get_len+3 > sizeof(http_request))
-		return -1;
+		return "Header too long.";
 	if (auth) {
 		strcpy(http_request+get_len,"Authorization: Basic ");
 		get_len += 21;
 #ifdef CONFIG_IDF_TARGET_ESP8266
 		int n = esp_base64_encode(auth,strlen(auth),http_request+get_len,sizeof(http_request)-get_len);
 		if (n < 0) {
-			t.printf("base64: 0x%x\n",n);
-			return -1;
+			t.printf("base64: 0x%x\r\n",n);
+			return "";
 		}
 		get_len += n;
 #else
 		size_t b64l = sizeof(http_request)-get_len;
 		int n = mbedtls_base64_encode((unsigned char *)http_request+get_len,sizeof(http_request)-get_len,&b64l,(unsigned char *)auth,strlen(auth));
 		if (0 > n) {
-			t.printf("base64: 0x%x\n",n);
-			return -1;
+			t.printf("base64: 0x%x\r\n",n);
+			return "";
 		}
 		get_len += b64l;
 #endif
@@ -204,56 +205,51 @@ static int send_http_get(Terminal &t, LwTcp &P, const char *server, int port, co
 		get_len += 2;
 	}
 	if (get_len + 3 > sizeof(http_request))
-		return -1;
+		return "Out of memory.";
 	strcpy(http_request+get_len,"\r\n");
 	get_len += 2;
 	//t.printf("http request:\n'%s'\n",http_request);
 	int res = P.write(http_request,get_len);
 	if (res < 0) {
-		log_warn(TAG,"unable to send get: %s\n",P.error());
 		t.printf("unable to send get: %s\n",P.error());
-    		return -1;
+    		return "";
 	}
-	return res;
+	return 0;
 }
 
 #endif
 
-static int to_fd(Terminal &t, void *arg, char *buf, size_t s)
+static const char *to_fd(Terminal &t, void *arg, char *buf, size_t s)
 {
 	//t.printf("to_fd(): %u bytes\n",s);
 	if (-1 != write((int)arg,buf,s))
 		return 0;
-	t.printf("write error: %s\n",strerror(errno));
-	return 1;
+	return strerror(errno);
 }
 
 
-static int to_ota(Terminal &t, void *arg, char *buf, size_t s)
+static const char *to_ota(Terminal &t, void *arg, char *buf, size_t s)
 {
 	esp_err_t err = esp_ota_write((esp_ota_handle_t)arg,buf,s);
-	if (err == ESP_OK) {
+	if (err == ESP_OK)
 		return 0;
-	}
 	t.printf("OTA flash: %s\n",esp_err_to_name(err));
-	log_warn(TAG,"OTA flash: %s\n",esp_err_to_name(err));
-	return 1;
+	return "";
 }
 
 
 #ifdef CONFIG_SOCKET_API
-static int socket_to_x(Terminal &t, int hsock, int (*sink)(Terminal&,void*,char*,size_t), void *arg)
+static int socket_to_x(Terminal &t, int hsock, const char *(*sink)(Terminal&,void*,char*,size_t), void *arg)
 {
 	char *buf = (char*)malloc(OTABUF_SIZE), *data;
-	if (buf == 0) {
-		t.println("Out of memory.");
-		return 1;
-	}
-	int ret = 1;
+	if (buf == 0)
+		return "Out of memory.";
+	int ret = "Failed.";
 	size_t numD = 0;
 	int r = recv(hsock,buf,OTABUF_SIZE,0);
 	if (r < 0)
 		goto done;
+	log_dbug(TAG,"header:\n%.*s",r,buf);
 	if (memcmp(buf,"HTTP",4) || memcmp(buf+8," 200 OK\r",8)) {
 		char *nl = strchr(buf,'\n');
 		if (nl) {
@@ -264,7 +260,7 @@ static int socket_to_x(Terminal &t, int hsock, int (*sink)(Terminal&,void*,char*
 	}
 	data = skip_http_header(t,buf,r);
 	if (data == 0) {
-		t.println("no end of header");
+		ret = "No end of header.";
 		goto done;
 	}
 	r -= (data-buf);
@@ -276,37 +272,35 @@ static int socket_to_x(Terminal &t, int hsock, int (*sink)(Terminal&,void*,char*
 		data = buf;
 		t.printf("wrote %d bytes\r",numD);
 	}
-	t.printf("\n");
+	t.println();
 	ret = 0;
 done:
 	free(buf);
 	return ret;
 }
 
-#else // if ESP8266
+#else // if LWTCP
 
-static int socket_to_x(Terminal &t, LwTcp &P, int (*sink)(Terminal&,void*,char*,size_t), void *arg)
+static const char *socket_to_x(Terminal &t, LwTcp &P, const char *(*sink)(Terminal&,void*,char*,size_t), void *arg)
 {
 	char *buf = (char*)malloc(OTABUF_SIZE), *data;
-	if (buf == 0) {
-		t.println("Out of memory.");
-		return 1;
-	}
-	int ret = 1;
+	if (buf == 0)
+		return "Out of memory.";
+	const char *ret = "Failed.";
 	size_t numD = 0, contlen = 0;
-	bool ia = t.isInteractive();
 	int r = P.read(buf,OTABUF_SIZE);
-	const char *result = 0;
 	if (r < 0)
 		goto done;
+	log_dbug(TAG,"header:\n%.*s",r,buf);
 	if (memcmp(buf,"HTTP",4) || memcmp(buf+8," 200 OK\r",8)) {
 		if (0 == memcmp(buf+8," 404 ",5)) {
-			result = "server 404: file not found";
+			ret = "server 404: file not found";
 			goto done;
 		}
 		if (char *nl = strchr(buf,'\n'))
 			*nl = 0;
 		t.printf("unexpected answer: %s\n",buf);
+		ret = "";
 		goto done;
 	}
 	if (const char *cl = strstr(buf+8,"Content-Length:")) {
@@ -317,38 +311,31 @@ static int socket_to_x(Terminal &t, LwTcp &P, int (*sink)(Terminal&,void*,char*,
 		goto done;
 	data = skip_http_header(t,buf,r);
 	if (data == 0) {
-		result = "no end of header";
+		ret = "no end of header";
 		goto done;
 	}
 	r -= (data-buf);
 	while (r > 0) {
-//		log_dbug(TAG,"sink %u",r);
-		if (sink(t,arg,data,r)) {
-//			log_warn(TAG,"sink error %d",e);
+		if (const char *e = sink(t,arg,data,r)) {
+			ret = e;
 			goto done;
 		}
 		numD += r;
-		if (ia) {
-			t.printf("\rwrote %d/%u bytes",numD,contlen);
-			t.sync(false);
-		}
+		t.printf("\rwrote %d/%u bytes",numD,contlen);
+		t.sync(false);
 		if (numD == contlen)
 			break;
 		r = P.read(buf,OTABUF_SIZE,60000);
 		data = buf;
 	}
 	if (r < 0) {
-		t.printf("error %d",r);
-		log_warn(TAG,"read error %d",r);
+		t.println(P.error());
 	} else if (numD != contlen) {
-		result = "\nincomplete";
+		ret = "\nincomplete";
 	} else {
 		ret = 0;
 	}
 done:
-	if (ia)
-		t.println(result);
-	P.close();
 	free(buf);
 	return ret;
 }
@@ -357,16 +344,166 @@ done:
 
 
 #ifndef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
-static int file_to_flash(Terminal &t, int fd, esp_ota_handle_t ota)
+static const char *ftp_to(Terminal &t, char *addr, const char *(*sink)(Terminal &,void*,char*,size_t), void *arg)
+{
+	const char *server;
+	t.printf("download %s\n",addr);
+	if (0 == strncmp(addr,"ftp://",6)) {
+		server = addr + 6;
+	} else {
+		t.printf("invalid address '%s'\n",addr);
+		return "";
+	}
+	//  user/pass extraction
+	uint16_t port = 21;
+	const char *username = "ftp";
+	const char *pass = "ftp";
+	char *at = strchr(server,'@');
+	if (at) {
+		*at = 0;
+		username = server;
+		if (char *colon = strchr(server,':')) {
+			*colon = 0;
+			pass = colon + 1;
+		} else {
+			pass = 0;
+		}
+		server = at + 1;
+	}
+
+	char *filepath = strchr(server,'/');
+	if (filepath == 0)
+		return "Invalid argument.";
+	*filepath = 0;
+	++filepath;
+	char *portstr = strchr(server,':');
+	if (portstr) {
+		*portstr = 0;
+		long l = strtol(++portstr,0,0);
+		if ((l <= 0) || (l > UINT16_MAX)) {
+			return "invalid port";
+		}
+		port = l;
+	}
+	ip_addr_t ip;
+	t.printf("resolve '%s'\n",server);
+	if (err_t e = resolve_hostname(server,&ip)) {
+		t.printf("unable to resolve ip of %s: %s\n",server,strlwiperr(e));
+		return "";
+	}
+	LwTcp P;
+	char tmp[128];
+	ipaddr_ntoa_r(&ip,tmp,sizeof(tmp));
+	t.printf("connect %s:%d\n",tmp,port);
+	if (P.connect(&ip,port))
+		return P.error();
+	int n = P.read(tmp,sizeof(tmp),5000/portTICK_PERIOD_MS);
+	if (n < 0)
+    		return P.error();
+	if ((n < 4) || (0 != strncmp(tmp,"220 ",4)))
+		return "Protocol error.";
+	t.println("Connected.");
+
+	size_t ul = strlen(username);
+	if (ul > 122)
+		return "Invalid argument.";
+	memcpy(tmp,"USER ",5);
+	memcpy(tmp+5,username,ul);
+	tmp[ul+5] = '\r';
+	tmp[ul+6] = '\n';
+	tmp[ul+7] = 0;
+//	log_dbug(TAG,"send '%.*s'",ul+5,tmp);
+	int res = P.write(tmp,ul+7);
+	if (res < 0)
+    		return P.error();
+	n = P.read(tmp,sizeof(tmp),5000/portTICK_PERIOD_MS);
+	if (n < 0)
+    		return P.error();
+//	log_dbug(TAG,"rcvd '%.*s'",n,tmp);
+	if ((n < 4) || ((0 != strncmp(tmp,"331 ",4)) && (0 != strncmp(tmp,"230 ",4))))
+		return "Login rejected.";
+	if (pass) {
+		size_t pl = strlen(pass);
+		if (pl > 122)
+			return "Invalid argument.";
+		memcpy(tmp,"PASS ",5);
+		memcpy(tmp+5,pass,pl);
+		tmp[pl+5] = '\r';
+		tmp[pl+6] = '\n';
+		res = P.write(tmp,pl+7);
+		if (res < 0)
+			return P.error();
+		log_dbug(TAG,"send '%.*s'",pl+5,tmp);
+		n = P.read(tmp,sizeof(tmp),5000/portTICK_PERIOD_MS);
+		if (n < 0)
+			return P.error();
+		log_dbug(TAG,"rcvd '%.*s'",n,tmp);
+		if ((n < 4) || ((0 != strncmp(tmp,"331 ",4)) && (0 != strncmp(tmp,"230 ",4))))
+			return "Login rejected.";
+	}
+	res = P.write("PASV\r\n",6);
+	if (res < 0)
+		return P.error();
+	log_dbug(TAG,"send 'PASV'");
+	n = P.read(tmp,sizeof(tmp),5000/portTICK_PERIOD_MS);
+	if (n < 0)
+		return P.error();
+	log_dbug(TAG,"rcvd '%.*s'",n,tmp);
+	unsigned pasv[6];
+	n = sscanf(tmp,"227 Entering Passive Mode (%u,%u,%u,%u,%u,%u)."
+			,pasv+0,pasv+1,pasv+2,pasv+3,pasv+4,pasv+5);
+	if (n != 6)
+		return "Connection failed.";
+	sprintf(tmp,"%u.%u.%u.%u",pasv[0],pasv[1],pasv[2],pasv[3]);
+	uint16_t dp = pasv[4] << 8 | pasv[5];
+	t.println(tmp);
+	ip_addr_t dip;
+	if (0 == ipaddr_aton(tmp,&dip))
+		return "Address error.";
+	LwTcp D;
+	if (D.connect(&dip,dp)) {
+		t.println(D.error());
+		return "PASV connect failed.";
+	}
+	memcpy(tmp,"TYPE I\r\nRETR ",13);
+	size_t fl = strlen(filepath);
+	memcpy(tmp+13,filepath,fl);
+	tmp[fl+13] = '\r';
+	tmp[fl+14] = '\n';
+	res = P.write(tmp,fl+15);
+	if (res < 0)
+		return P.error();
+//	t.printf("send '%.*s'\n",fl+13,tmp);
+	char *buf = (char*)malloc(OTABUF_SIZE);
+	if (buf == 0)
+		return "Out of memory.";
+	const char *ret = 0;
+	unsigned total = 0;
+	n = D.read(buf,OTABUF_SIZE);
+	while (n > 0) {
+		total += n;
+		t.printf("\rread %d",total);
+		if (sink(t,arg,buf,n)) {
+			ret = "";
+			break;
+		}
+		n = D.read(buf,OTABUF_SIZE);
+	}
+	t.println("\ndone");
+	P.write("QUIT\r\n",6);
+	free(buf);
+	return ret;
+}
+
+
+static const char *file_to_flash(Terminal &t, int fd, esp_ota_handle_t ota)
 {
 	size_t numD = 0;
 	char *buf = (char*)malloc(OTABUF_SIZE);
-	if (buf == 0) {
-		t.println("Out of memory.");
-		return 1;
-	}
+	if (buf == 0)
+		return "Out of memory.";
 	bool ia = t.isInteractive();
-	int r = 1;
+	const char *r = "Failed.";
 	for (;;) {
 		int n = read(fd,buf,OTABUF_SIZE);
 		if (n < 0) {
@@ -395,7 +532,7 @@ static int file_to_flash(Terminal &t, int fd, esp_ota_handle_t ota)
 #endif	// CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 
 
-static int http_to(Terminal &t, char *addr, int (*sink)(Terminal &,void*,char*,size_t), void *arg)
+static const char *http_to(Terminal &t, char *addr, const char *(*sink)(Terminal &,void*,char*,size_t), void *arg)
 {
 	uint16_t port;
 	const char *server;
@@ -408,7 +545,7 @@ static int http_to(Terminal &t, char *addr, int (*sink)(Terminal &,void*,char*,s
 		server = addr + 8;
 	} else {
 		t.printf("invalid address '%s'\n",addr);
-		return 1;
+		return "";
 	}
 	//  user/pass extraction
 	const char *username = 0;
@@ -423,37 +560,35 @@ static int http_to(Terminal &t, char *addr, int (*sink)(Terminal &,void*,char*,s
 	}
 
 	char *filepath = strchr(server,'/');
-	if (filepath == 0) {
-		t.println("no file in http address");
-		return 1;
-	}
+	if (filepath == 0)
+		return "Invalid argument.";
 	*filepath = 0;
 	++filepath;
 	char *portstr = strchr(server,':');
 	if (portstr) {
+		*portstr = 0;
 		long l = strtol(++portstr,0,0);
-		if ((l < 0) || (l > UINT16_MAX)) {
-			t.println("invalid port");
-			return false;
+		if ((l <= 0) || (l > UINT16_MAX)) {
+			return "invalid port";
 		}
 		port = l;
-	}
-	ip_addr_t ip;
-	if (err_t e = resolve_hostname(server,&ip)) {
-		t.printf("unable to resolve ip of %s: %s\n",server,strlwiperr(e));
-		return -1;
 	}
 #ifdef CONFIG_SOCKET_API
 	int hsock = send_http_get(t,server,port,filepath,username);
 	if (hsock == -1)
-		return 1;
-	int r = socket_to_x(t,hsock,sink,arg);
+		return "Failed.";
+	const char *r = socket_to_x(t,hsock,sink,arg);
 	close(hsock);
 #else // ESP8266
+	ip_addr_t ip;
+	if (err_t e = resolve_hostname(server,&ip)) {
+		t.printf("unable to resolve ip of %s: %s\n",server,strlwiperr(e));
+		return "Unknown host";
+	}
 	LwTcp P;
 	P.connect(&ip,port);
-	int r = send_http_get(t,P,server,port,filepath,username);
-	if (r >= 0)
+	const char *r = send_http_get(t,P,server,port,filepath,username);
+	if (r == 0)
 		r = socket_to_x(t,P,sink,arg);
 #endif
 	return r;
@@ -488,24 +623,22 @@ const char *http_download(Terminal &t, char *addr, const char *fn)
 		return strerror(errno);
 	}
 	t.printf("downloading to %s\n",fn);
-	int r = http_to(t,addr,to_fd,(void*)fd);
+	const char *r = http_to(t,addr,to_fd,(void*)fd);
 	close(fd);
-	return r ? "Failed." : 0;
+	return r;
 }
 
 
-static int to_part(Terminal &t, void *arg, char *buf, size_t s)
+static const char *to_part(Terminal &t, void *arg, char *buf, size_t s)
 {
 	esp_partition_t *p = (esp_partition_t *)arg;
 	//t.printf("to_part %u@%x\n",s,*addr);
-	if (s > p->size) {
-		t.println("end of partition");
-		return 1;
-	}
+	if (s > p->size)
+		return "End of partition.";
 	esp_err_t e = spi_flash_write(p->address,buf,s);
 	if (e) {
 		t.printf("flash error %s\n",esp_err_to_name(e));
-		return 1;
+		return "";
 	}
 	p->address += s;
 	p->size -= s;
@@ -541,21 +674,26 @@ const char *update_part(Terminal &t, char *source, const char *dest)
 	unsigned Ps = p->address;
 	unsigned Pe = p->address+p->size;
 	if (! ((Be <= Ps) || (Pe <= Bs))) {
-		return "cannot update active partition";
+		return "Cannot update active partition.";
 	}
 	uint32_t addr = p->address;
 	uint32_t s = p->size;
 	t.printf("erasing %d@%x\n",p->size,p->address);
 	t.sync();
-	log_dbug(TAG,"erase");
 	if (esp_err_t e = spi_flash_erase_range(p->address,p->size)) {
 		t.println("error erasing");
 		return esp_err_to_name(e);
 	}
-	int r = http_to(t,source,to_part,(void*)p);
+	const char *r;
+#ifndef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
+	if (0 == strncmp(source,"ftp://",6))
+		r = ftp_to(t,source,to_part,(void*)p);
+	else
+#endif
+		r = http_to(t,source,to_part,(void*)p);
 	p->address = addr;
 	p->size = s;
-	return r ? "Failed." : 0;
+	return r;
 }
 
 
@@ -565,7 +703,7 @@ const char *perform_ota(Terminal &t, char *source, bool changeboot)
 	vTaskPrioritySet(0,10);
 	bool ia = t.isInteractive();
 	const esp_partition_t *bootp = esp_ota_get_boot_partition();
-#ifdef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
+#ifndef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 	const esp_partition_t *runp = esp_ota_get_running_partition();
 	if (ia)
 		t.printf("running on '%s' at 0x%08x\n"
@@ -574,7 +712,7 @@ const char *perform_ota(Terminal &t, char *source, bool changeboot)
 	if (bootp != runp)
 		t.printf("boot partition: '%s' at 0x%08x\n",bootp->label,bootp->address);
 #endif
-	int result;
+	const char *result = "Failed.";
 	esp_ota_handle_t ota = 0;
 	const esp_partition_t *updatep = esp_ota_get_next_update_partition(NULL);
 	if (updatep == 0) {
@@ -592,6 +730,10 @@ const char *perform_ota(Terminal &t, char *source, bool changeboot)
 
 	if ((0 == memcmp(source,"http://",7)) || (0 == memcmp(source,"https://",8))) {
 		result = http_to(t,source,to_ota,(void*)ota);
+#ifndef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
+	} else if (0 == memcmp(source,"ftp://",6)) {
+		result = ftp_to(t,source,to_ota,(void*)ota);
+#endif
 	} else {
 #ifdef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 		return "Invalid OTA link.";
@@ -608,7 +750,7 @@ const char *perform_ota(Terminal &t, char *source, bool changeboot)
 	}
 	if (result)
 		goto failed;
-	t.printf("verify\n");
+	t.println("verify");
 	t.sync();
 	if (esp_err_t e = esp_ota_end(ota)) {
 		log_warn(TAG,"esp_ota_end: %s\n",esp_err_to_name(e));
@@ -626,7 +768,7 @@ const char *perform_ota(Terminal &t, char *source, bool changeboot)
 	return 0;
 failed:
 	statusled_set(ledmode_pulse_seldom);
-	return "Failed.";
+	return result;
 }
 
 
@@ -656,14 +798,15 @@ const char *boot(Terminal &term, int argc, const char *args[])
 		const esp_partition_t *b = esp_ota_get_boot_partition();
 		const esp_partition_t *r = esp_ota_get_running_partition();
 		const esp_partition_t *u = esp_ota_get_next_update_partition(NULL);
-		term.printf("boot  : %s\n"
-				"run   : %s\n"
-				"update: %s\n"
-				, b ? b->label : "<error>"
-				, r ? r->label : "<error>"
-				, u ? u->label : "<error>"
-			   );
-		return b && r ? 0 : "Failed.";
+		term.printf(
+			"boot  : %s\n"
+			"run   : %s\n"
+			"update: %s\n"
+			, b ? b->label : "<error>"
+			, r ? r->label : "<error>"
+			, u ? u->label : "<error>"
+		);
+		return (b && r) ? 0 : "Failed.";
 	}
 	if (0 == term.getPrivLevel())
 		return "Access denied.";
@@ -677,7 +820,7 @@ const char *boot(Terminal &term, int argc, const char *args[])
 		}
 		i = esp_partition_next(i);
 	}
-	printf("cannot boot %s\n",args[1]);
+	printf("Cannot boot %s.\n",args[1]);
 	return "Failed.";
 }
 

@@ -7,10 +7,10 @@
  * Source Information:
  * ===================
  * Filename : hwcfg.wfc
- * Copyright: 2018-2022
+ * Copyright: 2018-2023
  * Author   : Thomas Maier-Komor
  * 
- * Code generated on 2023-01-29, 16:02:18 (CET).
+ * Code generated on 2023-03-02, 20:58:13 (CET).
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -205,6 +205,7 @@ static const char *i2cdrv_t_names[] = {
 	"i2cdrv_pca9685_xclk_pnp",
 	"i2cdrv_pcf8574",
 	"i2cdrv_si7021",
+	"i2cdrv_ssd1306",
 	"i2cdrv_tca9555",
 };
 
@@ -222,6 +223,7 @@ static i2cdrv_t i2cdrv_t_values[] = {
 	i2cdrv_pca9685_xclk_pnp,
 	i2cdrv_pcf8574,
 	i2cdrv_si7021,
+	i2cdrv_ssd1306,
 	i2cdrv_tca9555,
 };
 
@@ -345,9 +347,9 @@ SystemConfig::SystemConfig()
 #ifdef CONFIG_USB_DIAGLOG
 , m_usb_diag(true)
 #endif // CONFIG_USB_DIAGLOG
-#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+#ifdef CONFIG_USB_CONSOLE
 , m_usb_con(true)
-#endif // CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+#endif // CONFIG_USB_CONSOLE
 , p_validbits(0)
 {
 }
@@ -365,9 +367,9 @@ void SystemConfig::clear()
 	#ifdef CONFIG_USB_DIAGLOG
 	m_usb_diag = true;
 	#endif // CONFIG_USB_DIAGLOG
-	#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	#ifdef CONFIG_USB_CONSOLE
 	m_usb_con = true;
-	#endif // CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	#endif // CONFIG_USB_CONSOLE
 	p_validbits = 0;
 }
 
@@ -386,9 +388,9 @@ void SystemConfig::toASCII(std::ostream &o, size_t indent) const
 	#ifdef CONFIG_USB_DIAGLOG
 	ascii_bool(o, indent, "usb_diag", m_usb_diag);
 	#endif // CONFIG_USB_DIAGLOG
-	#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	#ifdef CONFIG_USB_CONSOLE
 	ascii_bool(o, indent, "usb_con", m_usb_con);
-	#endif // CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	#endif // CONFIG_USB_CONSOLE
 	--indent;
 	ascii_indent(o,indent);
 	o << '}';
@@ -497,13 +499,13 @@ ssize_t SystemConfig::fromMemory(const void *b, ssize_t s)
 			set_usb_diag(*a++);
 			break;
 			#endif // CONFIG_USB_DIAGLOG
-			#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+			#ifdef CONFIG_USB_CONSOLE
 		case 0x53:	// usb_con id 10, type bool, coding 8bit
 			if (a >= e)
 				return -11;
 			set_usb_con(*a++);
 			break;
-			#endif // CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+			#endif // CONFIG_USB_CONSOLE
 		default:
 			// unknown field (option unknown=skip)
 			{
@@ -639,7 +641,7 @@ ssize_t SystemConfig::toMemory(uint8_t *b, ssize_t s) const
 		*a++ = m_usb_diag;
 	}
 	#endif // CONFIG_USB_DIAGLOG
-	#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	#ifdef CONFIG_USB_CONSOLE
 	// has usb_con?
 	if (m_usb_con != true) {
 		// 'usb_con': id=10, encoding=8bit, tag=0x53
@@ -648,7 +650,7 @@ ssize_t SystemConfig::toMemory(uint8_t *b, ssize_t s) const
 		*a++ = 0x53;
 		*a++ = m_usb_con;
 	}
-	#endif // CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	#endif // CONFIG_USB_CONSOLE
 	assert(a <= e);
 	return a-b;
 }
@@ -712,13 +714,13 @@ void SystemConfig::toWire(void (*put)(uint8_t)) const
 		put(m_usb_diag);
 	}
 	#endif // CONFIG_USB_DIAGLOG
-	#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	#ifdef CONFIG_USB_CONSOLE
 	if (m_usb_con != true) {
 		// 'usb_con': id=10, encoding=8bit, tag=0x53
 		put(0x53);	// 'usb_con': id=10
 		put(m_usb_con);
 	}
-	#endif // CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	#endif // CONFIG_USB_CONSOLE
 }
 
 void SystemConfig::toString(std::string &put) const
@@ -780,13 +782,13 @@ void SystemConfig::toString(std::string &put) const
 		put.push_back(m_usb_diag);
 	}
 	#endif // CONFIG_USB_DIAGLOG
-	#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	#ifdef CONFIG_USB_CONSOLE
 	if (m_usb_con != true) {
 		// 'usb_con': id=10, encoding=8bit, tag=0x53
 		put.push_back(0x53);	// 'usb_con': id=10
 		put.push_back(m_usb_con);
 	}
-	#endif // CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	#endif // CONFIG_USB_CONSOLE
 }
 
 void SystemConfig::toJSON(std::ostream &json, unsigned indLvl) const
@@ -831,12 +833,12 @@ void SystemConfig::toJSON(std::ostream &json, unsigned indLvl) const
 		json << (m_usb_diag ? "true" : "false");
 	}
 	#endif // CONFIG_USB_DIAGLOG
-	#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	#ifdef CONFIG_USB_CONSOLE
 	if (has_usb_con()) {
 		fsep = json_indent(json,indLvl,fsep,"usb_con");
 		json << (m_usb_con ? "true" : "false");
 	}
-	#endif // CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	#endif // CONFIG_USB_CONSOLE
 	if (fsep == '{')
 		json.put('{');
 	json.put('\n');
@@ -893,12 +895,12 @@ size_t SystemConfig::calcSize() const
 		r += 2;
 	}
 	#endif // CONFIG_USB_DIAGLOG
-	#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	#ifdef CONFIG_USB_CONSOLE
 	// optional bool usb_con, id 10
 	if (m_usb_con != true) {
 		r += 2;
 	}
-	#endif // CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	#endif // CONFIG_USB_CONSOLE
 	return r;
 }
 
@@ -926,10 +928,10 @@ bool SystemConfig::operator != (const SystemConfig &r) const
 	if (has_usb_diag() && (m_usb_diag != r.m_usb_diag))
 		return true;
 	#endif // CONFIG_USB_DIAGLOG
-	#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	#ifdef CONFIG_USB_CONSOLE
 	if (has_usb_con() && (m_usb_con != r.m_usb_con))
 		return true;
-	#endif // CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	#endif // CONFIG_USB_CONSOLE
 	return false;
 }
 
@@ -1032,7 +1034,7 @@ int SystemConfig::setByName(const char *name, const char *value)
 		return r;
 	}
 	#endif // CONFIG_USB_DIAGLOG
-	#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	#ifdef CONFIG_USB_CONSOLE
 	if (0 == strcmp(name,"usb_con")) {
 		if (value == 0) {
 			clear_usb_con();
@@ -1041,7 +1043,7 @@ int SystemConfig::setByName(const char *name, const char *value)
 		int r = parse_ascii_bool(&m_usb_con,value);
 		return r;
 	}
-	#endif // CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	#endif // CONFIG_USB_CONSOLE
 	return -32;
 }
 
@@ -9961,7 +9963,7 @@ void HardwareConfig::clear()
 	#ifdef CONFIG_TOUCHPAD
 	m_tp_channel.clear();
 	#endif // CONFIG_TOUCHPAD
-	m_gpio.clear();
+	m_gpios.clear();
 	#ifdef CONFIG_SPI
 	m_spibus.clear();
 	#endif // CONFIG_SPI
@@ -10050,13 +10052,13 @@ void HardwareConfig::toASCII(std::ostream &o, size_t indent) const
 	o << '}';
 	#endif // CONFIG_TOUCHPAD
 	ascii_indent(o,indent);
-	size_t s_gpio = m_gpio.size();
-	o << "gpio[" << s_gpio << "] = {";
+	size_t s_gpios = m_gpios.size();
+	o << "gpios[" << s_gpios << "] = {";
 	++indent;
-	for (size_t i = 0, e = s_gpio; i != e; ++i) {
+	for (size_t i = 0, e = s_gpios; i != e; ++i) {
 		ascii_indent(o,indent);
 		o << i << ": ";
-		m_gpio[i].toASCII(o,indent);
+		m_gpios[i].toASCII(o,indent);
 	}
 	--indent;
 	ascii_indent(o,indent);
@@ -10317,16 +10319,16 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 			}
 			break;
 			#endif // CONFIG_TOUCHPAD
-		case 0x3a:	// gpio id 7, type GpioConfig, coding byte[]
+		case 0x3a:	// gpios id 7, type GpioConfig, coding byte[]
 			{
 				varint_t v;
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
 					return -475;
-				m_gpio.emplace_back();
+				m_gpios.emplace_back();
 				if (v != 0) {
-					n = m_gpio.back().fromMemory((const uint8_t*)a,v);
+					n = m_gpios.back().fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
@@ -10745,19 +10747,19 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 		assert(n == tp_channel_ws);
 	}
 	#endif // CONFIG_TOUCHPAD
-	for (const auto &x : m_gpio) {
-		// 'gpio': id=7, encoding=lenpfx, tag=0x3a
+	for (const auto &x : m_gpios) {
+		// 'gpios': id=7, encoding=lenpfx, tag=0x3a
 		if (a >= e)
 			return -521;
 		*a++ = 0x3a;
-		ssize_t gpio_ws = x.calcSize();
-		n = write_varint(a,e-a,gpio_ws);
+		ssize_t gpios_ws = x.calcSize();
+		n = write_varint(a,e-a,gpios_ws);
 		a += n;
-		if ((n <= 0) || (gpio_ws > (e-a)))
+		if ((n <= 0) || (gpios_ws > (e-a)))
 			return -522;
 		n = x.toMemory(a,e-a);
 		a += n;
-		assert(n == gpio_ws);
+		assert(n == gpios_ws);
 	}
 	#ifdef CONFIG_SPI
 	for (const auto &x : m_spibus) {
@@ -11065,11 +11067,11 @@ void HardwareConfig::toWire(void (*put)(uint8_t)) const
 		m_tp_channel[x].toWire(put);
 	}
 	#endif // CONFIG_TOUCHPAD
-	for (size_t x = 0, y = m_gpio.size(); x != y; ++x) {
-		// 'gpio': id=7, encoding=lenpfx, tag=0x3a
-		put(0x3a);	// 'gpio': id=7
-		send_varint(put,m_gpio[x].calcSize());
-		m_gpio[x].toWire(put);
+	for (size_t x = 0, y = m_gpios.size(); x != y; ++x) {
+		// 'gpios': id=7, encoding=lenpfx, tag=0x3a
+		put(0x3a);	// 'gpios': id=7
+		send_varint(put,m_gpios[x].calcSize());
+		m_gpios[x].toWire(put);
 	}
 	#ifdef CONFIG_SPI
 	for (size_t x = 0, y = m_spibus.size(); x != y; ++x) {
@@ -11248,11 +11250,11 @@ void HardwareConfig::toString(std::string &put) const
 		m_tp_channel[x].toString(put);
 	}
 	#endif // CONFIG_TOUCHPAD
-	for (size_t x = 0, y = m_gpio.size(); x != y; ++x) {
-		// 'gpio': id=7, encoding=lenpfx, tag=0x3a
-		put.push_back(0x3a);	// 'gpio': id=7
-		send_varint(put,m_gpio[x].calcSize());
-		m_gpio[x].toString(put);
+	for (size_t x = 0, y = m_gpios.size(); x != y; ++x) {
+		// 'gpios': id=7, encoding=lenpfx, tag=0x3a
+		put.push_back(0x3a);	// 'gpios': id=7
+		send_varint(put,m_gpios[x].calcSize());
+		m_gpios[x].toString(put);
 	}
 	#ifdef CONFIG_SPI
 	for (size_t x = 0, y = m_spibus.size(); x != y; ++x) {
@@ -11450,14 +11452,14 @@ void HardwareConfig::toJSON(std::ostream &json, unsigned indLvl) const
 		json.put(']');
 	}
 	#endif // CONFIG_TOUCHPAD
-	if (size_t s = m_gpio.size()) {
+	if (size_t s = m_gpios.size()) {
 		fsep = json_indent(json,indLvl,fsep);
 		indLvl += 2;
-		json << "\"gpio\":[\n";
+		json << "\"gpios\":[\n";
 		size_t i = 0;
 		for (;;) {
 			json_indent(json,indLvl,0);
-			m_gpio[i].toJSON(json,indLvl);
+			m_gpios[i].toJSON(json,indLvl);
 			++i;
 			if (i == s)
 				break;
@@ -11720,12 +11722,12 @@ size_t HardwareConfig::calcSize() const
 		r += s + 1 /* tag(tp_channel) 0x30 */;
 	}
 	#endif // CONFIG_TOUCHPAD
-	// repeated GpioConfig gpio, id 7
-	// repeated message gpio
-	for (size_t x = 0, y = m_gpio.size(); x < y; ++x) {
-		size_t s = m_gpio[x].calcSize();
+	// repeated GpioConfig gpios, id 7
+	// repeated message gpios
+	for (size_t x = 0, y = m_gpios.size(); x < y; ++x) {
+		size_t s = m_gpios[x].calcSize();
 		r += wiresize(s);
-		r += s + 1 /* tag(gpio) 0x38 */;
+		r += s + 1 /* tag(gpios) 0x38 */;
 	}
 	#ifdef CONFIG_SPI
 	// repeated SpiBusConfig spibus, id 8
@@ -11871,7 +11873,7 @@ bool HardwareConfig::operator != (const HardwareConfig &r) const
 	if (m_tp_channel != r.m_tp_channel)
 		return true;
 	#endif // CONFIG_TOUCHPAD
-	if (m_gpio != r.m_gpio)
+	if (m_gpios != r.m_gpios)
 		return true;
 	#ifdef CONFIG_SPI
 	if (m_spibus != r.m_spibus)
@@ -12051,33 +12053,33 @@ int HardwareConfig::setByName(const char *name, const char *value)
 		}
 	}
 	#endif // CONFIG_TOUCHPAD
-	if (0 == memcmp(name,"gpio",4)) {
-		if ((name[4] == 0) && (value == 0)) {
-			clear_gpio();
+	if (0 == memcmp(name,"gpios",5)) {
+		if ((name[5] == 0) && (value == 0)) {
+			clear_gpios();
 			return 0;
-		} else if (name[4] == '[') {
+		} else if (name[5] == '[') {
 			char *idxe;
 			unsigned long x;
-			if ((name[5] == '+') && (name[6] == ']')) {
-				x = m_gpio.size();
-				m_gpio.resize(x+1);
-				idxe = (char*)(name + 6);
+			if ((name[6] == '+') && (name[7] == ']')) {
+				x = m_gpios.size();
+				m_gpios.resize(x+1);
+				idxe = (char*)(name + 7);
 				if (value == 0)
 					return 0;
 			} else {
-				x = strtoul(name+5,&idxe,0);
-				if ((idxe[0] != ']') || (idxe == (name+5)))
+				x = strtoul(name+6,&idxe,0);
+				if ((idxe[0] != ']') || (idxe == (name+6)))
 					return -559;
-				if (m_gpio.size() <= x)
+				if (m_gpios.size() <= x)
 					return -560;
 				if ((idxe[1] == 0) && (value == 0)) {
-					m_gpio.erase(m_gpio.begin()+x);
+					m_gpios.erase(m_gpios.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
 				return -561;
-			return m_gpio[x].setByName(idxe+2,value);
+			return m_gpios[x].setByName(idxe+2,value);
 		}
 	}
 	#ifdef CONFIG_SPI
@@ -12463,9 +12465,9 @@ Message *HardwareConfig::p_getMember(const char *s, const char *e, unsigned x)
 		return 0;
 	}
 	#endif // CONFIG_TOUCHPAD
-	if (0 == strncmp("gpio[",s,e-s)) {
-		if (x < m_gpio.size())
-			return &m_gpio[x];
+	if (0 == strncmp("gpios[",s,e-s)) {
+		if (x < m_gpios.size())
+			return &m_gpios[x];
 		return 0;
 	}
 	#ifdef CONFIG_SPI

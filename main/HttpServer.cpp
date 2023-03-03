@@ -290,7 +290,7 @@ void HttpServer::performPUT(HttpRequest *req)
 	LwTcp *con = req->getConnection();
 	HttpResponse ans;
 	if (fd == -1) {
-		log_warn(TAG,"unable to create upload file %s: %s",fn,strerror(errno));
+		log_warn(TAG,"create upload file %s: %s",fn,strerror(errno));
 		ans.setResult(HTTP_NOT_FOUND);
 		ans.senddata(con);
 		return;
@@ -299,7 +299,7 @@ void HttpServer::performPUT(HttpRequest *req)
 	ans.senddata(con);
 	if (-1 == write(fd,req->getContent(),req->getAvailableLength())) {
 		close(fd);
-		log_warn(TAG,"unable to write to upload file %s: %s",fn,strerror(errno));
+		log_warn(TAG,"write upload file %s: %s",fn,strerror(errno));
 		ans.setResult(errno == ENOSPC ? HTTP_INSUF_SPACE : HTTP_INTERNAL_ERR);
 	} else {
 		int n;
@@ -320,7 +320,7 @@ void HttpServer::performPUT(HttpRequest *req)
 	ans.senddata(con);
 #else
 	HttpResponse ans;
-	log_warn(TAG,"no spiffs - unable to upload files");
+	log_warn(TAG,"no SPIFFS - cannot upload");
 	ans.setResult(HTTP_NOT_IMPL);
 	LwTcp *con = req->getConnection();
 	ans.senddata(con);

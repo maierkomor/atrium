@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2022, Thomas Maier-Komor
+ *  Copyright (C) 2022-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -39,6 +39,8 @@ struct CoreIO : public XioCluster
 	int set_hi(uint8_t io) override;
 	int set_lo(uint8_t io) override;
 	int set_intr(uint8_t,xio_intrhdlr_t,void*) override;
+//	int intr_enable(uint8_t) override;
+//	int intr_disable(uint8_t) override;
 	int config(uint8_t io, xio_cfg_t) override;
 	int set_lvl(uint8_t io, xio_lvl_t v) override;
 	const char *getName() const override;
@@ -51,20 +53,20 @@ static CoreIO GpioCluster;
 
 const char *CoreIO::getName() const
 {
-	return "internal0";
+	return "internal";
 }
 
 
 unsigned CoreIO::numIOs() const
 {
-	return 32;
+	return 22;
 }
 
 
 int CoreIO::config(uint8_t num, xio_cfg_t cfg)
 {
-	log_dbug(TAG,"config0 %u,0x%x",num,cfg);
-	if (num >= 32) {
+	log_dbug(TAG,"config %u,0x%x",num,cfg);
+	if (num >= 22) {
 		log_warn(TAG,"invalid gpio%u",num);
 		return -EINVAL;
 	}
@@ -199,7 +201,7 @@ int CoreIO::config(uint8_t num, xio_cfg_t cfg)
 
 int CoreIO::get_dir(uint8_t num) const
 {
-	if (num >= 32)
+	if (num >= 22)
 		return -1;
 	if (GPIO.pin[num].pad_driver)
 		return xio_cfg_io_od;
@@ -211,7 +213,7 @@ int CoreIO::get_dir(uint8_t num) const
 
 int CoreIO::get_lvl(uint8_t num)
 {
-	if (num < 32) {
+	if (num < 22) {
 		if (GPIO.enable.val & (1 << num))
 			return (GPIO.out.val >> num) & 0x1;
 		else
@@ -274,11 +276,11 @@ int CoreIO::setm(uint32_t v, uint32_t m)
 
 int CoreIO::set_intr(uint8_t gpio, xio_intrhdlr_t hdlr, void *arg)
 {
-	if (gpio >= 32) {
+	if (gpio >= 22) {
 		log_warn(TAG,"set intr: invalid gpio%u",gpio);
 		return -EINVAL;
 	}
-	if (esp_err_t e = gpio_isr_handler_add((gpio_num_t)gpio,hdlr,(void*)arg)) {
+	if (esp_err_t e = gpio_isr_handler_add((gpio_num_t)gpio,hdlr,arg)) {
 		log_warn(TAG,"add isr handler to gpio%u: %s",gpio,esp_err_to_name(e));
 		return e;
 	}
@@ -287,9 +289,41 @@ int CoreIO::set_intr(uint8_t gpio, xio_intrhdlr_t hdlr, void *arg)
 }
 
 
+#if 0
+int CoreIO::intr_enable(uint8_t gpio)
+{
+	if (gpio >= 22) {
+		log_warn(TAG,"enable intr: invalid gpio%u",gpio);
+		return -EINVAL;
+	}
+	if (esp_err_t e = gpio_intr_enable((gpio_num_t)gpio)) {
+		log_warn(TAG,"enable isr handler to gpio%u: %s",gpio,esp_err_to_name(e));
+		return e;
+	}
+	log_dbug(TAG,"enable intr on gpio%u",gpio);
+	return 0;
+}
+
+
+int CoreIO::intr_disable(uint8_t gpio)
+{
+	if (gpio >= 22) {
+		log_warn(TAG,"disable intr: invalid gpio%u",gpio);
+		return -EINVAL;
+	}
+	if (esp_err_t e = gpio_intr_disable((gpio_num_t)gpio)) {
+		log_warn(TAG,"disable isr handler to gpio%u: %s",gpio,esp_err_to_name(e));
+		return e;
+	}
+	log_dbug(TAG,"disable intr on gpio%u",gpio);
+	return 0;
+}
+#endif
+
+
 int coreio_config(uint8_t num, xio_cfg_t cfg)
 {
-	if (num < 32)
+	if (num < 22)
 		return GpioCluster.config(num,cfg);
 	return -1;
 }
@@ -297,7 +331,7 @@ int coreio_config(uint8_t num, xio_cfg_t cfg)
 
 int coreio_lvl_get(uint8_t num)
 {
-	if (num < 32)
+	if (num < 22)
 		return GpioCluster.get_lvl(num);
 	return -1;
 }
@@ -305,7 +339,7 @@ int coreio_lvl_get(uint8_t num)
 
 int coreio_lvl_hi(uint8_t num)
 {
-	if (num < 32)
+	if (num < 22)
 		return GpioCluster.set_hi(num);
 	return -1;
 }
@@ -313,7 +347,7 @@ int coreio_lvl_hi(uint8_t num)
 
 int coreio_lvl_lo(uint8_t num)
 {
-	if (num < 32)
+	if (num < 22)
 		return GpioCluster.set_lo(num);
 	return -1;
 }
@@ -321,7 +355,7 @@ int coreio_lvl_lo(uint8_t num)
 
 int coreio_lvl_set(uint8_t num, xio_lvl_t l)
 {
-	if (num < 32)
+	if (num < 22)
 		return GpioCluster.set_lvl(num,l);
 	return -1;
 }

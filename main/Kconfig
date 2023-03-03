@@ -189,7 +189,7 @@ config ROMFS_VFS_NUMFDS
 config USB_HOST_FS
 	bool "USB host filesystem via openocd"
 	default false
-	depends on DEVEL && (IDF_TARGET_ESP32S2 || IDF_TARGET_ESP32S3 || IDF_TARGET_ESP32C3)
+	depends on IDF_TARGET_ESP32S2 || IDF_TARGET_ESP32S3 || IDF_TARGET_ESP32C3
 	help
 		"mount openocd host filesystem to /usb"
 endmenu # filesystem
@@ -197,18 +197,24 @@ endmenu # filesystem
 menu "hardware support"
 
 config USB_DIAGLOG
-	depends on CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG || CONFIG_TINYUSB_CDC_ENABLED
+	depends on ESP_CONSOLE_USB_SERIAL_JTAG
 	bool "diag output to USB serial"
 	default true
 	help
 		output diagnostic log to USB serial connections
 
 config USB_CONSOLE
-	depends on CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG || CONFIG_TINYUSB_CDC_ENABLED
+	depends on ESP_CONSOLE_USB_SERIAL_JTAG
 	bool "diag output to USB serial"
 	default true
 	help
 		output diagnostic log to USB serial connections
+
+config GPIOS
+	bool "named GPIO infrastructure"
+	default true
+	help
+		Named GPIO support
 
 config IOEXTENDERS
 	bool "I/O extenders"
@@ -249,7 +255,9 @@ config ONEWIRE
 		1-wire driver support (right now only DS18x20)
 
 config TOUCHPAD
-	depends on IDF_TARGET_ESP32 || IDF_TARGET_ESP32S2
+	# TODO S2,S3
+	# depends on IDF_TARGET_ESP32 || IDF_TARGET_ESP32S2 || IDF_TARGET_ESP32S3
+	depends on IDF_TARGET_ESP32
 	bool	"touchpad"
 	default true
 	help
@@ -329,7 +337,7 @@ config PCF8574
 		I2C driver for PCF8574 (GPIO expander), used as bridge for HD44780U
 
 config TCA9555
-	depends on I2C_XDEV && DEVEL
+	depends on I2C_XDEV
 	bool "tca9555"
 	default true
 	help
@@ -414,7 +422,7 @@ config BH1750
 
 config SPI
 	bool "SPI"
-	depends on IDF_TARGET_ESP32 || IDF_TARGET_ESP32S2
+	depends on !IDF_TARGET_ESP8266
 	default false
 	help
 		SPI driver infrastructure

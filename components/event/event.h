@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2022, Thomas Maier-Komor
+ *  Copyright (C) 2020-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -58,8 +58,8 @@ struct EventHandler
 
 
 trigger_t event_callback(event_t e, Action *a);
-// strdup's arg
-trigger_t event_callback_arg(event_t e, Action *a, const char *arg);
+// takes arg ownership
+trigger_t event_callback_arg(event_t e, Action *a, char *arg);
 int event_cb_set_en(event_t e, Action *a, bool en);
 int event_cba_set_en(event_t e, Action *a, const char *, bool en);
 int event_detach(event_t e, Action *a);

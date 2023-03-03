@@ -1,3 +1,17 @@
+R2302:
+======
+- added TCA9555 driver
+- changed SSD1306 to manual configuration
+- added support for directly executing Lua via MQTT
+- fix: config luafiles should default to /flash
+- Lua additions and updates
+- fix: OTA update not working with IP addresses
+- fix: LwTcp error condition handling
+- update to ESP32 IDF v4.4.4
+- added support for ftp based updates
+- uDNS updates and fixes
+- USB config fix
+
 R2301:
 ======
 - Lua integration enhancements

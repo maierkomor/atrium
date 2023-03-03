@@ -113,15 +113,14 @@ static unsigned alarms_loop(void *)
 		}
 		if (x) {
 			const char *aname = a.action().c_str();
+			log_dbug(TAG,"at %s %u:%02u => %s",Weekdays_de[wd],a.min_of_day()/60,a.min_of_day()%60,aname);
 			if (strchr(aname,'`')) {
 				event_t e = event_id(aname);
 				if (e == 0)
 					e = event_register(aname);
-				log_dbug(TAG,"at %s %u:%02u => %s",Weekdays_de[wd],a.min_of_day()/60,a.min_of_day()%60,aname);
 				event_trigger(e);
 
 			} else {
-				log_dbug(TAG,"at %s %u:%02u => %s",Weekdays_de[wd],a.min_of_day()/60,a.min_of_day()%60,aname);
 				if (action_activate(aname))
 					log_warn(TAG,"unknown action '%s'",aname);
 			}

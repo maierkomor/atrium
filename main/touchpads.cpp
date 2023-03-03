@@ -133,11 +133,20 @@ int touchpad(Terminal &term, int argc, const char *args[])
 	for (int i = 0; i < NumCh; ++i) {
 		if (Channels[i] != 0) {
 			unsigned ch = Channels[i]->getChannel();
+#if defined CONFIG_IDF_TARGET_ESP32
 			uint16_t r,f;
 			touch_pad_read_raw_data((touch_pad_t)ch,&r);
 			touch_pad_read_filtered((touch_pad_t)ch,&f);
 			term.printf("%2u last: %5u %5u\n",ch,Channels[i]->getRaw(),Channels[i]->getFiltered());
 			term.printf("%2u now : %5u %5u\n",ch,r,f);
+#elif defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3
+			uint32_t r;
+			touch_pad_read_raw_data((touch_pad_t)ch,&r);
+			term.printf("%2u last: %5u\n",ch,Channels[i]->getRaw());
+			term.printf("%2u now : %5u\n",ch,r);
+#else
+#error missing implementation
+#endif
 		}
 	}
 	return 0;
@@ -162,9 +171,13 @@ int touchpads_setup()
 			touch_pad_t ch = (touch_pad_t)c.channel();
 			Channels[i] = new TouchPad(c.name().c_str(),c.channel(),c.threshold());
 			if (esp_err_t e = touch_pad_set_thresh(ch,c.threshold()))
-				log_error(TAG,"error setting threshold %u on channel %u: %s",c.threshold(),c.channel(),esp_err_to_name(e));
+				log_warn(TAG,"error setting threshold %u on channel %u: %s",c.threshold(),c.channel(),esp_err_to_name(e));
+#if defined CONFIG_IDF_TARGET_ESP32
 			else if (esp_err_t e = touch_pad_config(ch,c.threshold()))
-				log_error(TAG,"error configuring rtc threshold %u on channel %u: %s",c.threshold(),c.channel(),esp_err_to_name(e));
+#elif defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3
+			else if (esp_err_t e = touch_pad_config(ch))
+#endif
+				log_warn(TAG,"error configuring rtc threshold %u on channel %u: %s",c.threshold(),c.channel(),esp_err_to_name(e));
 			else
 				++i;
 			if (c.has_slope() && c.has_tieopt())

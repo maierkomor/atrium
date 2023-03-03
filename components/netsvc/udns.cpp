@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021-2022, Thomas Maier-Komor
+ *  Copyright (C) 2021-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -68,12 +68,12 @@
 #define TYPE_TXT	16
 #define TYPE_ADDR6	28
 
-#define SIZEOF_ANSWERT	10
+#define SIZEOF_ANSWER	10
 #define SIZEOF_HEADER	12
 #define SIZEOF_IA4	4	// size of ipv4 address
 #define SIZEOF_IA6	16	// size of ipv6 address
-#define SIZEOF_IP4ANSW	(SIZEOF_ANSWERT+SIZEOF_IA4)
-#define SIZEOF_IP6ANSW	(SIZEOF_ANSWERT+SIZEOF_IA6)
+#define SIZEOF_IP4ANSW	(SIZEOF_ANSWER+SIZEOF_IA4)
+#define SIZEOF_IP6ANSW	(SIZEOF_ANSWER+SIZEOF_IA6)
 
 #define MAX_LABELLEN	63
 
@@ -83,14 +83,14 @@ Packet format:
 	uint16 transaction-id = 0
 	uint16 flags: 0x8000: response, 0x0000 query
 	uint16 question count
-	uint16 answert count
+	uint16 answer count
 	uint16 auth-rr count
 	uint16 extra-rr count
 	question[]
 		label[]
 		uint16 type	0xc=PTR
 		uint16 class	0x1=IN
-	answert[]
+	answer[]
 		label[]
 		uint16 type	0x1=A
 		uint16 class	0x1=IN
@@ -260,13 +260,41 @@ static void cache_remove_head()
 }
 
 
+static int query_remove(const char *hn, ip_addr_t *ip)
+{
+	int r = 0;
+	Query *q = Queries, *prev = 0;
+	while (q) {
+		Query *n = q->next;
+		if (strcmp((char*)q->hostname,hn)) {
+			prev = q;
+		} else {
+			log_devel(TAG,"resolve query %s",q->hostname);
+			if (q->cb)
+				q->cb(hn,0,q->arg);
+			if (prev)
+				prev->next = n;
+			else
+				Queries = n;
+			if (q->buf)
+				free(q->buf);
+			free(q);
+			++r;
+		}
+		q = n;
+	}
+	return r;
+}
+
+
 static void cache_add(const char *hn, size_t hl, ip_addr_t *ip, uint32_t ttl)
 {
 //	log_dbug(TAG,"strlen %u, hl %u, %s",strlen(hn),hl,hn);
 	DnsEntry *e = CacheS;
 	while (e) {
-		if (0 == strcmp(e->host,hn))
+		if (0 == strcmp(e->host,hn)) {
 			return;
+		}
 		e = e->next;
 	}
 //	log_dbug(TAG,"cache size %u/%u, add %s: %s",CacheSize,MaxCache,hn,ip2str(ip));
@@ -277,14 +305,19 @@ static void cache_add(const char *hn, size_t hl, ip_addr_t *ip, uint32_t ttl)
 	}
 	if (Modules[0] || Modules[TAG]) {
 		char ipstr[40];
-		ip2str_r(ip,ipstr,sizeof(ipstr));
-		log_dbug(TAG,"cache add %.*s: %s",hl,hn,ipstr);
+		if (ip) {
+			ip2str_r(ip,ipstr,sizeof(ipstr));
+		}
+		log_dbug(TAG,"cache add %.*s: %s",hl,hn,ip ? ipstr : "<unknown>");
 	}
 	e = (DnsEntry *) malloc(sizeof(DnsEntry)+hl);
 	memcpy(e->host,hn,hl);
 	e->host[hl] = 0;
 	e->next = 0;
-	memcpy(&e->ip,ip,sizeof(ip_addr_t));
+	if (ip)
+		memcpy(&e->ip,ip,sizeof(ip_addr_t));
+	else
+		bzero(&e->ip,sizeof(e->ip));
 	e->len = hl;
 	e->ttl = xTaskGetTickCount() + ttl * configTICK_RATE_HZ;
 	if (CacheE)
@@ -342,7 +375,7 @@ static int parseName(struct pbuf *p, size_t &xoff, char *hostname, size_t hoff)
 				--h;
 			*h = 0;
 			xoff = off;
-			log_devel(TAG,"parseName1 => %u: '%.*s'",h-hostname,h-hostname,hostname);
+//			log_devel(TAG,"parseName1 => %u: '%.*s'",h-hostname,h-hostname,hostname);
 			return h-hostname;
 		} else if ((len & 0xc0) == 0) {
 			if (len != pbuf_copy_partial(p,h,len,off))
@@ -350,7 +383,7 @@ static int parseName(struct pbuf *p, size_t &xoff, char *hostname, size_t hoff)
 			h += len;
 			*h++ = '.';
 			off += len;
-			log_devel(TAG,"parseName3: %u: '%.*s'",h-hostname,h-hostname,hostname);
+//			log_devel(TAG,"parseName3: %u: '%.*s'",h-hostname,h-hostname,hostname);
 		} else if ((len & 0xc0) == 0xc0) {
 			int xlen = pbuf_try_get_at(p,off);
 			if (xlen < 0)
@@ -360,13 +393,13 @@ static int parseName(struct pbuf *p, size_t &xoff, char *hostname, size_t hoff)
 			int x = parseName(p,at,hostname,h-hostname);
 			if (x < 0)
 			       return x;
-			log_devel(TAG,"parseName4: %d",x);
+//			log_devel(TAG,"parseName4: %d",x);
 			h = hostname + x;
 			if ((h > hostname) && (h[-1] == '.'))
 				--h;
 			*h = 0;
 			xoff = off;
-			log_devel(TAG,"parseName2 => %u: '%.*s'",h-hostname,h-hostname,hostname);
+//			log_devel(TAG,"parseName2 => %u: '%.*s'",h-hostname,h-hostname,hostname);
 			return h-hostname;
 		} else {
 			return -off;
@@ -376,7 +409,7 @@ static int parseName(struct pbuf *p, size_t &xoff, char *hostname, size_t hoff)
 }
 
 
-static int parseAnswert(struct pbuf *p, size_t off, const ip_addr_t *sender)
+static int parseAnswer(struct pbuf *p, size_t off, const ip_addr_t *sender)
 {
 	char hostname[256];
 	int hl = parseName(p,off,hostname,0);
@@ -386,13 +419,13 @@ static int parseAnswert(struct pbuf *p, size_t off, const ip_addr_t *sender)
 	}
 	log_devel(TAG,"off=%u, host %s",off,hostname);
 	Answert a;
-	if (SIZEOF_ANSWERT != pbuf_copy_partial(p,&a,SIZEOF_ANSWERT,off))
+	if (SIZEOF_ANSWER != pbuf_copy_partial(p,&a,SIZEOF_ANSWER,off))
 		return -off;
 	a.rr_type = ntohs(a.rr_type);
 	a.rr_class = ntohs(a.rr_class);
 	a.rdlen = ntohs(a.rdlen);
-	off += SIZEOF_ANSWERT;
-	log_devel(TAG,"answert type %u, class %u, len %u",a.rr_type,a.rr_class,a.rdlen);
+	off += SIZEOF_ANSWER;
+	log_devel(TAG,"answer type %u, class %u, len %u",a.rr_type,a.rr_class,a.rdlen);
 	if (a.rr_type == TYPE_CNAME) {
 		char cname[256];
 		int cnl = parseName(p,off,cname,0);
@@ -401,6 +434,7 @@ static int parseAnswert(struct pbuf *p, size_t off, const ip_addr_t *sender)
 		Query *q = Queries, *prev = 0;
 		while (q) {
 			if (0 == strcmp(q->hostname,hostname)) {
+				log_devel(TAG,"update query %s => %s",hostname,cname);
 				Query *nq = (Query*) realloc(q,sizeof(Query)+cnl+1);
 				strcpy(nq->hostname,cname);
 				if (prev)
@@ -416,60 +450,45 @@ static int parseAnswert(struct pbuf *p, size_t off, const ip_addr_t *sender)
 		}
 		return off;
 	}
-	if ((a.rr_type != TYPE_ADDR) || ((a.rr_class & 0x7fff) != CLASS_INET) || (a.rdlen != 4)) {
+	if ((a.rr_type != TYPE_ADDR) && (a.rr_type != TYPE_ADDR6)) {
 		return off+a.rdlen;
 	}
 	ip_addr_t ip = IPADDR4_INIT(0);
-	if (((a.rr_class & 0x7fff) == TYPE_ADDR) && (a.rdlen == 4)) {
+	char ipstr[64];
+	// why mask bit 15?
+//	if (((a.rr_class & 0x7fff) == TYPE_ADDR) && (a.rdlen == 4)) {
+	if ((a.rr_class == TYPE_ADDR) && (a.rdlen == 4)) {
 		if (4 != pbuf_copy_partial(p,ip_2_ip4(&ip),a.rdlen,off)) {
-			log_devel(TAG,"copy failed");
+			log_devel(TAG,"copy1 failed");
 			return -off;
 		}
-		log_devel(TAG,"IPv4 %s",ip2str(&ip));
-#if defined CONFIG_LWIP_IPV6 || defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
-	} else if (((a.rr_class & 0x7fff) == TYPE_ADDR6) && (a.rdlen == 16)) {
-		if (4 != pbuf_copy_partial(p,ip_2_ip6(&ip),a.rdlen,off)) {
-			log_devel(TAG,"copy failed");
+		log_devel(TAG,"IPv4 %s",ip2str_r(&ip,ipstr,sizeof(ipstr)));
+#if defined CONFIG_LWIP_IPV6 || defined ESP32
+	// why mask bit 15?
+//	} else if (((a.rr_class & 0x7fff) == TYPE_ADDR) && (a.rdlen == 16)) {
+	} else if ((a.rr_class == TYPE_ADDR) && (a.rdlen == 16)) {
+		if (16 != pbuf_copy_partial(p,ip_2_ip6(&ip),a.rdlen,off)) {
+			log_devel(TAG,"copy2 %d@0x%x failed",a.rdlen,off);
 			return -off;
 		}
-		log_devel(TAG,"IPv6 %s",ip2str(&ip));
+		log_devel(TAG,"IPv6 %s",ip2str_r(&ip,ipstr,sizeof(ipstr)));
 #endif
 	} else if ((a.rr_class & 0x7fff) == TYPE_PTR) {
 		log_dbug(TAG,"ignoring PTR");
 		return off+a.rdlen;
 	} else {
-		log_hex(TAG,&a,sizeof(a),"ignoring class %x",a.rr_class);
+		log_hex(TAG,&a,sizeof(a),"ignoring class 0x%x, len %d",a.rr_class,a.rdlen);
 		return off+a.rdlen;
 	}
 	off += a.rdlen;
 	LWIP_UNLOCK();	// is that really ok to avoid the deadlock
 	MLock lock(Mtx,__FUNCTION__);
 	if (0 == strcmp(hostname,Hostname)) {
-		log_warn(TAG,"own hostname on %s",ip2str(sender));
+		log_warn(TAG,"own hostname on %s",ip2str_r(sender,ipstr,sizeof(ipstr)));
 		State = mdns_collission;
 	}
-	cache_add(hostname,hl,&ip,a.ttl);
-	Query *q = Queries, *prev = 0;
-	while (q) {
-		log_dbug(TAG,"query %s",q->hostname);
-		if (0 == strcmp(q->hostname,hostname)) {
-			if (q->cb) {
-				log_devel(TAG,"callback for %s=%s",hostname,ip2str(&ip));
-				q->cb(hostname,&ip,q->arg);
-			}
-			Query *n = q->next;
-			if (prev)
-				prev->next = n;
-			else
-				Queries = n;
-			free(q->buf);
-			free(q);
-			q = n;
-		} else {
-			prev = q;
-			q = q->next;
-		}
-	}
+	if (query_remove(hostname,&ip))
+		cache_add(hostname,hl,&ip,a.ttl);
 	lock.unlock();
 	log_devel(TAG,"parsing done");
 	LWIP_LOCK();
@@ -502,8 +521,8 @@ static inline void sendOwnIp(uint8_t *q, uint16_t ql, uint16_t id, const ip_addr
 	a.rr_class = htons(CLASS_INET);
 	a.ttl = htonl(10000);
 	a.rdlen = htons(4);
-	memcpy(pkt,&a,SIZEOF_ANSWERT);
-	pkt += SIZEOF_ANSWERT;
+	memcpy(pkt,&a,SIZEOF_ANSWER);
+	pkt += SIZEOF_ANSWER;
 	memcpy(pkt,&IP4,SIZEOF_IA4);
 	pkt += SIZEOF_IA4;
 	assert(pkt-(uint8_t*)p->payload == p->len);
@@ -512,8 +531,10 @@ static inline void sendOwnIp(uint8_t *q, uint16_t ql, uint16_t id, const ip_addr
 	assert(p2->len == p2->tot_len);
 	pbuf_copy(p2,p);
 	r = udp_send(MPCB,p2);
-	if (r)
-		log_warn(TAG,"sendto MPCB %s:%d %s",ip2str(qip),port,strlwiperr(r));
+	if (r) {
+		char ipstr[64];
+		log_warn(TAG,"sendto MPCB %s:%d %s",ip2str_r(qip,ipstr,sizeof(ipstr)),port,strlwiperr(r));
+	}
 #if defined CONFIG_LWIP_IPV6 || defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
 	/* causes routing error... why?
 	pbuf_copy(p2,p);
@@ -523,8 +544,10 @@ static inline void sendOwnIp(uint8_t *q, uint16_t ql, uint16_t id, const ip_addr
 	*/
 #endif
 	r = udp_sendto(SPCB,p,qip,port);
-	if (r)
-		log_warn(TAG,"sendto SPCB %s:%d %s",ip2str(qip),port,strlwiperr(r));
+	if (r) {
+		char ipstr[64];
+		log_warn(TAG,"sendto SPCB %s:%d %s",ip2str_r(qip,ipstr,sizeof(ipstr)),port,strlwiperr(r));
+	}
 	pbuf_free(p);
 	pbuf_free(p2);
 }
@@ -536,7 +559,7 @@ static inline void sendOwnIp6(uint8_t *q, uint16_t ql, uint16_t id, const ip_add
 	// caller ensures: Ctx != 0, State == mdns_up
 	if (ip6_addr_isany_val(IP6G))
 		return;
-	log_dbug(TAG,"send own IPv6");
+//	log_dbug(TAG,"send own IPv6");
 	size_t numans = 1;
 	size_t bsize = SIZEOF_HEADER+(SIZEOF_IP6ANSW+HostnameLen+8)*numans;
 	struct pbuf *p = pbuf_alloc(PBUF_TRANSPORT,bsize,PBUF_RAM);
@@ -558,8 +581,8 @@ static inline void sendOwnIp6(uint8_t *q, uint16_t ql, uint16_t id, const ip_add
 	a.rr_class = htons(CLASS_INET);
 	a.ttl = htonl(10000);
 	a.rdlen = htons(SIZEOF_IA6);
-	memcpy(pkt,&a,SIZEOF_ANSWERT);
-	pkt += SIZEOF_ANSWERT;
+	memcpy(pkt,&a,SIZEOF_ANSWER);
+	pkt += SIZEOF_ANSWER;
 	log_dbug(TAG,"global ip6 %s",ip6addr_ntoa(&IP6G));
 	memcpy(pkt,&IP6G,SIZEOF_IA6);
 	pkt += SIZEOF_IA6;
@@ -609,8 +632,8 @@ static void sendOwnHostname(uint8_t *q, uint16_t ql, uint16_t id)
 	a.rr_class = htons(CLASS_INET);
 	a.ttl = htonl(10000);
 	a.rdlen = htons(4);
-	memcpy(pkt,&a,SIZEOF_ANSWERT);
-	pkt += SIZEOF_ANSWERT;
+	memcpy(pkt,&a,SIZEOF_ANSWER);
+	pkt += SIZEOF_ANSWER;
 	memcpy(pkt,&IP,4);
 	pkt += 4;
 	assert(pkt-(uint8_t*)p->payload == p->len);
@@ -622,12 +645,17 @@ static void sendOwnHostname(uint8_t *q, uint16_t ql, uint16_t id)
 static void sendHostInfo(uint8_t *q, uint16_t ql, uint16_t id)
 {
 	log_dbug(TAG,"send own hostinfo");
-#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
-	const char cpu[] = "esp32";
 	const char os[] = "freertos";
+#if defined CONFIG_IDF_TARGET_ESP32
+	const char cpu[] = "esp32";
+#elif defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
+	const char cpu[] = "esp32-s2";
+#elif defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
+	const char cpu[] = "esp32-s3";
+#elif defined CONFIG_IDF_TARGET_ESP32C3
+	const char cpu[] = "esp32-c3";
 #elif CONFIG_IDF_TARGET_ESP8266
 	const char cpu[] = "esp8266";
-	const char os[] = "freertos";
 #else
 #error unknown IDF and CPU
 #endif
@@ -651,8 +679,8 @@ static void sendHostInfo(uint8_t *q, uint16_t ql, uint16_t id)
 	a.rr_class = htons(CLASS_INET);
 	a.ttl = htonl(10000);
 	a.rdlen = htons(4);
-	memcpy(pkt,&a,SIZEOF_ANSWERT);
-	pkt += SIZEOF_ANSWERT;
+	memcpy(pkt,&a,SIZEOF_ANSWER);
+	pkt += SIZEOF_ANSWER;
 	assert(pkt-(uint8_t*)p->payload == p->len);
 	udp_send(MPCB,p);
 	pbuf_free(p);
@@ -684,8 +712,8 @@ static void sendPtrInfo(uint8_t *q, uint16_t ql, uint16_t id)
 	a.rr_class = htons(CLASS_INET);
 	a.ttl = htonl(10000);
 	a.rdlen = htons(4);
-	memcpy(pkt,&a,SIZEOF_ANSWERT);
-	pkt += SIZEOF_ANSWERT;
+	memcpy(pkt,&a,SIZEOF_ANSWER);
+	pkt += SIZEOF_ANSWER;
 	assert(pkt-(uint8_t*)p->payload == p->len);
 	udp_send(MPCB,p);
 	pbuf_free(p);
@@ -754,8 +782,9 @@ static void recv_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p, const 
 //	log_hex(TAG,p->payload,p->len,"packet from %s",ip2str(ip));
 	if (Modules[0] || Modules[TAG]) {
 		char ipstr[40];
-		ip2str_r(ip,ipstr,sizeof(ipstr));
-		log_direct(ll_debug,TAG,"packet from %s",ipstr);
+		if (ip)
+			ip2str_r(ip,ipstr,sizeof(ipstr));
+		log_direct(ll_debug,TAG,"packet from %s",ip ? ipstr : "<unknwon>");
 	}
 	Header h;
 	if (p->len < sizeof(h)) {
@@ -792,14 +821,21 @@ static void recv_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p, const 
 		unsigned n = h.acnt + h.nscnt + h.arcnt;
 //		unsigned n = h.acnt;
 		while (n--) {
-			int x = parseAnswert(p,off,ip);
+			int x = parseAnswer(p,off,ip);
 			if (x < 0) {
-				log_devel(TAG,"parseAnswert(%u) %d",off,x);
+				log_devel(TAG,"parseAnswer(%u) %d",off,x);
 				e = -x;
 				break;
 			}
 			off = x;
 		}
+	} else if (3 == h.flags.rcode) {
+		char cname[256];
+		int hl = parseName(p,off,cname,0);
+		if (hl < 0)
+			return;
+		log_dbug(TAG,"negative reply for %s",cname);
+		query_remove(cname,0);
 	}
 	if (e) {
 		log_hex(TAG,p->payload,p->len,"error %d on packet at %u",e,off);
@@ -836,10 +872,10 @@ static void query_fn(void *a)
 			struct pbuf *pb = pbuf_alloc(PBUF_TRANSPORT,q->ql,PBUF_RAM);
 			err_t e = pbuf_take(pb,q->buf,q->ql);
 			assert(e == ERR_OK);
-//			log_hex(TAG,pb->payload,pb->len,"sending mdns query");
+//			log_hex(TAG,pb->payload,pb->len,"sending mDNS query");
 			err_t r = udp_send(MPCB,pb);
 			q->cnt = (r == 0);
-			pbuf_free(pb);
+			pbuf_free(pb);		/// TODO/BUG? is this the problem?
 		} else {
 			log_warn(TAG,"no socket for multi-cast query");
 		}
@@ -935,7 +971,7 @@ int udns_query(const char *hn, ip_addr_t *ip, void (*cb)(const char *, const ip_
 	}
 	q->buf = buf;
 	q->ts = xTaskGetTickCount();
-	bool local = (0 == memcmp(".local",hn+len-6,6));
+	bool local = (len > 6) && (0 == memcmp(".local",hn+len-6,6));
 	q->local = local;
 	memcpy(q->hostname,hn,len+1);
 	log_dbug(TAG,"added query for %s",q->hostname);
@@ -945,9 +981,10 @@ int udns_query(const char *hn, ip_addr_t *ip, void (*cb)(const char *, const ip_
 	memcpy(buf+12,labels,len+2);
 	buf[12+2+len+1] = 1;
 	buf[12+2+len+3] = 1;
-	log_dbug(TAG,"sending %sdns query",local?"m":"");
+	log_dbug(TAG,"sending %sDNS query",local?"m":"");
 	{
 		Lock lock(Mtx,__FUNCTION__);
+		log_dbug(TAG,"add query %s",q->hostname);
 		q->next = Queries;
 		Queries = q;
 	}
@@ -959,7 +996,7 @@ int udns_query(const char *hn, ip_addr_t *ip, void (*cb)(const char *, const ip_
 			struct pbuf *pb = pbuf_alloc(PBUF_TRANSPORT,ql,PBUF_RAM);
 			err_t e = pbuf_take(pb,buf,ql);
 			assert(e == ERR_OK);
-//			log_hex(TAG,pb->payload,pb->len,"sending mdns query");
+//			log_hex(TAG,pb->payload,pb->len,"sending mDNS query");
 			err_t r = udp_send(MPCB,pb);
 			c = (r == 0);
 			pbuf_free(pb);
@@ -972,7 +1009,7 @@ int udns_query(const char *hn, ip_addr_t *ip, void (*cb)(const char *, const ip_
 		c = udns_send_ns(buf,ql);
 	}
 	LWIP_UNLOCK();
-	// free(q->buf); - done when the query is deleted
+	// free(q->buf); - done when the query is answered and deleted
 #else
 	tcpip_send_msg_wait_sem(query_fn,q,&LwipSem);
 	c = q->cnt;
@@ -1053,9 +1090,11 @@ static void udns_cyclic_fn(void *arg)
 		portTickType ts = xTaskGetTickCount();
 		Query *q = Queries;
 		while (q) {
+			log_dbug(TAG,"%s: q->ts=%u, ts=%u",q->hostname,q->ts,ts);
 			if ((q->ts + configTICK_RATE_HZ < ts) && (!q->local)) {
 				log_dbug(TAG,"re-query %s",q->hostname);
 				udns_send_ns(q->buf,q->ql);
+				q->ts = ts;
 			}
 			q = q->next;
 		}
@@ -1108,6 +1147,7 @@ static unsigned udns_cyclic(void *arg)
 			LWIP_LOCK();
 			udns_send_ns(q->buf,q->ql);
 			LWIP_UNLOCK();
+			q->ts = ts;
 		}
 		q = q->next;
 	}
@@ -1345,10 +1385,14 @@ int udns(Terminal &t, int argc, const char *argv[])
 	Lock lock(Mtx,__FUNCTION__);
 	DnsEntry *e = CacheS;
 	while (e) {
-		if (IP_IS_V4(&e->ip))
-			t.printf("%-15s %s\n",ip4addr_ntoa_r(ip_2_ip4(&e->ip),ipstr,sizeof(ipstr)),e->host);
+//		if (IP_IS_V4(&e->ip))
+//			t.printf("%-15s %s\n",ip4addr_ntoa_r(ip_2_ip4(&e->ip),ipstr,sizeof(ipstr)),e->host);
+
+		char ipstr[64];
+		t.printf("%-40s %s\n",ip2str_r(&e->ip,ipstr,sizeof(ipstr)),e->host);
 		e = e->next;
 	}
+	/*
 #if defined CONFIG_LWIP_IPV6 || defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
 	e = CacheS;
 	while (e) {
@@ -1357,6 +1401,7 @@ int udns(Terminal &t, int argc, const char *argv[])
 		e = e->next;
 	}
 #endif
+*/
 	CName *cn = CNames;
 	while (cn) {
 		t.printf("%s => %s\n",cn->alias,cn->cname);

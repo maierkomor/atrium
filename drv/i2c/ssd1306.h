@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021, Thomas Maier-Komor
+ *  Copyright (C) 2021-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -35,6 +35,7 @@ class SSD1306 : public DotMatrix, public I2CDevice
 	SSD1306(uint8_t bus, uint8_t addr);
 	~SSD1306();
 
+	static SSD1306 *create(uint8_t bus, uint8_t addr);
 	int init(uint8_t maxx, uint8_t maxy, uint8_t options);
 	int drawBitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t *data) override;
 	int drawRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h) override;

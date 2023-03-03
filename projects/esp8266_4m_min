@@ -271,6 +271,7 @@ CONFIG_WFC_TARGET="esp8266"
 # CONFIG_WPS is not set
 # CONFIG_SPIFFS is not set
 # CONFIG_ROMFS is not set
+# CONFIG_GPIOS is not set
 # CONFIG_IOEXTENDERS is not set
 # CONFIG_LEDS is not set
 # CONFIG_BUTTON is not set

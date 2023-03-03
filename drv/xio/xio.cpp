@@ -206,6 +206,28 @@ int xio_set_intr(xio_t x, xio_intrhdlr_t h, void *arg)
 }
 
 
+#if 0
+int xio_intr_enable(xio_t x)
+{
+	log_dbug(TAG,"enable intr xio%u",x);
+	if (XioCluster *c = XioCluster::getCluster(x))
+		return c->intr_enable(x-c->getBase());
+	log_warn(TAG,"enable_intr: invalid io %u",x);
+	return -1;
+}
+
+
+int xio_intr_disable(xio_t x)
+{
+	log_dbug(TAG,"disable intr xio%u",x);
+	if (XioCluster *c = XioCluster::getCluster(x))
+		return c->intr_disable(x-c->getBase());
+	log_warn(TAG,"disable_intr: invalid io %u",x);
+	return -1;
+}
+#endif
+
+
 event_t xio_get_fallev(xio_t x)
 {
 	if (XioCluster *c = XioCluster::getCluster(x))

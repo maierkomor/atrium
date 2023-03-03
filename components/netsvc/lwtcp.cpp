@@ -41,7 +41,9 @@ int LwTcp::close()
 {
 	if (m_con == -1)
 		return -1;
-	return ::close(m_con);
+	int r = ::close(m_con);
+	m_con = -1;
+	return r;
 }
 
 
@@ -50,7 +52,7 @@ int LwTcp::connect(const char *hn, uint16_t port, bool block)
 	log_local(TAG,"connect %s:%d",hn,(int)port);
 	ip_addr_t ip;
 	if (err_t e = resolve_fqhn(hn,&ip)) {
-//		m_err = e;
+		m_err = e;
 		return e;
 	}
 	return connect(&ip,port,block);
@@ -165,8 +167,8 @@ int LwTcp::write(const char *data, size_t l, bool copy_ignored)
 
 #include <string.h>
 
-#define TCP_BLOCK_SIZE 1436
-#ifdef CONFIG_IDF_TARGET_ESP32
+#define TCP_BLOCK_SIZE 1460
+#ifdef ESP32
 #define MAX_BUF_SIZE (8*1024)
 #else
 #define MAX_BUF_SIZE (4*1024)
@@ -192,12 +194,12 @@ LwTcp::LwTcp(struct tcp_pcb *pcb)
 #ifndef CONFIG_IDF_TARGET_ESP8266
 	m_lwip = xSemaphoreCreateBinary();
 #endif
-	// LWIP_LOCK(); -- called from lwip context
+	// no LWIP_LOCK(); -- called from lwip context
 	tcp_recv(pcb,handle_recv);
 	tcp_sent(pcb,handle_sent);
 	tcp_err(pcb,handle_err);
 	tcp_arg(pcb,this);
-	//LWIP_UNLOCK(); -- called from lwip context
+	// no LWIP_UNLOCK(); -- called from lwip context
 	log_localx(TAG,"connected to %s:%u",inet_ntoa(pcb->remote_ip),(unsigned)pcb->remote_port);
 }
 
@@ -233,6 +235,10 @@ LwTcp::~LwTcp()
 	vSemaphoreDelete(m_mtx);
 	vSemaphoreDelete(m_sem);
 	vSemaphoreDelete(m_send);
+#ifndef CONFIG_IDF_TARGET_ESP8266
+	vSemaphoreDelete(m_lwip);
+#endif
+	log_devel(TAG,"~%u: %u done",m_port,m_total);
 }
 
 
@@ -243,7 +249,10 @@ void LwTcp::close_fn(void *arg)
 	tcp_err(a->m_pcb,0);
 	tcp_recv(a->m_pcb,0);
 	tcp_sent(a->m_pcb,0);
-	a->m_err = tcp_close(a->m_pcb);
+	if (a->m_pcb) {
+		a->m_err = tcp_close(a->m_pcb);
+		a->m_pcb = 0;
+	}
 	xSemaphoreGive(a->m_lwip);
 }
 #endif
@@ -258,8 +267,11 @@ int LwTcp::close()
 	tcp_err(m_pcb,0);
 	tcp_recv(m_pcb,0);
 	tcp_sent(m_pcb,0);
-	err_t e = tcp_close(m_pcb);
-	m_pcb = 0;
+	err_t e = 0;
+	if (m_pcb) {
+		e = tcp_close(m_pcb);
+		m_pcb = 0;
+	}
 	LWIP_UNLOCK();
 	m_err = e;
 #else
@@ -296,7 +308,6 @@ void LwTcp::connect_fn(void *arg)
 }
 #endif
 
-
 int LwTcp::connect(ip_addr_t *a, uint16_t port, bool block)
 {
 	if (m_pcb) {
@@ -304,7 +315,11 @@ int LwTcp::connect(ip_addr_t *a, uint16_t port, bool block)
 		return ERR_USE;
 	}
 	m_port = port;
-	log_localx(TAG,"connect ip %s:%d",inet_ntoa(a),(int)port);
+	if (Modules[0]||Modules[TAG]) {
+		char ipstr[32];
+		inet_ntoa_r(a,ipstr,sizeof(ipstr));
+		log_direct(ll_local,TAG,"connect ip %s:%d",ipstr,(int)port);
+	}
 #ifdef CONFIG_IDF_TARGET_ESP8266
 	LWIP_LOCK();
 	m_pcb = tcp_new();
@@ -317,12 +332,16 @@ int LwTcp::connect(ip_addr_t *a, uint16_t port, bool block)
 	tcpip_send_msg_wait_sem(connect_fn,this,&m_lwip);
 #endif
 	if (m_err != 0) {
-		log_warn(TAG,"connect: %d",m_err);
+		log_warn(TAG,"connect: %d, pcb %p",m_err,m_pcb);
 		return -1;
 	}
 	if (block) {
 		xSemaphoreTake(m_sem,portMAX_DELAY);
-		log_local(TAG,"connect @%u",port);
+		if (m_pcb == 0) {
+			log_local(TAG,"disconnected @%u",port);
+			return -1;
+		}
+		log_local(TAG,"connect @%u, PCB %p",port,m_pcb);
 	}
 	return 0;
 }
@@ -360,8 +379,8 @@ err_t LwTcp::handle_sent(void *arg, struct tcp_pcb *pcb, u16_t l)
 {
 	PROFILE_FUNCTION();
 	LwTcp *P = (LwTcp *)arg;
-	log_devel(TAG,"sent@%u %u/%u",pcb->local_port,l,P->m_nwrite);
 	RLock lock(P->m_mtx);
+	log_devel(TAG,"sent@%u %u/%u",pcb->local_port,l,P->m_nwrite);
 	assert(l <= P->m_nwrite);
 	P->m_nwrite -= l;
 	if (P->m_nwrite == 0)
@@ -452,7 +471,7 @@ err_t LwTcp::handle_connect(void *arg, struct tcp_pcb *pcb, err_t x)
 	PROFILE_FUNCTION();
 	LwTcp *P = (LwTcp *) arg;
 	assert(x == ERR_OK);	// documented in LwIP to be always like this
-	log_localx(TAG,"connection %s to %u",inet_ntoa(pcb->remote_ip),pcb->local_port);
+	log_localx(TAG,"connected %u to %s:%u",pcb->local_port,inet_ntoa(pcb->remote_ip),pcb->remote_port);
 	tcp_recv(pcb,handle_recv);
 	tcp_sent(pcb,handle_sent);
 	if (pdTRUE == xSemaphoreGive(P->m_sem))
@@ -483,7 +502,7 @@ int LwTcp::read(char *buf, size_t l, unsigned timeout)
 		pbuf_copy_partial(m_pbuf,buf,copy,m_taken);
 		m_taken += copy;
 		if (m_taken == m_pbuf->tot_len) {
-			log_local(TAG,"total free",m_taken);
+			log_devel(TAG,"total free",m_taken);
 			tofree = m_pbuf;
 			m_pbuf = 0;
 			m_taken = 0;
@@ -509,7 +528,7 @@ int LwTcp::read(char *buf, size_t l, unsigned timeout)
 			log_local(TAG,"wait recv on %u",m_port);
 			if (pdTRUE != xSemaphoreTake(m_sem,timeout)) {
 				log_local(TAG,"read@%u: timeout",m_port);
-				return 0;
+				return -1;
 			}
 			log_devel(TAG,"recv sema");
 			if (pdTRUE != xSemaphoreTakeRecursive(m_mtx,MUTEX_ABORT_TIMEOUT))
@@ -553,6 +572,8 @@ int LwTcp::send(const char *buf, size_t l, bool copy)
 {
 	if (l == 0)
 		return 0;
+	if (m_pcb == 0)
+		return -1;
 	PROFILE_FUNCTION();
 	log_devel(TAG,"send@%u %u %scopy",m_port,l,copy?"":"no-");
 #ifdef CONFIG_IDF_TARGET_ESP8266
@@ -584,6 +605,11 @@ int LwTcp::send(const char *buf, size_t l, bool copy)
 int LwTcp::write(const char *buf, size_t l, bool copy)
 {
 	PROFILE_FUNCTION();
+	if (m_pcb == 0) {
+		log_devel(TAG,"write@%u no PCB",m_port);
+		m_err = ERR_CLSD;
+		return -1;
+	}
 	int e;
 	for (;;) {
 		e = send(buf,l,copy);
@@ -591,6 +617,8 @@ int LwTcp::write(const char *buf, size_t l, bool copy)
 			m_err = e;
 			return e;
 		}
+		if (m_pbuf == 0)
+			return -1;
 		log_local(TAG,"send=-1");
 		sync(false);
 		vTaskDelay(10);
@@ -692,7 +720,10 @@ void LwTcpListener::create_fn(void *arg)
 void LwTcpListener::abort_fn(void *arg)
 {
 	LwTcp *a = (LwTcp *) arg;
-	tcp_abort(a->m_pcb);
+	if (a->m_pcb) {
+		tcp_abort(a->m_pcb);
+		a->m_pcb = 0;
+	}
 	xSemaphoreGive(a->m_lwip);
 }
 #endif
@@ -701,9 +732,12 @@ void LwTcpListener::abort_fn(void *arg)
 LwTcpListener::~LwTcpListener()
 {
 #ifdef CONFIG_IDF_TARGET_ESP8266
-	LWIP_LOCK();
-	tcp_abort(m_pcb);
-	LWIP_UNLOCK();
+	if (m_pcb) {
+		LWIP_LOCK();
+		tcp_abort(m_pcb);
+		m_pcb = 0;
+		LWIP_UNLOCK();
+	}
 #else
 	tcpip_send_msg_wait_sem(abort_fn,0,&m_lwip);
 #endif

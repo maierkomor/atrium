@@ -119,8 +119,10 @@ void con_print(const char *str)
 	}
 #endif
 #ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
-	usb_serial_jtag_write_bytes(str,strlen(str),portMAX_DELAY);
-	usb_serial_jtag_write_bytes("\r\n",2,portMAX_DELAY);
+	// will block until a jtag connection is present
+	// therefore, max delay: 10ms
+	usb_serial_jtag_write_bytes(str,strlen(str),10);
+	usb_serial_jtag_write_bytes("\r\n",2,10);
 #endif
 }
 

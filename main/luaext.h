@@ -31,5 +31,6 @@ struct LuaFn
 
 int xlua_add_funcs(const char *name, const LuaFn *f);
 unsigned xlua_render(struct Screen *ctx);
+void xlua_run(const char *s, size_t l);
 
 #endif

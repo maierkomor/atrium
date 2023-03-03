@@ -102,15 +102,14 @@ static void answer(ftpctx_t *ctx, const char *fmt, ...)
 	buf[n++] = '\r';
 	buf[n++] = '\n';
 	log_dbug(TAG,"answer %s",b);
-	if (-1 == ctx->con->write(b,n)) {
-		if (b != buf)
-			free(b);
+	int r = ctx->con->write(b,n);
+	if (b != buf)
+		free(b);
+	if (-1 == r) {
 		log_error(TAG,"failed to send answer '%s': %s",b,ctx->con->error());
 		ctx->con->close();
 		vTaskDelete(0);
 	}
-	if (b != buf)
-		free(b);
 }
 
 
@@ -630,25 +629,22 @@ static void size(ftpctx_t *ctx, const char *arg)
 	FILE *f = fopen(fn,"r");
 	if (f == 0) {
 		answer(ctx,"550 error accessing %s: %s",fn,strerror(errno));
-		free(fn);
-		return;
-	}
-	if (-1 == fseek(f,0,SEEK_END)) {
-		answer(ctx,"550 error seeking%s: %s",fn,strerror(errno));
-		free(fn);
-		return;
+	} else if (-1 == fseek(f,0,SEEK_END)) {
+		answer(ctx,"550 error seeking %s: %s",fn,strerror(errno));
+		fclose(f);
+	} else {
+		answer(ctx,"213 %u",ftell(f));
+		fclose(f);
 	}
 	free(fn);
-	answer(ctx,"213 %u",ftell(f));
-	fclose(f);
 #else
 	struct stat st;
 	int r = stat(fn,&st);
-	free(fn);
 	if (r == 0)
 		answer(ctx,"213 %u",st.st_size);
 	else
-		answer(ctx,"550 error stating: %s",strerror(errno));
+		answer(ctx,"550 error stating %s: %s",fn,strerror(errno));
+	free(fn);
 #endif
 }
 

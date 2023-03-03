@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2022, Thomas Maier-Komor
+ *  Copyright (C) 2020-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -123,7 +123,7 @@ trigger_t event_callback(event_t e, Action *a)
 }
 
 
-trigger_t event_callback_arg(event_t e, Action *a, const char *arg)
+trigger_t event_callback_arg(event_t e, Action *a, char *arg)
 {
 	if (pdFALSE == xSemaphoreTake(EventMtx,MUTEX_ABORT_TIMEOUT))
 		abort_on_mutex(EventMtx,__FUNCTION__);
@@ -180,7 +180,7 @@ trigger_t event_callback_arg(const char *event, const char *action, const char *
 	const char *x = 0;
 	if (event_t e = event_id(event)) {
 		if (Action *a = action_get(action))
-			return event_callback_arg(e,a,arg);
+			return event_callback_arg(e,a,strdup(arg));
 		else
 			x = action;
 	} else {
@@ -374,6 +374,9 @@ static void event_task(void *)
 						cb[n++] = c;
 				for (const auto &c : cb) {
 					if (c.enabled) {
+					// action arg	: set on action_add (cannot be overwritten)
+					// callback arg	: set on event_callback_arg
+					// event arg    : set on event_trigger_arg
 						lock.unlock();
 						log_local(TAG,"\t%s, arg %-16s",c.action->name,c.arg ? c.arg : "''");
 						c.action->activate(e.arg ? e.arg : (c.arg ? strdup((const char *)c.arg) : 0));

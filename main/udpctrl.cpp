@@ -83,7 +83,7 @@ static void udpctrl_session(void *arg)
 	MemTerminal term((const char *)c->pbuf->payload,c->pbuf->len);
 	shell(term,false);
 	size_t s = term.getSize();
-	log_dbug(TAG,"response (%d): '%s'",s,term.getBuffer());
+	log_dbug(TAG,"response: '%s'",term.getBuffer());
 	LWIP_LOCK();
 	struct pbuf *r = pbuf_alloc(PBUF_TRANSPORT,s,PBUF_RAM);
 	pbuf_take(r,term.getBuffer(),s);
@@ -106,7 +106,7 @@ static void recv_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p, const 
 	sprintf(name,"udpctrl%u",Ctx->Cmds);
 	BaseType_t r = xTaskCreatePinnedToCore(udpctrl_session,name,2048,(void*)c,8,NULL,APP_CPU_NUM);
 	if (r != pdPASS)  {
-		log_warn(TAG,"unable create task %s: %d",name,r);
+		log_warn(TAG,"create task %s: %d",name,r);
 		pbuf_free(p);
 	}
 }

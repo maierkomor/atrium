@@ -38,7 +38,10 @@ class Action
 
 	private:
 	void (*func)(void *);
-	void *arg = 0;		// if argument is 0, then the argument of the event is taken
+	void *arg = 0;		// if arg is 0, then the argument of the event is taken
+	// action arg	: set on action_add (cannot be overwritten, ensured in activate)
+	// callback arg	: set on event_callback_arg
+	// event arg    : set on event_trigger_arg (can override callback arg)
 };
 
 extern "C" {

@@ -679,7 +679,17 @@ To update via telnet you need to perform the following steps:
 
 4. By executing `boot` on the console you can see on which partition the device is running currently and which partition will be used for an update. 
 
-5. By executing `update http://server/path/firmware.app1` you can trigger a download that will update the currently inactive partition.  Please activate the partition only with `boot app1` or so, after the update was successful. If update returns with an error, the update failed, and booting from the relevant partition will most likely not be successful. To get more information about the reason for failure, you can execute `dmesg` to see the last message that were generated during the OTA procedure. If the update ran out of memory, you might want to try to reboot before restarting the update again.
+5. By executing `update http://server/path/firmware.app1` you can
+   trigger a download that will update the currently inactive partition
+   (depending on the configuration FTP URIs are also suppored for
+   download of updates).  Please activate the partition only with `boot
+   app1` or so, after the update was successful. If update returns with
+   an error, the update failed, and booting from the relevant partition
+   will most likely not be successful. To get more information about the
+   reason for failure, you can execute `dmesg` to see the last message
+   that were generated during the OTA procedure. If the update ran out
+   of memory, you might want to try to reboot before restarting the
+   update again.
 
 6. If the relevant project (e.g. s20) has configured a ROMFS partition, then you may also need to update this partition as well. For this execute: `update -r http://server/path/romfs.bin`
 
@@ -708,6 +718,7 @@ configuration manually. After updating and before rebooting, you can
 restore the old configuration using:
 ```
 config restore
+reboot
 ```
 
 OTA server:
@@ -934,6 +945,20 @@ value of PCA9685 to adjust the base frequency of the PWM.
 Like this the configuration can also be adjusted at run-time.
 Therefore, these parameters are also not seen as part of the hardware
 configuration and not part of the `hwconf` settings.
+
+
+USB semihosted filesystem:
+==========================
+Support for USB semihosted filesystem via openocd is available on
+devices that have native USB support (i.e. ESP32-C3, ESP32-S2,
+ESP32-S3). If compiled in and openocd is running, the filesystem is
+automatically mounted during boot at `/usb`, but its cannot be listed with
+`ls`.
+
+Nevertheless, you can use it to copy a file from the host to your target
+storage filesystem, which may be quite handy for e.g. Lua files. To copy
+a file, just executed e.g. `cp /usb/myfile.lua .`. This will copy the
+file to the current directory, which is per default `/flash`.
 
 
 Known Issues:

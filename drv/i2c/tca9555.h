@@ -42,7 +42,7 @@ class TCA9555 :
 	const char *getName() const override;
 	int get_dir(uint8_t num) const override;
 	unsigned numIOs() const override
-	{ return 8; }
+	{ return 16; }
 #endif
 
 	int setGpio(bool v,unsigned off);

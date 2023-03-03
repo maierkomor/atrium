@@ -17,7 +17,7 @@
  */
 
 option author="Thomas Maier-Komor";
-option copyright="2018-2022";
+option copyright="2018-2023";
 
 option common {
 	BaseClass=Message;
@@ -103,7 +103,7 @@ message SystemConfig
 	string model_name = 7	[ unset = ""];
 	string model_number = 8	[ unset = ""];
 	bool usb_diag = 9	[ unset = true, ifdef=CONFIG_USB_DIAGLOG ];
-	bool usb_con = 10	[ unset = true, ifdef=CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG ];
+	bool usb_con = 10	[ unset = true, ifdef=CONFIG_USB_CONSOLE ];
 }
 
 
@@ -239,6 +239,7 @@ enum i2cdrv_t {
 	i2cdrv_ina219 = 11;
 	i2cdrv_si7021 = 12;
 	i2cdrv_tca9555 = 13;
+	i2cdrv_ssd1306 = 14;
 }
 
 
@@ -492,7 +493,7 @@ message HardwareConfig
 	AdcConfig adc = 4;
 	TouchpadConfig touchpad = 5			[ ifdef=CONFIG_TOUCHPAD ];
 	repeated TouchChannelConfig tp_channel = 6	[ ifdef=CONFIG_TOUCHPAD ];
-	repeated GpioConfig gpio = 7;
+	repeated GpioConfig gpios = 7;
 	repeated SpiBusConfig spibus = 8		[ ifdef=CONFIG_SPI ];
 
 	// direct gpio drivers

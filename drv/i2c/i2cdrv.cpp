@@ -424,6 +424,7 @@ int i2c_init(uint8_t port, uint8_t sda, uint8_t scl, unsigned freq, uint8_t xpul
 	assert(r == 0);
 #endif
 #ifdef CONFIG_BH1750
+	// autoscan conflicts with TCA9555
 	log_info(TAG,"search bh1750");
 	n += bh1750_scan(port);
 #endif
@@ -444,10 +445,12 @@ int i2c_init(uint8_t port, uint8_t sda, uint8_t scl, unsigned freq, uint8_t xpul
 	n += apds9930_scan(port);
 #endif
 	n += ti_scan(port);
+	/*
 #ifdef CONFIG_SSD1306
 	log_info(TAG,"search ssd1306");
 	n += ssd1306_scan(port);
 #endif
+	*/
 	return n;
 }
 

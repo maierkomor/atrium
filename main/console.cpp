@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2017-2021, Thomas Maier-Komor
+ *  Copyright (C) 2017-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -77,7 +77,7 @@ static inline void uart_console_setup(void)
 #endif // CONFIG_UART_CONSOLE
 
 
-#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG 
+#ifdef CONFIG_USB_CONSOLE
 #include "jtag_terminal.h"
 
 static inline void jtag_console_setup(void)

@@ -7,10 +7,10 @@
  * Source Information:
  * ===================
  * Filename : hwcfg.wfc
- * Copyright: 2018-2022
+ * Copyright: 2018-2023
  * Author   : Thomas Maier-Komor
  * 
- * Code generated on 2023-01-29, 16:02:18 (CET).
+ * Code generated on 2023-03-02, 20:58:13 (CET).
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -295,6 +295,7 @@ static const char *i2cdrv_t_names[] = {
 	"i2cdrv_pca9685_xclk_pnp",
 	"i2cdrv_pcf8574",
 	"i2cdrv_si7021",
+	"i2cdrv_ssd1306",
 	"i2cdrv_tca9555",
 };
 
@@ -312,6 +313,7 @@ static i2cdrv_t i2cdrv_t_values[] = {
 	i2cdrv_pca9685_xclk_pnp,
 	i2cdrv_pcf8574,
 	i2cdrv_si7021,
+	i2cdrv_ssd1306,
 	i2cdrv_tca9555,
 };
 #endif // !CONFIG_ESPTOOLPY_FLASHSIZE_1MB
@@ -333,6 +335,7 @@ size_t parse_ascii_i2cdrv_t(i2cdrv_t *v, const char *s)
 		{ "i2cdrv_pca9685_xclk_pnp", i2cdrv_pca9685_xclk_pnp},
 		{ "i2cdrv_pcf8574", i2cdrv_pcf8574},
 		{ "i2cdrv_si7021", i2cdrv_si7021},
+		{ "i2cdrv_ssd1306", i2cdrv_ssd1306},
 		{ "i2cdrv_tca9555", i2cdrv_tca9555},
 	};
 	#endif // !CONFIG_ESPTOOLPY_FLASHSIZE_1MB
@@ -393,6 +396,8 @@ const char *i2cdrv_t_str(i2cdrv_t e)
 		return "i2cdrv_si7021";
 	case i2cdrv_tca9555:
 		return "i2cdrv_tca9555";
+	case i2cdrv_ssd1306:
+		return "i2cdrv_ssd1306";
 	}
 	#endif // !CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 	#ifdef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
@@ -569,9 +574,9 @@ SystemConfig::SystemConfig()
 #ifdef CONFIG_USB_DIAGLOG
 , m_usb_diag(true)
 #endif // CONFIG_USB_DIAGLOG
-#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+#ifdef CONFIG_USB_CONSOLE
 , m_usb_con(true)
-#endif // CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+#endif // CONFIG_USB_CONSOLE
 , p_validbits(0)
 {
 }
@@ -589,9 +594,9 @@ void SystemConfig::clear()
 	#ifdef CONFIG_USB_DIAGLOG
 	m_usb_diag = true;
 	#endif // CONFIG_USB_DIAGLOG
-	#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	#ifdef CONFIG_USB_CONSOLE
 	m_usb_con = true;
-	#endif // CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	#endif // CONFIG_USB_CONSOLE
 	p_validbits = 0;
 }
 
@@ -610,9 +615,9 @@ void SystemConfig::toASCII(stream &o, size_t indent) const
 	#ifdef CONFIG_USB_DIAGLOG
 	ascii_bool(o, indent, "usb_diag", m_usb_diag);
 	#endif // CONFIG_USB_DIAGLOG
-	#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	#ifdef CONFIG_USB_CONSOLE
 	ascii_bool(o, indent, "usb_con", m_usb_con);
-	#endif // CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	#endif // CONFIG_USB_CONSOLE
 	--indent;
 	ascii_indent(o,indent);
 	o << '}';
@@ -679,11 +684,11 @@ ssize_t SystemConfig::fromMemory(const void *b, ssize_t s)
 			set_usb_diag(ud.u8);
 			break;
 			#endif // CONFIG_USB_DIAGLOG
-			#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+			#ifdef CONFIG_USB_CONSOLE
 		case 0x53:	// usb_con id 10, type bool, coding 8bit
 			set_usb_con(ud.u8);
 			break;
-			#endif // CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+			#endif // CONFIG_USB_CONSOLE
 		default:
 			if ((fid & 7) == 2) {
 				// need only to skip len prefixed data
@@ -802,7 +807,7 @@ ssize_t SystemConfig::toMemory(uint8_t *b, ssize_t s) const
 		*a++ = m_usb_diag;
 	}
 	#endif // CONFIG_USB_DIAGLOG
-	#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	#ifdef CONFIG_USB_CONSOLE
 	// has usb_con?
 	if (m_usb_con != true) {
 		// 'usb_con': id=10, encoding=8bit, tag=0x53
@@ -811,7 +816,7 @@ ssize_t SystemConfig::toMemory(uint8_t *b, ssize_t s) const
 		*a++ = 0x53;
 		*a++ = m_usb_con;
 	}
-	#endif // CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	#endif // CONFIG_USB_CONSOLE
 	assert(a <= e);
 	return a-b;
 }
@@ -858,12 +863,12 @@ void SystemConfig::toJSON(stream &json, unsigned indLvl) const
 		json << (m_usb_diag ? "true" : "false");
 	}
 	#endif // CONFIG_USB_DIAGLOG
-	#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	#ifdef CONFIG_USB_CONSOLE
 	if (has_usb_con()) {
 		fsep = json_indent(json,indLvl,fsep,"usb_con");
 		json << (m_usb_con ? "true" : "false");
 	}
-	#endif // CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	#endif // CONFIG_USB_CONSOLE
 	if (fsep == '{')
 		json.put('{');
 	json.put('\n');
@@ -920,12 +925,12 @@ size_t SystemConfig::calcSize() const
 		r += 2;
 	}
 	#endif // CONFIG_USB_DIAGLOG
-	#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	#ifdef CONFIG_USB_CONSOLE
 	// optional bool usb_con, id 10
 	if (has_usb_con()) {
 		r += 2;
 	}
-	#endif // CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	#endif // CONFIG_USB_CONSOLE
 	return r;
 }
 
@@ -953,10 +958,10 @@ bool SystemConfig::operator == (const SystemConfig &r) const
 	if (has_usb_diag() && (!(m_usb_diag == r.m_usb_diag)))
 		return false;
 	#endif // CONFIG_USB_DIAGLOG
-	#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	#ifdef CONFIG_USB_CONSOLE
 	if (has_usb_con() && (!(m_usb_con == r.m_usb_con)))
 		return false;
-	#endif // CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	#endif // CONFIG_USB_CONSOLE
 	return true;
 }
 
@@ -1053,7 +1058,7 @@ int SystemConfig::setByName(const char *name, const char *value)
 		return r;
 	}
 	#endif // CONFIG_USB_DIAGLOG
-	#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	#ifdef CONFIG_USB_CONSOLE
 	if (0 == strcmp(name,"usb_con")) {
 		if (value == 0) {
 			clear_usb_con();
@@ -1062,7 +1067,7 @@ int SystemConfig::setByName(const char *name, const char *value)
 		int r = parse_ascii_bool(&m_usb_con,value);
 		return r;
 	}
-	#endif // CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	#endif // CONFIG_USB_CONSOLE
 	return -27;
 }
 
@@ -7290,7 +7295,7 @@ void HardwareConfig::clear()
 	m_magic = 0;
 	m_system.clear();
 	m_adc.clear();
-	m_gpio.clear();
+	m_gpios.clear();
 	#ifdef CONFIG_SPI
 	m_spibus.clear();
 	#endif // CONFIG_SPI
@@ -7349,13 +7354,13 @@ void HardwareConfig::toASCII(stream &o, size_t indent) const
 	ascii_indent(o,indent,"adc");
 	m_adc.toASCII(o,indent);
 	ascii_indent(o,indent);
-	size_t s_gpio = m_gpio.size();
-	o << "gpio[" << s_gpio << "] = {";
+	size_t s_gpios = m_gpios.size();
+	o << "gpios[" << s_gpios << "] = {";
 	++indent;
-	for (size_t i = 0, e = s_gpio; i != e; ++i) {
+	for (size_t i = 0, e = s_gpios; i != e; ++i) {
 		ascii_indent(o,indent);
 		o << i << ": ";
-		m_gpio[i].toASCII(o,indent);
+		m_gpios[i].toASCII(o,indent);
 	}
 	--indent;
 	ascii_indent(o,indent);
@@ -7540,11 +7545,11 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 			}
 			p_validbits |= ((uint16_t)1U << 2);
 			break;
-		case 0x3a:	// gpio id 7, type GpioConfig, coding byte[]
-			m_gpio.emplace_back();
+		case 0x3a:	// gpios id 7, type GpioConfig, coding byte[]
+			m_gpios.emplace_back();
 			if (((ssize_t)ud.vi > 0) && ((ssize_t)ud.vi <= (e-a))) {
 				int n;
-				n = m_gpio.back().fromMemory((const uint8_t*)a,ud.vi);
+				n = m_gpios.back().fromMemory((const uint8_t*)a,ud.vi);
 				if (n != (ssize_t)ud.vi)
 					return -339;
 				a += ud.vi;
@@ -7798,19 +7803,19 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	#ifdef CONFIG_TOUCHPAD
 	// 'tp_channel' is unused. Therefore no data will be written.
 	#endif // CONFIG_TOUCHPAD
-	for (const auto &x : m_gpio) {
-		// 'gpio': id=7, encoding=lenpfx, tag=0x3a
+	for (const auto &x : m_gpios) {
+		// 'gpios': id=7, encoding=lenpfx, tag=0x3a
 		if (a >= e)
 			return -363;
 		*a++ = 0x3a;
-		ssize_t gpio_ws = x.calcSize();
-		n = write_varint(a,e-a,gpio_ws);
+		ssize_t gpios_ws = x.calcSize();
+		n = write_varint(a,e-a,gpios_ws);
 		a += n;
-		if ((n <= 0) || (gpio_ws > (e-a)))
+		if ((n <= 0) || (gpios_ws > (e-a)))
 			return -364;
 		n = x.toMemory(a,e-a);
 		a += n;
-		assert(n == gpio_ws);
+		assert(n == gpios_ws);
 	}
 	#ifdef CONFIG_SPI
 	for (const auto &x : m_spibus) {
@@ -8093,14 +8098,14 @@ void HardwareConfig::toJSON(stream &json, unsigned indLvl) const
 		fsep = json_indent(json,indLvl,fsep,"adc");
 		m_adc.toJSON(json,indLvl);
 	}
-	if (size_t s = m_gpio.size()) {
+	if (size_t s = m_gpios.size()) {
 		fsep = json_indent(json,indLvl,fsep);
 		indLvl += 2;
-		json << "\"gpio\":[\n";
+		json << "\"gpios\":[\n";
 		size_t i = 0;
 		for (;;) {
 			json_indent(json,indLvl,0);
-			m_gpio[i].toJSON(json,indLvl);
+			m_gpios[i].toJSON(json,indLvl);
 			++i;
 			if (i == s)
 				break;
@@ -8347,12 +8352,12 @@ size_t HardwareConfig::calcSize() const
 	#ifdef CONFIG_TOUCHPAD
 	// unused repeated TouchChannelConfig tp_channel, id 6
 	#endif // CONFIG_TOUCHPAD
-	// repeated GpioConfig gpio, id 7
-	// repeated message gpio
-	for (size_t x = 0, y = m_gpio.size(); x < y; ++x) {
-		size_t s = m_gpio[x].calcSize();
+	// repeated GpioConfig gpios, id 7
+	// repeated message gpios
+	for (size_t x = 0, y = m_gpios.size(); x < y; ++x) {
+		size_t s = m_gpios[x].calcSize();
 		r += wiresize(s);
-		r += s + 1 /* tag(gpio) 0x38 */;
+		r += s + 1 /* tag(gpios) 0x38 */;
 	}
 	#ifdef CONFIG_SPI
 	// repeated SpiBusConfig spibus, id 8
@@ -8488,7 +8493,7 @@ bool HardwareConfig::operator == (const HardwareConfig &r) const
 		return false;
 	if (has_adc() && (!(m_adc == r.m_adc)))
 		return false;
-	if (!(m_gpio == r.m_gpio))
+	if (!(m_gpios == r.m_gpios))
 		return false;
 	#ifdef CONFIG_SPI
 	if (!(m_spibus == r.m_spibus))
@@ -8591,33 +8596,33 @@ int HardwareConfig::setByName(const char *name, const char *value)
 			return m_adc.setByName(name+4,value);
 		}
 	}
-	if (0 == memcmp(name,"gpio",4)) {
-		if ((name[4] == 0) && (value == 0)) {
-			clear_gpio();
+	if (0 == memcmp(name,"gpios",5)) {
+		if ((name[5] == 0) && (value == 0)) {
+			clear_gpios();
 			return 0;
-		} else if (name[4] == '[') {
+		} else if (name[5] == '[') {
 			char *idxe;
 			unsigned long x;
-			if ((name[5] == '+') && (name[6] == ']')) {
-				x = m_gpio.size();
-				m_gpio.resize(x+1);
-				idxe = (char*)(name + 6);
+			if ((name[6] == '+') && (name[7] == ']')) {
+				x = m_gpios.size();
+				m_gpios.resize(x+1);
+				idxe = (char*)(name + 7);
 				if (value == 0)
 					return 0;
 			} else {
-				x = strtoul(name+5,&idxe,0);
-				if ((idxe[0] != ']') || (idxe == (name+5)))
+				x = strtoul(name+6,&idxe,0);
+				if ((idxe[0] != ']') || (idxe == (name+6)))
 					return -395;
-				if (m_gpio.size() <= x)
+				if (m_gpios.size() <= x)
 					return -396;
 				if ((idxe[1] == 0) && (value == 0)) {
-					m_gpio.erase(m_gpio.begin()+x);
+					m_gpios.erase(m_gpios.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
 				return -397;
-			return m_gpio[x].setByName(idxe+2,value);
+			return m_gpios[x].setByName(idxe+2,value);
 		}
 	}
 	#ifdef CONFIG_SPI

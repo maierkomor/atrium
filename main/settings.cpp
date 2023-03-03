@@ -694,7 +694,7 @@ void initDns()
 			log_info(TAG,"DNS %s",dns.c_str());
 			dns_setserver(x++,&a);
 		} else
-			log_warn(TAG,"invalid dns server '%s'",dns);
+			log_warn(TAG,"invalid DNS server '%s'",dns);
 	}
 #endif
 }
@@ -800,8 +800,10 @@ void cfg_activate_triggers()
 	for (const auto &t : Config.triggers()) {
 		const char *en = t.event().c_str();
 		event_t e = event_id(en);
-		if (e == 0)
+		if (e == 0) {
+			log_warn(TAG,"unknown event %s",en);
 			continue;
+		}
 		for (const auto &action : t.action()) {
 			const char *an = action.c_str();
 			if (char *sp = strchr(an,' ')) {
@@ -811,17 +813,16 @@ void cfg_activate_triggers()
 				if (Action *a = action_get(cmd)) {
 					log_dbug(TAG,"%s => %s(%s)",en,cmd,sp+1);
 					event_callback_arg(e,a,strdup(sp+1));
-				} else {
-					log_warn(TAG,"unknown action %s",cmd);
+					continue;
 				}
 			} else {
 				if (Action *a = action_get(an)) {
 					log_dbug(TAG,"%s => %s",en,an);
 					event_callback(e,a);
-				} else {
-					log_warn(TAG,"unknown action %s",an);
+					continue;
 				}
 			}
+			log_warn(TAG,"unknown action %s",an);
 		}
 	}
 }
@@ -968,7 +969,7 @@ void settings_setup()
 	dmesg_resize(Config.dmesg_size());		// update dmesg buffer size
 #endif
 #ifdef CONFIG_WPS
-	action_add("wps!start",wifi_wps_start,0,"start WPS configuration");
+	action_add("wps!start",wifi_wps_start,0,"start WPS");
 #endif
 	if (Config.actions_enable() & 0x2)
 		action_add("cfg!factory_reset",cfg_factory_reset,0,"perform a factory reset");

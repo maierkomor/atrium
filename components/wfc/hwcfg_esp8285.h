@@ -7,10 +7,10 @@
  * Source Information:
  * ===================
  * Filename : hwcfg.wfc
- * Copyright: 2018-2022
+ * Copyright: 2018-2023
  * Author   : Thomas Maier-Komor
  * 
- * Code generated on 2023-01-29, 16:02:18 (CET).
+ * Code generated on 2023-03-02, 20:58:13 (CET).
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -176,6 +176,7 @@ typedef enum {
 	i2cdrv_ina219 = 11,
 	i2cdrv_si7021 = 12,
 	i2cdrv_tca9555 = 13,
+	i2cdrv_ssd1306 = 14,
 } i2cdrv_t;
 //! Function to get an ASCII string from a value of a i2cdrv_t.
 const char *i2cdrv_t_str(i2cdrv_t e);
@@ -478,7 +479,7 @@ class SystemConfig
 	bool *mutable_usb_diag();
 	#endif // CONFIG_USB_DIAGLOG
 	
-	#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	#ifdef CONFIG_USB_CONSOLE
 	// optional bool usb_con, id 10
 	/*!
 	* Function for querying if usb_con has been set.
@@ -496,7 +497,7 @@ class SystemConfig
 	* @return pointer to member variable of usb_con.
 	*/
 	bool *mutable_usb_con();
-	#endif // CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	#endif // CONFIG_USB_CONSOLE
 	
 	
 	protected:
@@ -520,10 +521,10 @@ class SystemConfig
 	//! bool usb_diag, id 9
 	bool m_usb_diag;
 	#endif // CONFIG_USB_DIAGLOG
-	#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	#ifdef CONFIG_USB_CONSOLE
 	//! bool usb_con, id 10
 	bool m_usb_con;
-	#endif // CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	#endif // CONFIG_USB_CONSOLE
 	
 	private:
 	uint8_t p_validbits;
@@ -4404,29 +4405,29 @@ class HardwareConfig
 	#ifdef CONFIG_TOUCHPAD
 	// unused repeated TouchChannelConfig tp_channel, id 6
 	#endif // CONFIG_TOUCHPAD
-	// repeated GpioConfig gpio, id 7
-	//! Function get const-access to the elements of gpio.
-	const std::vector<GpioConfig> &gpio() const;
-	//! Function to get the number of elements in gpio.
-	size_t gpio_size() const;
+	// repeated GpioConfig gpios, id 7
+	//! Function get const-access to the elements of gpios.
+	const std::vector<GpioConfig> &gpios() const;
+	//! Function to get the number of elements in gpios.
+	size_t gpios_size() const;
 	/*!
-	* Function to append a element to gpio.
+	* Function to append a element to gpios.
 	* @return point to newly added element.
 	*/
-	GpioConfig* add_gpio();
-	//! Function to reset gpio to its default/unset value.
-	void clear_gpio();
-	//! Get value of element x of gpio.
-	const GpioConfig &gpio(unsigned x) const;
-	//! Set gpio using a constant reference
-	void set_gpio(unsigned x, const GpioConfig &v);
+	GpioConfig* add_gpios();
+	//! Function to reset gpios to its default/unset value.
+	void clear_gpios();
+	//! Get value of element x of gpios.
+	const GpioConfig &gpios(unsigned x) const;
+	//! Set gpios using a constant reference
+	void set_gpios(unsigned x, const GpioConfig &v);
 	/*!
-	* Provide mutable access to gpio.
-	* @return pointer to member variable of gpio.
+	* Provide mutable access to gpios.
+	* @return pointer to member variable of gpios.
 	*/
-	GpioConfig *mutable_gpio(unsigned x);
-	//! Function to get mutable access to all elements of gpio.
-	std::vector<GpioConfig> *mutable_gpio();
+	GpioConfig *mutable_gpios(unsigned x);
+	//! Function to get mutable access to all elements of gpios.
+	std::vector<GpioConfig> *mutable_gpios();
 	
 	#ifdef CONFIG_SPI
 	// repeated SpiBusConfig spibus, id 8
@@ -4882,8 +4883,8 @@ class HardwareConfig
 	//! SpiBusConfig spibus, id 8
 	std::vector<SpiBusConfig> m_spibus;
 	#endif // CONFIG_SPI
-	//! GpioConfig gpio, id 7
-	std::vector<GpioConfig> m_gpio;
+	//! GpioConfig gpios, id 7
+	std::vector<GpioConfig> m_gpios;
 	#ifdef CONFIG_TOUCHPAD
 	// omitted unused member tp_channel
 	#endif // CONFIG_TOUCHPAD
@@ -5259,7 +5260,7 @@ inline void SystemConfig::set_usb_diag(bool v)
 #endif // CONFIG_USB_DIAGLOG
 
 
-#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+#ifdef CONFIG_USB_CONSOLE
 inline bool SystemConfig::usb_con() const
 {
 	return m_usb_con;
@@ -5289,7 +5290,7 @@ inline void SystemConfig::set_usb_con(bool v)
 	m_usb_con = v;
 }
 
-#endif // CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+#endif // CONFIG_USB_CONSOLE
 
 
 inline size_t TouchpadConfig::getMaxSize()
@@ -9150,7 +9151,7 @@ inline size_t HardwareConfig::getMaxSize()
 	// optional AdcConfig adc, id 4 has maximum size 10
 	// unused optional TouchpadConfig touchpad, id 5
 	// unused repeated TouchChannelConfig tp_channel, id 6
-	// repeated GpioConfig gpio, id 7 has unlimited size
+	// repeated GpioConfig gpios, id 7 has unlimited size
 	// repeated SpiBusConfig spibus, id 8 has unlimited size
 	// repeated ButtonConfig button, id 16 has unlimited size
 	// repeated RelayConfig relay, id 17 has unlimited size
@@ -9292,52 +9293,52 @@ inline void HardwareConfig::set_adc(const AdcConfig &v)
 
 
 
-inline const GpioConfig &HardwareConfig::gpio(unsigned x) const
+inline const GpioConfig &HardwareConfig::gpios(unsigned x) const
 {
-	return m_gpio[x];
+	return m_gpios[x];
 }
 
-inline const std::vector<GpioConfig> &HardwareConfig::gpio() const
+inline const std::vector<GpioConfig> &HardwareConfig::gpios() const
 {
-	return m_gpio;
+	return m_gpios;
 }
 
 /*!
  * Function for clearing the associated member variable.
  * It will reset the value to the default value.
  */
-inline void HardwareConfig::clear_gpio()
+inline void HardwareConfig::clear_gpios()
 {
-	m_gpio.clear();
+	m_gpios.clear();
 }
 
-inline GpioConfig *HardwareConfig::mutable_gpio(unsigned x)
+inline GpioConfig *HardwareConfig::mutable_gpios(unsigned x)
 {
-	if (x >= m_gpio.size())
-		m_gpio.resize(x+1);
-	return &m_gpio[x];
+	if (x >= m_gpios.size())
+		m_gpios.resize(x+1);
+	return &m_gpios[x];
 }
 
-inline std::vector<GpioConfig> *HardwareConfig::mutable_gpio()
+inline std::vector<GpioConfig> *HardwareConfig::mutable_gpios()
 {
-	return &m_gpio;
+	return &m_gpios;
 }
 
-inline GpioConfig *HardwareConfig::add_gpio()
+inline GpioConfig *HardwareConfig::add_gpios()
 {
-	m_gpio.resize(m_gpio.size()+1);
-	return &m_gpio.back();
+	m_gpios.resize(m_gpios.size()+1);
+	return &m_gpios.back();
 }
 
-inline void HardwareConfig::set_gpio(unsigned x, const GpioConfig &v)
+inline void HardwareConfig::set_gpios(unsigned x, const GpioConfig &v)
 {
-	assert(x < m_gpio.size());
-	m_gpio[x] = v;
+	assert(x < m_gpios.size());
+	m_gpios[x] = v;
 }
 
-inline size_t HardwareConfig::gpio_size() const
+inline size_t HardwareConfig::gpios_size() const
 {
-	return m_gpio.size();
+	return m_gpios.size();
 }
 
 

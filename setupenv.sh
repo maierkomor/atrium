@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #
-#  Copyright (C) 2018-2021, Thomas Maier-Komor
+#  Copyright (C) 2018-2023, Thomas Maier-Komor
 #  Atrium Distribution for ESP
 #
 #  This program is free software: you can redistribute it and/or modify
@@ -210,13 +210,13 @@ if [ "$IDF_ESP8266" == "" ]; then
 fi
 
 pushd "$IDF_ESP8266"
-IDF_PATH=`pwd` python2 tools/idf_tools.py install || exit 1
-IDF_PATH=`pwd` python2 tools/idf_tools.py install-python-env || exit 1
 git pull --recurse-submodule
 git reset --hard v3.3 || exit 1
 git submodule deinit -f --all
 git switch release/v3.3
 git submodule update --init
+IDF_PATH=`pwd` python2 tools/idf_tools.py install || exit 1
+IDF_PATH=`pwd` python2 tools/idf_tools.py install-python-env || exit 1
 echo patching IDF for ESP8266
 patch -t -p1 < $patchdir/idf-esp8266-v3.3.diff || echo PATCHING FAILED!
 popd > /dev/null
@@ -257,18 +257,18 @@ if [ "$IDF_ESP32" == "" ]; then
 	popd > /dev/null
 fi
 pushd $IDF_ESP32
+git pull --recurse-submodule
+git reset --hard v4.4.4
+git submodule deinit -f --all
+#git switch -c v4.4.4
+git submodule update --init
 IDF_PATH="$IDF_ESP32" bash install.sh
 IDF_PATH="$IDF_ESP32" python3 tools/idf_tools.py install
-git pull --recurse-submodule
-git reset --hard v4.4.3
-git submodule deinit -f --all
-git switch release/v4.4.3
-git submodule update --init
 echo patching IDF for ESP32
 patch -t -p1 < $patchdir/idf-esp32-v4.4.diff || echo PATCHING FAILED!
 echo patching lwip of ESP32
 cd components/lwip/lwip
-patch -t -p1 < $patchdir/esp32-lwip-v4.4.diff || echo PATCHING FAILED!
+patch -t -p1 < $patchdir/esp32-lwip-v4.4.4.diff || echo PATCHING FAILED!
 popd > /dev/null
 
 echo ===================

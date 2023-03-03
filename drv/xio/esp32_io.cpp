@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2022, Thomas Maier-Komor
+ *  Copyright (C) 2022-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -39,6 +39,8 @@ struct CoreIO0 : public XioCluster
 	int set_hi(uint8_t io) override;
 	int set_lo(uint8_t io) override;
 	int set_intr(uint8_t,xio_intrhdlr_t,void*) override;
+//	int intr_enable(uint8_t) override;
+//	int intr_disable(uint8_t) override;
 	int config(uint8_t io, xio_cfg_t) override;
 	int set_lvl(uint8_t io, xio_lvl_t v) override;
 	const char *getName() const override;
@@ -54,6 +56,8 @@ struct CoreIO1 : public XioCluster
 	int set_hi(uint8_t io) override;
 	int set_lo(uint8_t io) override;
 	int set_intr(uint8_t,xio_intrhdlr_t,void*) override;
+//	int intr_enable(uint8_t) override;
+//	int intr_disable(uint8_t) override;
 	int config(uint8_t io, xio_cfg_t) override;
 	int set_lvl(uint8_t io, xio_lvl_t v) override;
 	const char *getName() const override;
@@ -495,6 +499,70 @@ int CoreIO1::set_intr(uint8_t gpio, xio_intrhdlr_t hdlr, void *arg)
 	log_dbug(TAG,"attached isr to gpio%u",gpio);
 	return 0;
 }
+
+
+#if 0
+int CoreIO0::intr_enable(uint8_t gpio)
+{
+	if (gpio >= 32) {
+		log_warn(TAG,"enable intr: invalid gpio%u",gpio);
+		return -EINVAL;
+	}
+	if (esp_err_t e = gpio_intr_enable((gpio_num_t)gpio)) {
+		log_warn(TAG,"enable isr handler to gpio%u: %s",gpio,esp_err_to_name(e));
+		return e;
+	}
+	log_dbug(TAG,"enable isr on gpio%u",gpio);
+	return 0;
+}
+
+
+int CoreIO1::intr_enable(uint8_t gpio)
+{
+	if (gpio >= 8) {
+		log_warn(TAG,"enable intr: invalid gpio%u",gpio);
+		return -EINVAL;
+	}
+	gpio += 32;
+	if (esp_err_t e = gpio_intr_enable((gpio_num_t)gpio)) {
+		log_warn(TAG,"enable isr handler to gpio%u: %s",gpio,esp_err_to_name(e));
+		return e;
+	}
+	log_dbug(TAG,"enable isr on gpio%u",gpio);
+	return 0;
+}
+
+
+int CoreIO0::intr_disable(uint8_t gpio)
+{
+	if (gpio >= 32) {
+		log_warn(TAG,"disable intr: invalid gpio%u",gpio);
+		return -EINVAL;
+	}
+	if (esp_err_t e = gpio_intr_disable((gpio_num_t)gpio)) {
+		log_warn(TAG,"disable isr handler to gpio%u: %s",gpio,esp_err_to_name(e));
+		return e;
+	}
+	log_dbug(TAG,"disable isr on gpio%u",gpio);
+	return 0;
+}
+
+
+int CoreIO1::intr_disable(uint8_t gpio)
+{
+	if (gpio >= 8) {
+		log_warn(TAG,"disable intr: invalid gpio%u",gpio);
+		return -EINVAL;
+	}
+	gpio += 32;
+	if (esp_err_t e = gpio_intr_disable((gpio_num_t)gpio)) {
+		log_warn(TAG,"disable isr handler to gpio%u: %s",gpio,esp_err_to_name(e));
+		return e;
+	}
+	log_dbug(TAG,"disable isr on gpio%u",gpio);
+	return 0;
+}
+#endif
 
 
 int coreio_config(uint8_t num, xio_cfg_t cfg)

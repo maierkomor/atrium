@@ -54,6 +54,17 @@
 #define T1H	56	// 0,70us
 #define T1L	48	// 0.60us
 #define TR	4400	// >50us=4000
+
+// WS2812B-2020
+/*
+#define T0H	28	// 220-380ns
+#define T0L	64	// 580-1000ns
+#define T1H	56	// 580-1000ns
+#define T1L	48	// 580-1000ns
+#define TR	26400	// >280 us
+*/
+
+
 #elif defined CONFIG_IDF_TARGET_ESP8266
 extern "C" {
 #include <esp_clk.h>
@@ -240,8 +251,10 @@ WS2812BDrv *WS2812BDrv::get_bus(const char *n)
 	WS2812BDrv *drv = First;
 	while (drv && strcmp(drv->m_name,n))
 		drv = drv->m_next;
-	if (0 == drv)
-		log_dbug(TAG,"invalud bus %s",n);
+	if (0 == drv) {
+		// not log_warn, to support checking of arguments
+		log_dbug(TAG,"invalid bus %s",n);
+	}
 	return drv;
 }
 

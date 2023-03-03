@@ -205,6 +205,7 @@ int resolve_fqhn(const char *h, ip_addr_t *ip)
 	}
 	log_dbug(TAG,"query sent");
 #endif
+	int r = 0;
 	if (xSemaphoreTake(NscSem, 2000 / portTICK_PERIOD_MS)) {
 #ifdef CONFIG_UDNS
 		esp_err_t e = udns_query(h,ip,0,0);
@@ -221,24 +222,25 @@ int resolve_fqhn(const char *h, ip_addr_t *ip)
 #endif
 	} else {
 		log_dbug(TAG,"timeout");
-#ifdef CONFIG_UDNS
-		//	q->timedout = 1;
-#endif
+		r = ERR_TIMEOUT;
 	}
 #ifndef CONFIG_UDNS
 	struct hostent *he = gethostbyname(h);
 	if (he != 0) {
 		log_dbug(TAG,"hostname %s from gethostbyname",h);
-		return inet_addr(he->h_addr);
+		ip->addr = inet_addr(he->h_addr);
+	} else {
+		r = ESP_ERR_NOT_FOUND;
 	}
 	log_dbug(TAG,"host %s: not found",h);
 #endif
-	return 0;
+	return r;
 }
 
 
 int resolve_hostname(const char *h, ip_addr_t *ip)
 {
+	log_dbug(TAG,"resolve hostname %s",h);
 	if ((h[0] >= '0') && (h[0] <= '9')) {
 		if (inet_aton(h,ip))
 			return 0;
@@ -381,6 +383,8 @@ const char *strlwiperr(int e)
 
 const char *ip2str(const ip_addr_t *ip)
 {
+	if (ip == 0)
+		return "<null>";
 #if LWIP_IPV6
 	if (IP_IS_V6_VAL(*ip)) {
 		return ip6addr_ntoa(ip_2_ip6(ip));
@@ -392,6 +396,10 @@ const char *ip2str(const ip_addr_t *ip)
 
 const char *ip2str_r(const ip_addr_t *ip, char *out, size_t n)
 {
+	if (ip == 0) {
+		strncpy(out,"<null>",n);
+		return out;
+	}
 #if LWIP_IPV6
 	if (IP_IS_V6_VAL(*ip)) {
 		return ip6addr_ntoa_r(ip_2_ip6(ip),out,n);

@@ -130,7 +130,7 @@ static void mqtt_callback(const char *topic, const void *data, size_t len)
 		else
 			log_warn(TAG,"mqtt: unknown relay %s",sl+5);
 	} else
-		log_warn(TAG,"mqtt arg: %.s",len,data);
+		log_warn(TAG,"MQTT arg: %.s",len,data);
 }
 #endif
 
@@ -257,11 +257,14 @@ const char *relay(Terminal &term, int argc, const char *args[])
 		}
 		return 0;
 	} else if (argc == 3) {
+		bool v;
 		if (0 == strcmp("on",args[2]))
-			return relay_set(args[1],true) ? "Failed." : 0;
+			v = true;
 		else if (0 == strcmp("off",args[2]))
-			return relay_set(args[1],false) ? "Failed." : 0;
-		return "Invalid argument #1.";
+			v = false;
+		else
+			return "Invalid argument #1.";
+		return relay_set(args[1],v) ? "Failed." : 0;
 	}
 	return "Invalid number of arguments.";
 }

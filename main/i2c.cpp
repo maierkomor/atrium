@@ -28,6 +28,7 @@
 #include "pca9685.h"
 #include "pcf8574.h"
 #include "si7021.h"
+#include "ssd1306.h"
 #include "tca9555.h"
 #include "log.h"
 #include "terminal.h"
@@ -102,8 +103,13 @@ static inline void i2c_scan_device(uint8_t bus, uint8_t addr, i2cdrv_t drv)
 		SI7021::create(bus,addr);
 		break;
 #endif
+#ifdef CONFIG_SSD1306
+	case i2cdrv_ssd1306:
+		SSD1306::create(bus,addr);
+		break;
+#endif
 	default:
-		log_warn(TAG,"request to look for unknown i2c device %d at address %u,0x%x",drv,bus,addr);
+		log_warn(TAG,"unsupported I2C config %d at %u,0x%x",drv,bus,addr);
 	}
 }
 #endif
@@ -114,7 +120,7 @@ int i2c_setup(void)
 	for (const I2CConfig &c : HWConf.i2c()) {
 		if (c.has_sda() && c.has_scl()) {
 			uint8_t bus = c.port();
-			log_info(TAG,"init at %d/%d",c.sda(),c.scl());
+			log_info(TAG,"bus%d: sda=%d, scl=%d",bus,c.sda(),c.scl());
 #ifdef CONFIG_IDF_TARGET_ESP8266
 			int r = i2c_init(bus,c.sda(),c.scl(),0,c.xpullup());
 #else

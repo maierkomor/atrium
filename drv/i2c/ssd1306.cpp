@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021, Thomas Maier-Komor
+ *  Copyright (C) 2021-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -700,6 +700,16 @@ int SSD1306::write(const char *text, int len)
 		--len;
 	}
 	return n;
+}
+
+
+SSD1306 *SSD1306::create(uint8_t bus, uint8_t addr)
+{
+	uint8_t cmd[] = { (uint8_t)(addr << 1), CMD_NOP };
+	if (0 == i2c_write(bus,cmd,sizeof(cmd),1,1)) {
+		return new SSD1306(bus,addr);
+	}
+	return 0;
 }
 
 

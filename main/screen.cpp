@@ -213,7 +213,7 @@ void Screen::display_version()
 		if (dm->maxY() >= 48) {
 			dm->setXY(10,48);
 			dm->setFont(font_tomthumb);
-			dm->write("(C) 2021-2022, T.Maier-Komor");
+			dm->write("(C) 2021-2023, T.Maier-Komor");
 		}
 		return;
 	}
@@ -502,7 +502,7 @@ int luax_disp_set_cursor(lua_State *L)
 		lua_error(L);
 	}
 	if (-1 == disp->setPos(x,y)) {
-		lua_pushstring(L,"invalid argument");
+		lua_pushstring(L,"Invalid argument.");
 		lua_error(L);
 	}
 	return 0;
@@ -526,7 +526,7 @@ int luax_disp_draw_rect(lua_State *L)
 		lua_error(L);
 	}
 	if (-1 == dm->drawRect(x,y,w,h)) {
-		lua_pushstring(L,"invalid argument");
+		lua_pushstring(L,"Invalid argument.");
 		lua_error(L);
 	}
 	return 0;
@@ -558,7 +558,7 @@ int luax_disp_write(lua_State *L)
 		lua_error(L);
 	}
 	if (-1 == disp->write(txt)) {
-		lua_pushstring(L,"invalid argument");
+		lua_pushstring(L,"Invalid argument.");
 		lua_error(L);
 	}
 	return 0;

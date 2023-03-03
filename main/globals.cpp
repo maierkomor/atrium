@@ -73,6 +73,8 @@ struct EnvLocalTime : public EnvElement
 };
 #endif
 
+const char Copyright[] = "Copyright 2019-2023, Thomas Maier-Komor";
+const char License[] = "License: GPLv3";
 
 const char ResetReasons[][12] = {
 	"unknown",

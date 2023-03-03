@@ -43,6 +43,8 @@ void get_time_of_day(uint8_t *h, uint8_t *m, uint8_t *s = 0, uint8_t *wd = 0, ui
 #endif
 
 extern "C" const char Version[];
+extern "C" const char Copyright[];
+extern "C" const char License[];
 extern "C" const char FwCfg[];
 extern const char ResetReasons[][12];
 extern const char *Weekdays_en[];

@@ -63,7 +63,7 @@ static void init_spiffs()
 	} else {
 		size_t total = 0, used = 0;
 		if (esp_err_t e = esp_spiffs_info(DATA_PARTITION, &total, &used))
-			log_error(TAG,"error getting SPIFFS info: %s",esp_err_to_name(e));
+			log_warn(TAG,"query SPIFFS: %s",esp_err_to_name(e));
 		else
 			log_info(TAG, "SPIFFS at %s: %ukB of %ukB used",conf.base_path,used>>10,total>>10);
 	}

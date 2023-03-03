@@ -52,16 +52,16 @@ RotaryEncoder *RotaryEncoder::create(const char *name, xio_t clk, xio_t dt, xio_
 	cfg.cfg_intr = xio_cfg_intr_edges;
 	cfg.cfg_pull = xio_cfg_pull_up;
 	if (0 > xio_config(clk,cfg)) {
-		log_warn(TAG,"configure clk %u failed",clk);
+		log_warn(TAG,"config clk@%u failed",clk);
 		return 0;
 	}
 	if (0 > xio_config(dt,cfg)) {
-		log_warn(TAG,"configure sw %u failed",dt);
+		log_warn(TAG,"config dt@%u failed",dt);
 		return 0;
 	}
 	if (sw != XIO_INVALID) {
 		if (0 > xio_config(sw,cfg)) {
-			log_warn(TAG,"unable to configure sw %u",dt);
+			log_warn(TAG,"config sw@%u failed",sw);
 			sw = XIO_INVALID;
 		}
 	}
@@ -74,7 +74,7 @@ RotaryEncoder *RotaryEncoder::create(const char *name, xio_t clk, xio_t dt, xio_
 			event_callback(fev,a);
 			event_callback(rev,a);
 		} else {
-			log_warn(TAG,"xio%u lacks interrupt and event support",clk);
+			log_warn(TAG,"xio%u no irq or event",clk);
 		}
 	}
 	if (xio_set_intr(dt,dtIntr,dev)) {
@@ -85,7 +85,7 @@ RotaryEncoder *RotaryEncoder::create(const char *name, xio_t clk, xio_t dt, xio_
 			event_callback(fev,a);
 			event_callback(rev,a);
 		} else {
-			log_warn(TAG,"xio%u lacks interrupt and event support",dt);
+			log_warn(TAG,"xio%u no irq or event",dt);
 		}
 	}
 	if (sw != XIO_INVALID)
@@ -97,7 +97,7 @@ RotaryEncoder *RotaryEncoder::create(const char *name, xio_t clk, xio_t dt, xio_
 				event_callback(fev,a);
 				event_callback(rev,a);
 			} else {
-				log_warn(TAG,"xio%u lacks interrupt and event support",dt);
+				log_warn(TAG,"xio%u no irq or event",sw);
 			}
 		}
 	return dev;
