@@ -230,6 +230,7 @@ static esp_err_t wifi_event_handler(system_event_t *event)
 			log_info(TAG,"station got IP %s",ip4addr_ntoa(&ip));
 			void *arg = malloc(sizeof(event->event_info.got_ip.ip_info.ip.addr));
 			memcpy(arg,&event->event_info.got_ip.ip_info.ip.addr,sizeof(event->event_info.got_ip.ip_info.ip.addr));
+			StationMode = station_connected;
 			event_trigger_arg(StationUpEv,arg);
 			StationDownTS = 0;
 		}
@@ -493,7 +494,7 @@ bool wifi_start_station(const char *ssid, const char *pass)
 		//return true;
 //	if (ESP_OK != esp_wifi_start())
 //		log_warn(TAG,"error starting wifi");
-	log_info(TAG,"wifi_start_station(%s,%s)",ssid,pass);
+	log_info(TAG,"start station: %s",ssid);
 	wifi_mode_t m = WIFI_MODE_NULL;
 	if (esp_err_t e = esp_wifi_get_mode(&m))
 		log_warn(TAG,"wifi_get_mode(): %s",esp_err_to_name(e));
@@ -543,7 +544,7 @@ bool wifi_start_station(const char *ssid, const char *pass)
 		tcpip_adapter_set_ip_info(TCPIP_ADAPTER_IF_STA,&ipi);
 		initDns();
 	} else if (station.has_addr4() || station.has_netmask4()) {
-		log_warn(TAG,"static IP needs address and netmask");
+		log_warn(TAG,"incomplete static IP");
 	}
 	if (esp_err_t e = esp_wifi_start()) {
 		log_warn(TAG,"start: %s",esp_err_to_name(e));
@@ -557,13 +558,13 @@ bool wifi_stop_station()
 {
 	wifi_mode_t m = WIFI_MODE_NULL;
 	if (esp_err_t e = esp_wifi_get_mode(&m))
-		log_warn(TAG,"error getting wifi mode: %s",esp_err_to_name(e));
+		log_warn(TAG,"get wifi mode: %s",esp_err_to_name(e));
 	if (m == WIFI_MODE_APSTA)
 		m = WIFI_MODE_AP;
 	else if (m == WIFI_MODE_STA)
 		m = WIFI_MODE_NULL;
 	if (esp_err_t e = esp_wifi_set_mode(m))
-		log_warn(TAG,"error setting wifi mode %d: 0x%x",m,e);
+		log_warn(TAG,"set wifi mode %d: 0x%x",m,e);
 	if (m == 0) {
 		WifiStarted = false;
 		return (ESP_OK == esp_wifi_stop());
@@ -586,7 +587,7 @@ bool wifi_start_softap(const char *ssid, const char *pass)
 	const WifiConfig &softap = Config.softap();
 	if (softap.has_mac() && (softap.mac().size() == 6)) {
 		if (esp_err_t e = esp_wifi_set_mac(WIFI_IF_AP,(const uint8_t *)softap.mac().data()))
-			log_warn(TAG,"error setting softap mac: %s",esp_err_to_name(e));
+			log_warn(TAG,"set softap mac: %s",esp_err_to_name(e));
 	}
 	wifi_config_t wifi_config;
 	memset(&wifi_config,0,sizeof(wifi_config_t));
@@ -693,7 +694,7 @@ void wifi_wps_start(void *)
 		log_warn(TAG,"wps start failed with error %s",esp_err_to_name(e));
 		return;
 	}
-	log_info(TAG,"wps started, waiting to complete");
+	log_info(TAG,"WPS started");
 }
 
 #endif

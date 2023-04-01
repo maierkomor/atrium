@@ -140,6 +140,83 @@ static ip_addr_t *ns_cache_lookup(const char *h)
 #endif
 
 
+const char *uri_parse(char *path, uri_t *uri)
+{
+	bzero(uri,sizeof(uri_t));
+	if (path[0] == '/') {
+		uri->prot = prot_file;
+		uri->file = path;
+		return 0;
+	}
+	char *sep = strstr(path,"://");
+	if (sep == 0)
+		return "Invalid argument.";
+	switch (sep-path) {
+	case 3:
+		if (0 == memcmp(path,"ftp",3)) {
+			uri->prot = prot_ftp;
+			uri->port = 21;
+		}
+		break;
+	case 4:
+		if (0 == memcmp(path,"http",4)) {
+			uri->prot = prot_http;
+			uri->port = 80;
+		} else if (0 == memcmp(path,"tftp",4)) {
+			uri->prot = prot_tftp;
+			uri->port = 69;
+		} else if (0 == memcmp(path,"file",4)) {
+			uri->prot = prot_file;
+			uri->file = path+6;
+			return 0;
+		} else if (0 == memcmp(path,"mqtt",4)) {
+			uri->prot = prot_mqtt;
+			uri->port = 1883;
+		}
+		break;
+	case 5:
+		if (0 == memcmp(path,"https",5)) {
+			uri->prot = prot_https;
+			uri->port = 443;
+		}
+	default:
+		break;
+	}
+	char *at = strchr(sep+3,'@');
+	if (at) {
+		uri->user = sep+3;
+		*at = 0;
+		uri->host = at+1;
+		char *pwstr = strchr(sep+3,':');
+		if (pwstr) {
+			*pwstr = 0;
+			uri->pass = pwstr + 1;
+		}
+	} else {
+		uri->host = sep+3;
+	}
+	char *sl = strchr(uri->host,'/');
+	if (0 == sl) {
+		uri->file = "/";
+	} else {
+		*sl = 0;
+		uri->file = sl+1;
+	}
+	char *colon = strchr(uri->host,':');
+	if (colon) {
+		long l = strtol(colon+1,0,0);
+		if ((l <= 0) || (l > UINT16_MAX))
+			return "Invalid port";
+		uri->port = l;
+		*colon = 0;
+	}
+	err_t e = resolve_hostname(uri->host,&uri->ip);
+	if (e)
+		return "Unknown host.";
+	return 0;
+}
+
+
 int query_host(const char *h, ip_addr_t *ip, void (*cb)(const char *hn, const ip_addr_t *addr, void *arg), void *arg)
 {
 	if ((h == 0) || (h[0] == 0))
@@ -178,16 +255,11 @@ int query_host(const char *h, ip_addr_t *ip, void (*cb)(const char *hn, const ip
 
 int resolve_fqhn(const char *h, ip_addr_t *ip)
 {
-	if ((h[0] >= '0') && (h[0] <= '9')) {
-		if (ipaddr_aton(h,ip))
-			return 0;
-	}
 #ifdef CONFIG_UDNS
 	if (NscSem == 0)
 		NscSem = xSemaphoreCreateCounting(1,0);
 	if (0 == udns_query(h,ip,found_hostname_udns,0))
 		return 0;
-	log_dbug(TAG,"query sent");
 #else
 	if (NscSem == 0) {
 		memset(NsCache,0,sizeof(NsCache));
@@ -203,22 +275,28 @@ int resolve_fqhn(const char *h, ip_addr_t *ip)
 		log_dbug(TAG,"hostname %s from dns",h);
 		return 0;
 	}
-	log_dbug(TAG,"query sent");
 #endif
+	log_dbug(TAG,"query sent");
 	int r = 0;
 	if (xSemaphoreTake(NscSem, 2000 / portTICK_PERIOD_MS)) {
 #ifdef CONFIG_UDNS
 		esp_err_t e = udns_query(h,ip,0,0);
 		if (e == 0) {
-			log_dbug(TAG,"hostname %s from dns: %s",h,inet_ntoa(ip));
+			char ipstr[64];
+			ip2str_r(ip,ipstr,sizeof(ipstr));
+			log_dbug(TAG,"hostname %s from dns: %s",h,ipstr);
 			return 0;
 		}
+		r = ESP_ERR_NOT_FOUND;
 #else
 		a = ns_cache_lookup(h);
 		if (a != 0) {
+			if (ip_addr_isany(a))
+				return 1;
 			*ip = *a;
 			return 0;
 		}
+		r = ESP_ERR_NOT_FOUND;
 #endif
 	} else {
 		log_dbug(TAG,"timeout");
@@ -227,8 +305,10 @@ int resolve_fqhn(const char *h, ip_addr_t *ip)
 #ifndef CONFIG_UDNS
 	struct hostent *he = gethostbyname(h);
 	if (he != 0) {
-		log_dbug(TAG,"hostname %s from gethostbyname",h);
+		log_dbug(TAG,"hostname %s from gethostbyname: %s",h,he->h_addr);
 		ip->addr = inet_addr(he->h_addr);
+		if (ip_addr_isany(ip))
+			return 1;
 	} else {
 		r = ESP_ERR_NOT_FOUND;
 	}

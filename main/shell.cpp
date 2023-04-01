@@ -30,6 +30,7 @@
 #include "nvm.h"
 #include "ota.h"
 #include "memfiles.h"
+#include "mqtt.h"
 #include "netsvc.h"
 #include "profiling.h"
 #include "romfs.h"
@@ -38,6 +39,7 @@
 #include "usntp.h"
 #include "support.h"
 #include "swcfg.h"
+#include "syslog.h"
 #include "terminal.h"
 #include "timefuse.h"
 #include "env.h"
@@ -150,21 +152,18 @@ static const char PW[] = "password:", NotSet[] = "<not set>";
 
 static void action_print(void *p, const Action *a)
 {
-	if (a == 0)
-		return;
-	Terminal *t = (Terminal*)p;
-	if (a->text)
+	if (a->text && a->name) {
+		Terminal *t = (Terminal*)p;
 		t->printf("\t%-24s  %s\n",a->name,a->text);
+	}
 }
 
 
 static void action_perf(void *p, const Action *a)
 {
-	if (a == 0)
-		return;
 	Terminal *t = (Terminal*)p;
 	if (a->num)
-		t->printf("\t%-20s %5u %6u (%6u/%6u/%6u)\n",a->name,a->num,a->sum,a->min,a->sum/a->num,a->max);
+		t->printf("\t%-20s %5u %9u (%6u/%6u/%6u)\n",a->name,a->num,a->sum,a->min,a->sum/a->num,a->max);
 }
 
 
@@ -173,26 +172,28 @@ static const char *action(Terminal &t, int argc, const char *args[])
 	if (argc == 1)
 		return help_cmd(t,args[0]);
 	if (argc == 3) {
-		char *arg = strdup(args[2]);
-		if (action_activate_arg(args[1],arg))
+		if (action_activate_arg(args[1],(void*)args[2]))
 			return "Invalid argument #1.";
 	} else if (argc != 2) {
 		return "Invalid number of arguments.";
-	} else if (0 == strcmp(args[1],"-l")) {
+	} else if (args[1][0] != '-') {
+		if (action_activate(args[1]))
+			return "Invalid argument #1.";
+	} else if (args[1][2]) {
+		return "Invalid argument #1.";
+	} else if (args[1][1] == 'l') {
 		action_iterate(action_print,(void*)&t);
 	} else if (0 == strcmp(args[1],"-p")) {
-		t.printf("\t%-20s %5s %6s (%6s/%6s/%6s)\n","name","count","total","min.","avg.","max.");
+		t.printf("\t%-20s %5s %9s (%6s/%6s/%6s)\n","name","count","total","min.","avg.","max.");
 		action_iterate(action_perf,(void*)&t);
-	} else if (!strcmp(args[1],"-F")) {
+	} else if (args[1][1] == 'F') {
 		if (0 == t.getPrivLevel())
 			return "Access denied.";
 		Config.set_actions_enable(Config.actions_enable()|2);
-	} else if (!strcmp(args[1],"-f")) {
+	} else if (args[1][1] == 'f') {
 		if (0 == t.getPrivLevel())
 			return "Access denied.";
 		Config.set_actions_enable(Config.actions_enable()&~2);
-	} else if (action_activate(args[1])) {
-		return "Invalid argument #1.";
 	}
 	return 0;
 }
@@ -289,8 +290,10 @@ static const char *event(Terminal &t, int argc, const char *args[])
 {
 	if (argc == 1) {
 		return help_cmd(t,args[0]);
+	} else if ((args[1][0] != '-') || (args[1][2])) {
+		return "Invalid argument #1.";
 	} else if (argc == 2) {
-		if (!strcmp(args[1],"-l")) {
+		if (args[1][1] == 'l') {
 			event_t e = 0;
 			while (const char *name = event_name(++e)) {
 				if (name[0] == '*')
@@ -311,7 +314,7 @@ static const char *event(Terminal &t, int argc, const char *args[])
 		}
 		return 0;
 	} else if (argc == 3) {
-		if (!strcmp(args[1],"-t")) {
+		if (args[1][1] == 't') {
 			if (event_t e = event_id(args[2])) {
 				event_trigger(e);
 				return 0;
@@ -319,7 +322,7 @@ static const char *event(Terminal &t, int argc, const char *args[])
 			return "Invalid argument #2.";
 		}
 	} else if (argc == 4) {
-		if (!strcmp(args[1],"-t")) {
+		if (args[1][1] == 't') {
 			if (event_t e = event_id(args[2])) {
 				event_trigger_arg(e,strdup(args[3]));
 				return 0;
@@ -334,7 +337,7 @@ static const char *event(Terminal &t, int argc, const char *args[])
 		event_t e = event_id(args[2]);
 		if (e == 0) {
 			return "Invalid argument #2.";
-		} else if (!strcmp(args[1],"-a")) {
+		} else if (args[1][1] == 'a') {
 			event_callback(e,a);
 			for (auto &t : *Config.mutable_triggers()) {
 				if (t.event() == args[2]) {
@@ -346,7 +349,7 @@ static const char *event(Terminal &t, int argc, const char *args[])
 			t->set_event(args[2]);
 			t->add_action(args[3]);
 			return 0;
-		} else  if (!strcmp(args[1],"-d")) {
+		} else if (args[1][1] == 'd') {
 			event_detach(e,a);
 			int r = 1;
 			auto &t = *Config.mutable_triggers();
@@ -376,13 +379,13 @@ static const char *event(Terminal &t, int argc, const char *args[])
 		event_t e = event_id(args[2]);
 		if (e == 0) {
 			return "Invalid argument #2.";
-		} else if (!strcmp(args[1],"-a")) {
+		} else if (args[1][1] == 'a') {
 			size_t cl = strlen(args[3]);
 			char *arg = (char*) malloc(cl+strlen(args[4])+2);
 			memcpy(arg,args[3],cl);
 			arg[cl] = ' ';
 			strcpy(arg+cl+1,args[4]);
-			event_callback_arg(e,a,strdup(args[4]));
+			event_callback_arg(e,a,args[4]);
 			for (auto &t : *Config.mutable_triggers()) {
 				if (t.event() == args[2]) {
 					t.add_action(arg);
@@ -789,8 +792,11 @@ static const char *shell_xxd(Terminal &term, int argc, const char *args[])
 
 static const char *shell_reboot(Terminal &term, int argc, const char *args[])
 {
-	if (argc != 1)
-		return "Invalid number of arguments.";
+	mqtt_stop();
+	syslog_stop();
+#ifndef CONFIG_IDF_TARGET_ESP8266
+	esp_unregister_shutdown_handler((shutdown_handler_t)esp_wifi_stop);
+#endif
 	esp_restart();
 	return 0;
 }
@@ -903,8 +909,10 @@ const char *mac(Terminal &term, int argc, const char *args[])
 	uint8_t mac[6];
 	if (argc == 1) {
 		return help_cmd(term,args[0]);
+	} else if ((args[1][0] != '-') || args[1][2]) {
+		return "Invalid argument #1.";
 	} else if (argc == 2) {
-		if (!strcmp("-l",args[1])) {
+		if (args[1][1] == 'l') {
 			if (ESP_OK == esp_wifi_get_mac(WIFI_IF_AP,mac))
 				print_mac(term,"softap",mac);
 			if (ESP_OK == esp_wifi_get_mac(WIFI_IF_STA,mac))
@@ -916,7 +924,7 @@ const char *mac(Terminal &term, int argc, const char *args[])
 		return "Access denied.";
 	// priveleged commands
 	if (argc == 2) {
-		if (!strcmp("-c",args[1])) {
+		if (args[1][1] == 'c') {
 			Config.mutable_station()->clear_mac();
 			Config.mutable_softap()->clear_mac();
 			return 0;
@@ -931,11 +939,10 @@ const char *mac(Terminal &term, int argc, const char *args[])
 			mac[i] = inp[i];
 		}
 		wifi_interface_t w;
-		if (!strcmp("-s",args[1])) {
+		if (args[1][1] == 's') {
 			w = WIFI_IF_AP;
 			Config.mutable_station()->set_mac(mac,6);
-		}
-		else if (!strcmp("-a",args[1])) {
+		} else if (args[1][1] == 'a') {
 			w = WIFI_IF_AP;
 			Config.mutable_softap()->set_mac(mac,6);
 		} else {
@@ -1012,8 +1019,11 @@ static const char *parse_xxd(Terminal &term, vector<uint8_t> &buf)
 				valid = false;
 			}
 		} else if (c == ':') {
-			if (v != buf.size())
-				buf.resize(v);
+			if (v != buf.size()) {
+				//buf.resize(v);
+				// resize/holes intentionally not supported
+				return "Invalid input.";
+			}
 			v = 0;
 			valid = false;
 		} else {
@@ -1039,6 +1049,7 @@ static const char *hwconf(Terminal &term, int argc, const char *args[])
 	static vector<uint8_t> hwcfgbuf;
 	if (argc == 1) {
 		term.printf(
+				"Available commands:\n"
 #ifdef CONFIG_HWCONF_DYNAMIC
 				"add <device>\n"
 				"set <device>[<id>].<param> <value>\n"
@@ -1532,7 +1543,7 @@ static const char *debug(Terminal &term, int argc, const char *args[])
 	}
 	if (0 == term.getPrivLevel())
 		return "Access denied.";
-	if (argc != 3) 
+	if (argc < 3) 
 		return "Missing argument.";
 	if (!strcmp("-d",args[1])) {
 		auto *d = Config.mutable_debugs();
@@ -1545,9 +1556,21 @@ static const char *debug(Terminal &term, int argc, const char *args[])
 		return log_module_disable(args[2]) ? "Failed." : 0;
 	}
 	if (!strcmp("-e",args[1])) {
-		if (log_module_enable(args[2]))
-			return "Invalid argument #2.";
-		Config.add_debugs(args[2]);
+		int x = 2;
+		while (x < argc) {
+			if (log_module_enable(args[x]))
+				return "Invalid argument #2.";
+			bool add = true;
+			for (auto &d : Config.debugs()) {
+				if (d == args[x]) {
+					add = false;
+					break;
+				}
+			}
+			if (add)
+				Config.add_debugs(args[x]);
+			++x;
+		}
 		return 0;
 	}
 	return "Invalid argument #1.";
@@ -1850,9 +1873,10 @@ static const char *update(Terminal &term, int argc, const char *args[])
 			r = perform_ota(term,(char*)args[2],true);
 			if (r == 0) {
 				term.println("rebooting...");
+				term.sync();
 				term.disconnect();
 				vTaskDelay(400);
-				esp_restart();
+				shell_reboot(term,argc,args);
 			}
 		} else if (0 == strcmp(args[1],"-v")) {
 			return ota_from_server(term,Config.otasrv().c_str(),args[2]);
@@ -1986,13 +2010,17 @@ static const char *password(Terminal &term, int argc, const char *args[])
 	if (argc == 1) {
 		return help_cmd(term,args[0]);
 	}
-	if (!strcmp(args[1],"-c")) {
+	if (args[1][0] != '-') {
+		setPassword(args[1]);
+	} else if (args[1][2]) {
+		return "Invalid argument #1.";
+	} else if (args[1][1] == 'c') {
 		Config.clear_pass_hash();
 		term.println("password cleared");
-	} else if (!strcmp(args[1],"-r")) {
+	} else if (args[1][1] == 'r') {
 		term.println("password empty");
 		setPassword("");
-	} else if (!strcmp(args[1],"-s")) {
+	} else if (args[1][1] == 's') {
 		char buf[32];
 		term.write(PW,sizeof(PW));
 		int n = term.readInput(buf,sizeof(buf),false);
@@ -2002,16 +2030,8 @@ static const char *password(Terminal &term, int argc, const char *args[])
 		setPassword(buf);
 		term.setPrivLevel(0);
 		term.println();
-	} else if (!strcmp(args[1],"-v")) {
-		char buf[32];
-		term.write(PW,sizeof(PW));
-		int n = term.readInput(buf,sizeof(buf),false);
-		if (n < 0)
-			return "No input.";
-		buf[n] = 0;
-		term.printf("%smatch\n", verifyPassword(buf) ? "" : "mis");
 	} else {
-		setPassword(args[1]);
+		return "Invalid argument #1.";
 	}
 	return 0;
 }
@@ -2036,12 +2056,13 @@ static const char *su(Terminal &term, int argc, const char *args[])
 		if (n < 0)
 			return "input error";
 		buf[n] = 0;
+		term.println();
 		if (!verifyPassword(buf))
 			return "Access denied.";
 	}
 	term.setPrivLevel(1);
 done:
-	term.printf("privileg level %u\n",term.getPrivLevel());
+	term.printf("Privileg level %u\n",term.getPrivLevel());
 	return 0;
 }
 
@@ -2235,6 +2256,7 @@ static const char *version(Terminal &term, int argc, const char *args[])
 		"firmware config %s\n"
 		"build on " __DATE__ ", " __TIME__ "\n"
 		"IDF version: %s\n"
+		"https://github.com/maierkomor/atrium\n"
 		, Version
 		, Copyright
 		, License
@@ -2262,6 +2284,7 @@ extern const char *led_set(Terminal &term, int argc, const char *args[]);
 extern const char *lightctrl(Terminal &term, int argc, const char *args[]);
 extern const char *mqtt(Terminal &term, int argc, const char *args[]);
 extern const char *nightsky(Terminal &term, int argc, const char *args[]);
+extern const char *ping(Terminal &t, int argc, const char *args[]);
 extern const char *prof(Terminal &term, int argc, const char *args[]);
 extern const char *process(Terminal &term, int argc, const char *args[]);
 extern const char *readelf(Terminal &term, int argc, const char *args[]);
@@ -2295,9 +2318,6 @@ ExeName ExeNames[] = {
 #endif
 #ifdef CONFIG_OTA
 	{"boot",0,boot,"get/set boot partition",boot_man},
-#ifdef CONFIG_INFOCAST
-	{"caststats",0,udp_stats,"UDP cast statistics",0},
-#endif
 #endif
 	{"cat",0,shell_cat,"cat file",0},
 #if defined CONFIG_FATFS || defined CONFIG_ROMFS_VFS
@@ -2381,15 +2401,15 @@ ExeName ExeNames[] = {
 	{"ow",0,onewire,"one-wire driver access",ow_man},
 #endif
 	{"part",0,part,"partition table",part_man},
-	{"passwd",3,password,"set password",passwd_man},
+	{"passwd",1,password,"set password",passwd_man},
+#ifndef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
+	{"ping",0,ping,"ping IP address",0},
+#endif
 #ifdef CONFIG_FUNCTION_TIMING
 	{"prof",0,prof,"profiling information",0},
 #endif
 #if configUSE_TRACE_FACILITY == 1
 	{"ps",0,ps,"task statistics",0},
-#endif
-#ifdef CONFIG_ELF_LOADER
-	{"readelf",0,readelf,"read ELF information from file",0},
 #endif
 	{"reboot",1,shell_reboot,"reboot system",0},
 #ifdef CONFIG_RELAY
@@ -2421,10 +2441,10 @@ ExeName ExeNames[] = {
 #ifdef CONFIG_THRESHOLDS
 	{"stt",0,thresholds,"view/set schmitt-trigger thresholds",stt_man},
 #endif
-	{"su",2,su,"set user privilege level",su_man},
+	{"su",0,su,"set user privilege level",su_man},
 	{"subtasks",0,subtasks,"statistics of cyclic subtasks",0},
 #ifdef CONFIG_TERMSERV
-	{"term",2,uart_termcon,"open terminal on UART",console_man},
+	{"term",0,uart_termcon,"open terminal on UART",console_man},
 #endif
 	{"timer",1,timefuse,"create timer",timer_man},
 	{"timezone",1,timezone,"set time zone for NTP (offset to GMT or 'CET')",0},
@@ -2520,7 +2540,7 @@ const char *shellexe(Terminal &term, char *cmd)
 	lps_e lps = noarg;
 	do {
 		if (n == sizeof(args)/sizeof(args[0])) {
-			return "too many arguments";
+			return "Too many arguments.";
 		}
 		switch (lps) {
 		case noarg:
@@ -2572,18 +2592,18 @@ const char *shellexe(Terminal &term, char *cmd)
 		}
 	} while (at && *at);
 
-	for (int i = 0; i < sizeof(ExeNames)/sizeof(ExeNames[0]); ++i) {
-		if (0 == strcmp(args[0],ExeNames[i].name)) {
-			if ((ExeNames[i].flags & EXEFLAG_INTERACTIVE) && !term.isInteractive()) {
-				term.println("Cannot execute interactive command.");
+	for (const auto &e : ExeNames) {
+		if (0 == strcmp(args[0],e.name)) {
+			if ((e.flags & EXEFLAG_INTERACTIVE) && !term.isInteractive()) {
+				return "Cannot execute interactive command.";
 			}
-			if (!Config.pass_hash().empty() && ((ExeNames[i].flags & EXEFLAG_ADMIN) > term.getPrivLevel())) {
-				term.println("Access denied.");
+			if (!Config.pass_hash().empty() && ((e.flags & EXEFLAG_ADMIN) > term.getPrivLevel())) {
+				return "Access denied.";
 			}
 			if ((n == 2) && (0 == strcmp("-h",args[1])))
 				return help_cmd(term,args[0]);
 			//term.printf("calling shell function '%s'\n",ExeNames[i].name);
-			return ExeNames[i].function(term,n,(const char **)args);
+			return e.function(term,n,(const char **)args);
 		}
 	}
 	return "Command not found.";
@@ -2618,27 +2638,23 @@ int exe_flags(char *cmd)
 void shell(Terminal &term, bool prompt)
 {
 	char com[128];
-	if (prompt) {
-		term.write("> ",2);
-		term.sync();
-	}
-	int r = term.readInput(com,sizeof(com)-1,true);
-	while (r >= 0) {
-		term.println();
-		com[r] = 0;
-		if ((r == 4) && !memcmp(com,"exit",4))
-			break;
-		if (r > 0) {
-			if (const char *msg = shellexe(term,com)) {
-				term.println(msg);
-			} else {
-				term.println("OK.");
-			}
-		}
+	int r;
+	for (;;) {
 		if (prompt) {
 			term.write("> ",2);
 			term.sync();
 		}
 		r = term.readInput(com,sizeof(com)-1,true);
+		if ((r < 0) || ((r == 4) && !memcmp(com,"exit",4)))
+			return;
+		const char *msg = 0;
+		if (r > 0) {
+			term.println();
+			com[r] = 0;
+			msg = shellexe(term,com);
+			if (msg == 0)
+				msg = "OK.";
+		}
+		term.println(msg);
 	}
 }

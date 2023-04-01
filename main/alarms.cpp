@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2017-2022, Thomas Maier-Komor
+ *  Copyright (C) 2017-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -111,22 +111,37 @@ static unsigned alarms_loop(void *)
 			|| ((wd == WeekEnd) && ((d == 0) || (d == 6)))) {
 			x = true;
 		}
-		if (x) {
-			const char *aname = a.action().c_str();
-			log_dbug(TAG,"at %s %u:%02u => %s",Weekdays_de[wd],a.min_of_day()/60,a.min_of_day()%60,aname);
-			if (strchr(aname,'`')) {
-				event_t e = event_id(aname);
-				if (e == 0)
-					e = event_register(aname);
-				event_trigger(e);
-
+		if (!x)
+			continue;
+		const char *aname = a.action().c_str();
+		size_t l = strlen(aname);
+		char action[l+1];
+		memcpy(action,aname,l+1);
+		log_dbug(TAG,"at %s %u:%02u => %s",Weekdays_de[wd],a.min_of_day()/60,a.min_of_day()%60,aname);
+		const char *arg = 0;
+		char *c = strchr(action,' ');
+		if (c) {
+			*c = 0;
+			arg = c+1;
+		}
+		if (strchr(aname,'`')) {
+			if (event_t e = event_id(aname)) {
+				if (arg)
+					event_trigger_arg(e,strdup(arg));
+				else
+					event_trigger(e);
 			} else {
-				if (action_activate(aname))
-					log_warn(TAG,"unknown action '%s'",aname);
+				log_warn(TAG,"unknown event '%s'",aname);
 			}
+		} else if (arg) {
+			if (action_activate_arg(aname,(void*)arg))
+				log_warn(TAG,"unknown action '%s'",aname);
+		} else {
+			if (action_activate(aname))
+				log_warn(TAG,"unknown action '%s'",aname);
 		}
 	}
-	return 300;
+	return 200;
 }
 
 
@@ -296,7 +311,7 @@ const char *holiday(Terminal &t, int argc, const char *args[])
 
 const char *at(Terminal &t, int argc, const char *args[])
 {
-	if (argc > 4)
+	if (argc > 5)
 		return "Invalid number of arguments.";
 	if (argc == 1) {
 		return help_cmd(t,args[0]);
@@ -319,12 +334,14 @@ const char *at(Terminal &t, int argc, const char *args[])
 			}
 		} else if (!strcmp(args[1],"-0")) {
 			Config.set_actions_enable(Config.actions_enable()&~1);
+			if (!Enabled->get())
+				return "Already disabled.";
 			Enabled->set(false);
-			t.println("at disabled");
 		} else if (!strcmp(args[1],"-1")) {
 			Config.set_actions_enable(Config.actions_enable()|1);
+			if (Enabled->get())
+				return "Already enabled.";
 			Enabled->set(true);
-			t.println("at enabled");
 		} else if (!strcmp(args[1],"-s")) {
 			cfg_store_nodecfg();
 		} else if (!strcmp(args[1],"-j")) {
@@ -391,13 +408,23 @@ const char *at(Terminal &t, int argc, const char *args[])
 	if ((2 != n) || (h < 0) || (h > 23) || (m < 0) || (m > 59)) {
 		return "Invalid argument #2.";
 	}
-	if (0 == action_exists(args[3]))
+	if (0 == action_get(args[3]))
 		return "Invalid argument #3.";
 	AtAction *a = Config.add_at_actions();
 	a->set_min_of_day(h*60+m);
-	a->set_action(args[3]);
 	a->set_day(wd);
 	a->set_enable(true);
+	if (argc == 4) {
+		a->set_action(args[3]);
+	} else {
+		size_t l0 = strlen(args[3]);
+		size_t l1 = strlen(args[4]);
+		char buf[l0+l1+2];
+		memcpy(buf,args[3],l0);
+		buf[l0] = ' ';
+		memcpy(buf+l0+1,args[4],l1+1);
+		a->set_action(buf);
+	}
 	return 0;
 }
 

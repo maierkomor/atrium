@@ -34,6 +34,7 @@ class HT16K33 : public LedCluster, public I2CDevice
 	int write(uint8_t *d, unsigned n) override;
 	int clear();
 
+	int setDim(uint8_t) override;
 	int setPos(uint8_t x, uint8_t y) override;
 //	int write(char);
 //	int write(const char *);

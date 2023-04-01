@@ -141,7 +141,7 @@ static inline void term_fn(void *)
 		udp_remove(pcb);
 	}
 	if (struct tcp_pcb *pcb = TPCB) {
-		log_info(TAG,"tearing down connection");
+		log_info(TAG,"closing connection");
 		TPCB = 0;
 		tcp_close(pcb);
 	}
@@ -167,8 +167,6 @@ static void influx_term(void * = 0)
 static void influx_init(void * = 0)
 {
 	log_dbug(TAG,"init");
-	if (Mtx == 0)
-		Mtx = xSemaphoreCreateMutex();
 	if ((StationMode != station_connected) || !Config.has_influx() || !Config.has_nodename())
 		return;
 	const Influx &influx = Config.influx();
@@ -180,9 +178,10 @@ static void influx_init(void * = 0)
 			TPCB = 0;
 		}
 	}
-	if ((State == offline) || (State == error)) {
-		const char *host = Config.influx().hostname().c_str();
-		if (err_t e = query_host(host,0,influx_connect,0))
+	if (((State == offline) || (State == error)) && (StationMode == station_connected)) {
+		const char *host = influx.hostname().c_str();
+		int e = query_host(host,0,influx_connect,0);
+		if (e < 0)
 			log_warn(TAG,"query host: %d",e);
 	}
 }
@@ -365,14 +364,14 @@ int influx_send(const char *data, size_t l)
 			tcp_output(TPCB);
 		}
 		if (e) {
-			log_warn(TAG,"send error: %s",strlwiperr(e));
+			log_warn(TAG,"send: %s",strlwiperr(e));
 			State = error;
 		}
 	} else if (UPCB) {
 		struct pbuf *pbuf = pbuf_alloc(PBUF_TRANSPORT,l,PBUF_RAM);
 		pbuf_take(pbuf,data,l);
 		if (err_t e = udp_send(UPCB,pbuf))
-			log_warn(TAG,"send error: %s",strlwiperr(e));
+			log_warn(TAG,"send: %s",strlwiperr(e));
 		pbuf_free(pbuf);
 	}
 	LWIP_UNLOCK();
@@ -448,7 +447,7 @@ static void send_rtdata(void *)
 
 #if configUSE_TRACE_FACILITY == 1
 static TaskStatus_t *LSt = 0;
-static unsigned LNT = 0;
+static uint8_t LNT = 0;
 
 static void compare_task_sets(TaskStatus_t *st, unsigned nt, stream &s)
 {
@@ -482,8 +481,6 @@ static void proc_mon(stream &s)
 		nt = uxTaskGetSystemState(st,nt,0);
 		if (LNT > 0)
 			compare_task_sets(st,nt,s);
-	} else {
-		log_error(TAG,"Out of memory.");
 	}
 	if (LSt)
 		free(LSt);
@@ -504,9 +501,9 @@ static void send_sys_info(void *)
 	astream str;
 	str.write(Header,HL);
 	str.printf(" mem32=%u,mem8=%u,memd=%u"
-		,heap_caps_get_free_size(MALLOC_CAP_32BIT)
-		,heap_caps_get_free_size(MALLOC_CAP_8BIT)
-		,heap_caps_get_free_size(MALLOC_CAP_DMA));
+		, heap_caps_get_free_size(MALLOC_CAP_32BIT)
+		, heap_caps_get_free_size(MALLOC_CAP_8BIT)
+		, heap_caps_get_free_size(MALLOC_CAP_DMA));
 #if configUSE_TRACE_FACILITY == 1
 	proc_mon(str);
 #endif

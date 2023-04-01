@@ -258,18 +258,18 @@ int xio_config(xio_t gpio, xio_cfg_t cfg)
 			log_warn(TAG,"set dir %s on %u: %s",GpioDirStr[cfg.cfg_io],gpio,esp_err_to_name(e));
 			return -1;
 		}
-		log_dbug(TAG,"set dir %s on %u",GpioDirStr[cfg.cfg_io]);
+		log_dbug(TAG,"set dir %s on %u",GpioDirStr[cfg.cfg_io],gpio);
 
 	}
 	if (cfg.cfg_pull != xio_cfg_pull_keep) {
 		if (gpio_set_pull_mode(gpio,(gpio_pull_mode_t)cfg.cfg_pull))
 			return -1;
-		log_dbug(TAG,"set pull %s on %u",GpioPullStr[cfg.cfg_pull]);
+		log_dbug(TAG,"set pull %s on %u",GpioPullStr[cfg.cfg_pull],gpio);
 	}
 	if (cfg.cfg_intr != xio_cfg_intr_keep) {
 		if (gpio_set_intr_type(gpio,(gpio_int_type_t)cfg.cfg_intr))
 			return -1;
-		log_dbug(TAG,"set intr %s on %u",GpioIntrTriggerStr[cfg.cfg_intr]);
+		log_dbug(TAG,"set intr %s on %u",GpioIntrTriggerStr[cfg.cfg_intr],gpio);
 	}
 	return 0;
 }

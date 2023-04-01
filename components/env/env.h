@@ -69,6 +69,9 @@ class EnvElement
 	virtual EnvNumber *toNumber()
 	{ return 0; }
 
+	virtual unsigned numElements() const
+	{ return 1; }
+
 	const char *name() const
 	{ return m_name; }
 
@@ -77,11 +80,18 @@ class EnvElement
 
 	void setDimension(const char *dim);
 
+	void setName(char *n);
+
+	EnvObject *getParent() const
+	{ return m_parent; }
+
 	protected:
 	explicit EnvElement(const char *n, const char *dim = 0);
 
 	char *m_name;
 	char *m_dim;
+	friend class EnvObject;
+	EnvObject *m_parent = 0;
 
 	private:
 	EnvElement(const EnvElement &);		// intentionally not supported
@@ -138,7 +148,7 @@ class EnvNumber : public EnvElement
 
 	void set(float v);
 
-	int setThresholds(float lo, float hi);
+	int setThresholds(float lo, float hi, const char *n = 0);
 
 	void writeValue(stream &) const;
 
@@ -210,12 +220,18 @@ class EnvObject : public EnvElement
 	EnvString *add(const char *name, const char *value, const char *dim = 0);
 	EnvObject *add(const char *name);
 	void add(EnvElement *e)
-	{ m_childs.push_back(e); }
+	{ append(e); }
 	void remove(EnvElement *e);
 	EnvElement *get(const char *) const;
 	EnvElement *getChild(const char *n) const;
 	int getOffset(const char *) const;
+	int getIndex(const char *n) const;
 	EnvElement *find(const char *) const;
+	EnvElement *getByPath(const char *n) const;
+	EnvObject *getObject(const char *n) const;
+	EnvElement *getElement(unsigned i) const;
+	unsigned numElements() const override;
+
 	EnvElement *getChild(unsigned i) const
 	{
 		if (i >= m_childs.size())
@@ -245,7 +261,6 @@ class EnvObject : public EnvElement
 	private:
 	void append(EnvElement *);
 
-	EnvObject *m_parent = 0;
 	std::vector<EnvElement *> m_childs;
 };
 

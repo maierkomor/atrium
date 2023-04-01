@@ -577,6 +577,11 @@ int LwTcp::send(const char *buf, size_t l, bool copy)
 	PROFILE_FUNCTION();
 	log_devel(TAG,"send@%u %u %scopy",m_port,l,copy?"":"no-");
 #ifdef CONFIG_IDF_TARGET_ESP8266
+	{
+		RLock lock(m_mtx);
+		m_nwrite += l;
+		m_nout += l;
+	}
 	LWIP_LOCK();
 	err_t e = tcp_write(m_pcb,buf,l,copy ? TCP_WRITE_FLAG_COPY : 0);
 	LWIP_UNLOCK();
@@ -587,16 +592,21 @@ int LwTcp::send(const char *buf, size_t l, bool copy)
 	a.size = l;
 	a.sem = m_lwip;
 	a.name = "send";
+	{
+		RLock lock(m_mtx);
+		m_nwrite += l;
+		m_nout += l;
+	}
 	tcpip_send_msg_wait_sem(tcpwrite_fn,&a,&m_lwip);
 	err_t e = a.err;
 #endif
 	if (e == 0) {
 		log_devel(TAG,"@%u nwrite=%u",m_port,m_nwrite);
-		RLock lock(m_mtx);
-		m_nwrite += l;
-		m_nout += l;
 	} else {
 		log_local(TAG,"@%u error %d",m_port,e);
+		RLock lock(m_mtx);
+		m_nwrite -= l;
+		m_nout -= l;
 	}
 	return e;
 }
@@ -644,13 +654,15 @@ void LwTcp::sync(bool block)
 #else
 	unsigned w = m_nwrite;
 	if (m_nout) {
+		uint16_t out = m_nout;
 		tcpout_arg_t a;
 		a.pcb = m_pcb;
 		a.sem = m_lwip;
 		a.name = "sync";
 		tcpip_send_msg_wait_sem(tcpout_fn,&a,&m_lwip);
-		m_nout = 0;
 		r = a.err;
+		RLock lock(m_mtx);
+		m_nout -= out;
 	}
 #endif
 	if (r) {

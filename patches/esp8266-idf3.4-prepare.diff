@@ -1,0 +1,128 @@
+diff -r 6e80982bfd86 CMakeLists.txt
+--- a/CMakeLists.txt	Sun Mar 12 16:47:28 2023 +0100
++++ b/CMakeLists.txt	Sun Mar 12 16:49:35 2023 +0100
+@@ -1,8 +1,8 @@
+ cmake_minimum_required(VERSION 3.5)
+ #execute_process(COMMAND bin/prebuild.sh)
+-add_compile_definitions(ESP$ENV{ESP_FAM})
+-add_compile_definitions(IDF_VERSION=$ENV{IDF_VERSION})
+-add_compile_definitions(FWCFG="$ENV{FWCFG}")
++add_compile_definitions(-DESP$ENV{ESP_FAM})
++add_compile_definitions(-DIDF_VERSION=$ENV{IDF_VERSION})
++add_compile_definitions(-DFWCFG="$ENV{FWCFG}")
+ #set(FWCFG $ENV{FWCFG})	# ignored - for whatever reason...
+ 
+ #add_compile_definitions(FWCFG="$ENV{FWCFG}")
+diff -r 6e80982bfd86 main/wifi.cpp
+--- a/main/wifi.cpp	Sun Mar 12 16:47:28 2023 +0100
++++ b/main/wifi.cpp	Sun Mar 12 16:49:35 2023 +0100
+@@ -164,17 +164,23 @@
+ 		log_info(TAG,"station start");
+ 		esp_wifi_connect();
+ 		StationMode = station_starting;
++#if IDF_VERSION == 33
+ 		system_event_sta_start_handle_default(event);	// IDF
++#endif
+ 		break;
+ 	case SYSTEM_EVENT_AP_START:
+ 		log_info(TAG,"AP start");
+ 		Status |= STATUS_WIFI_UP | STATUS_SOFTAP_UP;
++#if IDF_VERSION == 33
+ 		system_event_ap_start_handle_default(event);	// IDF
++#endif
+ 		break;
+ 	case SYSTEM_EVENT_AP_STOP:
+ 		log_info(TAG,"AP stop");
+ 		Status &= ~(STATUS_WIFI_UP | STATUS_SOFTAP_UP);
++#if IDF_VERSION == 33
+ 		system_event_ap_stop_handle_default(event);	// IDF
++#endif
+ 		break;
+ 	case SYSTEM_EVENT_STA_STOP:
+ 	case SYSTEM_EVENT_STA_LOST_IP:
+@@ -187,7 +193,9 @@
+ 		break;
+ 	case SYSTEM_EVENT_STA_CONNECTED:
+ 		log_info(TAG,"station " MACSTR " connected",MAC2STR(event->event_info.sta_connected.mac));
++#if IDF_VERSION == 33
+ 		system_event_sta_connected_handle_default(event);	// IDF
++#endif
+ #if defined CONFIG_LWIP_IPV6 || defined ESP32
+ 		if (esp_err_t e = tcpip_adapter_create_ip6_linklocal(TCPIP_ADAPTER_IF_STA))
+ 			log_warn(TAG,"create IPv6 linklocal on station: %s",esp_err_to_name(e));
+@@ -237,7 +245,9 @@
+ 		break;
+ 	case SYSTEM_EVENT_STA_DISCONNECTED:
+ 		log_info(TAG,"disconnected");
++#if IDF_VERSION == 33
+ 		system_event_sta_disconnected_handle_default(event);	// IDF
++#endif
+ 		Status &= ~(STATUS_STATION_UP | STATUS_WIFI_UP);
+ 		esp_wifi_connect();
+ 		if (StationMode != station_starting)
+diff -r 6e80982bfd86 mkatrium.sh
+--- a/mkatrium.sh	Sun Mar 12 16:47:28 2023 +0100
++++ b/mkatrium.sh	Sun Mar 12 16:49:35 2023 +0100
+@@ -44,8 +44,11 @@
+ 	export ESP_FAM=32
+ 	export IDF_TARGET=esp32c3
+ elif  [ "$CONFIG_IDF_TARGET_ESP8266" == "y" ]; then
+-	make PROJECT=$1 $2
+-	exit
++#	make PROJECT=$1 $2
++#	exit
++	export IDF_PATH=$IDF_ESP8266
++	export ESP_FAM=8266
++	export IDF_TARGET=esp8266
+ else
+ 	echo Unknown or invalid IDF_TARGET.
+ 	exit 1
+@@ -81,16 +84,17 @@
+ 	IDF_TARGET=esp32s3
+ elif  [ "$CONFIG_IDF_TARGET_ESP32C3" == "y" ]; then
+ 	IDF_TARGET=esp32c3
++elif  [ "$CONFIG_IDF_TARGET_ESP8266" == "y" ]; then
++	IDF_TARGET=esp8266
++else
++	echo ERROR: unknown target
++	exit
+ fi
+ 
+ ATRIUM_VER=`cat "$BUILD_DIR/version.txt"`
+ 
+ if [ "$2" != "" ]; then
+-	#$IDF_PY -B "$BUILD_DIR" -DIDF_TARGET=$IDF_TARGET -DSDKCONFIG=$SDKCONFIG -DFWCFG="$FWCFG" "-DPROJECT_VER=$ATRIUM_VER" $2
+ 	$IDF_PY -B "$BUILD_DIR" -DIDF_TARGET=$IDF_TARGET -DSDKCONFIG=$SDKCONFIG "-DPROJECT_VER=$ATRIUM_VER" $2
+-	#$IDF_PY -B "$BUILD_DIR" $2
+ else
+-	#$IDF_PY -B "$BUILD_DIR" -DIDF_TARGET=$IDF_TARGET -DSDKCONFIG=$SDKCONFIG -DFWCFG="$FWCFG" "-DPROJECT_VER=$ATRIUM_VER" build
+ 	$IDF_PY -B "$BUILD_DIR" -DIDF_TARGET=$IDF_TARGET -DSDKCONFIG=$SDKCONFIG "-DPROJECT_VER=$ATRIUM_VER" build
+-	#$IDF_PY -B "$BUILD_DIR" build
+ fi
+diff -r 6e80982bfd86 setupenv.sh
+--- a/setupenv.sh	Sun Mar 12 16:47:28 2023 +0100
++++ b/setupenv.sh	Sun Mar 12 16:49:35 2023 +0100
+@@ -211,19 +211,19 @@
+ 
+ pushd "$IDF_ESP8266"
+ git pull --recurse-submodule
+-git reset --hard v3.3 || exit 1
++git reset --hard v3.4 || exit 1
+ git submodule deinit -f --all
+-git switch release/v3.3
++git switch release/v3.4
+ git submodule update --init
+ IDF_PATH=`pwd` python2 tools/idf_tools.py install || exit 1
+ IDF_PATH=`pwd` python2 tools/idf_tools.py install-python-env || exit 1
+ echo patching IDF for ESP8266
+-patch -t -p1 < $patchdir/idf-esp8266-v3.3.diff || echo PATCHING FAILED!
++patch -t -p1 < $patchdir/idf-esp8266-v3.4.diff || echo PATCHING FAILED!
+ popd > /dev/null
+ 
+ echo settings for $IDF_ESP8266
+ pushd "$IDF_ESP8266"
+-echo IDF_ESP8266=$IDF_ESP8266 >> $settings
++echo IDF_ESP8266="\$\(IDF_PATH\)/tools:$IDF_ESP8266" >> $settings
+ IDF_PATH="$IDF_ESP8266" python2 "$IDF_ESP8266/tools/idf_tools.py" export | sed "s/export //g;s/=/_ESP8266=/g;s/;/\n/g;s/\"//g" >> $settings
+ popd > /dev/null
+ 

@@ -40,9 +40,11 @@
 #include <driver/usb_serial_jtag.h>
 #endif
 
-#ifdef CONFIG_ESP_CONSOLE_USB_CDC
+#if 0 // defined CONFIG_USB_CONSOLE && defined CONFIG_TINYUSB_CDC_ENABLED
 #include <tusb_cdc_acm.h>
 #include <tusb_console.h>
+#include <tusb_tasks.h>
+#include <tinyusb_types.h>
 #endif
 
 #include <assert.h>
@@ -69,6 +71,15 @@
 #define CONFIG_CONSOLE_UART_NUM 0
 #endif
 #endif
+
+#ifndef CONFIG_CONSOLE_UART_RX
+#define CONFIG_CONSOLE_UART_RX -1
+#endif
+
+#ifndef CONFIG_CONSOLE_UART_TX
+#define CONFIG_CONSOLE_UART_TX -1
+#endif
+
 
 #define ANSI_RED	"\033[0;31m"
 #define ANSI_GREEN  	"\033[0;32m"
@@ -190,9 +201,11 @@ void log_setup()
 #endif
 
 	UartLock = xSemaphoreCreateMutex();
-
 #if CONFIG_UART_CONSOLE_NONE != 1 && CONFIG_CONSOLE_UART_NUM != -1
 	uart_driver_install((uart_port_t)CONFIG_CONSOLE_UART_NUM,UART_FIFO_LEN*2,UART_FIFO_LEN*2,0,DRIVER_ARG);
+#if (CONFIG_CONSOLE_UART_RX != -1) || (CONFIG_CONSOLE_UART_TX != -1)
+	uart_set_pin((uart_port_t)CONFIG_CONSOLE_UART_NUM, CONFIG_CONSOLE_UART_TX, CONFIG_CONSOLE_UART_RX , -1, -1);
+#endif
 #endif
 
 #ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
@@ -204,8 +217,23 @@ void log_setup()
 	if (e)
 		con_printf("jtag init: %s",esp_err_to_name(e));
 #endif
-#ifdef CONFIG_ESP_CONSOLE_USB_CDC
+#if 0 //def CONFIG_ESP_CONSOLE_USB_CDC
+#endif
+#if 0 // defined CONFIG_USB_CONSOLE && defined CONFIG_TINYUSB_CDC_ENABLED
 	esp_tusb_init_console(TINYUSB_CDC_ACM_0);
+	tinyusb_config_t usbcfg;
+	bzero(&usbcfg,sizeof(usbcfg));
+	tinyusb_driver_install(&usbcfg);
+	tinyusb_config_cdcacm_t acmcfg;
+	bzero(&acmcfg,sizeof(acmcfg));
+	acmcfg.usb_dev = TINYUSB_USBDEV_0;
+	acmcfg.cdc_port = TINYUSB_CDC_ACM_0;
+	acmcfg.rx_unread_buf_sz = 64;
+	//acmcfg.callback_rx = tusb_cdc_rx_cb;
+	acmcfg.callback_rx_wanted_char = 0;
+	acmcfg.callback_line_state_changed = 0;
+	acmcfg.callback_line_coding_changed = 0;
+	tusb_cdc_acm_init(&acmcfg);
 #endif
 }
 
@@ -293,6 +321,13 @@ void log_common(log_level_t l, logmod_t m, const char *f, va_list val)
 #endif
 #ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
 	usb_serial_jtag_write_bytes(buf,s,0);
+#endif
+#if 0 // defined CONFIG_USB_CONSOLE && defined CONFIG_TINYUSB_CDC_ENABLED
+//	Logging to CDC would only work if driver is ready.
+//	This is currently not supported, as the S2 CDC drivers stalls
+//	after startup.
+//	(void) tinyusb_cdcacm_write_queue(TINYUSB_CDC_ACM_0,(const uint8_t *)buf,s);
+//	(void) tinyusb_cdcacm_write_flush(TINYUSB_CDC_ACM_0,100); //portMAX_DELAY);
 #endif
 }
 

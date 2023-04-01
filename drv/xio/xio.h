@@ -132,6 +132,9 @@ struct XioCluster
 	virtual int get_lvl(uint8_t io)
 	{ return -1; }
 
+	virtual int get_out(uint8_t io)
+	{ return -1; }
+
 	virtual int setm(uint32_t values,uint32_t mask)
 	{ return -1; }
 

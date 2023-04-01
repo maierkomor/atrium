@@ -58,8 +58,8 @@ struct EventHandler
 
 
 trigger_t event_callback(event_t e, Action *a);
-// takes arg ownership
-trigger_t event_callback_arg(event_t e, Action *a, char *arg);
+// strdup's arg
+trigger_t event_callback_arg(event_t e, Action *a, const char *arg);
 int event_cb_set_en(event_t e, Action *a, bool en);
 int event_cba_set_en(event_t e, Action *a, const char *, bool en);
 int event_detach(event_t e, Action *a);
@@ -70,6 +70,7 @@ extern "C" {
 typedef unsigned char bool;
 #endif // __cplusplus
 
+// strdup's arg in a
 trigger_t event_callback(const char *e, const char *a);
 // strdup's arg
 trigger_t event_callback_arg(const char *e, const char *a, const char *arg);

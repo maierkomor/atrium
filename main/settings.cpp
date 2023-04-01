@@ -420,7 +420,7 @@ int cfg_set_hostname(const char *hn)
 		return 1;
 	}
 	if (esp_err_t e = mdns_instance_name_set(hn)) {
-		log_warn(TAG,"unable to set mdns instance name: %s",esp_err_to_name(e));
+		log_warn(TAG,"set mdns instance: %s",esp_err_to_name(e));
 		return 1;
 	}
 	MDNS_up = true;
@@ -641,18 +641,19 @@ int cfg_read_hwcfg()
 	nvm_store_u8("hwconf",1);
 	size_t s = 0;
 	uint8_t *buf = 0;
-	if (int e = nvm_read_blob("hw.cfg",&buf,&s)) {
-		log_warn(TAG,"reading hw.cfg: %s",esp_err_to_name(e));
+	const char *name = "hw.cfg";
+	if (int e = nvm_read_blob(name,&buf,&s)) {
+		log_warn(TAG,"hw.cfg: %s",esp_err_to_name(e));
 		return e;
 	}
 	HWConf.clear();
 	int r = HWConf.fromMemory(buf,s);
 	free(buf);
 	if (r <= 0) {
-		log_warn(TAG,"parsing hw.cfg: %d",r);
+		log_warn(TAG,"parsing %s: %d",name,r);
 		return r;
 	}
-	log_info(TAG,"hw.cfg: parsed %u bytes",s);
+	log_info(TAG,"%s: %u bytes",name,s);
 	return 0;
 }
 
@@ -693,14 +694,15 @@ void initDns()
 		if (inet_aton(dns.c_str(),&a)) {
 			log_info(TAG,"DNS %s",dns.c_str());
 			dns_setserver(x++,&a);
-		} else
+		} else {
 			log_warn(TAG,"invalid DNS server '%s'",dns);
+		}
 	}
 #endif
 }
 
 
-static void sntp_start()
+void sntp_setup()
 {
 	sntp_bc_init();
 #ifdef CONFIG_LWIP_IGMP
@@ -708,17 +710,6 @@ static void sntp_start()
 #endif
 	if (Config.has_sntp_server())
 		sntp_set_server(Config.sntp_server().c_str());
-}
-
-
-void sntp_setup()
-{
-//	if (Config.has_timezone())
-//		setenv("TZ",Config.timezone().c_str(),1);
-	Action *u = action_add("sntp!init",(void(*)(void*))sntp_start,0,0);
-	event_callback(event_id("wifi`station_up"),u);
-//	Action *d = action_add("sntp!stop",(void(*)(void*))sntp_stop,0,0);
-//	event_callback(event_id("wifi`station_down"),d);
 }
 
 
@@ -762,7 +753,7 @@ void cfg_activate()
 }
 
 
-void cfg_activate_actions()
+void cfg_init_timers()
 {
 	for (const auto &t : Config.timefuses()) {
 		if (!t.has_name() || !t.has_time())
@@ -783,18 +774,33 @@ void cfg_activate_triggers()
 		const char *name = t.name().c_str();
 		if (!t.has_low() || !t.has_high()) {
 			log_warn(TAG,"both thresholds for %s need to be set",name);
-		} else if (EnvElement *e = RTData->getChild(name)) {
-			if (EnvNumber *n = e->toNumber()) {
-				if (n->setThresholds(t.low(),t.high()))
-					log_warn(TAG,"invalid thresholds [%f,%f]",t.low(),t.high());
-				else
-					log_info(TAG,"thresholds for %s [%f,%f]",name,t.low(),t.high());
-			} else {
-				log_warn(TAG,"set thresholds on %s: not a number",name);
-			}
-		} else {
-			log_warn(TAG,"set thresholds: %s not found",name);
+			continue;
 		}
+		EnvElement *e = RTData->getByPath(name);
+		if (e == 0) {
+			log_warn(TAG,"cannot set threshold on unknown %s",name);
+			continue;
+		}
+		EnvNumber *n = e->toNumber();
+		const char *nn = 0;
+		if (n == 0) {
+			e = RTData->find(name);
+			if (e == 0)
+				log_warn(TAG,"%s not found",name);
+			else if (EnvObject *o = e->toObject()) {
+				log_info(TAG,"object %s",name);
+				if (EnvElement *c = o->getChild("raw")) {
+					n = c->toNumber();
+					nn = name;
+				}
+			}
+		}
+		if (n == 0)
+			log_warn(TAG,"set thresholds on %s: not found",name);
+		else if (n->setThresholds(t.low(),t.high(),nn))
+			log_warn(TAG,"invalid thresholds [%f,%f]",t.low(),t.high());
+		else
+			log_info(TAG,"thresholds for %s [%f,%f]",name,t.low(),t.high());
 	}
 #endif
 	for (const auto &t : Config.triggers()) {
@@ -806,23 +812,21 @@ void cfg_activate_triggers()
 		}
 		for (const auto &action : t.action()) {
 			const char *an = action.c_str();
+			char *arg = 0;
+			const char *cmd = an;
 			if (char *sp = strchr(an,' ')) {
-				char cmd[sp-an+1];
-				memcpy(cmd,an,sp-an);
-				cmd[sp-an] = 0;
-				if (Action *a = action_get(cmd)) {
-					log_dbug(TAG,"%s => %s(%s)",en,cmd,sp+1);
-					event_callback_arg(e,a,strdup(sp+1));
-					continue;
-				}
-			} else {
-				if (Action *a = action_get(an)) {
-					log_dbug(TAG,"%s => %s",en,an);
-					event_callback(e,a);
-					continue;
-				}
+				arg = sp+1;
+				char *tmp = (char *) alloca(arg-an);
+				memcpy(tmp,an,sp-an);
+				tmp[sp-an] = 0;
+				cmd = tmp;
 			}
-			log_warn(TAG,"unknown action %s",an);
+			if (Action *a = action_get(cmd)) {
+				log_dbug(TAG,"%s => %s(%s)",en,cmd,arg?arg:"");
+				event_callback_arg(e,a,arg);
+			} else {
+				log_warn(TAG,"unknown action %s",an);
+			}
 		}
 	}
 }

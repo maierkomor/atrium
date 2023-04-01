@@ -705,7 +705,8 @@ int SSD1306::write(const char *text, int len)
 
 SSD1306 *SSD1306::create(uint8_t bus, uint8_t addr)
 {
-	uint8_t cmd[] = { (uint8_t)(addr << 1), CMD_NOP };
+	addr <<= 1;
+	uint8_t cmd[] = { (uint8_t)addr, CMD_NOP };
 	if (0 == i2c_write(bus,cmd,sizeof(cmd),1,1)) {
 		return new SSD1306(bus,addr);
 	}
@@ -715,15 +716,14 @@ SSD1306 *SSD1306::create(uint8_t bus, uint8_t addr)
 
 unsigned ssd1306_scan(uint8_t bus)
 {
-	uint8_t addr = 0x3c << 1;
 	uint8_t cmd[] = { (0x3c << 1), CMD_NOP };
 	if (0 == i2c_write(bus,cmd,sizeof(cmd),1,1)) {
-		new SSD1306(bus,addr);
+		new SSD1306(bus,cmd[0]);
 		return 1;
 	}
 	cmd[0] += 2;
 	if (0 == i2c_write(bus,cmd,sizeof(cmd),1,1)) {
-		new SSD1306(bus,addr);
+		new SSD1306(bus,cmd[0]);
 		return 1;
 	}
 	return 0;

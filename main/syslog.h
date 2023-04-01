@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021, Thomas Maier-Komor
+ *  Copyright (C) 2021-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -27,6 +27,7 @@ extern "C" {
 void dmesg_resize(size_t ds);
 void dmesg_setup();
 void syslog_setup();
+void syslog_stop();
 
 #ifdef __cplusplus
 }

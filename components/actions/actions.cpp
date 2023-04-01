@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2017-2022, Thomas Maier-Komor
+ *  Copyright (C) 2017-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -53,11 +53,12 @@ static set<Action,less<Action>> Actions;
 static event_t ActionTriggerEvt = 0;
 
 
+#if 0	// non-debugging version inlined
 Action::Action(const char *n)
 : name(n)
 , func(0)
 {
-//	log_dbug(TAG,"Action(%s)",n);
+	log_dbug(TAG,"Action(%s)",n);
 }
 
 
@@ -67,14 +68,15 @@ Action::Action(const char *n, void (*f)(void*),void *a, const char *t)
 , func(f)
 , arg(a)
 {
-//	log_dbug(TAG,"Action(%s,...)",n);
+	log_dbug(TAG,"Action(%s,...)",n);
 }
-
+#endif
 
 void Action::activate(void *a)
 {
 	if (arg != 0)
 		a = arg;
+	assert(func);
 	uint64_t st = esp_timer_get_time();
 	func(a);
 	uint64_t end = esp_timer_get_time();
@@ -83,73 +85,73 @@ void Action::activate(void *a)
 	sum += dt;
 	if (dt < min)
 		min = dt;
-	if (dt > max)
+	else if (dt > max)
 		max = dt;
 }
 
 
 Action *action_get(const char *name)
 {
-	if (strchr(name,' '))  {
-		log_warn(TAG,"invalid action in search: '%s'",name);
-		return 0;
-	}
 	Action x(name);
+	if (const char *sp = strchr(name,' '))  {
+		size_t l = sp-name;
+		char *tmp = (char *)alloca(l+1);
+		memcpy(tmp,name,l);
+		tmp[l] = 0;
+		x.name = tmp;
+	}
 	auto i = Actions.find(x);
-	if (i == Actions.end())
-		return 0;
-	return (Action*)&(*i);
+	if (i != Actions.end())
+		return (Action*)&(*i);
+	// no warning here, because it is used to add new actions
+	return 0;
 }
 
 
+/*
 int action_exists(const char *name)
 {
-	return action_get(name) != 0;
+	if (action_get(name) == 0) {
+		log_warn(TAG,"action %s does not exist",name);
+		return 0;
+	}
+	return 1;
 }
+*/
 
 
 Action *action_add(const char *name, void (*func)(void *), void *arg, const char *text)
 {
-	if (name == 0)
-		return 0;
-	if (action_get(name)) {
+	if (name) {
+		if (0 == action_get(name)) {
+			log_dbug(TAG,"add %s",name);
+			return (Action*) &(*Actions.emplace(name,func,arg,text).first);
+		}
 		log_warn(TAG,"duplicated action %s",name);
-		return 0;
 	}
-	log_dbug(TAG,"add %s",name);
-	return (Action*) &(*Actions.emplace(name,func,arg,text).first);
+	return 0;
 }
 
 
 int action_activate(const char *name)
 {
-	Action x(name);
-	set<Action,less<Action>>::iterator i = Actions.find(x);
-	if (i == Actions.end()) {
-		log_warn(TAG,"unknown action '%s'",name);
-		return 1;
+	if (Action *a = action_get(name)) {
+		log_dbug(TAG,"trigger %s",name);
+		a->activate();
+		return 0;
 	}
-	log_dbug(TAG,"triggered action %s",name);
-	Action &a = const_cast<Action&>(*i);
-	a.activate();
-	return 0;
+	return 1;
 }
 
 
 int action_activate_arg(const char *name, void *arg)
 {
-	Action x(name);
-	set<Action,less<Action>>::iterator i = Actions.find(x);
-	if (i == Actions.end()) {
-		log_warn(TAG,"unknown action '%s'",name);
-		if (arg)
-			free(arg);
-		return 1;
+	if (Action *a = action_get(name)) {
+		log_dbug(TAG,"trigger %s(%p)",name,arg);
+		a->activate(arg);
+		return 0;
 	}
-	log_dbug(TAG,"triggered action %s",name);
-	Action &a = const_cast<Action&>(*i);
-	a.activate(arg);
-	return 0;
+	return 1;
 }
 
 
@@ -168,7 +170,6 @@ void action_iterate(void (*f)(void*,const Action *),void *p)
 {
 	for (const Action &a : Actions)
 		f(p,&a);
-	f(p,0);
 }
 
 
@@ -183,12 +184,11 @@ static void action_event_cb(void *arg)
 		*sp = 0;
 		++sp;
 	}
-	Action *a = action_get(tmp);
-	if (a == 0) {
-		log_warn(TAG,"request to execute non-existing action %s",tmp);
-	} else {
-		log_dbug(TAG,"action %s",a->name);
+	if (Action *a = action_get(tmp)) {
+		log_dbug(TAG,"action %s (%s)",a->name,sp?sp:"");
 		a->activate(sp);
+	} else {
+		log_warn(TAG,"unknown action %s",tmp);
 	}
 }
 

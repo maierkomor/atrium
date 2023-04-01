@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2022, Thomas Maier-Komor
+ *  Copyright (C) 2022-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -28,6 +28,15 @@
 #include "terminal.h"
 #include "log.h"
 
+#ifdef CONFIG_LUA
+#include "luaext.h"
+extern "C" {
+#include "lua.h"
+#include "lualib.h"
+#include "lauxlib.h"
+}
+#endif
+
 #include <vector>
 
 
@@ -51,7 +60,7 @@ class StateMachine
 	explicit StateMachine(const StateMachineConfig &);
 	explicit StateMachine(const char *);
 	
-	void switch_state(const char *);
+	int switch_state(const char *);
 
 	static StateMachine *first()
 	{ return First; }
@@ -122,13 +131,17 @@ void State::init(const StateConfig &cfg, const char *stname)
 			char an[ac.size()+1];
 			strcpy(an,ac.c_str());
 			char *sp = strchr(an,' ');
-			if (sp)
+			char *arg = 0;
+			if (sp) {
 				*sp = 0;
+				++sp;
+				arg = strdup(sp);
+			}
 			if (Action *a = action_get(an)) {
 				log_dbug(TAG,"adding %s => %s",event_name(e),a->name);
 				trigger_t t;
 				if (sp) {
-					t = event_callback_arg(e,a,strdup(sp+1));
+					t = event_callback_arg(e,a,arg);
 				} else {
 					t = event_callback(e,a);
 				}
@@ -264,7 +277,7 @@ void StateMachine::addState(const char *n)
 }
 
 
-void StateMachine::switch_state(const char *nst)
+int StateMachine::switch_state(const char *nst)
 {
 	uint8_t x = 0;
 	for (const auto &s : m_states) {
@@ -286,8 +299,10 @@ void StateMachine::switch_state(const char *nst)
 			event_trigger_en(t,true);
 		log_dbug(TAG,"%s: new state %s",m_name.c_str(),nst);
 		m_st = x;
+		return 0;
 	} else {
 		log_warn(TAG,"switch state of %s to %s: unknown state",m_name.c_str(),nst);
+		return 1;
 	}
 
 }
@@ -349,10 +364,7 @@ const char *sm_cmd(Terminal &term, int argc, const char *args[])
 			return "Invalid argument #4.";
 		char arg[strlen(args[4]) + argc == 5 ? strlen(args[5]) : 0 + 2];
 		trigger_t t;
-		if (argc == 5)
-			t = event_callback(e,a);
-		else
-			t = event_callback_arg(e,a,strdup(args[5]));
+		t = event_callback_arg(e,a, (argc==5) ? 0 : args[5]);
 		event_trigger_en(t,false);
 		s->conds.push_back(t);
 		strcpy(arg,args[4]);
@@ -386,6 +398,43 @@ const char *sm_cmd(Terminal &term, int argc, const char *args[])
 }
 
 
+#ifdef CONFIG_LUA
+static int luax_sm_set(lua_State *L)
+{
+	StateMachine *sm = StateMachine::get(luaL_checkstring(L,1));
+	if (sm == 0) {
+		lua_pushliteral(L,"Invalid argument #1.");
+		lua_error(L);
+	}
+	const char *st = luaL_checkstring(L,2);
+	if (sm->switch_state(st)) {
+		lua_pushliteral(L,"Invalid argument #1.");
+		lua_error(L);
+	}
+	return 0;
+}
+
+
+static int luax_sm_get(lua_State *L)
+{
+	StateMachine *sm = StateMachine::get(luaL_checkstring(L,1));
+	if (sm == 0) {
+		lua_pushliteral(L,"Invalid argument #1.");
+		lua_error(L);
+	}
+	lua_pushstring(L,sm->active_state());
+	return 1;
+}
+
+
+static LuaFn Functions[] = {
+	{ "sm_set", luax_sm_set, "set state-machine state (sm,state)" },
+	{ "sm_get", luax_sm_get, "get state-machine state (sm)" },
+	{ 0, 0, 0 }
+};
+#endif	// CONFIG_LUA
+
+
 void sm_setup()
 {
 	for (const auto &sm : Config.statemachs()) {
@@ -394,6 +443,9 @@ void sm_setup()
 		log_info(TAG,"add statemachine %s",sm.name().c_str());
 		new StateMachine(sm);
 	}
+#ifdef CONFIG_LUA
+	xlua_add_funcs("sm",Functions);
+#endif
 }
 
 #endif

@@ -5,5 +5,5 @@ idf_component_register(
 
 	INCLUDE_DIRS .
 
-	REQUIRES logging netsvc streams
+	REQUIRES logging netsvc streams tinyusb
 )

@@ -271,7 +271,7 @@ static int query_remove(const char *hn, ip_addr_t *ip)
 		} else {
 			log_devel(TAG,"resolve query %s",q->hostname);
 			if (q->cb)
-				q->cb(hn,0,q->arg);
+				q->cb(hn,ip,q->arg);
 			if (prev)
 				prev->next = n;
 			else
@@ -974,7 +974,7 @@ int udns_query(const char *hn, ip_addr_t *ip, void (*cb)(const char *, const ip_
 	bool local = (len > 6) && (0 == memcmp(".local",hn+len-6,6));
 	q->local = local;
 	memcpy(q->hostname,hn,len+1);
-	log_dbug(TAG,"added query for %s",q->hostname);
+	log_dbug(TAG,"add query %s",q->hostname);
 	bzero(buf,ql);
 	buf[2] = 1;	// recursion desired
 	buf[5] = 1;	// question count = 1

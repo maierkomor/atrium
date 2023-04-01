@@ -73,6 +73,23 @@ char *IdfPath = 0;
 int NvsAddr = -1;
 bool ESP32 = false;
 
+
+struct Buffer
+{
+	char *data = 0;
+	size_t size = 0;
+
+	Buffer()
+	{}
+
+	~Buffer()
+	{ free(data); }
+
+	private:
+	Buffer(const Buffer &);
+	Buffer &operator = (const Buffer &);
+};
+
 /* future work for ESP8266 verification
 const char *PadNames[] = {
 	"mtdi",
@@ -167,6 +184,120 @@ void add_history(const char *e)
 #endif
 
 
+int read_file(const char *fn, vector<char> &b)
+{
+	int fd = open(fn,O_RDONLY);
+	if (fd == -1) {
+		printf("error opening %s: %s\n",fn,strerror(errno));
+		return -1;
+	}
+	struct stat st;
+	if (-1 == fstat(fd,&st)) {
+		printf("error stating %s: %s\n",fn,strerror(errno));
+		close(fd);
+		return -1;
+	}
+	off_t off = 0;
+	b.resize(st.st_size);
+	do {
+		int r = read(fd,b.data()+off,st.st_size-off);
+		if (r < 0) {
+			printf("error reading %s: %s\n",fn,strerror(errno));
+			close(fd);
+			return -1;
+		}
+		off += r;
+	} while (off != st.st_size);
+	close(fd);
+	return 0;
+}
+
+
+int parse_buffer(char *buf, size_t n)
+{
+	int r;
+	if (n > 4) {
+		uint8_t hwmagic[] = {0x5,0xcb,0xed,0x54,0xae};
+		uint8_t swmagic[] = {0x5,0xc0,0xed,0x54,0xae};
+		if (0 == memcmp(buf,hwmagic,sizeof(hwmagic))) {
+			r = HwCfg.fromMemory(buf,n);
+			Software = false;
+			return r < 0;
+		} else if (0 == memcmp(buf,swmagic,sizeof(swmagic))) {
+			r = NodeCfg.fromMemory(buf,n);
+			Software = true;
+			return r < 0;
+		}
+	}
+	r = HwCfg.fromMemory(buf,n);
+	if (0 < r) {
+		Software = false;
+		return 0;
+	}
+	r = NodeCfg.fromMemory(buf,n);
+	if (0 < r) {
+		Software = true;
+		return 0;
+	}
+	return r < 0;
+}
+
+
+static int parse_xxd(const char *fn)
+{
+	// accepted format:
+	// <offset>: <byte> <byte> <byte>
+	vector<char> in;
+	if (fn) {
+		if (read_file(fn,in))
+			return -1;
+	} else {
+		char line[128], *l;
+		do {
+			l = fgets(line,sizeof(line),stdin);
+			if (l) {
+				while (*l)
+					in.push_back(*l++);
+			}
+		} while (l && (line[0] != '\n'));
+	}
+	uint32_t v = 0;
+	bool nl = false, valid = false;
+	char *at = in.data();
+	char *end = at+in.size();
+	vector<char> out;
+	while (at != end) {
+		char c = *at++;
+		if ((c == ' ') || (c == '\t') || (c == '\n') || (c == '\r')) {
+			if (valid) {
+				out.push_back((uint8_t)v);
+				v = 0;
+				valid = false;
+			}
+		} else if (c == ':') {
+			if (v != out.size())
+				out.resize(v);
+			v = 0;
+			valid = false;
+		} else {
+			v <<= 4;
+			if ((c >= '0') && (c <= '9')) {
+				v |= (c-'0');
+			} else if ((c >= 'a') && (c <= 'f')) {
+				v |= (c-'a')+10;
+			} else if ((c >= 'A') && (c <= 'F')) {
+				v |= (c-'A')+10;
+			} else {
+				printf("Invalid input.\n");
+				return -1;
+			}
+			valid = true;
+		}
+	}
+	return parse_buffer(out.data(),out.size());
+}
+
+
 int set_filename(const char *arg)
 {
 	if (arg == 0) {
@@ -195,50 +326,13 @@ int read_config(const char *arg)
 			fn = HwFilename;
 		if (fn == 0) {
 			printf("missing argument\n");
-			return 1;
+			return -1;
 		}
 	}
-	int r = -1, n;
-	int fd = open(fn,O_RDONLY);
-	if (fd == -1) {
-		printf("error opening %s: %s\n",arg,strerror(errno));
-		return 1;
-	}
-	uint8_t *buf = 0;
-	struct stat st;
-	if (-1 == fstat(fd,&st)) {
-		printf("error stating %s: %s\n",arg,strerror(errno));
-		goto done;
-	}
-	buf = (uint8_t *) malloc(st.st_size);
-	if (buf == 0)
-		goto done;
-	n = read(fd,buf,st.st_size);
-	if (n < 0) {
-		printf("error reading %s: %s\n",arg,strerror(errno));
-		goto done;
-	}
-	if (n != st.st_size)
-		printf("short read: got %d instead of %zd\n",n,st.st_size);
-	if (n > 4) {
-		uint8_t hwmagic[] = {0x5,0xcb,0xed,0x54,0xae};
-		uint8_t swmagic[] = {0x5,0xc0,0xed,0x54,0xae};
-		if (0 == memcmp(buf,hwmagic,sizeof(hwmagic))) {
-			printf("'%s' looks like a hardware config file\n",arg);
-			r = HwCfg.fromMemory(buf,n);
-			Software = false;
-		} else if (0 == memcmp(buf,swmagic,sizeof(swmagic))) {
-			printf("'%s' looks like a software config file\n",arg);
-			r = NodeCfg.fromMemory(buf,n);
-			Software = true;
-		} else {
-			printf("no valid magic signature found\n");
-			if (Software)
-				r = NodeCfg.fromMemory(buf,n);
-			else
-				r = HwCfg.fromMemory(buf,n);
-		}
-	}
+	vector<char> b;
+	if (read_file(fn,b))
+		return -1;
+	int r = parse_buffer(b.data(),b.size());
 	if (r < 0) {
 		printf("parsing had error %d\n",r);
 	} else if (fn == arg) {
@@ -251,9 +345,6 @@ int read_config(const char *arg)
 		}
 	}
 done:	
-	if (buf)
-		free(buf);
-	close(fd);
 	return r < 0;
 }
 
@@ -1017,6 +1108,7 @@ FuncDesc Functions[] = {
 	{ "idf",	set_idf,	"set directory of IDF to <path>" },
 	{ "json",	json_config,	"output current config as JSON" },
 	{ "nvsaddr",	nvsaddr,	"set address of NVS partition" },
+	{ "parsexxd",	parse_xxd,	"parse xxd file" },
 	{ "passwd",	set_password,	"-c to clear password hash, otherwise calc hash from <pass>" },
 	{ "port",	setport,	"set port for flash programming (default: /dev/ttyUSB0)" },
 	{ "print",	show_config,	"print currecnt configuration" },

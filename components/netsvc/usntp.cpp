@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021, Thomas Maier-Komor
+ *  Copyright (C) 2021-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -62,6 +62,8 @@ static struct udp_pcb *MPCB = 0;
 static struct udp_pcb *SPCB = 0, *BPCB = 0;
 static uint16_t Interval = 0;
 static int64_t LastUpdate = 0;
+static char *Server = 0;
+static bool Queried = false;
 #ifndef CONFIG_IDF_TARGET_ESP8266
 static sys_sem_t LwipSem = 0;
 #endif
@@ -92,7 +94,9 @@ static inline void sntp_req_fn(void *arg)
 }
 
 
-static unsigned sntp_req(void *arg)
+static void sntp_connect(const char *hn, const ip_addr_t *addr, void *arg);
+
+static unsigned sntp_cyclic(void *arg)
 {
 	if (SPCB != 0) {
 #ifdef CONFIG_IDF_TARGET_ESP8266
@@ -102,8 +106,16 @@ static unsigned sntp_req(void *arg)
 #else
 		tcpip_send_msg_wait_sem(sntp_req_fn,0,&LwipSem);
 #endif
+		if (LastUpdate)
+			return (unsigned) Interval * 1000;
+	} else if (!Queried && Server && (StationMode == station_connected)) {
+		if (err_t e = query_host(Server,0,sntp_connect,0))
+			log_warn(TAG,"query %s: %s",Server,esp_err_to_name(e));
+		else
+			log_info(TAG,"queried %s",Server);
+		Queried = true;
 	}
-	return (unsigned) Interval * 1000;
+	return 100;
 }
 
 
@@ -204,6 +216,8 @@ void sntp_mc_init()
 
 static void sntp_connect(const char *hn, const ip_addr_t *addr, void *arg)
 {
+	if (addr == 0)
+		return;
 	udp_pcb *spcb = SPCB;
 	if (spcb) {
 		SPCB = 0;
@@ -211,36 +225,38 @@ static void sntp_connect(const char *hn, const ip_addr_t *addr, void *arg)
 	}
 	spcb = udp_new();
 	udp_recv(spcb,handle_recv,0);
+	char ipstr[64];
+	ip2str_r(addr,ipstr,sizeof(ipstr));
 	if (err_t e = udp_connect(spcb,addr,SNTP_PORT)) {
-		log_warn(TAG,"connect %d",e);
+		log_warn(TAG,"connect %s: %s",ipstr,esp_err_to_name(e));
+		udp_remove(spcb);
 	} else {
-		log_dbug(TAG,"connect to %s",inet_ntoa(*addr));
+		log_info(TAG,"connected to %s",ipstr);
 		SPCB = spcb;
 	}
 }
 
 
-int sntp_set_server(const char *server)
+void sntp_set_server(const char *server)
 {
-	if ((server == 0) || (server[0] == 0)) {
-		if (SPCB) {
-			LWIP_LOCK();
-			udp_remove(SPCB);
-			SPCB = 0;
-			LWIP_UNLOCK();
+	if (Server) {
+		char *s = Server;
+		Server = 0;
+		free(s);
+	}
+	if (SPCB) {
+		LWIP_LOCK();
+		udp_remove(SPCB);
+		SPCB = 0;
+		LWIP_UNLOCK();
+	}
+	if (server) {
+		Server = strdup(server);
+		if (Interval == 0) {
+			Interval = SNTP_INERVAL_MS;
+			cyclic_add_task("sntp",sntp_cyclic,(void*)0,0);
 		}
-		return 0;
 	}
-	log_info(TAG,"sntp %s",server);
-	err_t e = query_host(server,0,sntp_connect,0);
-	if (e < 0) {
-		log_warn(TAG,"query host: %d",e);
-	}
-	if (Interval == 0) {
-		cyclic_add_task("sntp",sntp_req,(void*)0,0);
-		Interval = SNTP_INERVAL_MS;
-	}
-	return 0;
 }
 
 
@@ -280,7 +296,7 @@ void sntp_bc_init()
 void sntp_set_interval(unsigned itv)
 {
 	if (Interval == 0)
-		cyclic_add_task("sntp",sntp_req,0,0);
+		cyclic_add_task("sntp",sntp_cyclic,0,0);
 	Interval = itv;
 }
 

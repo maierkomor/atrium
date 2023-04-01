@@ -1,5 +1,5 @@
-synopsis: passwd <option> [<pass>]
+synopsis: passwd <option>
+Interactively modify password.
 -c: clear
 -r: reset
--s: set (<pass> is optional)
--v: verify
+-s: set

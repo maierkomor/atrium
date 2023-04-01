@@ -31,7 +31,7 @@
 #define LOG_MAXLEN 95
 
 //#define MUTEX_ABORT_TIMEOUT portMAX_DELAY
-#define MUTEX_ABORT_TIMEOUT 10000
+#define MUTEX_ABORT_TIMEOUT (10000/portTICK_PERIOD_MS)
 
 
 #ifdef __cplusplus

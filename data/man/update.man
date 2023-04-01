@@ -1,3 +1,4 @@
 synopsys: update [-b|-p <part>] <http-link>
 -b       : boot after update
 -p <part>: update partition <part>
+-v <ver> : update to version <ver> using OTA server

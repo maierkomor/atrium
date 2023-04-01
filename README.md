@@ -1,92 +1,115 @@
 About Atrium Firmware:
 ======================
-Atrium Firmware is software stack for the ESP family of controllers from Espressif. It provides ready to build configuration (e.g. for S20 socket) and supports ESP8285, ESP8266, and ESP32 in one source code package, providing infrastructure to build for both controller architectures.
+Atrium Firmware is software stack for the ESP family of controllers from
+Espressif. It provides ready to build configuration (e.g. for S20
+socket) and supports ESP8285, ESP8266, ESP32, ESP32-C3, and ESP32-S3 in
+one source code package, providing infrastructure to build, configure,
+and use the devices in a consistent manner.
 
-The intended audience of this distribution are enthusiasts and hobbyists that want a home-automation without cloud access.
+The intended audience of this distribution are enthusiasts and hobbyists
+that want a home-automation without cloud access. For remote operation
+MQTT support is integrated, which needs an MQTT server running in your
+network.
 
-Atrium firmware is designed to be cover as many applications with one flash image as possible. Therefore, its drivers are initialized while booting. The relevant configuration can be performed with an off-line tool or online in the device if the flash image supports it. The settings can be uploaded to the device via telnet or directly flashed to its NVS (non-volatile-stroage).
+Atrium firmware is designed to be cover as many applications with one
+flash image as possible. Therefore, its drivers are initialized while
+booting. The relevant configuration can be performed with an off-line
+tool or online in the device if the flash image supports it. The
+settings can be uploaded to the device via telnet or directly flashed to
+its NVS (non-volatile stroage).
 
-After booting the configured drivers provide events, actions, and timer that can be associated to provide additional functionality. Configuring actions, events, and timers can be done online, and is stored among the regular device configuration in the NVS.
+After booting the configured drivers provide events, actions, and timers
+that can be associated to provide additional functionality.
+Additionally, state-machines can be defined to enable certain
+event-actions asssociations based on specific edge-conditions. Configuring
+actions, events, and timers can be done online, and is stored among the
+regular device configuration in the NVS.
+
+Additionally, Lua support is integrated, which enables flexible
+application specific behaviors.
 
 
 Features:
 =========
 Software services:
 - fully costomizable with timers, events, and actions
-- SNTP timed actions with day-of-week and holiday settings
-- mDNS for resolving `<nodename>.local` queries
-- over-the-air (OTA) updates via http upload and download
+- Lua scripting support
+- runtime-configurable state-machines to define state-bound event-action
+  bindings
+- over-the-air (OTA) updates via FTP, TFTP, HTTP upload and download
 - OTA aware, persistent system configuration
-- MQTT integration (directly integrated with async LWIP)
-- data transmission to InfluxDB (v1 only) via UDP and TCP
-  (directly integrated with async LWIP)
 - tool to send commands to all devices on the network
-- http server with system configuration support
-  (this is not the one from Espressif SDK)
 - timezone support for CET with daylight-saving convention
-- ftp server for access to spiffs/fatfs
-- name-service lookup support via DNS and mDNS
-- telnet server and console shell with many commands for remote
+- telnet server and UART&JTAG console with many commands for remote
   operation and configuration (hardware and software)
 - asynchronous integration with LWIP for most protocols
 - syslog support for sending log messages to a syslog server
-- serial monitor to forward uart to syslog
-- WPS support (unstable, untested)
-- SmartConfig support (compatible hardware required, untested)
-- runtime-configurable state-machines to define state-bound event-action
-  bindings
+- serial monitor to forward UART to syslog
+- WPS support
+
+Protocol support:
+- InfluxDB data upload (v1 only) via UDP and TCP
+- SNTP timed actions with day-of-week and holiday settings
+- MQTT integration (directly integrated with async LWIP)
+- HTTP server with system configuration support
+- Telnet
+- FTP server for access to spiffs/fatfs
+- HTTP, FTP, TFTP download
+- DNS and mDNS hostname lookup
+- mDNS for answering to `<nodename>.local` queries
 
 Filesystem support:
-- fatfs on ESP32
+- FAT
 - SPIFFS
-- ROM filesystem support for shared data across OTA partitions
+- ROM filesystem support for read-only data
 - memfile support
-  (in data segment stored data files, accessible as C strings)
+  (in data segment stored files for e.g. help pages)
 
 Hardware drivers:
-- transparent I/O multiplexer support
 - button support with debouncing
 - relay control support
 - ADC with sliding window
 - displays: SSD1360 (OLED), HD44780U (LCD), 7-/14-segmend LEDs (e.g. HT16K33, MAX7219)
-- BMP280 and HDC1000 temperature/pressure sensor
-- BME280 temperature/humidity/pressure sensor
-- BME680 temperature/humidity/pressure/electircal-air-resistance sensor
+- support for several temperature, humidity, and pressure sensors (I2C
+  and 1-wire)
 - SGP30 and CCS811B TVOC and CO2 sensor
 - APDS9930 proximity and light sensor
-- DHTxx temperature/humidity sensor support
-- DS18B20 temperature sensor support
 - alive status LED support with different blinking schemes
 - TLC5947 and TLC5916 constant current LED driver support
 - color LED strip support for WS2812b based strips
-- 1-wire support (currently only DS18B20)
-- webcams supported in https://github.com/espressif/esp32-camera
+- transparent I/O multiplexer support
+- touch-channel support
 
 
 Getting started:
 ================
-To get started, you need to perform following steps:
-1) choose the subdirectory of the binary distribution according to the
-device and available flash (esp8285 for an ESP8266 with 1MB flash)
-2) Flash bootloader, partition table, app-image, and
-optionally a romfs-image accoring to the addresses given in the names of
-the binary files. E.g.:
-```
-esptool write_flash 0x0000 boot-esp8285@0x0000.bin
-esptool write_flash 0x8000 ptable-esp8285@0x8000.bin
-esptool write_flash 0x9000 nvs@0x8000.bin
-esptool write_flash 0x10000 atrium-app1@0x10000.bin
-esptool write_flash 0xf0000 s20@0xf0000.bin
-```
+To get started, you can use the `flash-atrium.sh` script on a Linux
+machine to flash an ESP device. As an argument you must pass one of the
+binary distribution's subdirectories that matches the controller type
+and its flash size.
+
+Valid options are: `esp8285`, `esp8266_4m`, `esp32_4m`, `esp32-s3_8m`,
+`esp32-c3_4m`.
+
+On Windows you might want to use one of the ESP flashing tools with a
+GUI. In that case make sure that you erase the whole flash before
+flashing the first time, and that the files in the directory are flashed
+to the address given in their name.
+
 For ESP32 app images no address is given, as they can be flashed to any
 partition. The default ESP32 partition layout has partition `ota_0` at
-0x100000. Boot is always at 0x1000, and the ptable always at 0x8000.
+0x100000. The bootloader address is dependent on the conroller type. The
+partition-table (`ptable`) always at 0x8000.
 
-3) Configure the device via the offline tool bin/atriumcfg or via the
-serial console (hardware only if supported by the app-image)
-4) Write the configuration to the NVS of the device (either directly on
-the device's serial console or using bin/atriumcfg). 1MB devices can use
-the xxd method descirbed below to update their hardware config remotely.
+After that configure the device via the offline tool bin/atriumcfg or via the
+serial console (on-device hardware configuration is not supported on 1MB
+devces).
+
+The configuration can be written to the non-volatile storage (NVS) of
+the device (either directly on the device's serial console or using
+`bin/atriumcfg`, which supports writing the complete NVS partition). 1MB
+devices can use the xxd method described below to update their hardware
+config remotely.
 
 
 Device Configuration:
@@ -382,7 +405,10 @@ config set ftpd.start true
 
 The ftpd cannot serve files from ROMFS. It currently has no security at
 all. If you turn it on, files can be modified, deleted, and copied
-without any password.
+without any password. Just login with user `ftp`.
+
+Furthermore, only the active mode is supported. I.e. to upload a file
+you have to execute the `ftp` command with option `-A`.
 
 
 HTTP server:
@@ -505,7 +531,8 @@ the prerequisits and the differences between ESP32 and ESP8266:
 > bash mkatrium.sh <project>
 ```
 
-This will build the project in a subdirectory called `build.<project>`.
+This will build Atrium according to the configuration defined in
+file `projects/<project>` in a subdirectory called `build.<project>`.
 
 If you want to adjust the build configuration, you can use the menu
 based configuration tool that is provided by calling:
@@ -518,7 +545,11 @@ To flash a target, run:
 > bash mkatrium.sh <project-name> flash
 ```
 
-To build ESP8266 images for live update (OTA), execute:
+ESP8266 application images are bound to their partition base address.
+Therefore, for every partition a different image must be created. Per
+default `mkatrium` only builds an image for the primary application
+partitoin. To also build ESP8266 images for the other live over-the-air
+update (OTA), execute:
 ```
 > bash mkatrium.sh <project-name> ota
 ```
@@ -659,9 +690,9 @@ Over-the-Air (OTA) updates:
 ===========================
 To build binaries for an OTA update, you have to build your project with target `ota` for ESP8266 to get binaries for the approrpiate partitions. For ESP32 all binaries can be used for any patition with OTA updates.
 ```
-make PROJECT=<projectname> ota
+./mkatrium <projectname>
 ```
-This produces firmware binaries that are to be used for the relevant partitions for ESP8266.
+This produces firmware binaries for that are to be used for the relevant partitions for ESP8266.
 
 If the project has a ROMFS partition, you will also need to execute:
 ```
@@ -671,7 +702,8 @@ make PROJECT=<projectname> romfs
 To update via the integrated webserver, just point your browser to the IP of the device on page `/update.html`. E.g. `http://192.168.1.89/update.html`.  Always update the romfs/data partition first, and then the application, because a successful application update will trigger the reboot which will require an updated romfs partition.
 
 To update via telnet you need to perform the following steps:
-1. upload all necessary files for download to a webserver.
+1. upload all necessary files for download to a HTTP, FTP or TFTP
+   server.
 
 2. telnet into your device.
 
@@ -679,21 +711,35 @@ To update via telnet you need to perform the following steps:
 
 4. By executing `boot` on the console you can see on which partition the device is running currently and which partition will be used for an update. 
 
-5. By executing `update http://server/path/firmware.app1` you can
-   trigger a download that will update the currently inactive partition
-   (depending on the configuration FTP URIs are also suppored for
-   download of updates).  Please activate the partition only with `boot
-   app1` or so, after the update was successful. If update returns with
-   an error, the update failed, and booting from the relevant partition
-   will most likely not be successful. To get more information about the
-   reason for failure, you can execute `dmesg` to see the last message
-   that were generated during the OTA procedure. If the update ran out
-   of memory, you might want to try to reboot before restarting the
-   update again.
+5. By executing `update <uri>` you can trigger a download from the
+   server that will update the currently inactive partition.  Depending
+   on the configuration of the running Atrium firmware FTP and TFTP URIs
+   may also be suppored for downloading updates.  Please activate the
+   partition only with `boot <partition-name>` (e.g. `boot ota0` or
+   `boot app`), after the update verification was successful.
 
-6. If the relevant project (e.g. s20) has configured a ROMFS partition, then you may also need to update this partition as well. For this execute: `update -r http://server/path/romfs.bin`
+   `<uri>` can refer to a `http://`, `ftp://` or `tftp://` URI. Firmware
+   images for 1MB devices only support HTTP URIs.
 
-7. When flash updates were successful, switch the boot partition to the updated partition. E.g.: `boot app2`
+   If you have set the `otasrv` config setting, then you can trigger the
+   update with just the version number and update will look for an
+   appropriate image at the location of `otasrv` in a subdirectory
+   called according to the firmware configuration/project name. For
+   this, execute `update -v <version>`.
+
+   If update returns with an error, the update failed, and booting from
+   the relevant partition will most likely not be successful and end in
+   a reset-loop. To get more information about the reason for failure,
+   you can execute `dmesg` to see the last message that were generated
+   during the OTA procedure. If the update ran out of memory, you might
+   want to try to reboot before restarting the update again.
+
+6. If the relevant project (e.g. `esp8285`) has configured a ROMFS
+   partition, then you may also need to update this partition as well.
+   For this execute: `update -r http://server/path/romfs.bin`
+
+7. When flash updates were successful, switch the boot partition to the
+   updated partition. E.g.: `boot app2`
 
 8. Finally, trigger a reboot, by executing `reboot`.
 
@@ -950,10 +996,9 @@ configuration and not part of the `hwconf` settings.
 USB semihosted filesystem:
 ==========================
 Support for USB semihosted filesystem via openocd is available on
-devices that have native USB support (i.e. ESP32-C3, ESP32-S2,
-ESP32-S3). If compiled in and openocd is running, the filesystem is
-automatically mounted during boot at `/usb`, but its cannot be listed with
-`ls`.
+devices that have native USB support (i.e. ESP32-C3, ESP32-S3). If
+compiled in and openocd is running, the filesystem is automatically
+mounted during boot at `/usb`, but its cannot be listed with `ls`.
 
 Nevertheless, you can use it to copy a file from the host to your target
 storage filesystem, which may be quite handy for e.g. Lua files. To copy
@@ -964,11 +1009,20 @@ file to the current directory, which is per default `/flash`.
 Known Issues:
 =============
 - The documentation is incomplete and not completely up-to-date
-- CMake based builds are required for ESP32-S2, but do not work for
-  ESP8266. Use make to build OTA binaries for ESP8266/ESP8285.
 - LED-strip/WS2812b driver relies on RMT infrastructure on ESP32, which
   has timing issues under certain condition. Avoid using channel 0.
-
+- Update via http download from apache may hang on specific file sizes
+  on ESP8266. This does not happen when downloading from a Python
+  http.server session or when uploading via the update.html web page of
+  the httpd server of Atrium.  The reason for this is unclear.
+  Please use one of the work-arounds. On 4MB devices FTP and TFTP can be
+  used in addittion to HTTP for updating. On a stable WiFi TFTP is the
+  fastest update method.
+- ESP32-S2 does not have enough IRAM to support the WiFi IRAM options.
+  Therefore IRAM optimizations for WiFi are turned off.
+- CDC terminal on ESP32-S2 hangs on flush shortly after startup. The
+  reason for this is currently unclear. Use the UART terminal on
+  ESP32-S2.
 
 Bugs:
 =====

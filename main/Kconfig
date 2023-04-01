@@ -1,35 +1,30 @@
 menu "Atrium"
 
-menu "software services"
-
 config WFC_TARGET
 	string "WFC target name"
 	default ""
 	help
 		name of WFC configuration target
 
-config VERIFY_HEAP
-	bool "verify heap"
-	depends on IDF_TARGET_ESP32
+menu "software services"
 
-config APP_PARAMS
-	bool "application specific parameters"
-	default false
-	help
-		enable to add application parameters as key/value pairs in Config.app_params
-
-config LUA
+config CONSOLE_UART_TX
+	int "GPIO on which the console UART should be trinsmitting"
 	depends on !IDF_TARGET_ESP8266
-	bool "support Lua scripts processing"
-	default true
+	default -1
 	help
-		Lua language and scripting support
+		GPIO on which the primary console UART should be trinsmitting.
+		That value is applied with the CONSOLE_UART configuration,
+		if its value is unequal -1. Keep at -1 for defaults.
 
-config THRESHOLDS
-	bool "support high/low schmitt-trigger thresholds on float variables"
-	default true
+config CONSOLE_UART_RX
+	int "GPIO on which the console UART should be receiving"
+	depends on !IDF_TARGET_ESP8266
+	default -1
 	help
-		support high/low schmitt-trigger thresholds on float variables, that trigger associated events
+		GPIO on which the primary console UART should be receiving.
+		That value is applied with the CONSOLE_UART configuration,
+		if its value is unequal -1. Keep at -1 for defaults.
 
 config UART_CONSOLE
 	bool "serial console to configure and operate target device"
@@ -45,30 +40,31 @@ config UART_MONITOR
 	help
 		serial monitor that forwards input data to syslog
 
-config INTEGRATED_HELP
-	bool "integrate help in app binary"
-	default true
-	help
-		Integrate help texts into application binary. If you disable this option
-		the help pages can still be provided in a ROMFS partition.
-
 config HWCONF_DYNAMIC
 	bool "online hardware configuration"
 	default	true
 	help
 		support for configuring and modifying driver online
 
-config UDNS
-	bool "uDNS"
+config LUA
+	depends on !IDF_TARGET_ESP8266
+	bool "support Lua scripts processing"
 	default true
 	help
-		integrated micro DNS and MDNS implementation (requires patch for ESP-IDF, which is applied via setupenv.sh)
+		Lua language and scripting support
 
-config MQTT
-	bool "MQTT"
+config THRESHOLDS
+	bool "support high/low schmitt-trigger thresholds on float variables"
 	default true
 	help
-		MQTT support
+		support high/low schmitt-trigger thresholds on float variables, that trigger associated events
+
+config INTEGRATED_HELP
+	bool "help/man-pages in app binary"
+	default true
+	help
+		Integrate help texts into application binary. If you disable this option
+		the help pages can still be provided in a ROMFS partition.
 
 config AT_ACTIONS
 	bool "at service"
@@ -82,6 +78,53 @@ config HOLIDAYS
 	default true
 	help
 		holiday database for time triggered actions
+
+config TERMSERV
+	bool "uart terminal server"
+	default false
+	help
+		UART terminal server function
+
+config STATEMACHINES
+	bool "state machines"
+	default true
+	help
+		State-machine based event/action triggering.
+
+config APP_PARAMS
+	bool "Application specific parameters (normally not needed, deprecated)"
+	default false
+	help
+		Enable to add application parameters as key/value pairs in Config.app_params.
+		To be removed.
+
+endmenu	# software services
+
+###############
+
+menu "networking services"
+
+config OTA
+	bool "OTA (over-the-air updates)"
+	default true
+	help
+		Over-the-air update support.
+		Updates can be performed by HTTP, FTP, and TFTP download.
+		1MB devices only support HTTP downloads.
+
+config UDNS
+	bool "uDNS"
+	default true
+	help
+		integrated micro DNS and MDNS implementation (requires patch for ESP-IDF, which is applied via setupenv.sh)
+		Depends on patched IDF. Do not disable.
+		Non uDNS configuration to not see any testing.
+
+config MQTT
+	bool "MQTT"
+	default true
+	help
+		MQTT support
 
 config HTTP
 	bool "http"
@@ -102,12 +145,6 @@ config TELNET
 	help
 		telnet server
 
-config TERMSERV
-	bool "uart terminal server"
-	default false
-	help
-		UART terminal server function
-
 config SYSLOG
 	bool "syslog"
 	default true
@@ -119,24 +156,6 @@ config INFLUX
 	default true
 	help
 		Support for sending measurements as UDP packets to Influx DB 
-
-config OTA
-	bool "ota"
-	default true
-	help
-		over-the-air update support
-
-config SMARTCONFIG
-	bool "SmartConfig"
-	default false
-	help
-		WiFi configuration with EPS smart config
-
-config STATEMACHINES
-	bool "state machines"
-	default false
-	help
-		state-machine based event/action triggering
 
 config UDPCTRL
 	bool "UDP control port"
@@ -150,7 +169,15 @@ config WPS
 	help
 		WiFi auto-configuration with WPS
 
-endmenu	# software services
+config SMARTCONFIG
+	bool "SmartConfig"
+	default false
+	help
+		WiFi configuration with EPS smart config
+
+endmenu # networking services
+
+###############
 
 menu "filesystem support"
 
@@ -204,11 +231,13 @@ config USB_DIAGLOG
 		output diagnostic log to USB serial connections
 
 config USB_CONSOLE
-	depends on ESP_CONSOLE_USB_SERIAL_JTAG
+	depends on ESP_CONSOLE_USB_SERIAL_JTAG || TINYUSB_CDC_ENABLED
 	bool "diag output to USB serial"
 	default true
 	help
-		output diagnostic log to USB serial connections
+		Console on USB serial connections. Uses serial JTAG on
+		ESP32-S3, and CDC on ESP32-S2. ESP32-S2 CDCACM driver
+		keeps hanging up shortly after init.
 
 config GPIOS
 	bool "named GPIO infrastructure"
@@ -481,18 +510,16 @@ config DEVEL
 	help
 		show drivers under development
 
+config VERIFY_HEAP
+	bool "verify heap"
+	depends on IDF_TARGET_ESP32 || IDF_TARGET_ESP32S2 || IDF_TARGET_ESP32S3 || IDF_TARGET_ESP32C3
+	default false
+
 config FUNCTION_TIMING
 	bool "instrument for performance analysis"
 	default false
 	help
 		enable for performance analysis only - negative impact for general use
-
-config SOCKET_API
-	bool "socket API"
-	default false
-	help
-		Use LWIP supplied socket API instead of native LwIP binding.
-		Do not enable, unless you exactly know why.
 
 endmenu # experimental stuff
 

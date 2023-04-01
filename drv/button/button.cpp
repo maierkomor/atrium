@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2022, Thomas Maier-Komor
+ *  Copyright (C) 2018-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -31,6 +31,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <driver/gpio.h>
 
 #define TAG MODULE_BUTTON
 
@@ -68,19 +69,25 @@ Button *Button::create(const char *name, xio_t gpio, xio_cfg_pull_t mode, bool a
 	cfg.cfg_intr = xio_cfg_intr_edges;
 	if (0 > xio_config(gpio,cfg)) {
 		log_warn(TAG,"config gpio %u failed",gpio);
+		return 0;
 	} else {
 		Button *b = new Button(name,gpio,mode,active_high);
 		event_t fev = xio_get_fallev(gpio);
 		event_t rev = xio_get_riseev(gpio);
-		if (fev && rev) {
-			Action *fa = action_add(concat(name,"!down"),press_ev,b,0);
-			event_callback(fev,fa);
-			Action *ra = action_add(concat(name,"!up"),release_ev,b,0);
-			event_callback(rev,ra);
-			log_dbug(TAG,"listen on events");
-		} else if (0 == xio_set_intr(gpio,intr,b)) {
-			log_dbug(TAG,"listen on interrupt");
+		if ((rev == 0) || (fev == 0)) {
+			if (0 == xio_set_intr(gpio,intr,b)) {
+				b->m_intr = true;
+				fev = b->m_pev;
+				rev = b->m_rev;
+				log_dbug(TAG,"use interrupts");
+			} else {
+				return 0;
+			}
 		}
+		Action *fa = action_add(concat(name,"!down"),press_ev,b,0);
+		event_callback(fev,fa);
+		Action *ra = action_add(concat(name,"!up"),release_ev,b,0);
+		event_callback(rev,ra);
 		return b;
 	}
 	return 0;
@@ -89,31 +96,34 @@ Button *Button::create(const char *name, xio_t gpio, xio_cfg_pull_t mode, bool a
 
 void Button::press_ev(void *arg)
 {
-	int32_t now = esp_timer_get_time() / 1000;
 	Button *b = static_cast<Button*>(arg);
+	if (!b->m_intr) {
+		b->m_tpressed = esp_timer_get_time() / 1000;
+		event_trigger(b->m_pev);
+	}
 	log_dbug(TAG,"%s pressed",b->m_name);
-	b->m_tpressed = now;
-	if (b->m_st != btn_released) {
-		b->m_st = btn_released;
+	if (b->m_st != btn_pressed) {
+		b->m_st = btn_pressed;
 		b->m_pressed.set(true);
 		b->m_ptime.set(0);
-		event_trigger(b->m_pev);
 	}
 }
 
 
 void Button::release_ev(void *arg)
 {
-	int32_t now = esp_timer_get_time() / 1000;
 	Button *b = static_cast<Button*>(arg);
+	if (!b->m_intr) {
+		b->m_treleased = esp_timer_get_time() / 1000;
+		event_trigger(b->m_rev);
+	}
 	log_dbug(TAG,"%s released",b->m_name);
 	if (b->m_st != btn_released) {
 		event_t ev = 0;
-		unsigned dt = now - b->m_tpressed;
+		unsigned dt = b->m_treleased - b->m_tpressed;
 		b->m_st = btn_released;
 		b->m_pressed.set(false);
 		b->m_ptime.set((float)dt);
-		event_trigger(b->m_rev);
 		if ((dt >= BUTTON_SHORT_START) && (dt < BUTTON_SHORT_END)) {
 			ev = b->m_sev;
 		} else if ((dt >= BUTTON_MED_START) && (dt < BUTTON_MED_END)) {
@@ -133,36 +143,22 @@ void IRAM_ATTR Button::intr(void *arg)
 	// no log_* from ISRs!
 	int32_t now = esp_timer_get_time() / 1000;
 	Button *b = static_cast<Button*>(arg);
-	event_t ev, xev = 0;
+	event_t ev;
 	if (xio_get_lvl(b->m_gpio) == b->m_presslvl) {
+		if ((now - b->m_tpressed) < 10)
+			return;
 		b->m_tpressed = now;
 		ev = b->m_pev;
-		b->m_pressed.set(true);
-		b->m_ptime.set(0.0);
 	} else {
-		ev = b->m_rev;
-		unsigned dt = now - b->m_tpressed;
-		if (dt < BUTTON_SHORT_START) {
-			// fast debounce
+		if ((now - b->m_treleased) < 10)
 			return;
-		}
-		b->m_pressed.set(false);
-		b->m_ptime.set((float)dt);
-		b->m_tpressed = 0;
-		if (dt < BUTTON_SHORT_END) {
-			xev = b->m_sev;
-		} else if ((dt >= BUTTON_MED_START) && (dt < BUTTON_MED_END)) {
-			xev = b->m_mev;
-		} else if ((dt >= BUTTON_LONG_START) && (dt < BUTTON_LONG_END)) {
-			xev = b->m_lev;
-		}
+		b->m_treleased = now;
+		ev = b->m_rev;
 	}
-	if (ev == b->m_lastev)
-		return;
-	b->m_lastev = ev;
-	event_isr_trigger(ev);
-	if (xev)
-		event_isr_trigger(xev);
+	if (ev != b->m_lastev) {
+		b->m_lastev = ev;
+		event_isr_trigger(ev);
+	}
 }
 
 #endif

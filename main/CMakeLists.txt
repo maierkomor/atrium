@@ -29,6 +29,7 @@ idf_component_register(
 	nightsky.cpp
 	ota.cpp
 	ow.cpp
+	ping.cpp
 	relays.cpp
 	romfs.cpp
 	screen.cpp

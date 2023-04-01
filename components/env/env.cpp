@@ -41,6 +41,13 @@ EnvElement::~EnvElement()
 }
 
 
+void EnvElement::setName(char *n)
+{
+	assert(m_name == 0);
+	m_name = n;
+}
+
+
 void EnvElement::toStream(stream &o) const
 {
 	o.print("\"");
@@ -97,13 +104,13 @@ void EnvNumber::set(float v)
 }
 
 
-int EnvNumber::setThresholds(float l, float h)
+int EnvNumber::setThresholds(float l, float h, const char *n)
 {
 	if (l+FLT_EPSILON >= h)
 		return 1;
 	if (m_evhi == 0) {
-		m_evhi = event_register(m_name,"`high");
-		m_evlo = event_register(m_name,"`low");
+		m_evhi = event_register(n ? n : m_name,"`high");
+		m_evlo = event_register(n ? n : m_name,"`low");
 	}
 	m_low = l;
 	m_high = h;
@@ -168,6 +175,52 @@ void EnvString::set(const char *v, size_t l)
 }
 
 
+unsigned EnvObject::numElements() const
+{
+	unsigned n = 0;
+	for (auto x : m_childs)
+		n += x->numElements();
+	return n;
+}
+
+
+EnvElement *EnvObject::getElement(unsigned idx) const
+{
+	unsigned at = 0, nc = m_childs.size();
+	while (at < nc) {
+		unsigned n = m_childs[at]->numElements();
+		if (idx < n) {
+			if (EnvObject *o = m_childs[at]->toObject())
+				return o->getElement(idx);
+			return m_childs[at];
+		}
+		idx -= n;
+		++at;
+	}
+	return 0;
+}
+
+
+int EnvObject::getIndex(const char *n) const
+{
+	int idx = 0;
+	unsigned at = 0;
+	while (at < m_childs.size()) {
+		EnvElement *e = m_childs[at];
+		if (EnvObject *o = e->toObject()) {
+			int x = o->getIndex(n);
+			if (x != -1)
+				return idx+x;
+		} else if (0 == strcmp(n,e->name())) {
+			return idx;
+		}
+		idx += e->numElements();
+		++at;
+	}
+	return -1;
+}
+
+
 void EnvObject::toStream(stream &o) const
 {
 
@@ -193,9 +246,8 @@ void EnvObject::toStream(stream &o) const
 void EnvObject::append(EnvElement *e)
 {
 	assert(e);
-	if (EnvObject *o = e->toObject())
-		o->m_parent = this;
 	m_childs.push_back(e);
+	e->m_parent = this;
 }
 
 
@@ -229,6 +281,35 @@ EnvElement *EnvObject::getChild(const char *n) const
 		}
 	}
 	return 0;
+}
+
+
+EnvObject *EnvObject::getObject(const char *n) const
+{
+	for (EnvElement *e : m_childs) {
+		if (EnvObject *o = e->toObject()) {
+			if (0 == strcmp(o->m_name,n))
+				return o;
+		}
+	}
+	return 0;
+}
+
+
+EnvElement *EnvObject::getByPath(const char *n) const
+{
+	const EnvObject *at = this;
+	while (const char *x = strchr(n,'.')) {
+		size_t l = x-n;
+		char dir[l+1];
+		memcpy(dir,n,l);
+		dir[l] = 0;
+		n = x + 1;
+		at = getObject(dir);
+		if (at == 0)
+			return 0;
+	}
+	return at->getChild(n);
 }
 
 

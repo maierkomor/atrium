@@ -16,6 +16,8 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+// RFC2347, RFC2348
+
 #include <sdkconfig.h>
 
 #ifdef CONFIG_OTA
@@ -46,20 +48,29 @@
 extern "C" {
 #include <esp_base64.h>
 }
+#include <lwip/err.h>
 #include <lwip/inet.h>
 #include <lwip/ip_addr.h>
 #include <lwip/ip6.h>
-#include <lwip/err.h>
 #endif
 #include <mbedtls/base64.h>
 
 #include <lwip/dns.h>
+#include <lwip/udp.h>
 
 #include <errno.h>
 #include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+#define TFTP_PORT 	69
+#define TFTP_RRQ	1
+#define TFTP_WRQ	2
+#define TFTP_DATA	3
+#define TFTP_ACK	4
+#define TFTP_ERROR	5
+#define TFTP_OACK	6
 
 #ifdef ESP32
 #define OTABUF_SIZE 8192 //(1460*16)
@@ -73,7 +84,7 @@ static char *skip_http_header(Terminal &t, char *text, int len)
 {
 	char *data = strstr(text,"\r\n\r\n");
 	if (data == 0) {
-		t.printf("unterminated http header: %d bytes\n",len);
+		t.printf("unterminated header: %d bytes\n",len);
 		return 0;
 	}
 	data += 4;
@@ -84,92 +95,6 @@ static char *skip_http_header(Terminal &t, char *text, int len)
 	return 0;
 }
 
-
-#ifdef CONFIG_SOCKET_API
-
-static int send_http_get(Terminal &t, const char *server, int port, const char *filename, const char *auth)
-{
-	t.printf("get %s:%d/%s\n", server, port, filename);
-	ip_addr_t ip;
-	if (err_t e = resolve_hostname(server,&ip)) {
-		t.printf("unable to resolve ip of %s: %s\n",server,strlwiperr(e));
-		return -1;
-	}
-	char ipaddr[32];
-	inet_ntoa_r(ip,ipaddr,sizeof(ipaddr));
-	t.printf("contacting %s",ipaddr);
-	int hsock = socket(AF_INET, SOCK_STREAM, 0);
-	if (hsock == -1) {
-		t.printf("unable to create download socket: %s\n",strerror(errno));
-		return -1;
-	}
-	struct sockaddr_in in;
-	struct sockaddr_in6 in6;
-	struct sockaddr *a;
-	size_t as;
-	if (IP_IS_V6(&ip)) {
-		in6.sin6_family = AF_INET6;
-		in6.sin6_port = htons(port);
-		a = (struct sockaddr *) &in6;
-		as = sizeof(struct sockaddr_in6);
-		memcpy(&in6.sin6_addr,ip_2_ip6(&ip),sizeof(in6.sin6_addr));
-	} else {
-		in.sin_family = AF_INET;
-		in.sin_port = htons(port);
-		a = (struct sockaddr *) &in;
-		as = sizeof(struct sockaddr_in);
-		memcpy(&in.sin_addr,ip_2_ip4(&ip),sizeof(in.sin_addr));
-	}
-	if (-1 == connect(hsock,a,as)) {
-		t.printf("connect to %s failed: %s\n",inet_ntoa(ip),strerror(errno));
-		close(hsock);
-		return -1;
-	}
-	t.printf("connected to %s\n",inet_ntoa(ip));
-	char http_request[512];
-	int get_len = snprintf(http_request,sizeof(http_request),
-		"GET /%s HTTP/1.0\r\n"
-		"Host: %s:%d\r\n"
-		"User-Agent: atrium\r\n"
-		, filename, server, port);
-	if (get_len+3 > sizeof(http_request))
-		return -1;
-	if (auth) {
-		strcpy(http_request+get_len,"Authorization: Basic ");
-		get_len += 21;
-#ifdef CONFIG_IDF_TARGET_ESP8266
-		int n = esp_base64_encode(auth,strlen(auth),http_request+get_len,sizeof(http_request)-get_len);
-		if (n < 0) {
-			t.printf("base64: 0x%x\n",n);
-			return -1;
-		}
-		get_len += n;
-#else
-		size_t b64l = sizeof(http_request)-get_len;
-		int n = mbedtls_base64_encode((unsigned char *)http_request+get_len,sizeof(http_request)-get_len,&b64l,(unsigned char *)auth,strlen(auth));
-		if (0 > n) {
-			t.printf("base64: 0x%x\n",n);
-			return -1;
-		}
-		get_len += b64l;
-#endif
-		strcpy(http_request+get_len,"\r\n");
-		get_len += 2;
-	}
-	if (get_len + 3 > sizeof(http_request))
-		return -1;
-	strcpy(http_request+get_len,"\r\n");
-	get_len += 2;
-	//t.printf("http request:\n'%s'\n",http_request);
-	int res = send(hsock, http_request, get_len, 0);
-	if (res < 0) {
-		t.printf("unable to send get request: %s\n",strerror(errno));
-    		return -1;
-	}
-	return hsock;
-}
-
-#else // ESP8266
 
 static const char *send_http_get(Terminal &t, LwTcp &P, const char *server, int port, const char *filename, const char *auth)
 {
@@ -217,7 +142,6 @@ static const char *send_http_get(Terminal &t, LwTcp &P, const char *server, int 
 	return 0;
 }
 
-#endif
 
 static const char *to_fd(Terminal &t, void *arg, char *buf, size_t s)
 {
@@ -238,49 +162,6 @@ static const char *to_ota(Terminal &t, void *arg, char *buf, size_t s)
 }
 
 
-#ifdef CONFIG_SOCKET_API
-static int socket_to_x(Terminal &t, int hsock, const char *(*sink)(Terminal&,void*,char*,size_t), void *arg)
-{
-	char *buf = (char*)malloc(OTABUF_SIZE), *data;
-	if (buf == 0)
-		return "Out of memory.";
-	int ret = "Failed.";
-	size_t numD = 0;
-	int r = recv(hsock,buf,OTABUF_SIZE,0);
-	if (r < 0)
-		goto done;
-	log_dbug(TAG,"header:\n%.*s",r,buf);
-	if (memcmp(buf,"HTTP",4) || memcmp(buf+8," 200 OK\r",8)) {
-		char *nl = strchr(buf,'\n');
-		if (nl) {
-			*nl = 0;
-			t.printf("unexpted answer: %s\n",buf);
-		}
-		goto done;
-	}
-	data = skip_http_header(t,buf,r);
-	if (data == 0) {
-		ret = "No end of header.";
-		goto done;
-	}
-	r -= (data-buf);
-	while (r > 0) {
-		numD += r;
-		if (sink(t,arg,data,r))
-			goto done;
-		r = recv(hsock,buf,OTABUF_SIZE,0);
-		data = buf;
-		t.printf("wrote %d bytes\r",numD);
-	}
-	t.println();
-	ret = 0;
-done:
-	free(buf);
-	return ret;
-}
-
-#else // if LWTCP
-
 static const char *socket_to_x(Terminal &t, LwTcp &P, const char *(*sink)(Terminal&,void*,char*,size_t), void *arg)
 {
 	char *buf = (char*)malloc(OTABUF_SIZE), *data;
@@ -288,6 +169,7 @@ static const char *socket_to_x(Terminal &t, LwTcp &P, const char *(*sink)(Termin
 		return "Out of memory.";
 	const char *ret = "Failed.";
 	size_t numD = 0, contlen = 0;
+	bool ia = t.isInteractive();
 	int r = P.read(buf,OTABUF_SIZE);
 	if (r < 0)
 		goto done;
@@ -311,27 +193,32 @@ static const char *socket_to_x(Terminal &t, LwTcp &P, const char *(*sink)(Termin
 		goto done;
 	data = skip_http_header(t,buf,r);
 	if (data == 0) {
-		ret = "no end of header";
+		ret = "No body.";
 		goto done;
 	}
 	r -= (data-buf);
+	if (r == 0)
+		goto read_data;
 	while (r > 0) {
 		if (const char *e = sink(t,arg,data,r)) {
 			ret = e;
 			goto done;
 		}
 		numD += r;
-		t.printf("\rwrote %d/%u bytes",numD,contlen);
-		t.sync(false);
+		if (ia) {
+			t.printf("\r%d/%u written",numD,contlen);
+			t.sync(false);
+		}
 		if (numD == contlen)
 			break;
+read_data:
 		r = P.read(buf,OTABUF_SIZE,60000);
 		data = buf;
 	}
 	if (r < 0) {
-		t.println(P.error());
+		ret = P.error();
 	} else if (numD != contlen) {
-		ret = "\nincomplete";
+		ret = "incomplete";
 	} else {
 		ret = 0;
 	}
@@ -340,75 +227,186 @@ done:
 	return ret;
 }
 
-#endif
-
 
 #ifndef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
-static const char *ftp_to(Terminal &t, char *addr, const char *(*sink)(Terminal &,void*,char*,size_t), void *arg)
+typedef struct recv_arg
 {
-	const char *server;
-	t.printf("download %s\n",addr);
-	if (0 == strncmp(addr,"ftp://",6)) {
-		server = addr + 6;
-	} else {
-		t.printf("invalid address '%s'\n",addr);
-		return "";
-	}
-	//  user/pass extraction
-	uint16_t port = 21;
-	const char *username = "ftp";
-	const char *pass = "ftp";
-	char *at = strchr(server,'@');
-	if (at) {
-		*at = 0;
-		username = server;
-		if (char *colon = strchr(server,':')) {
-			*colon = 0;
-			pass = colon + 1;
-		} else {
-			pass = 0;
-		}
-		server = at + 1;
-	}
+	const char *(*sink)(Terminal &,void*,char*,size_t);
+	void *arg;
+	char *buf;
+	size_t size;
+	uint16_t port;
+	SemaphoreHandle_t sem;
+} tftp_recv_arg_t;
 
-	char *filepath = strchr(server,'/');
-	if (filepath == 0)
-		return "Invalid argument.";
-	*filepath = 0;
-	++filepath;
-	char *portstr = strchr(server,':');
-	if (portstr) {
-		*portstr = 0;
-		long l = strtol(++portstr,0,0);
-		if ((l <= 0) || (l > UINT16_MAX)) {
-			return "invalid port";
+
+static void tftp_recv(void *arg, struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *ip, u16_t port)
+{
+	tftp_recv_arg_t *r = (tftp_recv_arg_t *)arg;
+	r->port = port;
+	if (p->tot_len <= r->size+4) {
+		r->size = p->tot_len;
+		pbuf_copy_partial(p,r->buf,p->tot_len,0);
+//		log_hex(TAG,r->buf,16,"packet %u",r->size);
+	} else {
+		log_warn(TAG,"packet too big");
+	}
+	xSemaphoreGive(r->sem);
+	pbuf_free(p);
+}
+
+
+static const char *tftp_to(Terminal &t, uri_t *uri, const char *(*sink)(Terminal &,void*,char*,size_t), void *arg)
+{
+	struct udp_pcb *pcb = udp_new_ip_type(IPADDR_TYPE_ANY);
+	udp_bind(pcb,IP_ANY_TYPE,0);
+	size_t fl = strlen(uri->file);
+	char buf[128];
+	uint16_t reqsize = 1432;
+	char *at = buf;
+	*at++ = 0;
+	*at++ = TFTP_RRQ;
+	memcpy(at,uri->file,fl+1);
+	at += fl+1;
+	memcpy(at,"octet",6);
+	at += 6;
+	memcpy(at,"blksize",8);
+	at += 8;
+	at += sprintf(at,"%u",reqsize);
+	++at;	// \0
+	memcpy(at,"tsize\0000",8);
+	at += 8;
+	int n = at-buf;
+	assert(n < sizeof(buf));
+	log_hex(TAG,buf,n,"send:");
+	struct pbuf *pb = pbuf_alloc(PBUF_TRANSPORT,n,PBUF_RAM);
+	pbuf_take(pb,buf,n);
+	tftp_recv_arg_t x;
+	x.buf = (char*)malloc(reqsize+4);
+	x.sem = xSemaphoreCreateBinary();
+	x.size = reqsize;
+	uint16_t blocksize = 512;
+	udp_recv(pcb,tftp_recv,&x);
+	err_t e = udp_sendto(pcb,pb,&uri->ip,uri->port);
+	uint16_t seqid = 1;
+	const char *r = 0;
+	uint32_t total = 0, numexp = 0;
+	pbuf_free(pb);
+	buf[1] = TFTP_ACK;
+	bool ia = t.isInteractive();
+	do {
+		if (pdTRUE != xSemaphoreTake(x.sem,10000)) {
+			r = "Timeout.";
+			break;
 		}
-		port = l;
+		if (x.buf[0]) {
+			r = "Packet error.";
+			break;
+		}
+		if (TFTP_OACK == x.buf[1]) {
+			log_hex(TAG,x.buf,x.size,"OACK");
+			bool error = false;
+			const char *blksize = (const char *)memmem(x.buf+2,x.size-2,"blksize",8);
+			if (blksize && ((blksize[-1] == 0) || (blksize-x.buf == 2))) {
+				long l = strtol(blksize+8,0,0);
+				if ((l >= 8) && (l <= reqsize)) {
+					blocksize = l;
+					log_dbug(TAG,"blksize=%ld",l);
+				} else {
+					log_dbug(TAG,"invalid blksize=%ld",l);
+					error = true;
+				}
+			}
+			const char *tsize = (const char *)memmem(x.buf+2,x.size-2,"tsize",6);
+			if (tsize && ((tsize-x.buf == 2) || (tsize[-1] == 0))) {
+				long l = strtol(tsize+6,0,0);
+				log_dbug(TAG,"tsize=%ld",l);
+				numexp = l;
+			}
+			uint8_t send;
+			if (error) {
+				log_dbug(TAG,"invalid option");
+				x.buf[1] = TFTP_ERROR;
+				x.size = 0;
+				send = 2;
+			} else {
+				x.buf[1] = TFTP_ACK;
+				x.buf[2] = 0;
+				x.buf[3] = 0;
+				x.size = blocksize+4;
+				send = 4;
+			}
+			pb = pbuf_alloc(PBUF_TRANSPORT,send,PBUF_RAM);
+			pbuf_take(pb,x.buf,4);
+			log_hex(TAG,x.buf,send,"send");
+			e = udp_sendto(pcb,pb,&uri->ip,x.port);
+			pbuf_free(pb);
+		} else if (x.buf[1] == TFTP_DATA) {
+			uint16_t id = (x.buf[2] << 8) | x.buf[3];
+//			t.printf("id %d, size %u",id,x.size);
+			if (id > seqid) {
+				r = "Packet dropped.";
+				break;
+			}
+			if (id == seqid) {
+				log_dbug(TAG,"DATA id %d, size %u, blocksize %u",id,x.size,blocksize);
+				r = sink(t,arg,x.buf+4,x.size-4);
+				total += x.size-4;
+				if (ia) {
+					if (numexp)
+						t.printf("\r%u/%u written",total,numexp);
+					else
+						t.printf("\r%u written",total);
+					t.sync();
+				}
+				++seqid;
+				x.buf[1] = TFTP_ACK;
+				pb = pbuf_alloc(PBUF_TRANSPORT,4,PBUF_RAM);
+				pbuf_take(pb,x.buf,4);
+				e = udp_sendto(pcb,pb,&uri->ip,x.port);
+				pbuf_free(pb);
+			} else {
+				log_dbug(TAG,"expected %d, got %d",seqid,id);
+				e = 0;
+			}
+		} else if (x.buf[1] == TFTP_ERROR) {
+			r = "Server returned an error.";
+			break;
+		}
+//		log_dbug(TAG,"sentto %s:%u",ip2str_r(&ip,ipstr,sizeof(ipstr)),x.port);
+		if (e)
+			r = strlwiperr(e);
+	} while ((r == 0) && ((x.size-4) == blocksize));
+	udp_remove(pcb);
+	free(x.buf);
+	vSemaphoreDelete(x.sem);
+	return r;
+}
+
+
+static const char *ftp_to(Terminal &t, uri_t *uri, const char *(*sink)(Terminal &,void*,char*,size_t), void *arg)
+{
+	if (uri->user == 0) {
+		uri->user = "ftp";
+		if (uri->pass == 0)
+			uri->pass = "ftp";
 	}
-	ip_addr_t ip;
-	t.printf("resolve '%s'\n",server);
-	if (err_t e = resolve_hostname(server,&ip)) {
-		t.printf("unable to resolve ip of %s: %s\n",server,strlwiperr(e));
-		return "";
-	}
+	t.printf("host=%s, user=%s, pass=%s, port=%u\n",uri->host,uri->user,uri->pass?uri->pass:"",uri->port);
 	LwTcp P;
 	char tmp[128];
-	ipaddr_ntoa_r(&ip,tmp,sizeof(tmp));
-	t.printf("connect %s:%d\n",tmp,port);
-	if (P.connect(&ip,port))
+	ipaddr_ntoa_r(&uri->ip,tmp,sizeof(tmp));
+	if (P.connect(&uri->ip,uri->port))
 		return P.error();
 	int n = P.read(tmp,sizeof(tmp),5000/portTICK_PERIOD_MS);
 	if (n < 0)
     		return P.error();
 	if ((n < 4) || (0 != strncmp(tmp,"220 ",4)))
 		return "Protocol error.";
-	t.println("Connected.");
-
-	size_t ul = strlen(username);
+	size_t ul = strlen(uri->user);
 	if (ul > 122)
 		return "Invalid argument.";
 	memcpy(tmp,"USER ",5);
-	memcpy(tmp+5,username,ul);
+	memcpy(tmp+5,uri->user,ul);
 	tmp[ul+5] = '\r';
 	tmp[ul+6] = '\n';
 	tmp[ul+7] = 0;
@@ -422,12 +420,12 @@ static const char *ftp_to(Terminal &t, char *addr, const char *(*sink)(Terminal 
 //	log_dbug(TAG,"rcvd '%.*s'",n,tmp);
 	if ((n < 4) || ((0 != strncmp(tmp,"331 ",4)) && (0 != strncmp(tmp,"230 ",4))))
 		return "Login rejected.";
-	if (pass) {
-		size_t pl = strlen(pass);
+	if (uri->pass) {
+		size_t pl = strlen(uri->pass);
 		if (pl > 122)
 			return "Invalid argument.";
 		memcpy(tmp,"PASS ",5);
-		memcpy(tmp+5,pass,pl);
+		memcpy(tmp+5,uri->pass,pl);
 		tmp[pl+5] = '\r';
 		tmp[pl+6] = '\n';
 		res = P.write(tmp,pl+7);
@@ -441,156 +439,141 @@ static const char *ftp_to(Terminal &t, char *addr, const char *(*sink)(Terminal 
 		if ((n < 4) || ((0 != strncmp(tmp,"331 ",4)) && (0 != strncmp(tmp,"230 ",4))))
 			return "Login rejected.";
 	}
+	res = P.write("TYPE I\r\n",8);
+	if (res < 0) {
+		t.printf("send: %s",P.error());
+		return "";
+	}
+	n = P.read(tmp,sizeof(tmp));
 	res = P.write("PASV\r\n",6);
-	if (res < 0)
-		return P.error();
+	if (res < 0) {
+		t.printf("send PASV: %s",P.error());
+		return "";
+	}
 	log_dbug(TAG,"send 'PASV'");
 	n = P.read(tmp,sizeof(tmp),5000/portTICK_PERIOD_MS);
-	if (n < 0)
-		return P.error();
+	if (n < 0) {
+		t.printf("send PASV: %s",P.error());
+		return "";
+	}
 	log_dbug(TAG,"rcvd '%.*s'",n,tmp);
 	unsigned pasv[6];
 	n = sscanf(tmp,"227 Entering Passive Mode (%u,%u,%u,%u,%u,%u)."
 			,pasv+0,pasv+1,pasv+2,pasv+3,pasv+4,pasv+5);
+//	t.printf("%d: %d,%d,%d,%d,%d,%d\n",n,pasv[0],pasv[1],pasv[2],pasv[3],pasv[4],pasv[5]);
 	if (n != 6)
 		return "Connection failed.";
 	sprintf(tmp,"%u.%u.%u.%u",pasv[0],pasv[1],pasv[2],pasv[3]);
 	uint16_t dp = pasv[4] << 8 | pasv[5];
-	t.println(tmp);
 	ip_addr_t dip;
 	if (0 == ipaddr_aton(tmp,&dip))
 		return "Address error.";
-	LwTcp D;
-	if (D.connect(&dip,dp)) {
-		t.println(D.error());
-		return "PASV connect failed.";
+	memcpy(tmp,"RETR ",5);
+	size_t fl = strlen(uri->file);
+	memcpy(tmp+5,uri->file,fl);
+	tmp[fl+5] = '\r';
+	tmp[fl+6] = '\n';
+	tmp[fl+7] = 0;
+	res = P.write(tmp,fl+7);
+	if (res < 0) {
+		t.printf("send RETR: %s",P.error());
+		return "";
 	}
-	memcpy(tmp,"TYPE I\r\nRETR ",13);
-	size_t fl = strlen(filepath);
-	memcpy(tmp+13,filepath,fl);
-	tmp[fl+13] = '\r';
-	tmp[fl+14] = '\n';
-	res = P.write(tmp,fl+15);
-	if (res < 0)
-		return P.error();
-//	t.printf("send '%.*s'\n",fl+13,tmp);
+	LwTcp D;
+	if (D.connect(&dip,dp,false)) {
+		t.printf("connect to port %u: %s\n",dp,D.error());
+		return "";
+	}
+	n = P.read(tmp,sizeof(tmp),5000);
+	if (n < 0) {
+		t.printf("read RETR: %s",P.error());
+		return "";
+	}
+	if ((tmp[0] != '2') && (tmp[0] != '1'))
+		return "Server error.";
+	unsigned total = 0;
+	if (const char *b = strchr(tmp,'(')) {
+		++b;
+		total = strtol(b,0,0);
+	}
 	char *buf = (char*)malloc(OTABUF_SIZE);
 	if (buf == 0)
 		return "Out of memory.";
 	const char *ret = 0;
-	unsigned total = 0;
+	unsigned written = 0;
+	bool ia = t.isInteractive();
 	n = D.read(buf,OTABUF_SIZE);
 	while (n > 0) {
-		total += n;
-		t.printf("\rread %d",total);
+		written += n;
+		if (ia) {
+			t.printf("\r%d/%u written",written,total);
+			t.sync();
+		}
 		if (sink(t,arg,buf,n)) {
 			ret = "";
 			break;
 		}
 		n = D.read(buf,OTABUF_SIZE);
 	}
-	t.println("\ndone");
+	if (n < 0)
+		ret = D.error();
 	P.write("QUIT\r\n",6);
 	free(buf);
 	return ret;
 }
 
 
-static const char *file_to_flash(Terminal &t, int fd, esp_ota_handle_t ota)
+static const char *file_to(Terminal &t, uri_t *uri, const char *(*sink)(Terminal &,void*,char*,size_t), void *arg)
 {
-	size_t numD = 0;
+	t.printf("open file %s\n",uri->file);
+	int fd = open(uri->file,O_RDONLY);
+	if (fd == -1) {
+		t.printf("open %s\n",uri->file);
+		return strerror(errno);
+	}
 	char *buf = (char*)malloc(OTABUF_SIZE);
-	if (buf == 0)
+	if (buf == 0) {
+		close(fd);
 		return "Out of memory.";
+	}
 	bool ia = t.isInteractive();
-	const char *r = "Failed.";
-	for (;;) {
+	size_t numD = 0;
+	const char *r = 0;
+	do {
+		if (ia) {
+			t.printf("\r%d written",numD);
+			t.sync();
+		}
 		int n = read(fd,buf,OTABUF_SIZE);
 		if (n < 0) {
 			t.printf("OTA read error: %s\n",strerror(errno));
+			r = "";
 			break;
 		}
 		if (n == 0) {
-			//t.printf("ota received %d bytes, wrote %d bytes",numD,numU);
 			r = 0;
 			break;
 		}
 		numD += n;
-		esp_err_t err = esp_ota_write(ota,buf,n);
-		if (err != ESP_OK) {
-			t.printf("OTA write failed: %s\n",esp_err_to_name(err));
-			break;
-		}
-		if (ia)
-			t.printf("\rwrote %d bytes",r);
-	}
+		r = sink(t,arg,buf,n);
+	} while (r == 0);
 	if (ia)
 		t.println();
 	free(buf);
+	close(fd);
 	return r;
 }
-#endif	// CONFIG_ESPTOOLPY_FLASHSIZE_1MB
+#endif	// !CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 
 
-static const char *http_to(Terminal &t, char *addr, const char *(*sink)(Terminal &,void*,char*,size_t), void *arg)
+static const char *http_to(Terminal &t, uri_t *uri, const char *(*sink)(Terminal &,void*,char*,size_t), void *arg)
 {
-	uint16_t port;
-	const char *server;
-	t.printf("download %s\n",addr);
-	if (0 == strncmp(addr,"http://",7)) {
-		port = 80;
-		server = addr + 7;
-	} else if (0 == strncmp(addr,"https://",8)) {
-		port = 443;
-		server = addr + 8;
-	} else {
-		t.printf("invalid address '%s'\n",addr);
-		return "";
-	}
-	//  user/pass extraction
-	const char *username = 0;
-	char *at = strchr(server,'@');
-	if (at) {
-		*at = 0;
-		username = server;
-		server = at + 1;
-		// Username+password are supplied separated by colon and encoded like this.
-		// user+password must be BASE64 encoded for passing to
-		// the HTTP/GET request with authorization basic
-	}
-
-	char *filepath = strchr(server,'/');
-	if (filepath == 0)
-		return "Invalid argument.";
-	*filepath = 0;
-	++filepath;
-	char *portstr = strchr(server,':');
-	if (portstr) {
-		*portstr = 0;
-		long l = strtol(++portstr,0,0);
-		if ((l <= 0) || (l > UINT16_MAX)) {
-			return "invalid port";
-		}
-		port = l;
-	}
-#ifdef CONFIG_SOCKET_API
-	int hsock = send_http_get(t,server,port,filepath,username);
-	if (hsock == -1)
-		return "Failed.";
-	const char *r = socket_to_x(t,hsock,sink,arg);
-	close(hsock);
-#else // ESP8266
-	ip_addr_t ip;
-	if (err_t e = resolve_hostname(server,&ip)) {
-		t.printf("unable to resolve ip of %s: %s\n",server,strlwiperr(e));
-		return "Unknown host";
-	}
+	t.printf("host %s, port %u, file %s\n",uri->host,uri->port,uri->file);
 	LwTcp P;
-	P.connect(&ip,port);
-	const char *r = send_http_get(t,P,server,port,filepath,username);
+	P.connect(&uri->ip,uri->port);
+	const char *r = send_http_get(t,P,uri->host,uri->port,uri->file,uri->user);
 	if (r == 0)
 		r = socket_to_x(t,P,sink,arg);
-#endif
 	return r;
 }
 
@@ -622,8 +605,10 @@ const char *http_download(Terminal &t, char *addr, const char *fn)
 		t.printf("error creating %s\n",fn);
 		return strerror(errno);
 	}
-	t.printf("downloading to %s\n",fn);
-	const char *r = http_to(t,addr,to_fd,(void*)fd);
+	uri_t uri;
+	const char *r = uri_parse(addr,&uri);
+	if (r == 0)
+		r = http_to(t,&uri,to_fd,(void*)fd);
 	close(fd);
 	return r;
 }
@@ -676,6 +661,9 @@ const char *update_part(Terminal &t, char *source, const char *dest)
 	if (! ((Be <= Ps) || (Pe <= Bs))) {
 		return "Cannot update active partition.";
 	}
+	uri_t uri;
+	if (const char *r = uri_parse(source,&uri))
+		return r;
 	uint32_t addr = p->address;
 	uint32_t s = p->size;
 	t.printf("erasing %d@%x\n",p->size,p->address);
@@ -685,20 +673,41 @@ const char *update_part(Terminal &t, char *source, const char *dest)
 		return esp_err_to_name(e);
 	}
 	const char *r;
+	switch (uri.prot) {
+	case prot_http:
+		r = http_to(t,&uri,to_part,(void*)p);
+		break;
 #ifndef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
-	if (0 == strncmp(source,"ftp://",6))
-		r = ftp_to(t,source,to_part,(void*)p);
-	else
+	case prot_file:
+		r = file_to(t,&uri,to_part,(void*)p);
+		break;
+	case prot_ftp:
+		r = ftp_to(t,&uri,to_part,(void*)p);
+		break;
+	case prot_tftp:
+		r = tftp_to(t,&uri,to_part,(void*)p);
+		break;
 #endif
-		r = http_to(t,source,to_part,(void*)p);
+	default:
+		r = "Invalid protocol";
+	}
+	bool ia = t.isInteractive();
+	if (ia)
+		t.println();
 	p->address = addr;
 	p->size = s;
 	return r;
 }
 
 
-const char *perform_ota(Terminal &t, char *source, bool changeboot)
+const char *perform_ota(Terminal &t, char *src, bool changeboot)
 {
+	uri_t uri;
+	if (const char *r = uri_parse(src,&uri))
+		return r;
+	char ipstr[64];
+	ip2str_r(&uri.ip,ipstr,sizeof(ipstr));
+	t.printf("contacting %s\n",ipstr);
 	statusled_set(ledmode_pulse_often);
 	vTaskPrioritySet(0,10);
 	bool ia = t.isInteractive();
@@ -716,8 +725,8 @@ const char *perform_ota(Terminal &t, char *source, bool changeboot)
 	esp_ota_handle_t ota = 0;
 	const esp_partition_t *updatep = esp_ota_get_next_update_partition(NULL);
 	if (updatep == 0) {
-		t.println("no OTA partition");
-		goto failed;
+		statusled_set(ledmode_off);
+		return "no OTA partition";
 	}
 	if (ia) {
 		t.printf("erasing '%s' at 0x%08x\n",updatep->label,updatep->address);
@@ -725,57 +734,57 @@ const char *perform_ota(Terminal &t, char *source, bool changeboot)
 	}
 	if (esp_err_t err = esp_ota_begin(updatep, OTA_SIZE_UNKNOWN, &ota)) {
 		t.printf("OTA begin: %s\n",esp_err_to_name(err));
-		goto failed;
+		statusled_set(ledmode_fast);
+		return "";
 	}
-
-	if ((0 == memcmp(source,"http://",7)) || (0 == memcmp(source,"https://",8))) {
-		result = http_to(t,source,to_ota,(void*)ota);
+	switch (uri.prot) {
+	default:
+		result = "Unsupported protocol.";
+		break;
+	case prot_http:
+		result = http_to(t,&uri,to_ota,(void*)ota);
+		break;
 #ifndef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
-	} else if (0 == memcmp(source,"ftp://",6)) {
-		result = ftp_to(t,source,to_ota,(void*)ota);
-#endif
-	} else {
-#ifdef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
-		return "Invalid OTA link.";
-#else
-		t.printf("open file %s\n",source);
-		int fd = open(source,O_RDONLY);
-		if (fd == -1) {
-			t.printf("open %s\n",source);
-			return strerror(errno);
-		}
-		result = file_to_flash(t,fd,ota);
-		close(fd);
+	case prot_file:
+		result = file_to(t,&uri,to_ota,(void*)ota);
+		break;
+	case prot_ftp:
+		result = ftp_to(t,&uri,to_ota,(void*)ota);
+		break;
+	case prot_tftp:
+		result = tftp_to(t,&uri,to_ota,(void*)ota);
+		break;
 #endif
 	}
-	if (result)
-		goto failed;
-	t.println("verify");
-	t.sync();
-	if (esp_err_t e = esp_ota_end(ota)) {
-		log_warn(TAG,"esp_ota_end: %s\n",esp_err_to_name(e));
-		t.printf("ota verify: %s\n",esp_err_to_name(e));
-		goto failed;
-	}
-	if (changeboot && (bootp != updatep)) {
-		int err = esp_ota_set_boot_partition(updatep);
-		if (err != ESP_OK) {
-			t.printf("set boot failed: %s\n",esp_err_to_name(err));
-			goto failed;
+	ledmode_t mode = ledmode_fast;
+	if (ia)
+		t.println();
+	if (result == 0) {
+		if (ia)
+			t.println("verify");
+		if (esp_err_t e = esp_ota_end(ota)) {
+			log_warn(TAG,"esp_ota_end: %s\n",esp_err_to_name(e));
+			result = esp_err_to_name(e);
+		} else if (changeboot && (bootp != updatep)) {
+			if (int err = esp_ota_set_boot_partition(updatep)) {
+				t.printf("set boot failed: %s\n",esp_err_to_name(err));
+				result = "";
+			} else {
+				mode = ledmode_off;
+			}
+		} else {
+			mode = ledmode_off;
 		}
 	}
-	statusled_set(ledmode_off);
-	return 0;
-failed:
-	statusled_set(ledmode_pulse_seldom);
+	statusled_set(mode);
 	return result;
 }
 
 
 const char *ota_from_server(Terminal &term, const char *server, const char *version)
 {
-	if ((server[0] == 0) || strncmp(server,"http://",7))
-		return "OTA server invalid";
+	if (server[0] == 0)
+		return "OTA server not set";
 #ifdef ESP32
 	const char *fext = "bin";
 #else

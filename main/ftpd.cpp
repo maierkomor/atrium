@@ -101,12 +101,13 @@ static void answer(ftpctx_t *ctx, const char *fmt, ...)
 	assert(n+2 <= sizeof(buf));
 	buf[n++] = '\r';
 	buf[n++] = '\n';
-	log_dbug(TAG,"answer %s",b);
+	buf[n] = 0;
+	log_dbug(TAG,"answer %.*s",n-2,b);
 	int r = ctx->con->write(b,n);
 	if (b != buf)
 		free(b);
 	if (-1 == r) {
-		log_error(TAG,"failed to send answer '%s': %s",b,ctx->con->error());
+		log_error(TAG,"failed to send answer: %s",ctx->con->error());
 		ctx->con->close();
 		vTaskDelete(0);
 	}
@@ -279,7 +280,7 @@ static void retrive(ftpctx_t *ctx, const char *arg)
 	strcat(fn,ctx->wd);
 	strcat(fn,arg);
 #ifdef USE_FOPEN
-	FILE *f = fopen(fn,"w+");
+	FILE *f = fopen(fn,"r");
 	if (f == 0) {
 		answer(ctx,"552 unable to open %s: %s",arg,strerror(errno));
 		log_warn(TAG,"unable to open %s: %s",fn,strerror(errno));
@@ -393,7 +394,7 @@ static void store(ftpctx_t *ctx, const char *arg)
 	}
 	memcpy(fn+fl,arg,strlen(arg)+1);
 #ifdef USE_FOPEN
-	FILE *f = fopen(fn,"w");
+	FILE *f = fopen(fn,"w+");
 	if (f == 0) {
 		answer(ctx,"552 unable to create %s: %s",arg,strerror(errno));
 		log_warn(TAG,"unable to open %s for storing: %s",fn,strerror(errno));
@@ -433,6 +434,7 @@ cleanup:
 	free(buf);
 	fclose(f);
 #else
+	remove(fn);
 	int fd = creat(fn,0666);
 	if (fd == -1) {
 		answer(ctx,"552 unable to create %s: %s",arg,strerror(errno));

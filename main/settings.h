@@ -35,6 +35,7 @@ void list_settings(Terminal &t);
 extern "C" {
 #endif
 
+void cfg_init_timers();
 void cfg_activate_actions();
 void cfg_activate_triggers();
 void cfg_init_functions();

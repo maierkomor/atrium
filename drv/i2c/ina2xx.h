@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2022, Thomas Maier-Komor
+ *  Copyright (C) 2022-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -19,9 +19,8 @@
 #ifndef INA2XX_H
 #define INA2XX_H
 
+#include "env.h"
 #include "i2cdrv.h"
-
-class EnvNumber;
 
 
 struct INA219 : public I2CDevice
@@ -44,7 +43,7 @@ struct INA219 : public I2CDevice
 	void updateDelay();
 
 	private:
-	EnvNumber *m_volt = 0, *m_amp = 0, *m_shunt;
+	EnvNumber m_volt, m_amp, m_shunt, m_power;
 	uint16_t m_conf = 0;
 	typedef enum state_e { st_off, st_trigger, st_read, st_cont } state_t;
 	state_t m_st;

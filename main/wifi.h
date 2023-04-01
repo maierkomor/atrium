@@ -25,8 +25,6 @@
 #include <freertos/event_groups.h>
 
 extern EventGroupHandle_t WifiEvents;
-typedef enum { station_stopped, station_starting, station_connected, station_disconnected } sta_mode_t;
-extern sta_mode_t StationMode;
 extern event_t StationDownEv, StationUpEv;
 
 #ifdef __cplusplus

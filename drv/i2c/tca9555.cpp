@@ -84,6 +84,7 @@ const char *TCA9555::drvName() const
 
 int TCA9555::setGpio(bool value, unsigned off)
 {
+	log_dbug(TAG,"set_gpio(%d,%u)",value,off);
 	if (off >> 4)
 		return -1;
 	if (((m_out >> off) & 1) != value) {
@@ -150,12 +151,21 @@ int TCA9555::get_lvl(uint8_t io)
 }
 
 
+int TCA9555::get_out(uint8_t io)
+{
+	if (io >> 4)
+		return -1;
+	return (m_out >> io) & 1;
+}
+
+
 int TCA9555::set_hi(uint8_t io)
 {
 	if (io >> 4)
 		return -1;
 	if ((m_out >> io) & 1)
 		return 0;
+	log_dbug(TAG,"set_hi %d",io);
 	m_out |= 1 << io;
 	uint8_t data[] = {
 		m_addr,
@@ -172,6 +182,7 @@ int TCA9555::set_lo(uint8_t io)
 		return -1;
 	if (((m_out >> io) & 1) == 0)
 		return 0;
+	log_dbug(TAG,"set_lo %d",io);
 	m_out &= ~(1 << io);
 	uint8_t data[] = {
 		m_addr,
@@ -236,6 +247,7 @@ int TCA9555::config(uint8_t io, xio_cfg_t cfg)
 
 int TCA9555::set_lvl(uint8_t io, xio_lvl_t v)
 {
+	log_dbug(TAG,"set %u: %u",io,v);
 	if (v == xio_lvl_0)
 		return set_lo(io);
 	if (v == xio_lvl_1)

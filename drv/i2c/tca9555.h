@@ -34,6 +34,7 @@ class TCA9555 :
 
 #ifdef CONFIG_IOEXTENDERS
 	int get_lvl(uint8_t io) override;
+	int get_out(uint8_t io) override;
 	int set_hi(uint8_t io) override;
 	int set_lo(uint8_t io) override;
 	int set_intr(uint8_t, xio_intrhdlr_t, void*) override;

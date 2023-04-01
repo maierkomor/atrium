@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2022, Thomas Maier-Komor
+ *  Copyright (C) 2018-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -17,7 +17,7 @@
  */
 
 option author="Thomas Maier-Komor";
-option copyright="2018-2022";
+option copyright="2018-2023";
 
 option common {
 	BaseClass=Message;
@@ -70,6 +70,7 @@ option esp8266 : esp {
 option esp8285 : esp8266 {
 	BaseClass="";
 	getMember="";
+	/MQTT/keepalive : used = false;
 //	/NodeConfig/otasrv : used = false;
 }
 
@@ -109,6 +110,8 @@ message MQTT
 	string username = 3		[ unset = "" ];
 	string password = 4		[ unset = "" ];
 	repeated string subscribtions = 5;	// qos0 subscribptions
+	// keepalive in [s], 0 for no timeout
+	uint16 keepalive = 6		[ default = 60 ];
 }
 
 

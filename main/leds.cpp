@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2022, Thomas Maier-Komor
+ *  Copyright (C) 2018-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -29,8 +29,8 @@
 #include "hwcfg.h"
 #include "leds.h"
 #include "log.h"
+#include "netsvc.h"
 #include "terminal.h"
-#include "wifi.h"
 #include "xio.h"
 
 #include <string.h>
@@ -450,18 +450,17 @@ static int luax_led_set(lua_State *L)
 	}
 	if (lua_isinteger(L,2)) {
 		int v = lua_tointeger(L,2);
-		if ((v < 0) || (v > 1)) {
-			lua_pushliteral(L,"Invalid argument #2.");
-			lua_error(L);
+		if ((v == 0) || (v == 1)) {
+			l->set_mode((ledmode_t)((int)ledmode_off + v));
+			return 0;
 		}
-		l->set_mode((ledmode_t)((int)ledmode_off + v));
-	} else {
-		const char *v = luaL_checkstring(L,2);
-		if (l->set_mode(v)) {
-			lua_pushliteral(L,"Invalid argument #2.");
-			lua_error(L);
+	} else if (const char *v = luaL_checkstring(L,2)) {
+		if (0 == l->set_mode(v)) {
+			return 0;
 		}
 	}
+	lua_pushliteral(L,"Invalid argument #2.");
+	lua_error(L);
 	return 0;
 }
 

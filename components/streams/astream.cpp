@@ -48,8 +48,9 @@ astream::astream(size_t s, bool crnl)
 
 astream::~astream()
 {
-	con_printf("~astream() %p",m_buf);
-	free(m_buf);
+	con_printf("~astream() %p\n",m_buf);
+	if (m_buf)
+		free(m_buf);
 }
 
 
@@ -59,7 +60,7 @@ char *astream::take()
 		resize(1);
 	assert(m_at < m_end);
 	*m_at = 0;
-	con_printf("astream::take() %s",m_buf);
+	con_printf("astream::take() %s\n",m_buf);
 	char *r = m_buf;
 	m_buf = 0;
 	m_end = 0;
@@ -74,7 +75,7 @@ const char *astream::c_str()
 		resize(1);
 	assert(m_at < m_end);
 	*m_at = 0;
-	con_printf("astream::c_str() %s",m_buf);
+	con_printf("astream::c_str() %s\n",m_buf);
 	return m_buf;
 }
 
@@ -95,33 +96,36 @@ int astream::put(char c)
 
 int astream::resize(size_t ns)
 {
-	con_printf("astream %p::resize(%u)",this,ns);
+	con_printf("astream %p::resize(%u)\n",this,ns);
 	unsigned fill = m_at-m_buf;
 	ns += fill;
 	char *nb = (char *)realloc(m_buf,ns);
 	if (nb == 0) {
-		free(m_buf);
-		m_buf = 0;
+		if (m_buf) {
+			free(m_buf);
+			m_buf = 0;
+		}
 		m_at = 0;
 		m_end = 0;
-		con_printf("FAILED!");
+		con_printf("FAILED!\n");
 		return 1;
 	}
 	m_at = nb + fill;
 	m_end = nb + ns;
 	m_buf = nb;
-	con_printf("resize now %d",m_end-m_at);
+	con_printf("resize now %d\n",m_end-m_at);
 	return 0;
 }
 
 
 int astream::write(const char *s, size_t l)
 {
+	con_printf("astream::write('%.*s',%d)\n",l,s,l);
 	if (m_end-m_at < l) {
 		if (resize(l+1))
 			return -1;
 	}
-	con_printf("astream::write('%.*s',%d):m_at=%p,m_end=%p,free=%d",l,s,l,m_at,m_end,m_end-m_at);
+	con_printf("m_at=%p,m_end=%p,free=%d\n",m_at,m_end,m_end-m_at);
 	memcpy(m_at,s,l);
 	m_at += l;
 	return l;

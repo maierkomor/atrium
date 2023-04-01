@@ -31,6 +31,10 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
+#if IDF_VERSION >= 50
+#define ets_delay_us esp_rom_delay_us
+#endif
+
 #define CHAR_WIDTH	6
 #define CHAR_HEIGHT	8
 

@@ -23,7 +23,7 @@
 extern "C" {
 #endif
 
-int sntp_set_server(const char *server);
+void sntp_set_server(const char *server);
 void sntp_set_interval(unsigned itv_ms);
 void sntp_bc_init(void);
 void sntp_mc_init(void);

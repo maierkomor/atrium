@@ -7,10 +7,10 @@
  * Source Information:
  * ===================
  * Filename : swcfg.wfc
- * Copyright: 2018-2022
+ * Copyright: 2018-2023
  * Author   : Thomas Maier-Komor
  * 
- * Code generated on 2023-03-02, 20:58:13 (CET).
+ * Code generated on 2023-03-05, 15:22:10 (CET).
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -971,6 +971,8 @@ MQTT::MQTT()
 , m_enable(false)
 , m_username()
 , m_password()
+, m_keepalive(60)
+, p_validbits(0)
 {
 }
 
@@ -981,6 +983,8 @@ void MQTT::clear()
 	m_username.clear();
 	m_password.clear();
 	m_subscribtions.clear();
+	m_keepalive = 60;
+	p_validbits = 0;
 }
 
 void MQTT::toASCII(stream &o, size_t indent) const
@@ -1003,6 +1007,7 @@ void MQTT::toASCII(stream &o, size_t indent) const
 	--indent;
 	ascii_indent(o,indent);
 	o << '}';
+	ascii_numeric(o, indent, "keepalive", m_keepalive);
 	--indent;
 	ascii_indent(o,indent);
 	o << '}';
@@ -1050,6 +1055,9 @@ ssize_t MQTT::fromMemory(const void *b, ssize_t s)
 			}
 			m_subscribtions.emplace_back((const char*)a,ud.vi);
 			a += ud.vi;
+			break;
+		case 0x30:	// keepalive id 6, type uint16_t, coding varint
+			set_keepalive((uint16_t)ud.u32);
 			break;
 		default:
 			if ((fid & 7) == 2) {
@@ -1122,6 +1130,17 @@ ssize_t MQTT::toMemory(uint8_t *b, ssize_t s) const
 			return -35;
 		a += n;
 	}
+	// has keepalive?
+	if (0 != (p_validbits & ((uint8_t)1U << 0))) {
+		// 'keepalive': id=6, encoding=varint, tag=0x30
+		if (a >= e)
+			return -36;
+		*a++ = 0x30;
+		n = write_varint(a,e-a,m_keepalive);
+		if (n <= 0)
+			return -37;
+		a += n;
+	}
 	assert(a <= e);
 	return a-b;
 }
@@ -1164,6 +1183,10 @@ void MQTT::toJSON(stream &json, unsigned indLvl) const
 		json_indent(json,indLvl,0);
 		json.put(']');
 	}
+	if (has_keepalive()) {
+		fsep = json_indent(json,indLvl,fsep,"keepalive");
+		to_decstr(json,m_keepalive);
+	}
 	if (fsep == '{')
 		json.put('{');
 	json.put('\n');
@@ -1205,11 +1228,17 @@ size_t MQTT::calcSize() const
 			r += s + 1 /* tag(subscribtions) 0x28 */;
 		}
 	}
+	// optional uint16 keepalive, id 6
+	if (has_keepalive()) {
+		r += wiresize((varint_t)m_keepalive) + 1 /* tag(keepalive) 0x30 */;
+	}
 	return r;
 }
 
 bool MQTT::operator == (const MQTT &r) const
 {
+	if (p_validbits != r.p_validbits)
+		return false;
 	if (has_uri() && (!(m_uri == r.m_uri)))
 		return false;
 	if (has_enable() && (!(m_enable == r.m_enable)))
@@ -1219,6 +1248,8 @@ bool MQTT::operator == (const MQTT &r) const
 	if (has_password() && (!(m_password == r.m_password)))
 		return false;
 	if (!(m_subscribtions == r.m_subscribtions))
+		return false;
+	if (has_keepalive() && (!(m_keepalive == r.m_keepalive)))
 		return false;
 	return true;
 }
@@ -1284,21 +1315,31 @@ int MQTT::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+14,&idxe,0);
 				if ((idxe[0] != ']') || (idxe == (name+14)))
-					return -36;
+					return -38;
 				if (m_subscribtions.size() <= x)
-					return -37;
+					return -39;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_subscribtions.erase(m_subscribtions.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != 0)
-				return -38;
+				return -40;
 			m_subscribtions[x] = value;
 			return m_subscribtions[x].size();
 		}
 	}
-	return -39;
+	if (0 == strcmp(name,"keepalive")) {
+		if (value == 0) {
+			clear_keepalive();
+			return 0;
+		}
+		int r = parse_ascii_u16(&m_keepalive,value);
+		if (r > 0)
+			p_validbits |= ((uint8_t)1U << 0);
+		return r;
+	}
+	return -41;
 }
 
 Date::Date()
@@ -1345,7 +1386,7 @@ ssize_t Date::fromMemory(const void *b, ssize_t s)
 		union decode_union ud;
 		ssize_t x = decode_early(a,e,&ud,&fid);
 		if (x < 0)
-			return -40;
+			return -42;
 		a += x;
 		switch (fid) {
 		case 0xb:	// day id 1, type uint8_t, coding 8bit
@@ -1371,13 +1412,13 @@ ssize_t Date::fromMemory(const void *b, ssize_t s)
 				// need only to skip len prefixed data
 				a += ud.vi;
 				if (a > e)
-					return -41;
+					return -43;
 			}
 		}
 	}
 	assert((a-(const uint8_t *)b) == s);
 	if (a > e)
-		return -42;
+		return -44;
 	return a-(const uint8_t *)b;
 }
 
@@ -1389,7 +1430,7 @@ ssize_t Date::toMemory(uint8_t *b, ssize_t s) const
 	if (m_day != 0) {
 		// 'day': id=1, encoding=8bit, tag=0xb
 		if (2 > (e-a))
-			return -43;
+			return -45;
 		*a++ = 0xb;
 		*a++ = m_day;
 	}
@@ -1397,7 +1438,7 @@ ssize_t Date::toMemory(uint8_t *b, ssize_t s) const
 	if (m_month != 0) {
 		// 'month': id=2, encoding=8bit, tag=0x13
 		if (2 > (e-a))
-			return -44;
+			return -46;
 		*a++ = 0x13;
 		*a++ = m_month;
 	}
@@ -1405,7 +1446,7 @@ ssize_t Date::toMemory(uint8_t *b, ssize_t s) const
 	if (m_year != 0) {
 		// 'year': id=3, encoding=16bit, tag=0x1c
 		if (3 > (e-a))
-			return -45;
+			return -47;
 		*a++ = 0x1c;
 		write_u16(a,m_year);
 		a += 2;
@@ -1414,7 +1455,7 @@ ssize_t Date::toMemory(uint8_t *b, ssize_t s) const
 	if (m_endday != 0) {
 		// 'endday': id=4, encoding=8bit, tag=0x23
 		if (2 > (e-a))
-			return -46;
+			return -48;
 		*a++ = 0x23;
 		*a++ = m_endday;
 	}
@@ -1422,7 +1463,7 @@ ssize_t Date::toMemory(uint8_t *b, ssize_t s) const
 	if (m_endmonth != 0) {
 		// 'endmonth': id=5, encoding=8bit, tag=0x2b
 		if (2 > (e-a))
-			return -47;
+			return -49;
 		*a++ = 0x2b;
 		*a++ = m_endmonth;
 	}
@@ -1430,7 +1471,7 @@ ssize_t Date::toMemory(uint8_t *b, ssize_t s) const
 	if (m_endyear != 0) {
 		// 'endyear': id=6, encoding=8bit, tag=0x33
 		if (2 > (e-a))
-			return -48;
+			return -50;
 		*a++ = 0x33;
 		*a++ = m_endyear;
 	}
@@ -1581,7 +1622,7 @@ int Date::setByName(const char *name, const char *value)
 		int r = parse_ascii_u8(&m_endyear,value);
 		return r;
 	}
-	return -49;
+	return -51;
 }
 
 AtAction::AtAction()
@@ -1629,7 +1670,7 @@ ssize_t AtAction::fromMemory(const void *b, ssize_t s)
 		union decode_union ud;
 		ssize_t x = decode_early(a,e,&ud,&fid);
 		if (x < 0)
-			return -50;
+			return -52;
 		a += x;
 		switch (fid) {
 		case 0x8:	// day id 1, type WeekDay, coding varint
@@ -1640,7 +1681,7 @@ ssize_t AtAction::fromMemory(const void *b, ssize_t s)
 			break;
 		case 0x1a:	// action id 3, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -51;
+				return -53;
 			}
 			m_action.assign((const char*)a,ud.vi);
 			p_validbits |= ((uint8_t)1U << 2);
@@ -1654,13 +1695,13 @@ ssize_t AtAction::fromMemory(const void *b, ssize_t s)
 				// need only to skip len prefixed data
 				a += ud.vi;
 				if (a > e)
-					return -52;
+					return -54;
 			}
 		}
 	}
 	assert((a-(const uint8_t *)b) == s);
 	if (a > e)
-		return -53;
+		return -55;
 	return a-(const uint8_t *)b;
 }
 
@@ -1673,38 +1714,38 @@ ssize_t AtAction::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint8_t)1U << 0))) {
 		// 'day': id=1, encoding=varint, tag=0x8
 		if (a >= e)
-			return -54;
+			return -56;
 		*a++ = 0x8;
 		n = write_varint(a,e-a,m_day);
 		if (n <= 0)
-			return -55;
+			return -57;
 		a += n;
 	}
 	// has min_of_day?
 	if (0 != (p_validbits & ((uint8_t)1U << 1))) {
 		// 'min_of_day': id=2, encoding=varint, tag=0x10
 		if (a >= e)
-			return -56;
+			return -58;
 		*a++ = 0x10;
 		n = write_varint(a,e-a,m_min_of_day);
 		if (n <= 0)
-			return -57;
+			return -59;
 		a += n;
 	}
 	// has action?
 	if (0 != (p_validbits & ((uint8_t)1U << 2))) {
 		// 'action': id=3, encoding=lenpfx, tag=0x1a
 		if (a >= e)
-			return -58;
+			return -60;
 		*a++ = 0x1a;
 		n = encode_bytes(m_action,a,e);
 		if (n < 0)
-			return -59;
+			return -61;
 		a += n;
 	}
 	// 'enable': id=4, encoding=8bit, tag=0x23
 	if (2 > (e-a))
-		return -60;
+		return -62;
 	*a++ = 0x23;
 	*a++ = m_enable;
 	assert(a <= e);
@@ -1800,7 +1841,7 @@ int AtAction::setByName(const char *name, const char *value)
 		WeekDay v;
 		size_t r = parse_ascii_WeekDay(&v,value);
 		if (r == 0)
-			return -61;
+			return -63;
 		set_day(v);
 		return r;
 	}
@@ -1829,7 +1870,7 @@ int AtAction::setByName(const char *name, const char *value)
 		int r = parse_ascii_bool(&m_enable,value);
 		return r;
 	}
-	return -62;
+	return -64;
 }
 
 Influx::Influx()
@@ -1871,12 +1912,12 @@ ssize_t Influx::fromMemory(const void *b, ssize_t s)
 		union decode_union ud;
 		ssize_t x = decode_early(a,e,&ud,&fid);
 		if (x < 0)
-			return -63;
+			return -65;
 		a += x;
 		switch (fid) {
 		case 0xa:	// hostname id 1, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -64;
+				return -66;
 			}
 			m_hostname.assign((const char*)a,ud.vi);
 			a += ud.vi;
@@ -1886,14 +1927,14 @@ ssize_t Influx::fromMemory(const void *b, ssize_t s)
 			break;
 		case 0x1a:	// measurement id 3, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -65;
+				return -67;
 			}
 			m_measurement.assign((const char*)a,ud.vi);
 			a += ud.vi;
 			break;
 		case 0x2a:	// database id 5, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -66;
+				return -68;
 			}
 			m_database.assign((const char*)a,ud.vi);
 			a += ud.vi;
@@ -1903,13 +1944,13 @@ ssize_t Influx::fromMemory(const void *b, ssize_t s)
 				// need only to skip len prefixed data
 				a += ud.vi;
 				if (a > e)
-					return -67;
+					return -69;
 			}
 		}
 	}
 	assert((a-(const uint8_t *)b) == s);
 	if (a > e)
-		return -68;
+		return -70;
 	return a-(const uint8_t *)b;
 }
 
@@ -1922,18 +1963,18 @@ ssize_t Influx::toMemory(uint8_t *b, ssize_t s) const
 	if (!m_hostname.empty()) {
 		// 'hostname': id=1, encoding=lenpfx, tag=0xa
 		if (a >= e)
-			return -69;
+			return -71;
 		*a++ = 0xa;
 		n = encode_bytes(m_hostname,a,e);
 		if (n < 0)
-			return -70;
+			return -72;
 		a += n;
 	}
 	// has port?
 	if (m_port != 0) {
 		// 'port': id=2, encoding=16bit, tag=0x14
 		if (3 > (e-a))
-			return -71;
+			return -73;
 		*a++ = 0x14;
 		write_u16(a,m_port);
 		a += 2;
@@ -1942,11 +1983,11 @@ ssize_t Influx::toMemory(uint8_t *b, ssize_t s) const
 	if (!m_measurement.empty()) {
 		// 'measurement': id=3, encoding=lenpfx, tag=0x1a
 		if (a >= e)
-			return -72;
+			return -74;
 		*a++ = 0x1a;
 		n = encode_bytes(m_measurement,a,e);
 		if (n < 0)
-			return -73;
+			return -75;
 		a += n;
 	}
 	// 'interval' is obsolete. Therefore no data will be written.
@@ -1954,11 +1995,11 @@ ssize_t Influx::toMemory(uint8_t *b, ssize_t s) const
 	if (!m_database.empty()) {
 		// 'database': id=5, encoding=lenpfx, tag=0x2a
 		if (a >= e)
-			return -74;
+			return -76;
 		*a++ = 0x2a;
 		n = encode_bytes(m_database,a,e);
 		if (n < 0)
-			return -75;
+			return -77;
 		a += n;
 	}
 	assert(a <= e);
@@ -2080,7 +2121,7 @@ int Influx::setByName(const char *name, const char *value)
 		int r = m_database.size();
 		return r;
 	}
-	return -76;
+	return -78;
 }
 
 UartSettings::UartSettings()
@@ -2152,7 +2193,7 @@ ssize_t UartSettings::fromMemory(const void *b, ssize_t s)
 		union decode_union ud;
 		ssize_t x = decode_early(a,e,&ud,&fid);
 		if (x < 0)
-			return -77;
+			return -79;
 		a += x;
 		switch (fid) {
 		case 0x8:	// port id 1, type uint8_t, coding varint
@@ -2178,13 +2219,13 @@ ssize_t UartSettings::fromMemory(const void *b, ssize_t s)
 				// need only to skip len prefixed data
 				a += ud.vi;
 				if (a > e)
-					return -78;
+					return -80;
 			}
 		}
 	}
 	assert((a-(const uint8_t *)b) == s);
 	if (a > e)
-		return -79;
+		return -81;
 	return a-(const uint8_t *)b;
 }
 
@@ -2197,29 +2238,29 @@ ssize_t UartSettings::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint8_t)1U << 0))) {
 		// 'port': id=1, encoding=varint, tag=0x8
 		if (a >= e)
-			return -80;
+			return -82;
 		*a++ = 0x8;
 		n = write_varint(a,e-a,m_port);
 		if (n <= 0)
-			return -81;
+			return -83;
 		a += n;
 	}
 	// has baudrate?
 	if (0 != (p_validbits & ((uint8_t)1U << 1))) {
 		// 'baudrate': id=2, encoding=varint, tag=0x10
 		if (a >= e)
-			return -82;
+			return -84;
 		*a++ = 0x10;
 		n = write_varint(a,e-a,m_baudrate);
 		if (n <= 0)
-			return -83;
+			return -85;
 		a += n;
 	}
 	// has config?
 	if (0 != (p_validbits & ((uint8_t)1U << 2))) {
 		// 'config': id=3, encoding=16bit, tag=0x1c
 		if (a >= e)
-			return -84;
+			return -86;
 		*a++ = 0x1c;
 		write_u16(a,m_config);
 		a += 2;
@@ -2228,7 +2269,7 @@ ssize_t UartSettings::toMemory(uint8_t *b, ssize_t s) const
 	if (m_rx_thresh != 0) {
 		// 'rx_thresh': id=4, encoding=8bit, tag=0x23
 		if (2 > (e-a))
-			return -85;
+			return -87;
 		*a++ = 0x23;
 		*a++ = m_rx_thresh;
 	}
@@ -2236,22 +2277,22 @@ ssize_t UartSettings::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint8_t)1U << 3))) {
 		// 'tx_bufsize': id=6, encoding=varint, tag=0x30
 		if (a >= e)
-			return -86;
+			return -88;
 		*a++ = 0x30;
 		n = write_varint(a,e-a,m_tx_bufsize);
 		if (n <= 0)
-			return -87;
+			return -89;
 		a += n;
 	}
 	// has rx_bufsize?
 	if (0 != (p_validbits & ((uint8_t)1U << 4))) {
 		// 'rx_bufsize': id=7, encoding=varint, tag=0x38
 		if (a >= e)
-			return -88;
+			return -90;
 		*a++ = 0x38;
 		n = write_varint(a,e-a,m_rx_bufsize);
 		if (n <= 0)
-			return -89;
+			return -91;
 		a += n;
 	}
 	assert(a <= e);
@@ -2398,7 +2439,7 @@ int UartSettings::setByName(const char *name, const char *value)
 		}
 		#ifndef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 		if (*name++ != '.') {
-			return -90;
+			return -92;
 		} else if (!strcmp(name,"wl")) {
 			uart_wl_t tmp;
 			size_t r = parse_ascii_uart_wl_t(&tmp,value);
@@ -2466,7 +2507,7 @@ int UartSettings::setByName(const char *name, const char *value)
 			p_validbits |= ((uint8_t)1U << 4);
 		return r;
 	}
-	return -91;
+	return -93;
 }
 
 FtpHttpConfig::FtpHttpConfig()
@@ -2509,7 +2550,7 @@ ssize_t FtpHttpConfig::fromMemory(const void *b, ssize_t s)
 		union decode_union ud;
 		ssize_t x = decode_early(a,e,&ud,&fid);
 		if (x < 0)
-			return -92;
+			return -94;
 		a += x;
 		switch (fid) {
 		case 0xc:	// port id 1, type uint16_t, coding 16bit
@@ -2520,14 +2561,14 @@ ssize_t FtpHttpConfig::fromMemory(const void *b, ssize_t s)
 			break;
 		case 0x1a:	// root id 3, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -93;
+				return -95;
 			}
 			m_root.assign((const char*)a,ud.vi);
 			a += ud.vi;
 			break;
 		case 0x22:	// uploaddir id 4, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -94;
+				return -96;
 			}
 			m_uploaddir.assign((const char*)a,ud.vi);
 			a += ud.vi;
@@ -2537,13 +2578,13 @@ ssize_t FtpHttpConfig::fromMemory(const void *b, ssize_t s)
 				// need only to skip len prefixed data
 				a += ud.vi;
 				if (a > e)
-					return -95;
+					return -97;
 			}
 		}
 	}
 	assert((a-(const uint8_t *)b) == s);
 	if (a > e)
-		return -96;
+		return -98;
 	return a-(const uint8_t *)b;
 }
 
@@ -2556,7 +2597,7 @@ ssize_t FtpHttpConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (m_port != 0) {
 		// 'port': id=1, encoding=16bit, tag=0xc
 		if (3 > (e-a))
-			return -97;
+			return -99;
 		*a++ = 0xc;
 		write_u16(a,m_port);
 		a += 2;
@@ -2565,7 +2606,7 @@ ssize_t FtpHttpConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint8_t)1U << 0))) {
 		// 'start': id=2, encoding=8bit, tag=0x13
 		if (2 > (e-a))
-			return -98;
+			return -100;
 		*a++ = 0x13;
 		*a++ = m_start;
 	}
@@ -2573,22 +2614,22 @@ ssize_t FtpHttpConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (!m_root.empty()) {
 		// 'root': id=3, encoding=lenpfx, tag=0x1a
 		if (a >= e)
-			return -99;
+			return -101;
 		*a++ = 0x1a;
 		n = encode_bytes(m_root,a,e);
 		if (n < 0)
-			return -100;
+			return -102;
 		a += n;
 	}
 	// has uploaddir?
 	if (!m_uploaddir.empty()) {
 		// 'uploaddir': id=4, encoding=lenpfx, tag=0x22
 		if (a >= e)
-			return -101;
+			return -103;
 		*a++ = 0x22;
 		n = encode_bytes(m_uploaddir,a,e);
 		if (n < 0)
-			return -102;
+			return -104;
 		a += n;
 	}
 	assert(a <= e);
@@ -2710,7 +2751,7 @@ int FtpHttpConfig::setByName(const char *name, const char *value)
 		int r = m_uploaddir.size();
 		return r;
 	}
-	return -103;
+	return -105;
 }
 
 TerminalConfig::TerminalConfig()
@@ -2750,7 +2791,7 @@ ssize_t TerminalConfig::fromMemory(const void *b, ssize_t s)
 		union decode_union ud;
 		ssize_t x = decode_early(a,e,&ud,&fid);
 		if (x < 0)
-			return -104;
+			return -106;
 		a += x;
 		switch (fid) {
 		case 0x8:	// uart_rx id 1, type int8_t, coding signed varint
@@ -2761,7 +2802,7 @@ ssize_t TerminalConfig::fromMemory(const void *b, ssize_t s)
 			break;
 		case 0x1a:	// name id 3, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -105;
+				return -107;
 			}
 			m_name.assign((const char*)a,ud.vi);
 			p_validbits |= ((uint8_t)1U << 0);
@@ -2772,13 +2813,13 @@ ssize_t TerminalConfig::fromMemory(const void *b, ssize_t s)
 				// need only to skip len prefixed data
 				a += ud.vi;
 				if (a > e)
-					return -106;
+					return -108;
 			}
 		}
 	}
 	assert((a-(const uint8_t *)b) == s);
 	if (a > e)
-		return -107;
+		return -109;
 	return a-(const uint8_t *)b;
 }
 
@@ -2791,33 +2832,33 @@ ssize_t TerminalConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (m_uart_rx != -1) {
 		// 'uart_rx': id=1, encoding=varint, tag=0x8
 		if (a >= e)
-			return -108;
+			return -110;
 		*a++ = 0x8;
 		n = write_varint(a,e-a,sint_varint(m_uart_rx));
 		if (n <= 0)
-			return -109;
+			return -111;
 		a += n;
 	}
 	// has uart_tx?
 	if (m_uart_tx != -1) {
 		// 'uart_tx': id=2, encoding=varint, tag=0x10
 		if (a >= e)
-			return -110;
+			return -112;
 		*a++ = 0x10;
 		n = write_varint(a,e-a,sint_varint(m_uart_tx));
 		if (n <= 0)
-			return -111;
+			return -113;
 		a += n;
 	}
 	// has name?
 	if (0 != (p_validbits & ((uint8_t)1U << 0))) {
 		// 'name': id=3, encoding=lenpfx, tag=0x1a
 		if (a >= e)
-			return -112;
+			return -114;
 		*a++ = 0x1a;
 		n = encode_bytes(m_name,a,e);
 		if (n < 0)
-			return -113;
+			return -115;
 		a += n;
 	}
 	assert(a <= e);
@@ -2919,7 +2960,7 @@ int TerminalConfig::setByName(const char *name, const char *value)
 			p_validbits |= ((uint8_t)1U << 0);
 		return r;
 	}
-	return -114;
+	return -116;
 }
 
 Trigger::Trigger()
@@ -2966,12 +3007,12 @@ ssize_t Trigger::fromMemory(const void *b, ssize_t s)
 		union decode_union ud;
 		ssize_t x = decode_early(a,e,&ud,&fid);
 		if (x < 0)
-			return -115;
+			return -117;
 		a += x;
 		switch (fid) {
 		case 0xa:	// event id 1, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -116;
+				return -118;
 			}
 			m_event.assign((const char*)a,ud.vi);
 			p_validbits |= ((uint8_t)1U << 0);
@@ -2979,7 +3020,7 @@ ssize_t Trigger::fromMemory(const void *b, ssize_t s)
 			break;
 		case 0x12:	// action id 2, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -117;
+				return -119;
 			}
 			m_action.emplace_back((const char*)a,ud.vi);
 			a += ud.vi;
@@ -2989,13 +3030,13 @@ ssize_t Trigger::fromMemory(const void *b, ssize_t s)
 				// need only to skip len prefixed data
 				a += ud.vi;
 				if (a > e)
-					return -118;
+					return -120;
 			}
 		}
 	}
 	assert((a-(const uint8_t *)b) == s);
 	if (a > e)
-		return -119;
+		return -121;
 	return a-(const uint8_t *)b;
 }
 
@@ -3008,21 +3049,21 @@ ssize_t Trigger::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint8_t)1U << 0))) {
 		// 'event': id=1, encoding=lenpfx, tag=0xa
 		if (a >= e)
-			return -120;
+			return -122;
 		*a++ = 0xa;
 		n = encode_bytes(m_event,a,e);
 		if (n < 0)
-			return -121;
+			return -123;
 		a += n;
 	}
 	for (const auto &x : m_action) {
 		// 'action': id=2, encoding=lenpfx, tag=0x12
 		if (a >= e)
-			return -122;
+			return -124;
 		*a++ = 0x12;
 		n = encode_bytes(x,a,e);
 		if (n < 0)
-			return -123;
+			return -125;
 		a += n;
 	}
 	assert(a <= e);
@@ -3133,21 +3174,21 @@ int Trigger::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+7,&idxe,0);
 				if ((idxe[0] != ']') || (idxe == (name+7)))
-					return -124;
+					return -126;
 				if (m_action.size() <= x)
-					return -125;
+					return -127;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_action.erase(m_action.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != 0)
-				return -126;
+				return -128;
 			m_action[x] = value;
 			return m_action[x].size();
 		}
 	}
-	return -127;
+	return -129;
 }
 
 AppParam::AppParam()
@@ -3193,12 +3234,12 @@ ssize_t AppParam::fromMemory(const void *b, ssize_t s)
 		union decode_union ud;
 		ssize_t x = decode_early(a,e,&ud,&fid);
 		if (x < 0)
-			return -128;
+			return -130;
 		a += x;
 		switch (fid) {
 		case 0xa:	// key id 1, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -129;
+				return -131;
 			}
 			m_key.assign((const char*)a,ud.vi);
 			p_validbits |= ((uint8_t)1U << 0);
@@ -3209,7 +3250,7 @@ ssize_t AppParam::fromMemory(const void *b, ssize_t s)
 			break;
 		case 0x1a:	// sValue id 3, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -130;
+				return -132;
 			}
 			m_sValue.assign((const char*)a,ud.vi);
 			p_validbits |= ((uint8_t)1U << 2);
@@ -3226,13 +3267,13 @@ ssize_t AppParam::fromMemory(const void *b, ssize_t s)
 				// need only to skip len prefixed data
 				a += ud.vi;
 				if (a > e)
-					return -131;
+					return -133;
 			}
 		}
 	}
 	assert((a-(const uint8_t *)b) == s);
 	if (a > e)
-		return -132;
+		return -134;
 	return a-(const uint8_t *)b;
 }
 
@@ -3245,51 +3286,51 @@ ssize_t AppParam::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint8_t)1U << 0))) {
 		// 'key': id=1, encoding=lenpfx, tag=0xa
 		if (a >= e)
-			return -133;
+			return -135;
 		*a++ = 0xa;
 		n = encode_bytes(m_key,a,e);
 		if (n < 0)
-			return -134;
+			return -136;
 		a += n;
 	}
 	// has uValue?
 	if (0 != (p_validbits & ((uint8_t)1U << 1))) {
 		// 'uValue': id=2, encoding=varint, tag=0x10
 		if (a >= e)
-			return -135;
+			return -137;
 		*a++ = 0x10;
 		n = write_varint(a,e-a,m_uValue);
 		if (n <= 0)
-			return -136;
+			return -138;
 		a += n;
 	}
 	// has sValue?
 	if (0 != (p_validbits & ((uint8_t)1U << 2))) {
 		// 'sValue': id=3, encoding=lenpfx, tag=0x1a
 		if (a >= e)
-			return -137;
+			return -139;
 		*a++ = 0x1a;
 		n = encode_bytes(m_sValue,a,e);
 		if (n < 0)
-			return -138;
+			return -140;
 		a += n;
 	}
 	// has dValue?
 	if (0 != (p_validbits & ((uint8_t)1U << 3))) {
 		// 'dValue': id=4, encoding=varint, tag=0x20
 		if (a >= e)
-			return -139;
+			return -141;
 		*a++ = 0x20;
 		n = write_varint(a,e-a,sint_varint(m_dValue));
 		if (n <= 0)
-			return -140;
+			return -142;
 		a += n;
 	}
 	// has fValue?
 	if (0 != (p_validbits & ((uint8_t)1U << 4))) {
 		// 'fValue': id=5, encoding=64bit, tag=0x29
 		if (9 > (e-a))
-			return -141;
+			return -143;
 		*a++ = 0x29;
 		write_u64(a,mangle_double(m_fValue));
 		a += 8;
@@ -3439,7 +3480,7 @@ int AppParam::setByName(const char *name, const char *value)
 			p_validbits |= ((uint8_t)1U << 4);
 		return r;
 	}
-	return -142;
+	return -144;
 }
 
 EventTimer::EventTimer()
@@ -3487,12 +3528,12 @@ ssize_t EventTimer::fromMemory(const void *b, ssize_t s)
 		union decode_union ud;
 		ssize_t x = decode_early(a,e,&ud,&fid);
 		if (x < 0)
-			return -143;
+			return -145;
 		a += x;
 		switch (fid) {
 		case 0xa:	// name id 1, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -144;
+				return -146;
 			}
 			m_name.assign((const char*)a,ud.vi);
 			a += ud.vi;
@@ -3508,13 +3549,13 @@ ssize_t EventTimer::fromMemory(const void *b, ssize_t s)
 				// need only to skip len prefixed data
 				a += ud.vi;
 				if (a > e)
-					return -145;
+					return -147;
 			}
 		}
 	}
 	assert((a-(const uint8_t *)b) == s);
 	if (a > e)
-		return -146;
+		return -148;
 	return a-(const uint8_t *)b;
 }
 
@@ -3527,33 +3568,33 @@ ssize_t EventTimer::toMemory(uint8_t *b, ssize_t s) const
 	if (!m_name.empty()) {
 		// 'name': id=1, encoding=lenpfx, tag=0xa
 		if (a >= e)
-			return -147;
+			return -149;
 		*a++ = 0xa;
 		n = encode_bytes(m_name,a,e);
 		if (n < 0)
-			return -148;
+			return -150;
 		a += n;
 	}
 	// has time?
 	if (0 != (p_validbits & ((uint8_t)1U << 0))) {
 		// 'time': id=2, encoding=varint, tag=0x10
 		if (a >= e)
-			return -149;
+			return -151;
 		*a++ = 0x10;
 		n = write_varint(a,e-a,m_time);
 		if (n <= 0)
-			return -150;
+			return -152;
 		a += n;
 	}
 	// has config?
 	if (m_config != 0) {
 		// 'config': id=3, encoding=varint, tag=0x18
 		if (a >= e)
-			return -151;
+			return -153;
 		*a++ = 0x18;
 		n = write_varint(a,e-a,m_config);
 		if (n <= 0)
-			return -152;
+			return -154;
 		a += n;
 	}
 	assert(a <= e);
@@ -3662,7 +3703,7 @@ int EventTimer::setByName(const char *name, const char *value)
 		}
 		#ifndef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 		if (*name++ != '.') {
-			return -153;
+			return -155;
 		} else if (!strcmp(name,"restart")) {
 			bool tmp;
 			size_t r = parse_ascii_bool(&tmp,value);
@@ -3678,7 +3719,7 @@ int EventTimer::setByName(const char *name, const char *value)
 		}
 		#endif // !CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 	}
-	return -154;
+	return -156;
 }
 
 FunctionConfig::FunctionConfig()
@@ -3728,12 +3769,12 @@ ssize_t FunctionConfig::fromMemory(const void *b, ssize_t s)
 		union decode_union ud;
 		ssize_t x = decode_early(a,e,&ud,&fid);
 		if (x < 0)
-			return -155;
+			return -157;
 		a += x;
 		switch (fid) {
 		case 0xa:	// name id 1, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -156;
+				return -158;
 			}
 			m_name.assign((const char*)a,ud.vi);
 			p_validbits |= ((uint8_t)1U << 0);
@@ -3741,7 +3782,7 @@ ssize_t FunctionConfig::fromMemory(const void *b, ssize_t s)
 			break;
 		case 0x12:	// func id 2, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -157;
+				return -159;
 			}
 			m_func.assign((const char*)a,ud.vi);
 			p_validbits |= ((uint8_t)1U << 1);
@@ -3749,7 +3790,7 @@ ssize_t FunctionConfig::fromMemory(const void *b, ssize_t s)
 			break;
 		case 0x1a:	// params id 3, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -158;
+				return -160;
 			}
 			m_params.emplace_back((const char*)a,ud.vi);
 			a += ud.vi;
@@ -3759,13 +3800,13 @@ ssize_t FunctionConfig::fromMemory(const void *b, ssize_t s)
 				// need only to skip len prefixed data
 				a += ud.vi;
 				if (a > e)
-					return -159;
+					return -161;
 			}
 		}
 	}
 	assert((a-(const uint8_t *)b) == s);
 	if (a > e)
-		return -160;
+		return -162;
 	return a-(const uint8_t *)b;
 }
 
@@ -3778,32 +3819,32 @@ ssize_t FunctionConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint8_t)1U << 0))) {
 		// 'name': id=1, encoding=lenpfx, tag=0xa
 		if (a >= e)
-			return -161;
+			return -163;
 		*a++ = 0xa;
 		n = encode_bytes(m_name,a,e);
 		if (n < 0)
-			return -162;
+			return -164;
 		a += n;
 	}
 	// has func?
 	if (0 != (p_validbits & ((uint8_t)1U << 1))) {
 		// 'func': id=2, encoding=lenpfx, tag=0x12
 		if (a >= e)
-			return -163;
+			return -165;
 		*a++ = 0x12;
 		n = encode_bytes(m_func,a,e);
 		if (n < 0)
-			return -164;
+			return -166;
 		a += n;
 	}
 	for (const auto &x : m_params) {
 		// 'params': id=3, encoding=lenpfx, tag=0x1a
 		if (a >= e)
-			return -165;
+			return -167;
 		*a++ = 0x1a;
 		n = encode_bytes(x,a,e);
 		if (n < 0)
-			return -166;
+			return -168;
 		a += n;
 	}
 	assert(a <= e);
@@ -3936,21 +3977,21 @@ int FunctionConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+7,&idxe,0);
 				if ((idxe[0] != ']') || (idxe == (name+7)))
-					return -167;
+					return -169;
 				if (m_params.size() <= x)
-					return -168;
+					return -170;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_params.erase(m_params.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != 0)
-				return -169;
+				return -171;
 			m_params[x] = value;
 			return m_params[x].size();
 		}
 	}
-	return -170;
+	return -172;
 }
 
 SignalConfig::SignalConfig()
@@ -3993,12 +4034,12 @@ ssize_t SignalConfig::fromMemory(const void *b, ssize_t s)
 		union decode_union ud;
 		ssize_t x = decode_early(a,e,&ud,&fid);
 		if (x < 0)
-			return -171;
+			return -173;
 		a += x;
 		switch (fid) {
 		case 0xa:	// name id 1, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -172;
+				return -174;
 			}
 			m_name.assign((const char*)a,ud.vi);
 			a += ud.vi;
@@ -4008,7 +4049,7 @@ ssize_t SignalConfig::fromMemory(const void *b, ssize_t s)
 			break;
 		case 0x1a:	// iv id 3, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -173;
+				return -175;
 			}
 			m_iv.assign((const char*)a,ud.vi);
 			a += ud.vi;
@@ -4018,13 +4059,13 @@ ssize_t SignalConfig::fromMemory(const void *b, ssize_t s)
 				// need only to skip len prefixed data
 				a += ud.vi;
 				if (a > e)
-					return -174;
+					return -176;
 			}
 		}
 	}
 	assert((a-(const uint8_t *)b) == s);
 	if (a > e)
-		return -175;
+		return -177;
 	return a-(const uint8_t *)b;
 }
 
@@ -4037,33 +4078,33 @@ ssize_t SignalConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (!m_name.empty()) {
 		// 'name': id=1, encoding=lenpfx, tag=0xa
 		if (a >= e)
-			return -176;
+			return -178;
 		*a++ = 0xa;
 		n = encode_bytes(m_name,a,e);
 		if (n < 0)
-			return -177;
+			return -179;
 		a += n;
 	}
 	// has type?
 	if (m_type != st_invalid) {
 		// 'type': id=2, encoding=varint, tag=0x10
 		if (a >= e)
-			return -178;
+			return -180;
 		*a++ = 0x10;
 		n = write_varint(a,e-a,m_type);
 		if (n <= 0)
-			return -179;
+			return -181;
 		a += n;
 	}
 	// has iv?
 	if (!m_iv.empty()) {
 		// 'iv': id=3, encoding=lenpfx, tag=0x1a
 		if (a >= e)
-			return -180;
+			return -182;
 		*a++ = 0x1a;
 		n = encode_bytes(m_iv,a,e);
 		if (n < 0)
-			return -181;
+			return -183;
 		a += n;
 	}
 	assert(a <= e);
@@ -4160,7 +4201,7 @@ int SignalConfig::setByName(const char *name, const char *value)
 		sigtype_t v;
 		size_t r = parse_ascii_sigtype_t(&v,value);
 		if (r == 0)
-			return -182;
+			return -184;
 		set_type(v);
 		return r;
 	}
@@ -4173,7 +4214,7 @@ int SignalConfig::setByName(const char *name, const char *value)
 		int r = m_iv.size();
 		return r;
 	}
-	return -183;
+	return -185;
 }
 
 OwDeviceConfig::OwDeviceConfig()
@@ -4212,7 +4253,7 @@ ssize_t OwDeviceConfig::fromMemory(const void *b, ssize_t s)
 		union decode_union ud;
 		ssize_t x = decode_early(a,e,&ud,&fid);
 		if (x < 0)
-			return -184;
+			return -186;
 		a += x;
 		switch (fid) {
 		case 0x9:	// id id 1, type uint64_t, coding 64bit
@@ -4220,7 +4261,7 @@ ssize_t OwDeviceConfig::fromMemory(const void *b, ssize_t s)
 			break;
 		case 0x12:	// name id 2, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -185;
+				return -187;
 			}
 			m_name.assign((const char*)a,ud.vi);
 			p_validbits |= ((uint8_t)1U << 1);
@@ -4231,13 +4272,13 @@ ssize_t OwDeviceConfig::fromMemory(const void *b, ssize_t s)
 				// need only to skip len prefixed data
 				a += ud.vi;
 				if (a > e)
-					return -186;
+					return -188;
 			}
 		}
 	}
 	assert((a-(const uint8_t *)b) == s);
 	if (a > e)
-		return -187;
+		return -189;
 	return a-(const uint8_t *)b;
 }
 
@@ -4250,7 +4291,7 @@ ssize_t OwDeviceConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint8_t)1U << 0))) {
 		// 'id': id=1, encoding=64bit, tag=0x9
 		if (9 > (e-a))
-			return -188;
+			return -190;
 		*a++ = 0x9;
 		write_u64(a,(uint64_t)m_id);
 		a += 8;
@@ -4259,11 +4300,11 @@ ssize_t OwDeviceConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint8_t)1U << 1))) {
 		// 'name': id=2, encoding=lenpfx, tag=0x12
 		if (a >= e)
-			return -189;
+			return -191;
 		*a++ = 0x12;
 		n = encode_bytes(m_name,a,e);
 		if (n < 0)
-			return -190;
+			return -192;
 		a += n;
 	}
 	assert(a <= e);
@@ -4349,7 +4390,7 @@ int OwDeviceConfig::setByName(const char *name, const char *value)
 			p_validbits |= ((uint8_t)1U << 1);
 		return r;
 	}
-	return -191;
+	return -193;
 }
 
 StateConfig::StateConfig()
@@ -4396,12 +4437,12 @@ ssize_t StateConfig::fromMemory(const void *b, ssize_t s)
 		union decode_union ud;
 		ssize_t x = decode_early(a,e,&ud,&fid);
 		if (x < 0)
-			return -192;
+			return -194;
 		a += x;
 		switch (fid) {
 		case 0xa:	// name id 1, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -193;
+				return -195;
 			}
 			m_name.assign((const char*)a,ud.vi);
 			p_validbits |= ((uint8_t)1U << 0);
@@ -4413,7 +4454,7 @@ ssize_t StateConfig::fromMemory(const void *b, ssize_t s)
 				int n;
 				n = m_conds.back().fromMemory((const uint8_t*)a,ud.vi);
 				if (n != (ssize_t)ud.vi)
-					return -194;
+					return -196;
 				a += ud.vi;
 			}
 			break;
@@ -4422,13 +4463,13 @@ ssize_t StateConfig::fromMemory(const void *b, ssize_t s)
 				// need only to skip len prefixed data
 				a += ud.vi;
 				if (a > e)
-					return -195;
+					return -197;
 			}
 		}
 	}
 	assert((a-(const uint8_t *)b) == s);
 	if (a > e)
-		return -196;
+		return -198;
 	return a-(const uint8_t *)b;
 }
 
@@ -4441,23 +4482,23 @@ ssize_t StateConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint8_t)1U << 0))) {
 		// 'name': id=1, encoding=lenpfx, tag=0xa
 		if (a >= e)
-			return -197;
+			return -199;
 		*a++ = 0xa;
 		n = encode_bytes(m_name,a,e);
 		if (n < 0)
-			return -198;
+			return -200;
 		a += n;
 	}
 	for (const auto &x : m_conds) {
 		// 'conds': id=2, encoding=lenpfx, tag=0x12
 		if (a >= e)
-			return -199;
+			return -201;
 		*a++ = 0x12;
 		ssize_t conds_ws = x.calcSize();
 		n = write_varint(a,e-a,conds_ws);
 		a += n;
 		if ((n <= 0) || (conds_ws > (e-a)))
-			return -200;
+			return -202;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == conds_ws);
@@ -4568,20 +4609,20 @@ int StateConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+6,&idxe,0);
 				if ((idxe[0] != ']') || (idxe == (name+6)))
-					return -201;
+					return -203;
 				if (m_conds.size() <= x)
-					return -202;
+					return -204;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_conds.erase(m_conds.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -203;
+				return -205;
 			return m_conds[x].setByName(idxe+2,value);
 		}
 	}
-	return -204;
+	return -206;
 }
 
 Message *StateConfig::p_getMember(const char *s, const char *e, unsigned x)
@@ -4641,12 +4682,12 @@ ssize_t StateMachineConfig::fromMemory(const void *b, ssize_t s)
 		union decode_union ud;
 		ssize_t x = decode_early(a,e,&ud,&fid);
 		if (x < 0)
-			return -205;
+			return -207;
 		a += x;
 		switch (fid) {
 		case 0xa:	// name id 1, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -206;
+				return -208;
 			}
 			m_name.assign((const char*)a,ud.vi);
 			p_validbits |= ((uint8_t)1U << 0);
@@ -4661,7 +4702,7 @@ ssize_t StateMachineConfig::fromMemory(const void *b, ssize_t s)
 				int n;
 				n = m_states.back().fromMemory((const uint8_t*)a,ud.vi);
 				if (n != (ssize_t)ud.vi)
-					return -207;
+					return -209;
 				a += ud.vi;
 			}
 			break;
@@ -4670,13 +4711,13 @@ ssize_t StateMachineConfig::fromMemory(const void *b, ssize_t s)
 				// need only to skip len prefixed data
 				a += ud.vi;
 				if (a > e)
-					return -208;
+					return -210;
 			}
 		}
 	}
 	assert((a-(const uint8_t *)b) == s);
 	if (a > e)
-		return -209;
+		return -211;
 	return a-(const uint8_t *)b;
 }
 
@@ -4689,34 +4730,34 @@ ssize_t StateMachineConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint8_t)1U << 0))) {
 		// 'name': id=1, encoding=lenpfx, tag=0xa
 		if (a >= e)
-			return -210;
+			return -212;
 		*a++ = 0xa;
 		n = encode_bytes(m_name,a,e);
 		if (n < 0)
-			return -211;
+			return -213;
 		a += n;
 	}
 	// has ini_st?
 	if (0 != (p_validbits & ((uint8_t)1U << 1))) {
 		// 'ini_st': id=2, encoding=varint, tag=0x10
 		if (a >= e)
-			return -212;
+			return -214;
 		*a++ = 0x10;
 		n = write_varint(a,e-a,m_ini_st);
 		if (n <= 0)
-			return -213;
+			return -215;
 		a += n;
 	}
 	for (const auto &x : m_states) {
 		// 'states': id=3, encoding=lenpfx, tag=0x1a
 		if (a >= e)
-			return -214;
+			return -216;
 		*a++ = 0x1a;
 		ssize_t states_ws = x.calcSize();
 		n = write_varint(a,e-a,states_ws);
 		a += n;
 		if ((n <= 0) || (states_ws > (e-a)))
-			return -215;
+			return -217;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == states_ws);
@@ -4847,20 +4888,20 @@ int StateMachineConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+7,&idxe,0);
 				if ((idxe[0] != ']') || (idxe == (name+7)))
-					return -216;
+					return -218;
 				if (m_states.size() <= x)
-					return -217;
+					return -219;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_states.erase(m_states.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -218;
+				return -220;
 			return m_states[x].setByName(idxe+2,value);
 		}
 	}
-	return -219;
+	return -221;
 }
 
 Message *StateMachineConfig::p_getMember(const char *s, const char *e, unsigned x)
@@ -4910,12 +4951,12 @@ ssize_t ThresholdConfig::fromMemory(const void *b, ssize_t s)
 		union decode_union ud;
 		ssize_t x = decode_early(a,e,&ud,&fid);
 		if (x < 0)
-			return -220;
+			return -222;
 		a += x;
 		switch (fid) {
 		case 0xa:	// name id 1, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -221;
+				return -223;
 			}
 			m_name.assign((const char*)a,ud.vi);
 			p_validbits |= ((uint8_t)1U << 0);
@@ -4932,13 +4973,13 @@ ssize_t ThresholdConfig::fromMemory(const void *b, ssize_t s)
 				// need only to skip len prefixed data
 				a += ud.vi;
 				if (a > e)
-					return -222;
+					return -224;
 			}
 		}
 	}
 	assert((a-(const uint8_t *)b) == s);
 	if (a > e)
-		return -223;
+		return -225;
 	return a-(const uint8_t *)b;
 }
 
@@ -4951,21 +4992,21 @@ ssize_t ThresholdConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint8_t)1U << 0))) {
 		// 'name': id=1, encoding=lenpfx, tag=0xa
 		if (a >= e)
-			return -224;
+			return -226;
 		*a++ = 0xa;
 		n = encode_bytes(m_name,a,e);
 		if (n < 0)
-			return -225;
+			return -227;
 		a += n;
 	}
 	// has low?
 	if (0 != (p_validbits & ((uint8_t)1U << 1))) {
 		// 'low': id=2, encoding=32bit, tag=0x15
 		if (5 > (e-a))
-			return -226;
+			return -228;
 		*a++ = 0x15;
 		if ((e-a) < 4)
-			return -227;
+			return -229;
 		write_u32(a,mangle_float(m_low));
 		a += 4;
 	}
@@ -4973,10 +5014,10 @@ ssize_t ThresholdConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint8_t)1U << 2))) {
 		// 'high': id=3, encoding=32bit, tag=0x1d
 		if (5 > (e-a))
-			return -228;
+			return -230;
 		*a++ = 0x1d;
 		if ((e-a) < 4)
-			return -229;
+			return -231;
 		write_u32(a,mangle_float(m_high));
 		a += 4;
 	}
@@ -5083,7 +5124,7 @@ int ThresholdConfig::setByName(const char *name, const char *value)
 			p_validbits |= ((uint8_t)1U << 2);
 		return r;
 	}
-	return -230;
+	return -232;
 }
 
 LuaConfig::LuaConfig()
@@ -5138,19 +5179,19 @@ ssize_t LuaConfig::fromMemory(const void *b, ssize_t s)
 		union decode_union ud;
 		ssize_t x = decode_early(a,e,&ud,&fid);
 		if (x < 0)
-			return -231;
+			return -233;
 		a += x;
 		switch (fid) {
 		case 0xa:	// init_scripts id 1, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -232;
+				return -234;
 			}
 			m_init_scripts.emplace_back((const char*)a,ud.vi);
 			a += ud.vi;
 			break;
 		case 0x12:	// compile_files id 2, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -233;
+				return -235;
 			}
 			m_compile_files.emplace_back((const char*)a,ud.vi);
 			a += ud.vi;
@@ -5160,13 +5201,13 @@ ssize_t LuaConfig::fromMemory(const void *b, ssize_t s)
 				// need only to skip len prefixed data
 				a += ud.vi;
 				if (a > e)
-					return -234;
+					return -236;
 			}
 		}
 	}
 	assert((a-(const uint8_t *)b) == s);
 	if (a > e)
-		return -235;
+		return -237;
 	return a-(const uint8_t *)b;
 }
 
@@ -5178,21 +5219,21 @@ ssize_t LuaConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_init_scripts) {
 		// 'init_scripts': id=1, encoding=lenpfx, tag=0xa
 		if (a >= e)
-			return -236;
+			return -238;
 		*a++ = 0xa;
 		n = encode_bytes(x,a,e);
 		if (n < 0)
-			return -237;
+			return -239;
 		a += n;
 	}
 	for (const auto &x : m_compile_files) {
 		// 'compile_files': id=2, encoding=lenpfx, tag=0x12
 		if (a >= e)
-			return -238;
+			return -240;
 		*a++ = 0x12;
 		n = encode_bytes(x,a,e);
 		if (n < 0)
-			return -239;
+			return -241;
 		a += n;
 	}
 	assert(a <= e);
@@ -5308,16 +5349,16 @@ int LuaConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+13,&idxe,0);
 				if ((idxe[0] != ']') || (idxe == (name+13)))
-					return -240;
+					return -242;
 				if (m_init_scripts.size() <= x)
-					return -241;
+					return -243;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_init_scripts.erase(m_init_scripts.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != 0)
-				return -242;
+				return -244;
 			m_init_scripts[x] = value;
 			return m_init_scripts[x].size();
 		}
@@ -5338,21 +5379,21 @@ int LuaConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+14,&idxe,0);
 				if ((idxe[0] != ']') || (idxe == (name+14)))
-					return -243;
+					return -245;
 				if (m_compile_files.size() <= x)
-					return -244;
+					return -246;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_compile_files.erase(m_compile_files.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != 0)
-				return -245;
+				return -247;
 			m_compile_files[x] = value;
 			return m_compile_files[x].size();
 		}
 	}
-	return -246;
+	return -248;
 }
 
 NodeConfig::NodeConfig()
@@ -5693,7 +5734,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 		union decode_union ud;
 		ssize_t x = decode_early(a,e,&ud,&fid);
 		if (x < 0)
-			return -247;
+			return -249;
 		a += x;
 		switch (fid) {
 		case 0x5:	// magic id 0, type uint32_t, coding 32bit
@@ -5701,14 +5742,14 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 			break;
 		case 0xa:	// nodename id 1, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -248;
+				return -250;
 			}
 			m_nodename.assign((const char*)a,ud.vi);
 			a += ud.vi;
 			break;
 		case 0x12:	// pass_hash id 2, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -249;
+				return -251;
 			}
 			m_pass_hash.assign((const char*)a,ud.vi);
 			p_validbits |= ((uint32_t)1U << 1);
@@ -5722,7 +5763,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n;
 				n = m_station.fromMemory((const uint8_t*)a,ud.vi);
 				if (n != (ssize_t)ud.vi)
-					return -250;
+					return -252;
 				a += ud.vi;
 			}
 			p_validbits |= ((uint32_t)1U << 3);
@@ -5732,35 +5773,35 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n;
 				n = m_softap.fromMemory((const uint8_t*)a,ud.vi);
 				if (n != (ssize_t)ud.vi)
-					return -251;
+					return -253;
 				a += ud.vi;
 			}
 			p_validbits |= ((uint32_t)1U << 4);
 			break;
 		case 0x32:	// dns_server id 6, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -252;
+				return -254;
 			}
 			m_dns_server.emplace_back((const char*)a,ud.vi);
 			a += ud.vi;
 			break;
 		case 0x3a:	// syslog_host id 7, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -253;
+				return -255;
 			}
 			m_syslog_host.assign((const char*)a,ud.vi);
 			a += ud.vi;
 			break;
 		case 0x42:	// sntp_server id 8, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -254;
+				return -256;
 			}
 			m_sntp_server.assign((const char*)a,ud.vi);
 			a += ud.vi;
 			break;
 		case 0x4a:	// timezone id 9, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -255;
+				return -257;
 			}
 			m_timezone.assign((const char*)a,ud.vi);
 			a += ud.vi;
@@ -5771,7 +5812,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n;
 				n = m_mqtt.fromMemory((const uint8_t*)a,ud.vi);
 				if (n != (ssize_t)ud.vi)
-					return -256;
+					return -258;
 				a += ud.vi;
 			}
 			p_validbits |= ((uint32_t)1U << 5);
@@ -5786,7 +5827,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n;
 				n = m_influx.fromMemory((const uint8_t*)a,ud.vi);
 				if (n != (ssize_t)ud.vi)
-					return -257;
+					return -259;
 				a += ud.vi;
 			}
 			p_validbits |= ((uint32_t)1U << 7);
@@ -5797,7 +5838,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 			break;
 		case 0x7a:	// domainname id 15, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -258;
+				return -260;
 			}
 			m_domainname.assign((const char*)a,ud.vi);
 			a += ud.vi;
@@ -5808,7 +5849,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n;
 				n = m_holidays.back().fromMemory((const uint8_t*)a,ud.vi);
 				if (n != (ssize_t)ud.vi)
-					return -259;
+					return -261;
 				a += ud.vi;
 			}
 			break;
@@ -5818,7 +5859,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n;
 				n = m_at_actions.back().fromMemory((const uint8_t*)a,ud.vi);
 				if (n != (ssize_t)ud.vi)
-					return -260;
+					return -262;
 				a += ud.vi;
 			}
 			break;
@@ -5831,7 +5872,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n;
 				n = m_triggers.back().fromMemory((const uint8_t*)a,ud.vi);
 				if (n != (ssize_t)ud.vi)
-					return -261;
+					return -263;
 				a += ud.vi;
 			}
 			break;
@@ -5841,7 +5882,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n;
 				n = m_uart.back().fromMemory((const uint8_t*)a,ud.vi);
 				if (n != (ssize_t)ud.vi)
-					return -262;
+					return -264;
 				a += ud.vi;
 			}
 			break;
@@ -5852,7 +5893,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n;
 				n = m_terminal.back().fromMemory((const uint8_t*)a,ud.vi);
 				if (n != (ssize_t)ud.vi)
-					return -263;
+					return -265;
 				a += ud.vi;
 			}
 			break;
@@ -5862,7 +5903,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 			break;
 		case 0xba:	// debugs id 23, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -264;
+				return -266;
 			}
 			m_debugs.emplace_back((const char*)a,ud.vi);
 			a += ud.vi;
@@ -5873,7 +5914,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n;
 				n = m_ftpd.fromMemory((const uint8_t*)a,ud.vi);
 				if (n != (ssize_t)ud.vi)
-					return -265;
+					return -267;
 				a += ud.vi;
 			}
 			p_validbits |= ((uint32_t)1U << 11);
@@ -5885,7 +5926,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n;
 				n = m_httpd.fromMemory((const uint8_t*)a,ud.vi);
 				if (n != (ssize_t)ud.vi)
-					return -266;
+					return -268;
 				a += ud.vi;
 			}
 			p_validbits |= ((uint32_t)1U << 12);
@@ -5893,7 +5934,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 			#endif // CONFIG_HTTP
 		case 0xd2:	// otasrv id 26, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -267;
+				return -269;
 			}
 			m_otasrv.assign((const char*)a,ud.vi);
 			p_validbits |= ((uint32_t)1U << 13);
@@ -5905,7 +5946,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n;
 				n = m_timefuses.back().fromMemory((const uint8_t*)a,ud.vi);
 				if (n != (ssize_t)ud.vi)
-					return -268;
+					return -270;
 				a += ud.vi;
 			}
 			break;
@@ -5916,7 +5957,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n;
 				n = m_statemachs.back().fromMemory((const uint8_t*)a,ud.vi);
 				if (n != (ssize_t)ud.vi)
-					return -269;
+					return -271;
 				a += ud.vi;
 			}
 			break;
@@ -5946,7 +5987,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n;
 				n = m_app_params.back().fromMemory((const uint8_t*)a,ud.vi);
 				if (n != (ssize_t)ud.vi)
-					return -270;
+					return -272;
 				a += ud.vi;
 			}
 			break;
@@ -5958,7 +5999,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n;
 				n = m_thresholds.back().fromMemory((const uint8_t*)a,ud.vi);
 				if (n != (ssize_t)ud.vi)
-					return -271;
+					return -273;
 				a += ud.vi;
 			}
 			break;
@@ -5966,7 +6007,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 			#ifdef CONFIG_LUA
 		case 0x152:	// luafiles id 42, type estring, coding byte[]
 			if ((ssize_t)ud.vi > e-a) {
-				return -272;
+				return -274;
 			}
 			m_luafiles.emplace_back((const char*)a,ud.vi);
 			a += ud.vi;
@@ -5979,7 +6020,7 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				int n;
 				n = m_owdevices.back().fromMemory((const uint8_t*)a,ud.vi);
 				if (n != (ssize_t)ud.vi)
-					return -273;
+					return -275;
 				a += ud.vi;
 			}
 			break;
@@ -5989,13 +6030,13 @@ ssize_t NodeConfig::fromMemory(const void *b, ssize_t s)
 				// need only to skip len prefixed data
 				a += ud.vi;
 				if (a > e)
-					return -274;
+					return -276;
 			}
 		}
 	}
 	assert((a-(const uint8_t *)b) == s);
 	if (a > e)
-		return -275;
+		return -277;
 	return a-(const uint8_t *)b;
 }
 
@@ -6008,10 +6049,10 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint32_t)1U << 0))) {
 		// 'magic': id=0, encoding=32bit, tag=0x5
 		if (5 > (e-a))
-			return -276;
+			return -278;
 		*a++ = 0x5;
 		if ((e-a) < 4)
-			return -277;
+			return -279;
 		write_u32(a,(uint32_t)m_magic);
 		a += 4;
 	}
@@ -6019,46 +6060,46 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (!m_nodename.empty()) {
 		// 'nodename': id=1, encoding=lenpfx, tag=0xa
 		if (a >= e)
-			return -278;
+			return -280;
 		*a++ = 0xa;
 		n = encode_bytes(m_nodename,a,e);
 		if (n < 0)
-			return -279;
+			return -281;
 		a += n;
 	}
 	// has pass_hash?
 	if (0 != (p_validbits & ((uint32_t)1U << 1))) {
 		// 'pass_hash': id=2, encoding=lenpfx, tag=0x12
 		if (a >= e)
-			return -280;
+			return -282;
 		*a++ = 0x12;
 		n = encode_bytes(m_pass_hash,a,e);
 		if (n < 0)
-			return -281;
+			return -283;
 		a += n;
 	}
 	// has cpu_freq?
 	if (0 != (p_validbits & ((uint32_t)1U << 2))) {
 		// 'cpu_freq': id=3, encoding=varint, tag=0x18
 		if (a >= e)
-			return -282;
+			return -284;
 		*a++ = 0x18;
 		n = write_varint(a,e-a,m_cpu_freq);
 		if (n <= 0)
-			return -283;
+			return -285;
 		a += n;
 	}
 	// has station?
 	if (0 != (p_validbits & ((uint32_t)1U << 3))) {
 		// 'station': id=4, encoding=lenpfx, tag=0x22
 		if (a >= e)
-			return -284;
+			return -286;
 		*a++ = 0x22;
 		ssize_t station_ws = m_station.calcSize();
 		n = write_varint(a,e-a,station_ws);
 		a += n;
 		if ((n <= 0) || (station_ws > (e-a)))
-			return -285;
+			return -287;
 		n = m_station.toMemory(a,e-a);
 		a += n;
 		assert(n == station_ws);
@@ -6067,13 +6108,13 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint32_t)1U << 4))) {
 		// 'softap': id=5, encoding=lenpfx, tag=0x2a
 		if (a >= e)
-			return -286;
+			return -288;
 		*a++ = 0x2a;
 		ssize_t softap_ws = m_softap.calcSize();
 		n = write_varint(a,e-a,softap_ws);
 		a += n;
 		if ((n <= 0) || (softap_ws > (e-a)))
-			return -287;
+			return -289;
 		n = m_softap.toMemory(a,e-a);
 		a += n;
 		assert(n == softap_ws);
@@ -6081,44 +6122,44 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_dns_server) {
 		// 'dns_server': id=6, encoding=lenpfx, tag=0x32
 		if (a >= e)
-			return -288;
+			return -290;
 		*a++ = 0x32;
 		n = encode_bytes(x,a,e);
 		if (n < 0)
-			return -289;
+			return -291;
 		a += n;
 	}
 	// has syslog_host?
 	if (!m_syslog_host.empty()) {
 		// 'syslog_host': id=7, encoding=lenpfx, tag=0x3a
 		if (a >= e)
-			return -290;
+			return -292;
 		*a++ = 0x3a;
 		n = encode_bytes(m_syslog_host,a,e);
 		if (n < 0)
-			return -291;
+			return -293;
 		a += n;
 	}
 	// has sntp_server?
 	if (!m_sntp_server.empty()) {
 		// 'sntp_server': id=8, encoding=lenpfx, tag=0x42
 		if (a >= e)
-			return -292;
+			return -294;
 		*a++ = 0x42;
 		n = encode_bytes(m_sntp_server,a,e);
 		if (n < 0)
-			return -293;
+			return -295;
 		a += n;
 	}
 	// has timezone?
 	if (!m_timezone.empty()) {
 		// 'timezone': id=9, encoding=lenpfx, tag=0x4a
 		if (a >= e)
-			return -294;
+			return -296;
 		*a++ = 0x4a;
 		n = encode_bytes(m_timezone,a,e);
 		if (n < 0)
-			return -295;
+			return -297;
 		a += n;
 	}
 	#ifdef CONFIG_MQTT
@@ -6126,13 +6167,13 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint32_t)1U << 5))) {
 		// 'mqtt': id=10, encoding=lenpfx, tag=0x52
 		if (a >= e)
-			return -296;
+			return -298;
 		*a++ = 0x52;
 		ssize_t mqtt_ws = m_mqtt.calcSize();
 		n = write_varint(a,e-a,mqtt_ws);
 		a += n;
 		if ((n <= 0) || (mqtt_ws > (e-a)))
-			return -297;
+			return -299;
 		n = m_mqtt.toMemory(a,e-a);
 		a += n;
 		assert(n == mqtt_ws);
@@ -6142,7 +6183,7 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint32_t)1U << 6))) {
 		// 'dmesg_size': id=11, encoding=16bit, tag=0x5c
 		if (3 > (e-a))
-			return -298;
+			return -300;
 		*a++ = 0x5c;
 		write_u16(a,m_dmesg_size);
 		a += 2;
@@ -6152,13 +6193,13 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint32_t)1U << 7))) {
 		// 'influx': id=12, encoding=lenpfx, tag=0x62
 		if (a >= e)
-			return -299;
+			return -301;
 		*a++ = 0x62;
 		ssize_t influx_ws = m_influx.calcSize();
 		n = write_varint(a,e-a,influx_ws);
 		a += n;
 		if ((n <= 0) || (influx_ws > (e-a)))
-			return -300;
+			return -302;
 		n = m_influx.toMemory(a,e-a);
 		a += n;
 		assert(n == influx_ws);
@@ -6168,35 +6209,35 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint32_t)1U << 8))) {
 		// 'station2ap_time': id=13, encoding=varint, tag=0x68
 		if (a >= e)
-			return -301;
+			return -303;
 		*a++ = 0x68;
 		n = write_varint(a,e-a,m_station2ap_time);
 		if (n <= 0)
-			return -302;
+			return -304;
 		a += n;
 	}
 	// has domainname?
 	if (!m_domainname.empty()) {
 		// 'domainname': id=15, encoding=lenpfx, tag=0x7a
 		if (a >= e)
-			return -303;
+			return -305;
 		*a++ = 0x7a;
 		n = encode_bytes(m_domainname,a,e);
 		if (n < 0)
-			return -304;
+			return -306;
 		a += n;
 	}
 	for (const auto &x : m_holidays) {
 		// 'holidays': id=16, encoding=lenpfx, tag=0x82
 		if (2 > (e-a))
-			return -305;
+			return -307;
 		*a++ = 0x82;
 		*a++ = 0x1;
 		ssize_t holidays_ws = x.calcSize();
 		n = write_varint(a,e-a,holidays_ws);
 		a += n;
 		if ((n <= 0) || (holidays_ws > (e-a)))
-			return -306;
+			return -308;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == holidays_ws);
@@ -6204,14 +6245,14 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_at_actions) {
 		// 'at_actions': id=17, encoding=lenpfx, tag=0x8a
 		if (2 > (e-a))
-			return -307;
+			return -309;
 		*a++ = 0x8a;
 		*a++ = 0x1;
 		ssize_t at_actions_ws = x.calcSize();
 		n = write_varint(a,e-a,at_actions_ws);
 		a += n;
 		if ((n <= 0) || (at_actions_ws > (e-a)))
-			return -308;
+			return -310;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == at_actions_ws);
@@ -6220,25 +6261,25 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint32_t)1U << 9))) {
 		// 'actions_enable': id=18, encoding=varint, tag=0x90
 		if (2 > (e-a))
-			return -309;
+			return -311;
 		*a++ = 0x90;
 		*a++ = 0x1;
 		n = write_varint(a,e-a,m_actions_enable);
 		if (n <= 0)
-			return -310;
+			return -312;
 		a += n;
 	}
 	for (const auto &x : m_triggers) {
 		// 'triggers': id=19, encoding=lenpfx, tag=0x9a
 		if (2 > (e-a))
-			return -311;
+			return -313;
 		*a++ = 0x9a;
 		*a++ = 0x1;
 		ssize_t triggers_ws = x.calcSize();
 		n = write_varint(a,e-a,triggers_ws);
 		a += n;
 		if ((n <= 0) || (triggers_ws > (e-a)))
-			return -312;
+			return -314;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == triggers_ws);
@@ -6246,14 +6287,14 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_uart) {
 		// 'uart': id=20, encoding=lenpfx, tag=0xa2
 		if (2 > (e-a))
-			return -313;
+			return -315;
 		*a++ = 0xa2;
 		*a++ = 0x1;
 		ssize_t uart_ws = x.calcSize();
 		n = write_varint(a,e-a,uart_ws);
 		a += n;
 		if ((n <= 0) || (uart_ws > (e-a)))
-			return -314;
+			return -316;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == uart_ws);
@@ -6262,14 +6303,14 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_terminal) {
 		// 'terminal': id=21, encoding=lenpfx, tag=0xaa
 		if (2 > (e-a))
-			return -315;
+			return -317;
 		*a++ = 0xaa;
 		*a++ = 0x1;
 		ssize_t terminal_ws = x.calcSize();
 		n = write_varint(a,e-a,terminal_ws);
 		a += n;
 		if ((n <= 0) || (terminal_ws > (e-a)))
-			return -316;
+			return -318;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == terminal_ws);
@@ -6279,7 +6320,7 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint32_t)1U << 10))) {
 		// 'udp_ctrl_port': id=22, encoding=16bit, tag=0xb4
 		if (4 > (e-a))
-			return -317;
+			return -319;
 		a += write_varint(a,e-a,0xb4);	// 'udp_ctrl_port': id=22
 		write_u16(a,m_udp_ctrl_port);
 		a += 2;
@@ -6287,12 +6328,12 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_debugs) {
 		// 'debugs': id=23, encoding=lenpfx, tag=0xba
 		if (2 > (e-a))
-			return -318;
+			return -320;
 		*a++ = 0xba;
 		*a++ = 0x1;
 		n = encode_bytes(x,a,e);
 		if (n < 0)
-			return -319;
+			return -321;
 		a += n;
 	}
 	#ifdef CONFIG_FTP
@@ -6300,14 +6341,14 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint32_t)1U << 11))) {
 		// 'ftpd': id=24, encoding=lenpfx, tag=0xc2
 		if (2 > (e-a))
-			return -320;
+			return -322;
 		*a++ = 0xc2;
 		*a++ = 0x1;
 		ssize_t ftpd_ws = m_ftpd.calcSize();
 		n = write_varint(a,e-a,ftpd_ws);
 		a += n;
 		if ((n <= 0) || (ftpd_ws > (e-a)))
-			return -321;
+			return -323;
 		n = m_ftpd.toMemory(a,e-a);
 		a += n;
 		assert(n == ftpd_ws);
@@ -6318,14 +6359,14 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint32_t)1U << 12))) {
 		// 'httpd': id=25, encoding=lenpfx, tag=0xca
 		if (2 > (e-a))
-			return -322;
+			return -324;
 		*a++ = 0xca;
 		*a++ = 0x1;
 		ssize_t httpd_ws = m_httpd.calcSize();
 		n = write_varint(a,e-a,httpd_ws);
 		a += n;
 		if ((n <= 0) || (httpd_ws > (e-a)))
-			return -323;
+			return -325;
 		n = m_httpd.toMemory(a,e-a);
 		a += n;
 		assert(n == httpd_ws);
@@ -6335,25 +6376,25 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint32_t)1U << 13))) {
 		// 'otasrv': id=26, encoding=lenpfx, tag=0xd2
 		if (2 > (e-a))
-			return -324;
+			return -326;
 		*a++ = 0xd2;
 		*a++ = 0x1;
 		n = encode_bytes(m_otasrv,a,e);
 		if (n < 0)
-			return -325;
+			return -327;
 		a += n;
 	}
 	for (const auto &x : m_timefuses) {
 		// 'timefuses': id=30, encoding=lenpfx, tag=0xf2
 		if (2 > (e-a))
-			return -326;
+			return -328;
 		*a++ = 0xf2;
 		*a++ = 0x1;
 		ssize_t timefuses_ws = x.calcSize();
 		n = write_varint(a,e-a,timefuses_ws);
 		a += n;
 		if ((n <= 0) || (timefuses_ws > (e-a)))
-			return -327;
+			return -329;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == timefuses_ws);
@@ -6368,14 +6409,14 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_statemachs) {
 		// 'statemachs': id=33, encoding=lenpfx, tag=0x10a
 		if (2 > (e-a))
-			return -328;
+			return -330;
 		*a++ = 0x8a;
 		*a++ = 0x2;
 		ssize_t statemachs_ws = x.calcSize();
 		n = write_varint(a,e-a,statemachs_ws);
 		a += n;
 		if ((n <= 0) || (statemachs_ws > (e-a)))
-			return -329;
+			return -331;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == statemachs_ws);
@@ -6386,43 +6427,43 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint32_t)1U << 14))) {
 		// 'threshold_off': id=35, encoding=varint, tag=0x118
 		if (2 > (e-a))
-			return -330;
+			return -332;
 		*a++ = 0x98;
 		*a++ = 0x2;
 		n = write_varint(a,e-a,m_threshold_off);
 		if (n <= 0)
-			return -331;
+			return -333;
 		a += n;
 	}
 	// has threshold_on?
 	if (0 != (p_validbits & ((uint32_t)1U << 15))) {
 		// 'threshold_on': id=36, encoding=varint, tag=0x120
 		if (2 > (e-a))
-			return -332;
+			return -334;
 		*a++ = 0xa0;
 		*a++ = 0x2;
 		n = write_varint(a,e-a,m_threshold_on);
 		if (n <= 0)
-			return -333;
+			return -335;
 		a += n;
 	}
 	// has dim_step?
 	if (0 != (p_validbits & ((uint32_t)1U << 16))) {
 		// 'dim_step': id=37, encoding=varint, tag=0x128
 		if (2 > (e-a))
-			return -334;
+			return -336;
 		*a++ = 0xa8;
 		*a++ = 0x2;
 		n = write_varint(a,e-a,m_dim_step);
 		if (n <= 0)
-			return -335;
+			return -337;
 		a += n;
 	}
 	// has lightctrl?
 	if (0 != (p_validbits & ((uint32_t)1U << 17))) {
 		// 'lightctrl': id=38, encoding=8bit, tag=0x133
 		if (3 > (e-a))
-			return -336;
+			return -338;
 		a += write_varint(a,e-a,0x133);	// 'lightctrl': id=38
 		*a++ = m_lightctrl;
 	}
@@ -6430,26 +6471,26 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint32_t)1U << 18))) {
 		// 'pwm_freq': id=39, encoding=varint, tag=0x138
 		if (2 > (e-a))
-			return -337;
+			return -339;
 		*a++ = 0xb8;
 		*a++ = 0x2;
 		n = write_varint(a,e-a,m_pwm_freq);
 		if (n <= 0)
-			return -338;
+			return -340;
 		a += n;
 	}
 	#ifdef CONFIG_APP_PARAMS
 	for (const auto &x : m_app_params) {
 		// 'app_params': id=40, encoding=lenpfx, tag=0x142
 		if (2 > (e-a))
-			return -339;
+			return -341;
 		*a++ = 0xc2;
 		*a++ = 0x2;
 		ssize_t app_params_ws = x.calcSize();
 		n = write_varint(a,e-a,app_params_ws);
 		a += n;
 		if ((n <= 0) || (app_params_ws > (e-a)))
-			return -340;
+			return -342;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == app_params_ws);
@@ -6459,14 +6500,14 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_thresholds) {
 		// 'thresholds': id=41, encoding=lenpfx, tag=0x14a
 		if (2 > (e-a))
-			return -341;
+			return -343;
 		*a++ = 0xca;
 		*a++ = 0x2;
 		ssize_t thresholds_ws = x.calcSize();
 		n = write_varint(a,e-a,thresholds_ws);
 		a += n;
 		if ((n <= 0) || (thresholds_ws > (e-a)))
-			return -342;
+			return -344;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == thresholds_ws);
@@ -6476,12 +6517,12 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_luafiles) {
 		// 'luafiles': id=42, encoding=lenpfx, tag=0x152
 		if (2 > (e-a))
-			return -343;
+			return -345;
 		*a++ = 0xd2;
 		*a++ = 0x2;
 		n = encode_bytes(x,a,e);
 		if (n < 0)
-			return -344;
+			return -346;
 		a += n;
 	}
 	#endif // CONFIG_LUA
@@ -6489,14 +6530,14 @@ ssize_t NodeConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_owdevices) {
 		// 'owdevices': id=50, encoding=lenpfx, tag=0x192
 		if (2 > (e-a))
-			return -345;
+			return -347;
 		*a++ = 0x92;
 		*a++ = 0x3;
 		ssize_t owdevices_ws = x.calcSize();
 		n = write_varint(a,e-a,owdevices_ws);
 		a += n;
 		if ((n <= 0) || (owdevices_ws > (e-a)))
-			return -346;
+			return -348;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == owdevices_ws);
@@ -7305,16 +7346,16 @@ int NodeConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+11,&idxe,0);
 				if ((idxe[0] != ']') || (idxe == (name+11)))
-					return -347;
+					return -349;
 				if (m_dns_server.size() <= x)
-					return -348;
+					return -350;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_dns_server.erase(m_dns_server.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != 0)
-				return -349;
+				return -351;
 			m_dns_server[x] = value;
 			return m_dns_server[x].size();
 		}
@@ -7413,16 +7454,16 @@ int NodeConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+9,&idxe,0);
 				if ((idxe[0] != ']') || (idxe == (name+9)))
-					return -350;
+					return -352;
 				if (m_holidays.size() <= x)
-					return -351;
+					return -353;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_holidays.erase(m_holidays.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -352;
+				return -354;
 			return m_holidays[x].setByName(idxe+2,value);
 		}
 	}
@@ -7442,16 +7483,16 @@ int NodeConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+11,&idxe,0);
 				if ((idxe[0] != ']') || (idxe == (name+11)))
-					return -353;
+					return -355;
 				if (m_at_actions.size() <= x)
-					return -354;
+					return -356;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_at_actions.erase(m_at_actions.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -355;
+				return -357;
 			return m_at_actions[x].setByName(idxe+2,value);
 		}
 	}
@@ -7481,16 +7522,16 @@ int NodeConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+9,&idxe,0);
 				if ((idxe[0] != ']') || (idxe == (name+9)))
-					return -356;
+					return -358;
 				if (m_triggers.size() <= x)
-					return -357;
+					return -359;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_triggers.erase(m_triggers.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -358;
+				return -360;
 			return m_triggers[x].setByName(idxe+2,value);
 		}
 	}
@@ -7510,16 +7551,16 @@ int NodeConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+5,&idxe,0);
 				if ((idxe[0] != ']') || (idxe == (name+5)))
-					return -359;
+					return -361;
 				if (m_uart.size() <= x)
-					return -360;
+					return -362;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_uart.erase(m_uart.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -361;
+				return -363;
 			return m_uart[x].setByName(idxe+2,value);
 		}
 	}
@@ -7540,16 +7581,16 @@ int NodeConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+9,&idxe,0);
 				if ((idxe[0] != ']') || (idxe == (name+9)))
-					return -362;
+					return -364;
 				if (m_terminal.size() <= x)
-					return -363;
+					return -365;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_terminal.erase(m_terminal.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -364;
+				return -366;
 			return m_terminal[x].setByName(idxe+2,value);
 		}
 	}
@@ -7580,16 +7621,16 @@ int NodeConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+7,&idxe,0);
 				if ((idxe[0] != ']') || (idxe == (name+7)))
-					return -365;
+					return -367;
 				if (m_debugs.size() <= x)
-					return -366;
+					return -368;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_debugs.erase(m_debugs.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != 0)
-				return -367;
+				return -369;
 			m_debugs[x] = value;
 			return m_debugs[x].size();
 		}
@@ -7643,16 +7684,16 @@ int NodeConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+10,&idxe,0);
 				if ((idxe[0] != ']') || (idxe == (name+10)))
-					return -368;
+					return -370;
 				if (m_timefuses.size() <= x)
-					return -369;
+					return -371;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_timefuses.erase(m_timefuses.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -370;
+				return -372;
 			return m_timefuses[x].setByName(idxe+2,value);
 		}
 	}
@@ -7673,16 +7714,16 @@ int NodeConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+11,&idxe,0);
 				if ((idxe[0] != ']') || (idxe == (name+11)))
-					return -371;
+					return -373;
 				if (m_statemachs.size() <= x)
-					return -372;
+					return -374;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_statemachs.erase(m_statemachs.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -373;
+				return -375;
 			return m_statemachs[x].setByName(idxe+2,value);
 		}
 	}
@@ -7762,16 +7803,16 @@ int NodeConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+11,&idxe,0);
 				if ((idxe[0] != ']') || (idxe == (name+11)))
-					return -374;
+					return -376;
 				if (m_app_params.size() <= x)
-					return -375;
+					return -377;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_app_params.erase(m_app_params.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -376;
+				return -378;
 			return m_app_params[x].setByName(idxe+2,value);
 		}
 	}
@@ -7793,16 +7834,16 @@ int NodeConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+11,&idxe,0);
 				if ((idxe[0] != ']') || (idxe == (name+11)))
-					return -377;
+					return -379;
 				if (m_thresholds.size() <= x)
-					return -378;
+					return -380;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_thresholds.erase(m_thresholds.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -379;
+				return -381;
 			return m_thresholds[x].setByName(idxe+2,value);
 		}
 	}
@@ -7824,16 +7865,16 @@ int NodeConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+9,&idxe,0);
 				if ((idxe[0] != ']') || (idxe == (name+9)))
-					return -380;
+					return -382;
 				if (m_luafiles.size() <= x)
-					return -381;
+					return -383;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_luafiles.erase(m_luafiles.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != 0)
-				return -382;
+				return -384;
 			m_luafiles[x] = value;
 			return m_luafiles[x].size();
 		}
@@ -7856,21 +7897,21 @@ int NodeConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+10,&idxe,0);
 				if ((idxe[0] != ']') || (idxe == (name+10)))
-					return -383;
+					return -385;
 				if (m_owdevices.size() <= x)
-					return -384;
+					return -386;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_owdevices.erase(m_owdevices.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -385;
+				return -387;
 			return m_owdevices[x].setByName(idxe+2,value);
 		}
 	}
 	#endif // CONFIG_ONEWIRE
-	return -386;
+	return -388;
 }
 
 Message *NodeConfig::p_getMember(const char *s, const char *e)

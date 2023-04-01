@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2021, Thomas Maier-Komor
+ *  Copyright (C) 2018-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -28,10 +28,12 @@
 
 #ifndef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 #define FEATURE_QOS
+#define FEATURE_KEEPALIVE
 #endif
 
 #ifdef CONFIG_MQTT
 #include "actions.h"
+#include "cyclic.h"
 #include "event.h"
 #include "globals.h"
 #include "log.h"
@@ -40,6 +42,7 @@
 #include "netsvc.h"
 #include "settings.h"
 #include "support.h"
+#include "strstream.h"
 #include "swcfg.h"
 #include "tcpio.h"
 #include "terminal.h"
@@ -75,6 +78,8 @@ extern "C" {
 #define SUBSCRIBE	0X82
 #define SUBACK		0x90
 #define DISCONNECT	0xe0
+#define PINGREQ		0xc0
+#define PINGRESP	0xd0
 
 using namespace std;
 
@@ -149,14 +154,13 @@ struct Subscription
 };
 
 
-typedef enum { offline = 0, connecting, running, stopping, error } state_t;
+typedef enum { offline = 0, connecting, running, stopped } state_t;
 
 static const char *States[] = {
 	"offline",
 	"connecting",
 	"running",
-	"stopping",
-	"error",
+	"stopped",
 };
 
 
@@ -177,13 +181,19 @@ struct MqttClient
 	map<uint16_t,PubReq> pubs;
 #endif
 	uint16_t packetid = 0;
+#ifdef FEATURE_KEEPALIVE
+	uint16_t keepalive = 60;
+	uint32_t recv_ts = 0;
+#endif
 	SemaphoreHandle_t mtx, sem;
 	state_t state;
+	event_t upev;
 };
 
 
 static void mqtt_exe_action(const char *t, const void *d, size_t l)
 {
+//	log_dbug(TAG,"dispatch %.*s",l,d);
 	action_dispatch((const char *)d,l);
 }
 
@@ -191,8 +201,88 @@ static void mqtt_exe_action(const char *t, const void *d, size_t l)
 #ifdef CONFIG_LUA
 static void mqtt_exe_lua(const char *t, const void *d, size_t l)
 {
+	log_dbug(TAG,"exe Lua %.*s",l,d);
 	xlua_run((const char *)d,l);
 }
+
+
+static int f_mqtt_get(lua_State *L)
+{
+	const char *var = luaL_checkstring(L,1);
+	log_dbug(TAG,"mqtt_get('%s')",var);
+	EnvElement *m = RTData->getChild("mqtt");
+	if (0 == m) {
+		lua_pushliteral(L,"No MQTT element.");
+		lua_error(L);
+	}
+	EnvObject *mqtt = m->toObject();
+	if (0 == mqtt) {
+		lua_pushliteral(L,"No MQTT object.");
+		lua_error(L);
+	}
+	EnvElement *e = mqtt->getChild(var);
+	if (0 == e) {
+		lua_pushliteral(L,"Invalid argument #1.");
+		lua_error(L);
+	}
+	if (EnvString *s = e->toString()) {
+		lua_pushstring(L,s->get());
+		log_dbug(TAG,"string: %s",s->get());
+	} else if (EnvNumber *n = e->toNumber()) {
+		lua_pushnumber(L,(float)n->get());
+	} else if (EnvBool *b = e->toBool()) {
+		lua_pushboolean(L,b->get());
+	} else {
+		estring str;
+		strstream ss(str);
+		e->toStream(ss);
+		lua_pushstring(L,str.c_str());
+	}
+	return 1;
+}
+
+
+static int f_mqtt_find(lua_State *L)
+{
+	const char *var = luaL_checkstring(L,1);
+	log_dbug(TAG,"mqtt_get('%s')",var);
+	EnvElement *m = RTData->getChild("mqtt");
+	if (0 == m) {
+		lua_pushliteral(L,"No MQTT element.");
+		lua_error(L);
+	}
+	EnvObject *mqtt = m->toObject();
+	if (0 == mqtt) {
+		lua_pushliteral(L,"No MQTT object.");
+		lua_error(L);
+	}
+	EnvElement *e = mqtt->find(var);
+	if (0 == e) {
+		lua_pushliteral(L,"Invalid argument #1.");
+		lua_error(L);
+	}
+	if (EnvString *s = e->toString()) {
+		lua_pushstring(L,s->get());
+		log_dbug(TAG,"string: %s",s->get());
+	} else if (EnvNumber *n = e->toNumber()) {
+		lua_pushnumber(L,(float)n->get());
+	} else if (EnvBool *b = e->toBool()) {
+		lua_pushboolean(L,b->get());
+	} else {
+		estring str;
+		strstream ss(str);
+		e->toStream(ss);
+		lua_pushstring(L,str.c_str());
+	}
+	return 1;
+}
+
+
+static const LuaFn Functions[] = {
+	{ "mqtt_get", f_mqtt_get , "get MQTT variable" },
+	{ "mqtt_find", f_mqtt_find, "get MQTT variable" },
+	{ 0, 0, 0 },
+};
 #endif
 
 
@@ -201,7 +291,10 @@ MqttClient::MqttClient()
 , mtx(xSemaphoreCreateMutex())
 , sem(xSemaphoreCreateBinary())
 , state(offline)
+, upev(event_id("mqtt`update"))
 {
+	if (upev == 0)
+		upev = event_register("mqtt`update");
 	char topic[HostnameLen+8];
 	memcpy(topic,Hostname,HostnameLen);
 	topic[HostnameLen] = '/';
@@ -211,6 +304,7 @@ MqttClient::MqttClient()
 #ifdef CONFIG_LUA
 	memcpy(topic+HostnameLen+1,"lua",4);
 	subscribe(topic,mqtt_exe_lua);
+	xlua_add_funcs("mqtt",Functions);
 #endif
 	assert(signals);
 }
@@ -237,7 +331,7 @@ static void cpypbuf(void *to, struct pbuf *pbuf, unsigned off, unsigned n)
 
 uint8_t *pbuf_at(struct pbuf *pbuf, unsigned off)
 {
-//	log_dbug(TAG,"pbuf_at %u/%u",off,pbuf->tot_len);
+	log_devel(TAG,"pbuf_at %u/%u",off,pbuf->tot_len);
 	assert(off < pbuf->tot_len);
 	while (off >= pbuf->len) {
 		off -= pbuf->len;
@@ -263,6 +357,9 @@ static int mqtt_term()
 {
 	log_dbug(TAG,"term");
 	Client->state = offline;
+#ifdef FEATURE_KEEPALIVE
+	Client->recv_ts = 0;
+#endif
 	if (struct tcp_pcb *pcb = Client->pcb) {
 		tcp_abort(pcb);
 		Client->pcb = 0;
@@ -291,7 +388,7 @@ static int parse_publish(uint8_t *buf, unsigned rlen, uint8_t qos)
 			pl += 2;
 			ps -= 2;
 		}
-		log_dbug(TAG,"pub topic %s %u",topic,ps);
+		log_hex(TAG,pl,ps,"pub topic %s",topic);
 		x->second.callback(topic,pl,ps);
 	} else {
 		log_warn(TAG,"not subscribed to %s",topic);
@@ -372,8 +469,8 @@ static void parse_conack(uint8_t *buf, size_t rlen)
 			assert(Client->pcb != 0);
 			log_devel(TAG,"CONACK OK");
 			Client->state = running;
-			mqtt_pub_int("version",Version,0,1,1,false);
-			mqtt_pub_int("reset_reason",ResetReasons[(int)esp_reset_reason()],0,1,1,false);
+//			mqtt_pub_int("version",Version,0,1,1,false);
+//			mqtt_pub_int("reset_reason",ResetReasons[(int)esp_reset_reason()],0,1,1,false);
 			for (const auto &s : Client->subscriptions)
 				send_sub(s.first.c_str(),false,false);
 			if (err_t e = tcp_output(Client->pcb)) {
@@ -450,14 +547,19 @@ static err_t handle_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *pbuf, err_
 			// connection has been closed
 			tcp_close(pcb);
 			Client->pcb = 0;
-			Client->state = offline;
+			if (Client->state != stopped)
+				Client->state = offline;
 			//mqtt_start(); - not from here!
-			action_dispatch("mqtt!start",0);
+			// action based start not needed anymore?
+			//action_dispatch("mqtt!start",0);
 		}
 		return 0;
 	}
 	if (pbuf->len == 0)
 		return 0;
+#ifdef FEATURE_KEEPALIVE
+	Client->recv_ts = uptime();
+#endif
 //	log_hex(TAG, pbuf->len, pbuf->payload, "recv %u: %.*s", pbuf->tot_len);
 	unsigned off = 0, tlen = pbuf->tot_len;
 	int r = 0;
@@ -476,14 +578,18 @@ static err_t handle_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *pbuf, err_
 		}
 		log_devel(TAG,"type= %x, rlen = %u",type,rlen);
 		bool alloc = false;
-		uint8_t *buf = pbuf_at(pbuf,++off);
-		if (pbuf_of(pbuf,off) != pbuf_of(pbuf,off+rlen-1)) {
-			// packet data spans accross multiple pbuf
-			alloc = true;
-			buf = (uint8_t *)malloc(rlen);
-			cpypbuf(buf,pbuf,off,rlen);
+		uint8_t *buf = 0;
+		++off;
+		if (rlen) {
+			buf = pbuf_at(pbuf,off);
+			if (pbuf_of(pbuf,off) != pbuf_of(pbuf,off+rlen-1)) {
+				// packet data spans accross multiple pbuf
+				alloc = true;
+				buf = (uint8_t *)malloc(rlen);
+				cpypbuf(buf,pbuf,off,rlen);
+			}
+			off += rlen;
 		}
-		off += rlen;
 		switch (type & 0xf0) {
 		case CONACK:
 			parse_conack(buf,rlen);
@@ -498,6 +604,15 @@ static err_t handle_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *pbuf, err_
 			break;
 		case SUBACK:
 			parse_suback(buf,rlen);
+			break;
+#if 0
+		case PINGREQ:
+			log_dbug(TAG,"ping request");
+			// TODO?
+			break;
+#endif
+		case PINGRESP:
+			log_dbug(TAG,"PINGRESP");
 			break;
 		default:
 			log_dbug(TAG,"unexpected type %u",type>>4);
@@ -536,8 +651,12 @@ static void handle_err(void *arg, err_t e)
 	if (e == ERR_ISCONN) {
 		Client->state = running;
 	} else {
+		if (Client->state != stopped)
+			Client->state = offline;
 		Client->pcb = 0;
-		Client->state = error;
+#ifdef FEATURE_KEEPALIVE
+		Client->recv_ts = 0;
+#endif
 	}
 }
 
@@ -545,6 +664,7 @@ static void handle_err(void *arg, err_t e)
 static err_t handle_connect(void *arg, struct tcp_pcb *pcb, err_t x)
 {
 	assert(x == ERR_OK);	// according to LWIP docu
+	assert(Client);
 	log_info(TAG,"connected %s",inet_ntoa(pcb->remote_ip));
 	tcp_recv(pcb,handle_recv);
 	tcp_sent(pcb,handle_sent);
@@ -569,8 +689,13 @@ static err_t handle_connect(void *arg, struct tcp_pcb *pcb, err_t x)
 	*b++ = 'T';
 	*b++ = 4;	// protocol version
 	*b++ = flags;
-	*b++ = 0;	// timeout MSB
-	*b++ = 60;	// timeout LSB
+#ifdef FEATURE_KEEPALIVE
+	*b++ = (uint8_t)(Client->keepalive >> 8);	// timeout MSB
+	*b++ = (uint8_t)(Client->keepalive & 0xff);	// timeout LSB
+#else
+	*b++ = 0;	// no timeout MSB
+	*b++ = 0;	// no timeout LSB
+#endif
 	*b++ = 0;	// client-name length MSB
 	*b++ = HostnameLen;	// client-name length LSB
 	memcpy(b,Hostname,HostnameLen);
@@ -596,8 +721,73 @@ static err_t handle_connect(void *arg, struct tcp_pcb *pcb, err_t x)
 		return e;
 	}
 
-	return mqtt_pub_int("version",Version,strlen(Version),1,0,false);
+//	return mqtt_pub_int("version",Version,strlen(Version),1,0,false);
+	return 0;
 }
+
+
+#ifndef CONFIG_IDF_TARGET_ESP8266
+// executed in LwIP context
+void mqtt_ping_fn(void *arg)
+{
+	struct tcp_pcb *pcb = (struct tcp_pcb *) arg;
+	uint8_t request[] { PINGREQ, 0 };
+	err_t e = tcp_write(pcb,request,sizeof(request),TCP_WRITE_FLAG_COPY);
+	if (e)
+		log_warn(TAG,"write PINGREQ %d",e);
+	else
+		tcp_output(Client->pcb);
+	xSemaphoreGive(LwipSem);
+}
+#endif
+
+
+#ifdef FEATURE_KEEPALIVE
+static void mqtt_ping()
+{
+	if ((Client == 0) || (Client->state != running))
+		return;
+	log_dbug(TAG,"ping");
+	Lock lock(Client->mtx,__FUNCTION__);
+#ifdef CONFIG_IDF_TARGET_ESP8266
+	uint8_t request[] = { PINGREQ, 0 };
+	LWIP_LOCK();
+	err_t e = tcp_write(Client->pcb,request,sizeof(request),TCP_WRITE_FLAG_COPY);
+	if (e)
+		log_warn(TAG,"write PINGREQ %d",e);
+	else
+		tcp_output(Client->pcb);
+	LWIP_UNLOCK();
+#else
+	tcpip_send_msg_wait_sem(mqtt_ping_fn,Client->pcb,&LwipSem);
+#endif
+}
+
+
+static unsigned mqtt_cyclic(void *)
+{
+	if (Client == 0)
+		return 1000;
+	if (Client->recv_ts == 0) {
+		log_devel(TAG,"ts=0, state=%s, %sabled",States[Client->state],Config.mqtt().enable()?"en":"dis");
+		if ((Client->state == offline) && Config.mqtt().enable())
+			mqtt_start();
+		return 1000;
+	}
+	uint32_t now = uptime();
+	int32_t rem = (Client->recv_ts + Client->keepalive*1000) - now;
+	log_devel(TAG,"cyclic %d+%d-%d=%d",Client->recv_ts,Client->keepalive,now,rem);
+	if (rem > 1500)
+		return 1000;
+	if (rem > 500)
+		return 100;
+	if (rem < 0)
+		mqtt_stop(0);
+	else
+		mqtt_ping();
+	return 50;
+}
+#endif	// FEATURE_KEEPALIVE
 
 
 static int mqtt_pub_int(const char *t, const char *v, int len, int retain, int qos, bool needlock)
@@ -660,10 +850,7 @@ static int mqtt_pub_int(const char *t, const char *v, int len, int retain, int q
 		r.name = "publish";
 		r.sem = LwipSem;
 		r.pcb = Client->pcb;
-		if (more)
-			tcpip_send_msg_wait_sem(tcpwrite_fn,&r,&LwipSem);
-		else
-			tcpip_send_msg_wait_sem(tcpwriteout_fn,&r,&LwipSem);
+		tcpip_send_msg_wait_sem(more ? tcpwrite_fn : tcpwriteout_fn,&r,&LwipSem);
 	} else {
 		uint8_t flags = TCP_WRITE_FLAG_COPY;
 		if (more)
@@ -766,7 +953,7 @@ static void mqtt_tcpout_fn(void *)
 static void mqtt_pub_rtdata(void *)
 {
 	if ((Client == 0) || (Client->state != running)) {
-		if ((StationMode == station_connected) && (Config.mqtt().enable() && ((Client == 0) || (Client->state == offline) || (Client->state == error))))
+		if ((StationMode == station_connected) && (Config.mqtt().enable() && ((Client == 0) || (Client->state == offline))))
 			mqtt_start();
 		return;
 	}
@@ -774,7 +961,7 @@ static void mqtt_pub_rtdata(void *)
 	rtd_lock();
 	for (EnvElement *e : RTData->getChilds()) {
 		const char *n = e->name();
-		if (!strcmp(n,"node") || !strcmp(n,"version") || !strcmp(n,"reset_reason") || !strcmp(n,"mqtt")) {
+		if (!strcmp(n,"node") || !strcmp(n,"mqtt")) {
 			// skip
 		} else if (EnvObject *o = e->toObject()) {
 			const char *n = e->name();
@@ -813,13 +1000,13 @@ int MqttClient::subscribe(const char *topic, void (*callback)(const char *,const
 {
 	Subscription s;
 	s.callback = callback;
+	Lock lock(mtx,__FUNCTION__);
 	subscriptions.insert(make_pair((estring)topic,s));
 	EnvString *str = signals->add(topic,"");
 	values.insert(make_pair((estring)topic,str));
 	if (state == running) {
 		send_sub(topic,true,true);
 	}
-	xSemaphoreGive(mtx);
 	return 0;
 }
 
@@ -863,19 +1050,19 @@ void mqtt_stop(void *arg)
 #endif
 		Client->pcb = 0;
 	}
-	Client->state = offline;
+#ifdef FEATURE_KEEPALIVE
+	Client->recv_ts = 0;
+#endif
+	Client->state = stopped;
 }
 
 
 static void mqtt_connect(const char *hn, const ip_addr_t *addr, void *arg)
 {
 	// called as callback from tcpip_task
-	log_dbug(TAG,"connect");
 	Lock lock(Client->mtx,__FUNCTION__);
-	if ((Client->state != connecting) && (Client->state != running)) {
+	if ((Client->state != connecting) && (Client->state != running) && (addr != 0)) {
 		Client->state = connecting;
-		if (addr == 0)
-			return;
 		uint16_t port = (uint16_t)(unsigned)arg;
 		if (Client->pcb) {
 			log_warn(TAG,"connect with PCB");
@@ -898,7 +1085,6 @@ static void mqtt_connect(const char *hn, const ip_addr_t *addr, void *arg)
 
 void mqtt_start(void *arg)
 {
-	log_dbug(TAG,"start");
 	const auto &mqtt = Config.mqtt();
 	if (!mqtt.has_uri() || !Config.has_nodename()) {
 		log_warn(TAG,"incomplete config");
@@ -912,10 +1098,11 @@ void mqtt_start(void *arg)
 		log_info(TAG,"disabled");
 		return;
 	}
+	log_dbug(TAG,"start");
 	if (Client == 0) {
 		Client = new MqttClient;
-	} else if ((Client->state != offline) && (Client->state != error)) {
-		log_dbug(TAG,"state %d",Client->state);
+	} else if (Client->state != offline) {
+		log_dbug(TAG,States[Client->state]);
 		return;
 	}
 	const char *uri = mqtt.uri().c_str();
@@ -952,22 +1139,6 @@ void mqtt_start(void *arg)
 }
 
 
-void mqtt_setup(void)
-{
-	action_add("mqtt!start",mqtt_start,0,"mqtt start");
-	action_add("mqtt!stop",mqtt_stop,0,"mqtt stop");
-	action_add("mqtt!pub_rtdata",mqtt_pub_rtdata,0,"mqtt publish data");
-	if (0 == event_callback("wifi`station_up","mqtt!start"))
-		abort();
-	if (Config.has_mqtt() && (Client == 0))
-		Client = new MqttClient;
-#ifndef CONFIG_IDF_TARGET_ESP8266
-	LwipSem = xSemaphoreCreateBinary();
-#endif
-	log_dbug(TAG,"initialized");
-}
-
-
 static void update_signal(const char *t, const void *d, size_t s)
 {
 	auto i = Client->values.find(t);
@@ -976,7 +1147,35 @@ static void update_signal(const char *t, const void *d, size_t s)
 	} else {
 		i->second->set((const char *)d,s);
 		log_dbug(TAG,"topic %s update '%.*s'",t,s,d);
+		// no argument, because it would override the action arg
+		event_trigger(Client->upev);
+//		event_trigger_arg(Client->upev,strdup(t));
 	}
+}
+
+
+void mqtt_setup(void)
+{
+	action_add("mqtt!start",mqtt_start,0,"mqtt start");
+	action_add("mqtt!stop",mqtt_stop,0,"mqtt stop");
+	action_add("mqtt!pub_rtdata",mqtt_pub_rtdata,0,"mqtt publish data");
+	if (0 == event_callback("wifi`station_up","mqtt!start"))
+		abort();
+	if (!Config.has_mqtt())
+		return;
+	if (Client == 0)
+		Client = new MqttClient;
+#ifdef FEATURE_KEEPALIVE
+	Client->keepalive = Config.mqtt().keepalive();
+	cyclic_add_task("mqtt",mqtt_cyclic,0,0);
+#endif
+#ifndef CONFIG_IDF_TARGET_ESP8266
+	LwipSem = xSemaphoreCreateBinary();
+#endif
+
+	for (const auto &s : Config.mqtt().subscribtions())
+		Client->subscribe(s.c_str(),update_signal);
+	log_dbug(TAG,"initialized");
 }
 
 
@@ -990,10 +1189,16 @@ const char *mqtt(Terminal &term, int argc, const char *args[])
 			term.printf("URI: %s\n"
 				"user: %s\n"
 				"pass: %s\n"
+#ifdef FEATURE_KEEPALIVE
+				"timeout: %us\n"
+#endif
 				"%sabled, %s\n"
 				, m->uri().c_str()
 				, m->username().c_str()
 				, m->password().c_str()
+#ifdef FEATURE_KEEPALIVE
+				, m->keepalive()
+#endif
 				, m->enable() ? "en" : "dis"
 				, States[Client ? Client->state : 0]);
 		} else {
@@ -1020,6 +1225,16 @@ const char *mqtt(Terminal &term, int argc, const char *args[])
 			m->clear_password();
 		else
 			return "Invalid argument #1.";
+#ifdef FEATURE_KEEPALIVE
+	} else if (!strcmp(args[1],"timeout")) {
+		if (argc < 3)
+			return "Missing argument.";
+		char *e;
+		long a = strtol(args[2],&e,0);
+		if ((e == args[2]) || (a < 0))
+			return "Invalid argument #2.";
+		m->set_keepalive(a);
+#endif
 	} else if (!strcmp(args[1],"enable")) {
 		m->set_enable(true);
 	} else if (!strcmp(args[1],"disable")) {
@@ -1027,9 +1242,10 @@ const char *mqtt(Terminal &term, int argc, const char *args[])
 	} else if (!strcmp(args[1],"clear")) {
 		m->clear();
 	} else if (!strcmp(args[1],"start")) {
+		if (Client && (Client->state == stopped))
+			Client->state = offline;
 		mqtt_start();
 	} else if (!strcmp(args[1],"stop")) {
-		m->set_enable(false);
 		mqtt_stop();
 	} else if (!strcmp(args[1],"sub")) {
 		if (Client == 0) {

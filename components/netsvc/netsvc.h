@@ -33,6 +33,23 @@
 extern "C" {
 #endif
 
+typedef enum protocol_e {
+	prot_unknown, prot_file, prot_http, prot_https, prot_ftp, prot_tftp, prot_mqtt,
+} protocol_t;
+
+typedef struct uri_s {
+	const char *host;
+	const char *file;
+	const char *user;
+	const char *pass;
+	ip_addr_t ip;
+	uint16_t port;
+	protocol_t prot;
+} uri_t;
+
+typedef enum { station_stopped, station_starting, station_connected, station_disconnected } sta_mode_t;
+extern sta_mode_t StationMode;
+
 #ifdef NETSVC_IMPL
 extern char *Hostname, *Domainname;
 extern uint8_t HostnameLen, DomainnameLen;
@@ -46,6 +63,7 @@ extern ip6_addr_t IP6G,IP6LL;
 #endif
 
 char *streol(char *b, size_t n);
+const char *uri_parse(char *path, uri_t *);
 int resolve_fqhn(const char *h, ip_addr_t *);
 int resolve_hostname(const char *h, ip_addr_t *);
 int query_host(const char *h, ip_addr_t *a, void (*cb)(const char *hn, const ip_addr_t *addr, void *arg), void *arg);

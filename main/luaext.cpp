@@ -98,7 +98,7 @@ static int f_event_attach(lua_State *L)
 	const char *arg = lua_tostring(L,3);
 	if (arg)
 		log_dbug(TAG,"event_attach(%s,%s,%s)",e,a,arg);
-	int r = arg ? event_callback_arg(eid,x,strdup(arg)) : event_callback(eid,x);
+	int r = event_callback_arg(eid,x,arg);
 	if (r == 0) {
 		lua_pushfstring(L,"event_attach(%s,%s,%s): failed",e,a,arg);
 		lua_error(L);
@@ -494,6 +494,7 @@ static int xlua_parse_file(const char *fn, const char *n = 0)
 				if (LS == 0)
 					xlua_init();
 				if (0 == luaL_loadbuffer(LS,buf,st.st_size,vn)) {
+					free(buf);
 					lua_setglobal(LS,vn);
 					Compiled.insert(vn);
 					return 0;
@@ -503,6 +504,7 @@ static int xlua_parse_file(const char *fn, const char *n = 0)
 			} else {
 				log_warn(TAG,"parse %s: read error",fn);
 			}
+			free(buf);
 		} else {
 			close(fd);
 			log_warn(TAG,"parse %s: stat error",fn);
@@ -600,7 +602,9 @@ const char *xluac(Terminal &t, int argc, const char *args[])
 			close(fd);
 			if (st.st_size == n) {
 				Lock lock(Mtx);
-				if (0 == luaL_loadbuffer(LS,buf,st.st_size,vn)) {
+				int r = luaL_loadbuffer(LS,buf,st.st_size,vn);
+				free(buf);
+				if (0 == r) {
 					lua_setglobal(LS,vn);
 					Compiled.insert(vn);
 					return 0;
@@ -611,6 +615,7 @@ const char *xluac(Terminal &t, int argc, const char *args[])
 			} else {
 				err = "read error";
 			}
+			free(buf);
 		} else {
 			close(fd);
 			err = "cannot stat file";
@@ -627,6 +632,10 @@ const char *xluac(Terminal &t, int argc, const char *args[])
 
 unsigned xlua_render(Screen *ctx)
 {
+	if (LS == 0) {
+		ctx->mode = (clockmode_t) (ctx->mode + 1);
+		return 100;
+	}
 	unsigned d = 50;
 	if (lua_getglobal(LS,"render_screen")) {
 		if (0 != lua_pcall(LS,0,1,0)) {
@@ -711,6 +720,7 @@ static void xlua_script(void *arg)
 	const char *script = (const char *) arg;
 	log_dbug(TAG,"lua!run '%s'",script);
 	bool run = true;
+	// TODO: 'call()' is not identified as global call
 	if (lua_getglobal(LS,script)) {
 		log_dbug(TAG,"found global %s",script);
 	} else if (0 == luaL_loadbuffer(LS,script,strlen(script),"lua!run")) {
@@ -725,7 +735,6 @@ static void xlua_script(void *arg)
 	}
 	lua_settop(LS,0);
 	lua_gc(LS,LUA_GCCOLLECT);
-	free(arg);
 }
 
 

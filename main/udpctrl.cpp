@@ -79,9 +79,11 @@ static UdpCtrl *Ctx = 0;
 static void udpctrl_session(void *arg)
 {
 	UdpCmd *c = (UdpCmd *) arg;
-	log_dbug(TAG,"%d bytes from %s:%u", c->pbuf->len, inet_ntoa(c->ip), (unsigned)c->port);
+	char ipstr[64];
+	ip2str_r(&c->ip,ipstr,sizeof(ipstr));
+	log_dbug(TAG,"%d bytes from %s:%u", c->pbuf->len, ipstr, (unsigned)c->port);
 	MemTerminal term((const char *)c->pbuf->payload,c->pbuf->len);
-	shell(term,false);
+	shell(term,true);
 	size_t s = term.getSize();
 	log_dbug(TAG,"response: '%s'",term.getBuffer());
 	LWIP_LOCK();
@@ -103,8 +105,8 @@ static void recv_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p, const 
 	UdpCmd *c = new UdpCmd(p,*ip,port);
 	char name[12];
 	++Ctx->Cmds;
-	sprintf(name,"udpctrl%u",Ctx->Cmds);
-	BaseType_t r = xTaskCreatePinnedToCore(udpctrl_session,name,2048,(void*)c,8,NULL,APP_CPU_NUM);
+	snprintf(name,sizeof(name),"udpctrl%u",Ctx->Cmds);
+	BaseType_t r = xTaskCreatePinnedToCore(udpctrl_session,"udpctrl",stacksize,(void*)c,8,NULL,APP_CPU_NUM);
 	if (r != pdPASS)  {
 		log_warn(TAG,"create task %s: %d",name,r);
 		pbuf_free(p);

@@ -260,7 +260,7 @@ const char *dim(Terminal &t, int argc, const char *argv[])
 		Dimmer *d = Dimmers;
 		while (d) {
 			float cur = d->env->get();
-			t.printf("%-12s %5u (%4.1f%%)\n",d->name,(unsigned)cur,(int)(cur*100.0)/(float)DIM_MAX);
+			t.printf("%-12s %5u (%5.1f%%)\n",d->name,(unsigned)cur,(int)(cur*100.0)/(float)DIM_MAX);
 			d = d->next;
 		}
 		return 0;

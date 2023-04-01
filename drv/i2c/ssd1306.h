@@ -92,6 +92,10 @@ class SSD1306 : public DotMatrix, public I2CDevice
 
 	int setPixel(uint16_t x, uint16_t y) override;
 	int clrPixel(uint16_t x, uint16_t y) override;
+	int setDim(uint8_t c) override
+	{ return setContrast(c); }
+	uint8_t maxDim() const override
+	{ return 255; }
 
 	private:
 	int drawBitmap_ssd1306(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t *data);

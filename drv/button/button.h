@@ -70,9 +70,10 @@ class Button
 	const char *m_name;
 	EnvBool m_pressed;
 	EnvNumber m_ptime;
-	int32_t m_tpressed;
+	int32_t m_tpressed = 0, m_treleased = 0;
 	xio_t m_gpio;
 	int8_t m_presslvl;
+	bool m_intr = false;
 	btnst_t m_st = btn_unknown;
 	event_t m_rev, m_pev, m_sev, m_mev, m_lev, m_lastev = 0;
 };

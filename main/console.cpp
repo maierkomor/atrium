@@ -39,7 +39,6 @@ using namespace std;
 
 static void console_task(void *con)
 {
-	log_info(TAG,"ready");
 	Terminal *term = (Terminal *)con;
 	for (;;) {
 		shell(*term);
@@ -77,7 +76,7 @@ static inline void uart_console_setup(void)
 #endif // CONFIG_UART_CONSOLE
 
 
-#ifdef CONFIG_USB_CONSOLE
+#if defined CONFIG_USB_CONSOLE && defined CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
 #include "jtag_terminal.h"
 
 static inline void jtag_console_setup(void)
@@ -99,7 +98,7 @@ static inline void jtag_console_setup(void)
 #endif // CONFIG_USB_CONSOLE
 
 
-#ifdef CONFIG_TINYUSB
+#if defined CONFIG_USB_CONSOLE && defined CONFIG_TINYUSB_CDC_ENABLED
 #include "cdc_terminal.h"
 
 static inline void cdc_console_setup(void)
@@ -123,5 +122,5 @@ void console_setup()
 {
 	uart_console_setup();
 	jtag_console_setup();
-//	cdc_console_setup();
+	cdc_console_setup();
 }

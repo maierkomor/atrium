@@ -187,6 +187,17 @@ static int sendmsg(LogMsg *m)
 }
 
 
+void syslog_stop()
+{
+	if (Ctx) {
+		if (struct udp_pcb *pcb = Ctx->pcb) {
+			Ctx->pcb = 0;
+			udp_remove(pcb);
+		}
+	}
+}
+
+
 void sendall(void * = 0)
 {
 	if (Ctx == 0)
@@ -208,6 +219,7 @@ void sendall(void * = 0)
 			int r = sendmsg(m);
 			m->flags &= ~sending_flag;
 			if (r) {
+				event_trigger_nd(Ctx->ev);
 				goto done;
 #if 0
 				if (x) {
@@ -232,7 +244,7 @@ void sendall(void * = 0)
 	Ctx->triggered = false;
 	lock.unlock();
 done:
-	log_local(TAG,"sent %u log messages",x);
+	log_local(TAG,"sent %u messages",x);
 }
 
 
@@ -241,9 +253,7 @@ static void syslog_hostip(const char *hn, const ip_addr_t *ip, void *arg)
 	// no LWIP_LOCK as called from tcpip_task
 	if (ip == 0)
 		return;
-	char ipstr[32];
-	inet_ntoa_r(*ip,ipstr,sizeof(ipstr));
-	log_info(TAG,"connect %s at %s",hn,ipstr);
+	log_info(TAG,"connect %s",hn);
 	err_t e;
 	udp_pcb *pcb;
 	{
@@ -261,19 +271,19 @@ static void syslog_hostip(const char *hn, const ip_addr_t *ip, void *arg)
 		}
 	}
 	if (e) {
-		log_warn(TAG,"udp_connect %d",e);
+		log_warn(TAG,"connect %d",e);
 	} else {
 		Ctx->pcb = pcb;
 		if (Ctx->ev == 0)
 			Ctx->ev = event_id("syslog`msg");
-		if (Ctx->ev != 0)
-			event_trigger_nd(Ctx->ev);
+		event_trigger_nd(Ctx->ev);
 	}
 }
 
 
 static void syslog_start(void*)
 {
+	log_devel(TAG,"Ctx=%p,mode=%d,%d",Ctx,StationMode,Config.has_syslog_host());
 	if ((Ctx == 0) || (StationMode != station_connected))
 		return;
 	if (!Config.has_syslog_host())
@@ -281,7 +291,7 @@ static void syslog_start(void*)
 	const char *host = Config.syslog_host().c_str();
 	err_t e = query_host(host,0,syslog_hostip,0);
 	if (e < 0)
-		log_warn(TAG,"query host %s: %d",host,e);
+		log_warn(TAG,"query %s: %d",host,e);
 	else
 		log_local(TAG,"start");
 }
@@ -407,7 +417,6 @@ void dmesg_setup()
 {
 	Mtx = xSemaphoreCreateMutex();
 	event_register("syslog`msg");
-//	dmesg_resize(2048);
 }
 
 

@@ -49,6 +49,9 @@
 #include <string.h>
 #include <time.h>
 
+#if IDF_VERSION >= 50
+#define ets_delay_us esp_rom_delay_us
+#endif
 
 #if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
 #define ENTER_CRITICAL() portDISABLE_INTERRUPTS()

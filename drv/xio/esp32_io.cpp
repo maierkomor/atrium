@@ -27,6 +27,10 @@
 #include <errno.h>
 #include <driver/gpio.h>
 
+#if IDF_VERSION >= 50
+#define gpio_pad_select_gpio(...)
+#define gpio_matrix_out(...)
+#endif
 
 #define TAG MODULE_GPIO
 

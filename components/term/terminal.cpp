@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2021, Thomas Maier-Komor
+ *  Copyright (C) 2018-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -65,12 +65,7 @@ int Terminal::readInput(char *buf, size_t l, bool echo)
 	int n;
 	char c;
 	while (0 < (n = get_ch(&c))) {
-		if (c == '\n') {
-			if (echo)
-				write(&c,1);
-			continue;
-		}
-		if (c == '\r') {
+		if ((c == '\n') || (c == '\r')) {
 			if (echo) {
 				write(&c,1);
 				sync();
@@ -153,7 +148,10 @@ int Terminal::readInput(char *buf, size_t l, bool echo)
 	}
 	if (n < 0)
 		return -1;
-	return eoi-buf;
+        int x = eoi-buf;
+        if ((n == 0) && (x == 0))
+                return -1;
+	return x;
 }
 
 int Terminal::setPwd(const char *cd)

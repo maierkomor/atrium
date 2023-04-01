@@ -1,5 +1,10 @@
 synopsis: hwconf <cmd> [<param>] [<value>]
 where <cmd> is:
+clearbuf: clear parse buffer
+writebuf: write parsed xxd buffer to NVS
+parsexxd: parse xxd input to RAM
+nvxxd   : create xxd output of NVS
+Following commands are only available with CONFIG_HWCONF_DYNAMIC
 show    : show complete configuration including unset values
 json    : create json output of config
 set     : set <param> to <value>, where <param> can be field[idx].element
@@ -8,10 +13,6 @@ add     : add element to array <param>
 reset   : rest to defaults
 write   : write config to NVS
 read    : read config rom NVS
-parsexxd: parse xxd input to RAM
-clearbuf: clear parse buffer
-writebuf: write parsed xxd buffer to NVS
-nvxxd   : create xxd output of NVS
 xxd     : create xxd output of current config
 backup  : create a backup of the current config in NVM
 restore : restore NVM state from backup

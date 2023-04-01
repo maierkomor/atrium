@@ -27,6 +27,10 @@
 
 #define TAG MODULE_PCA9685
 
+#if IDF_VERSION >= 50
+#define ets_delay_us esp_rom_delay_us
+#endif
+
 #define REG_MODE1		0
 #define REG_MODE2		1
 #define REG_SUBADR1		2

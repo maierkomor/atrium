@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2017-2021, Thomas Maier-Komor
+ *  Copyright (C) 2017-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -31,8 +31,17 @@ class Action
 	const char *text = 0;	// descriptive help text
 	uint32_t min = UINT32_MAX, max = 0, sum = 0, num = 0;
 
-	Action(const char *n, void (*f)(void*),void *a, const char *t);
-	Action(const char *n);
+	Action(const char *n)
+	: name(n)
+	, func(0)
+	{ }
+
+	Action(const char *n, void (*f)(void*),void *a, const char *t)
+	: name(n)
+	, text(t)
+	, func(f)
+	, arg(a)
+	{ }
 
 	void activate(void * = 0);
 
@@ -55,7 +64,7 @@ Action *action_get(const char *name);
 int action_activate(const char *name);
 int action_activate_arg(const char *name, void *arg);
 void action_dispatch(const char *name, size_t l);	// execute action via event queue
-int action_exists(const char *name);
+//int action_exists(const char *name);
 void action_iterate(void (*)(void*,const Action *),void *);
 void actions_setup();
 

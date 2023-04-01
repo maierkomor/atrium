@@ -49,9 +49,12 @@ extern "C" {
 #include <soc/sens_reg.h>
 #elif defined CONFIG_IDF_TARGET_ESP32S2
 #include <soc/sens_reg.h>
+#include <driver/temp_sensor.h>
 #elif defined CONFIG_IDF_TARGET_ESP32S3
 #include <soc/sens_reg.h>
+#include <driver/temp_sensor.h>
 #elif defined CONFIG_IDF_TARGET_ESP32C3
+#include <driver/temp_sensor.h>
 #endif
 
 
@@ -63,7 +66,7 @@ struct AdcSignal : public EnvObject
 	, channel(ch)
 	, raw("raw")
 	, volt("voltage","mV")
-	, phys("physical")
+	, phys("physical","","%4.0f")
 	{
 		add(&raw);
 		add(&volt);
@@ -81,7 +84,6 @@ struct AdcSignal : public EnvObject
 	{
 		add(&raw);
 		add(&volt);
-		add(&phys);
 	}
 
 	void set(float x)
@@ -106,6 +108,14 @@ struct AdcSignal : public EnvObject
 		}
 		volt.set(v);
 		phys.set(x*scale+offset);
+	}
+
+	void addPhysical(float s, float o, const char *dim)
+	{
+		scale = s;
+		offset = o;
+		phys.setDimension(dim);
+		add(&phys);
 	}
 
 	adc_unit_t unit;
@@ -202,6 +212,35 @@ static unsigned adc_cyclic_cb(void *arg)
 }
 
 
+#if defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
+static unsigned temp_cyclic(void *arg)
+{
+	float celsius;
+	if (0 == temp_sensor_read_celsius(&celsius)) {
+		EnvNumber *t = (EnvNumber *) arg;
+		t->set(celsius);
+	}
+	return 50;
+}
+
+
+void temp_sensor_setup()
+{
+	log_info(TAG,"temperature sensor setup");
+	temp_sensor_config_t cfg = TSENS_CONFIG_DEFAULT();
+	temp_sensor_set_config(cfg);
+	if (0 == temp_sensor_start()) {
+		EnvNumber *t = RTData->add("core-temperature",NAN,"\u00b0C","%4.1f");
+		cyclic_add_task("tsense",temp_cyclic,t,0);
+	} else {
+		log_warn(TAG,"temperature sensor init failed");
+	}
+}
+#else
+#define temp_sensor_setup()
+#endif
+
+
 static AdcSignal *getAdc(const char *arg)
 {
 	char *e;
@@ -260,6 +299,7 @@ static const char *adc_sample(Terminal &t, const char *arg)
 
 int adc_setup()
 {
+	temp_sensor_setup();
 	assert(Adcs == 0);
 	if (!HWConf.has_adc())
 		return 0;
@@ -324,9 +364,9 @@ int adc_setup()
 			Adcs[num] = new AdcSignal(n,(adc_unit_t)u,(adc_channel_t)ch);
 		}
 		Adcs[num]->atten = atten;
-		Adcs[num]->scale = c.scale();
-		Adcs[num]->offset = c.offset();
-		Adcs[num]->phys.setDimension(c.dim().c_str());
+		if (c.has_scale() || c.has_offset() || c.has_dim()) {
+			Adcs[num]->addPhysical(c.scale(),c.offset(),c.dim().c_str());
+		}
 		RTData->add(Adcs[num]);
 		if (auto i = c.interval()) {
 			Adcs[num]->itv = i;

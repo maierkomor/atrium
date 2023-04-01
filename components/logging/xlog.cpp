@@ -156,7 +156,7 @@ void log_hex(logmod_t m, const void *data, unsigned n, const char *f, ...)
 		if (((x & 15) == 0) || (x == n)) {
 			*at = 0;
 			*a = 0;
-			log_direct(ll_debug,m,"%s '%s'",line,ascii);
+			log_direct(ll_debug,m,"%-56s '%s'",line,ascii);
 			*line = 0;
 		} else if ((x & 7) == 0)
 			*at++ = ' ';

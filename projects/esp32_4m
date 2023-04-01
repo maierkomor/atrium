@@ -1233,34 +1233,40 @@ CONFIG_WPA_MBEDTLS_CRYPTO=y
 #
 # Atrium
 #
+CONFIG_WFC_TARGET="esp32"
 
 #
 # software services
 #
-CONFIG_WFC_TARGET="esp32"
-CONFIG_VERIFY_HEAP=y
-CONFIG_APP_PARAMS=y
+CONFIG_CONSOLE_UART_TX=-1
+CONFIG_CONSOLE_UART_RX=-1
+CONFIG_UART_CONSOLE=y
+CONFIG_HWCONF_DYNAMIC=y
 CONFIG_LUA=y
 CONFIG_THRESHOLDS=y
-CONFIG_UART_CONSOLE=y
 CONFIG_INTEGRATED_HELP=y
-CONFIG_HWCONF_DYNAMIC=y
-CONFIG_UDNS=y
-CONFIG_MQTT=y
 CONFIG_AT_ACTIONS=y
 CONFIG_HOLIDAYS=y
+CONFIG_TERMSERV=y
+CONFIG_STATEMACHINES=y
+CONFIG_APP_PARAMS=y
+# end of software services
+
+#
+# networking services
+#
+CONFIG_OTA=y
+CONFIG_UDNS=y
+CONFIG_MQTT=y
 CONFIG_HTTP=y
 CONFIG_FTP=y
 CONFIG_TELNET=y
-CONFIG_TERMSERV=y
 CONFIG_SYSLOG=y
 CONFIG_INFLUX=y
-CONFIG_OTA=y
-CONFIG_SMARTCONFIG=y
-CONFIG_STATEMACHINES=y
 CONFIG_UDPCTRL=y
 CONFIG_WPS=y
-# end of software services
+CONFIG_SMARTCONFIG=y
+# end of networking services
 
 #
 # filesystem support
@@ -1317,8 +1323,8 @@ CONFIG_TLC5947=y
 # development tools and experimental/alpha drivers (disable all)
 #
 # CONFIG_DEVEL is not set
+CONFIG_VERIFY_HEAP=y
 # CONFIG_FUNCTION_TIMING is not set
-# CONFIG_SOCKET_API is not set
 # end of development tools and experimental/alpha drivers (disable all)
 # end of Atrium
 # end of Component config

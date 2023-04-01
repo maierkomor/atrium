@@ -7,10 +7,10 @@
  * Source Information:
  * ===================
  * Filename : swcfg.wfc
- * Copyright: 2018-2022
+ * Copyright: 2018-2023
  * Author   : Thomas Maier-Komor
  * 
- * Code generated on 2023-03-02, 20:58:13 (CET).
+ * Code generated on 2023-03-05, 15:22:10 (CET).
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -630,6 +630,24 @@ class MQTT : public Message
 	//! Function to get mutable access to all elements of subscribtions.
 	std::vector<estring> *mutable_subscribtions();
 	
+	// optional uint16 keepalive, id 6
+	/*!
+	* Function for querying if keepalive has been set.
+	* @return true if keepalive is set.
+	*/
+	bool has_keepalive() const;
+	//! Function to reset keepalive to its default/unset value.
+	void clear_keepalive();
+	//! Get value of keepalive.
+	uint16_t keepalive() const;
+	//! Set keepalive using a constant reference
+	void set_keepalive(uint16_t v);
+	/*!
+	* Provide mutable access to keepalive.
+	* @return pointer to member variable of keepalive.
+	*/
+	uint16_t *mutable_keepalive();
+	
 	
 	protected:
 	Message *p_getMember(const char *s, const char *e);
@@ -644,6 +662,11 @@ class MQTT : public Message
 	estring m_password;
 	//! string subscribtions, id 5
 	std::vector<estring> m_subscribtions;
+	//! uint16 keepalive, id 6
+	uint16_t m_keepalive;
+	
+	private:
+	uint8_t p_validbits;
 };
 
 
@@ -4470,6 +4493,7 @@ inline size_t MQTT::getMaxSize()
 	// optional string username, id 3 has unlimited size
 	// optional string password, id 4 has unlimited size
 	// repeated string subscribtions, id 5 has unlimited size
+	// optional uint16 keepalive, id 6 has maximum size 4
 	return SIZE_MAX;
 }
 
@@ -4677,6 +4701,43 @@ inline void MQTT::set_subscribtions(unsigned x, const estring &v)
 inline size_t MQTT::subscribtions_size() const
 {
 	return m_subscribtions.size();
+}
+
+
+
+inline uint16_t MQTT::keepalive() const
+{
+	return m_keepalive;
+}
+
+inline bool MQTT::has_keepalive() const
+{
+	return 0 != (p_validbits & ((uint8_t)1U << 0));
+}
+
+/*!
+ * Function for clearing the associated member variable.
+ * It will reset the value to the default value.
+ */
+inline void MQTT::clear_keepalive()
+{
+	p_validbits &= ~((uint8_t)1U << 0);
+	m_keepalive = 60;
+}
+
+inline uint16_t *MQTT::mutable_keepalive()
+{
+	if (0 == (p_validbits & ((uint8_t)1U << 0))) {
+		p_validbits |= ((uint8_t)1U << 0);
+		m_keepalive = 60;
+	}
+	return &m_keepalive;
+}
+
+inline void MQTT::set_keepalive(uint16_t v)
+{
+	m_keepalive = v;
+	p_validbits |= ((uint8_t)1U << 0);
 }
 
 
@@ -7118,7 +7179,7 @@ inline size_t NodeConfig::getMaxSize()
 	// optional string syslog_host, id 7 has unlimited size
 	// optional string sntp_server, id 8 has unlimited size
 	// optional string timezone, id 9 has unlimited size
-	// optional MQTT mqtt, id 10 has maximum size 4294967295
+	// optional MQTT mqtt, id 10 has maximum size 3
 	// optional fixed16 dmesg_size, id 11 has maximum size 3
 	// optional Influx influx, id 12 has maximum size 12
 	// optional unsigned station2ap_time, id 13 has maximum size 6

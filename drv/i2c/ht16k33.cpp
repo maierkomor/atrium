@@ -172,11 +172,19 @@ int HT16K33::setBlink(uint8_t blink)
 int HT16K33::setNumDigits(unsigned n)
 {
 	if (n <= sizeof(m_data)) {
-		uint8_t cmd[] = { m_addr, (uint8_t)(CMD_DIM | (n-1)) };
-		if (0 == i2c_write(m_bus,cmd,sizeof(cmd),true,true)) {
-			m_digits = n;
+		m_digits = n;
+		return 0;
+	}
+	return -1;
+}
+
+
+int HT16K33::setDim(uint8_t dim)
+{
+	if ((dim & 0xf0) == 0) {
+		uint8_t cmd[] = { m_addr, (uint8_t)(CMD_DIM | dim) };
+		if (0 == i2c_write(m_bus,cmd,sizeof(cmd),true,true))
 			return 0;
-		}
 	}
 	return -1;
 }

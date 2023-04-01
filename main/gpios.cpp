@@ -96,6 +96,9 @@ class Gpio
 	static void isr_update(Gpio *o)
 	{ o->m_env.set(o->m_intlvl); }
 
+	xio_t get_xio() const
+	{ return m_gpio; }
+
 	private:
 	static void isr_handler(void *);
 	void init(unsigned);
@@ -239,9 +242,9 @@ void Gpio::init(unsigned config)
 	} else if (config & 0x3) {	// not input, not disabled
 		// configured as output
 		log_dbug(TAG,"gpio output actions");
-		action_add(concat(name,"!set_1"),Gpio::action_set1,(void*)(unsigned)m_gpio,"set gpio high");
-		action_add(concat(name,"!set_0"),Gpio::action_set0,(void*)(unsigned)m_gpio,"set gpio low");
-		action_add(concat(name,"!toggle"),Gpio::action_toggle,(void*)(unsigned)m_gpio,"toggle gpio");
+		action_add(concat(name,"!set_1"),Gpio::action_set1,(void*)this,"set gpio high");
+		action_add(concat(name,"!set_0"),Gpio::action_set0,(void*)this,"set gpio low");
+		action_add(concat(name,"!toggle"),Gpio::action_toggle,(void*)this,"toggle gpio");
 	}
 	if ((config >> 2) & 0x3) {
 		// configure interrupts
@@ -316,26 +319,30 @@ const char *gpio(Terminal &term, int argc, const char *args[])
 {
 #ifdef CONFIG_IOEXTENDERS
 	if (argc == 1) {
-		unsigned gpio = 0;
+		const char *dir[] = {"in: 0","in: 1","out","od"};
+		const char *out[] = {"","out: lo","out: hi"};
 		XioCluster **cl = XioCluster::getClusters();
 		uint8_t num = XioCluster::numClusters();
 		term.printf("%u io clusters\n",num);
 		XioCluster **e = cl + num;
 		while (cl != e) {
 			XioCluster *c = *cl++;
+			unsigned gpio = c->getBase();
 			const char *n = c->getName();
+			unsigned num = c->numIOs();
 			assert(n);
 			term.printf("cluster %s: %u IOs\n",n,c->numIOs());
-			for (int i = 0; i < c->numIOs(); ++i) {
+			for (int i = 0; i < num; ++i) {
 				int d = c->get_dir(i);
+				int o = d == 2 ? c->get_out(i) : -1;
+				++o;
 				if (d != -1) {
-					const char *dir[] = {"in: 0","in: 1","out","od"};
 					if (d)
 						++d;
 					else
 						d = c->get_lvl(i);
 					assert(dir[d]);
-					term.printf("%2u (%s/%d): %s\n",gpio,n,i,dir[d]);
+					term.printf("%2u (%s/%d): %s%s\n",gpio,n,i,dir[d],out[o]);
 				}
 				++gpio;
 			}
@@ -574,6 +581,7 @@ static int luax_gpio_set(lua_State *L)
 		lua_pushliteral(L,"Invalid argument #1.");
 		lua_error(L);
 	}
+	log_dbug(TAG,"gpio %d <= %d",g->get_xio(),v);
 	g->set_lvl((xio_lvl_t)v);
 	return 0;
 }
@@ -609,7 +617,7 @@ void xio_setup()
 		const char *n = c.name().c_str();
 		if (XioCluster *f = XioCluster::getInstance(n)) {
 			uint8_t b = c.base();
-			if (b && (f->numIOs()== c.numio()))
+			if (b && (f->numIOs() == c.numio()))
 				f->attach(b);
 			if (c.has_int_a()  && f->set_intr_a(c.int_a()))
 				log_warn(TAG,"failed to attach %s to %u as intr_a",n,c.int_a());

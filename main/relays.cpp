@@ -247,7 +247,7 @@ const char *relay(Terminal &term, int argc, const char *args[])
 {
 	Relay *r = Relay::first();
 	if (r == 0) {
-		term.println("no relays");
+		term.println("No relays.");
 	} else if (argc == 1) {
 		while (r) {
 			term.printf("relay '%s' at gpio%d is %s\n",r->name(),r->gpio(),r->is_on() ? "on" : "off");
@@ -265,8 +265,10 @@ const char *relay(Terminal &term, int argc, const char *args[])
 		else
 			return "Invalid argument #1.";
 		return relay_set(args[1],v) ? "Failed." : 0;
+	} else {
+		return "Invalid number of arguments.";
 	}
-	return "Invalid number of arguments.";
+	return 0;
 }
 
 #endif	// CONFIG_RELAY

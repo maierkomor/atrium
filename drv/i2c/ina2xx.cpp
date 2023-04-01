@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2022, Thomas Maier-Komor
+ *  Copyright (C) 2018-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -24,7 +24,6 @@
 
 #include "actions.h"
 #include "cyclic.h"
-#include "env.h"
 #include "ina2xx.h"
 #include "nvm.h"
 #include "log.h"
@@ -68,9 +67,10 @@ static uint8_t ConvTimes[] = {2,2,3,5,9,18,35,70};
 
 INA219::INA219(uint8_t bus, uint8_t addr)
 : I2CDevice(bus,addr,"ina219")
-, m_volt(new EnvNumber("bus","V","%4.1f"))
-, m_amp(new EnvNumber("current","A","%4.4f"))
-, m_shunt(new EnvNumber("shunt","mV","%4.3f"))
+, m_volt("bus","V","%4.1f")
+, m_amp("current","A","%4.4f")
+, m_shunt("shunt","mV","%4.3f")
+, m_power("power","W","%4.0f")
 , m_conf(INA_CONF_RESET_VALUE)
 , m_st(st_cont)
 , m_delay(2)
@@ -81,9 +81,10 @@ INA219::INA219(uint8_t bus, uint8_t addr)
 
 void INA219::attach(class EnvObject *root)
 {
-	root->add(m_amp);
-	root->add(m_volt);
-	root->add(m_shunt);
+	root->add(&m_amp);
+	root->add(&m_volt);
+	root->add(&m_shunt);
+	root->add(&m_power);
 	cyclic_add_task(m_name,cyclic,this,0);
 	action_add(concat(m_name,"!sample"),trigger,(void*)this,"sample data");
 }
@@ -127,7 +128,9 @@ unsigned INA219::cyclic(void *arg)
 {
 	INA219 *dev = (INA219 *)arg;
 	uint8_t data[2];
-	int16_t bus = 0, shunt = 0, amp = 0;
+	uint16_t bus = 0;
+	int16_t shunt = 0, amp = 0;
+	bool has_amp = false;
 	switch (dev->m_st) {
 	case st_read:
 		dev->m_st = st_off;
@@ -136,24 +139,30 @@ unsigned INA219::cyclic(void *arg)
 	case st_cont:
 		if (0 == i2c_w1rd(dev->m_bus,dev->m_addr,INA_REG_SHUNT,data,sizeof(data))) {
 			shunt = (int16_t) ((data[0] << 8) | data[1]);
-			dev->m_shunt->set(((float)shunt)*1E-2);
+			dev->m_shunt.set(((float)shunt)*1E-2);
 		} else {
-			dev->m_shunt->set(NAN);
+			dev->m_shunt.set(NAN);
 		}
 		if (0 == i2c_w1rd(dev->m_bus,dev->m_addr,INA_REG_AMP,data,sizeof(data))) {
 			amp = (int16_t) ((data[0] << 8) | data[1]);
-			dev->m_amp->set((float)amp/100);
+			dev->m_amp.set((float)amp/100);
+			has_amp = true;
 		} else {
-			dev->m_amp->set(NAN);
+			dev->m_amp.set(NAN);
 		}
 		if (0 == i2c_w1rd(dev->m_bus,dev->m_addr,INA_REG_BUS,data,sizeof(data))) {
-			bus = (int16_t) ((data[0] << 8) | data[1]);
+			bus = (uint16_t) ((data[0] << 8) | data[1]);
 			bus >>= 3;
-			dev->m_volt->set((float)bus*0.004);
+			dev->m_volt.set((float)bus*0.004);
+			if (has_amp)
+				dev->m_power.set(dev->m_volt.get()*dev->m_amp.get());
+			else
+				dev->m_power.set(NAN);
 		} else {
-			dev->m_volt->set(NAN);
+			dev->m_volt.set(NAN);
+			dev->m_power.set(NAN);
 		}
-		log_dbug(TAG,"bus %d, shunt %d, amp %d",bus,shunt,amp);
+		log_dbug(TAG,"bus %f, shunt %d, amp %d",(float)bus*0.004,shunt,amp);
 		break;
 	case st_trigger:
 		{
@@ -222,8 +231,8 @@ const char *INA219::exeCmd(Terminal &term, int argc, const char **args)
 		term.println(
 			"brng <v>: set bus voltage range (valid values: 16, 32)\n"
 			"pg <r>  : set shunt range (valid values: 40, 80, 160, 320)\n"
-			"badc <b>: set badc bits (valid values: 9..12)\n"
-			"sadc <r>: set sadc (9..12bits or 2,4,8,16,32,64,128 samples)\n"
+			"badc <r>: set bus-ADC (9..12bits or 2,4,8,16,32,64,128 samples)\n"
+			"sadc <r>: set shunt-ADC (9..12bits or 2,4,8,16,32,64,128 samples)\n"
 			"cal <c> : set calibration value (0..65535)\n"
 			"mode <m>: set mode (off, bus, shunt, both, bus1, shunt1, both1)\n"
 			);
@@ -348,7 +357,7 @@ const char *INA219::exeCmd(Terminal &term, int argc, const char **args)
 				m_conf &= ~CONF_MODE;
 				m_conf |= CONF_MODE_BUS | CONF_MODE_SHUNT;
 			} else {
-				return "Invalid argument #2.";
+				return "Invalid argument #3.";
 			}
 			updateDelay();
 			v = m_conf;

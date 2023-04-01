@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #
-#  Copyright (C) 2018-2022, Thomas Maier-Komor
+#  Copyright (C) 2018-2023, Thomas Maier-Komor
 #  Atrium Firmware Package for ESP
 #
 #  This program is free software: you can redistribute it and/or modify
@@ -53,41 +53,33 @@ EOF
 for i in $MEMFILES; do
 	file="$i"
 	filename=`basename "$i"`
-	cpp_file=`echo $filename|sed 's/\.html/_html.cpp/;s/\.man/_man.cpp/'`
+	fn_nodot=`echo $filename | sed 's/\./_/g'`
+	cpp_file=`printf "%s.cpp" $fn_nodot`
 	if [ "$CONFIG_INTEGRATED_HELP" = "y" ]; then
-		echo "extern const char ROMSTR $(echo $filename | sed 's/\./_/g')[];" >> $MEMFILES_H
-		echo "#define $(echo $filename | sed 's/\./_/g')_len $(stat --printf='%s' $i)" >> $MEMFILES_H
-		#echo comparing $file against $ldir/$cpp_file
-		test -e "$ldir/$cpp_file"
-		ex=$?
-		test "$file" -nt "$ldir/$cpp_file"
-		nt=$?
-		if [ "$ex" == "1" ] ||  [ "$nt" == "0" ]; then
+		size=`stat --printf='%s' $i`
+		printf "extern const char ROMSTR $fn_nodot""[];\n#define $fn_nodot""_len $size\n" >> $MEMFILES_H
+		test ! -e "$ldir/$cpp_file" -o "$file" -nt "$ldir/$cpp_file"
+		if [ "$?" == "0" ]; then
 			echo updating $ldir/$cpp_file
 			pushd `dirname $i`
 			xxd -i $filename "$ldir/$cpp_file"
-			sed -i 's/unsigned char /#include "memfiles.h"\nconst char ROMSTR /;s/]/]/' "$ldir/$cpp_file"
 			popd > /dev/null
-			sed -i 's/^unsigned //;' "$ldir/$cpp_file"
-			sed -i 's/}/ ,0x00}/' "$ldir/$cpp_file"
-			sed -i 's/int .*;//' "$ldir/$cpp_file"
+			sed -i 's/unsigned char /#include "memfiles.h"\nconst char ROMSTR /;s/]/]/;s/^unsigned //;s/}/ ,0x00}/;s/int .*;//' "$ldir/$cpp_file"
 		fi
 		echo "	$filename" | sed 's/.man/_man.cpp/' >> $CMAKELISTS
 	else
-		echo "#define $(echo $filename | sed 's/\./_/g') 0" >> $MEMFILES_H
+		echo "#define $fn_nodot 0" >> $MEMFILES_H
 		rm -f "$ldir/$cpp_file"
 	fi
 	shift
 done
 
-echo >> $MEMFILES_H
-echo "#endif" >> $MEMFILES_H
-echo ")" >> $CMAKELISTS
-echo "register_component()" >> $CMAKELISTS
+printf "\n#endif" >> $MEMFILES_H
+printf ")\nregister_component()" >> $CMAKELISTS
 
 if [ -e "$ldir/memfiles.h" ]; then
 	#echo diff "$MEMFILES_H" "$ldir/memfiles.h"
-	diff "$MEMFILES_H" "$ldir/memfiles.h" 2>&1 > /dev/null
+	diff -q "$MEMFILES_H" "$ldir/memfiles.h" > /dev/null
 	x="$?"
 else
 	x="1"

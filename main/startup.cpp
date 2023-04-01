@@ -280,9 +280,7 @@ void app_main()
 
 	log_info(TAG,"Atrium Firmware for ESP based systems");
 	log_info(TAG,"%s, %s",Copyright,License);
-	log_info(TAG,Copyright);
-	log_info(TAG,"Version %s",Version);
-	log_info(TAG,"IDF: %s",esp_get_idf_version());
+	log_info(TAG,"Version %s, IDF %s",Version,esp_get_idf_version());
 	system_info();
 
 	action_setup();
@@ -295,12 +293,12 @@ void app_main()
 	cyclic_add_task("check_heap",cyclic_check_heap,0);
 #endif
 
-	gpio_setup();
+	gpio_setup();	// init core GPIOs
 #ifdef CONFIG_I2C
-	i2c_setup();	// must be befor gpio_setup to provide io-cluster
+	i2c_setup();	// must be before xio_setup to provide io-cluster
 #endif
 #ifdef CONFIG_SPI
-	spi_setup();	// must be befor gpio_setup to provide io-cluster
+	spi_setup();	// must be before xio_setup to provide io-cluster
 #endif
 	xio_setup();
 	verify_heap();
@@ -385,10 +383,8 @@ void app_main()
 #ifdef CONFIG_CAMERA
 	webcam_setup();
 #endif
+	cfg_init_timers();
 
-	// activate actions after all events and actions are setup
-	// otherwise this step will fail
-	cfg_activate_actions();
 
 #ifdef CONFIG_LUA
 	xlua_setup();
@@ -401,6 +397,9 @@ void app_main()
 	screen_setup();
 #endif // CONFIG_DISPLAY
 
+	// activate actions after all events and actions are setup
+	// otherwise this step will fail
+	//cfg_activate_actions();	-- removed
 	// hardware init finished, no reset
 	nvm_store_u8("hwconf",0);
 	// here all actions and events must be initialized

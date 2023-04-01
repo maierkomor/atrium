@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2022, Thomas Maier-Komor
+ *  Copyright (C) 2018-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -85,20 +85,25 @@ static void switch_mode(void *arg)
 	if (arg == 0) {
 		Ctx->mode = (clockmode_t)((int)Ctx->mode + 1);
 		if (Ctx->mode >= CLOCK_MODE_MAX) {
-			size_t n = RTData->numChildren();
 			size_t x = Ctx->mode - CLOCK_MODE_MAX;
-			EnvElement *e;
-			do {
-				e = RTData->getChild(x);
-				if (e) {
-					const char *n = e->name();
-					if (e->toObject() || (0 == strcmp(n,"version")) || (0 == strcmp(n,"ltime")) || (0 == strcmp(n,"uptime"))) {
-						e = 0;
-						++x;
-					}
+			EnvElement *e = RTData->getElement(x);
+			while (e) {
+				const char *name = e->name();
+				if ((0 == strcmp(name,"version")) || (0 == strcmp(name,"ltime")) || (0 == strcmp(name,"uptime"))) {
+					++x;
+					e = RTData->getElement(x);
+					continue;
 				}
-			} while ((e == 0) && (x < n));
-			if (x == n)
+				const char *pn = e->getParent()->name();
+				if ((pn != 0) && (0 == strcmp(pn,"mqtt"))) {
+					++x;
+					e = RTData->getElement(x);
+					continue;
+				} else {
+					break;
+				}
+			}
+			if (e == 0)
 				Ctx->mode = cm_version;
 			else
 				Ctx->mode = (clockmode_t) (x+CLOCK_MODE_MAX);
@@ -110,12 +115,14 @@ static void switch_mode(void *arg)
 	} else if (0 == strcmp("stopwatch",m)) {
 		Ctx->mode = cm_stopwatch;
 	} else {
-		int idx = RTData->getOffset((const char *) arg);
+		int idx = RTData->getIndex((const char *) arg);
 		if (idx == -1) {
 			log_warn(TAG,"invalid mode request %s",(const char *) arg);
 			return;
 		}
-		Ctx->mode = (clockmode_t) (idx+CLOCK_MODE_MAX);
+		idx += CLOCK_MODE_MAX;
+		log_dbug(TAG,"index %d",idx);
+		Ctx->mode = (clockmode_t) (idx);
 	}
 	log_dbug(TAG,"new mode %d",Ctx->mode);
 	Ctx->modestart = uptime();
@@ -313,6 +320,15 @@ void Screen::display_sw()
 }
 
 
+/*
+static EnvElement *getNextEnv(EnvElement *e)
+{
+	if (e == 0)
+		return RTData->
+}
+*/
+
+
 static unsigned clock_iter(void *arg)
 {
 	bool alpha = Ctx->disp->hasAlpha();
@@ -339,8 +355,19 @@ static unsigned clock_iter(void *arg)
 				nextFont = font_mono9;
 				break;
 			default:
-				if (EnvElement *e = RTData->getChild(Ctx->mode-CLOCK_MODE_MAX))
+				if (EnvElement *e = RTData->getElement(Ctx->mode-CLOCK_MODE_MAX)) {
 					text = e->name();
+					log_dbug(TAG,"getElement %d: %s",Ctx->mode,text);
+					if (const char *pn = e->getParent()->name()) {
+						size_t pl = strlen(pn);
+						size_t nl = strlen(text);
+						char *tmp = (char *)alloca(pl+nl+2);
+						memcpy(tmp,pn,pl);
+						tmp[pl] = '/';
+						memcpy(tmp+pl+1,text,nl+1);
+						text = tmp;
+					}
+				}
 			}
 			if (text) {
 				log_dbug(TAG,"mode %s",text);
@@ -414,22 +441,20 @@ static unsigned clock_iter(void *arg)
 #endif
 		break;
 	default:
-		if (EnvElement *e = RTData->getChild(Ctx->mode-CLOCK_MODE_MAX)) {
+		if (EnvElement *e = RTData->getElement(Ctx->mode-CLOCK_MODE_MAX)) {
 			dim = e->getDimension();
+			fmt = "";
 			if (EnvNumber *n = e->toNumber()) {
 				fmt = n->getFormat();
 				v = n->get();
-				log_dbug(TAG,"%s %s %f",e->name(),fmt,v);
 				if (isnan(v))
 					fmt = "---";
 			} else if (EnvBool *b = e->toBool()) {
 				fmt = b->get() ? "on" : "off";
 			} else if (EnvString *s = e->toString()) {
 				fmt = s->get();
-				log_dbug(TAG,"string %s %s",e->name(),fmt);
-			} else {
-				fmt = "";
 			}
+//			log_dbug(TAG,"%s %s",e->name(),fmt);
 		}
 	}
 	if (fmt) {
@@ -441,7 +466,7 @@ static unsigned clock_iter(void *arg)
 		} else {
 			char buf[9];
 			snprintf(buf,sizeof(buf),fmt,v);
-			log_dbug(TAG,"write %s",buf);
+//			log_dbug(TAG,"write %s",buf);
 			Ctx->disp->write(buf);
 			if (dim) {
 				if (Ctx->disp->charsPerLine() > 6)
@@ -460,35 +485,30 @@ static unsigned clock_iter(void *arg)
 #ifdef CONFIG_LUA
 int luax_disp_max_x(lua_State *L)
 {
-	TextDisplay *disp = TextDisplay::getFirst();
-	if (disp == 0) {
-		lua_pushstring(L,"no display");
-		lua_error(L);
+	
+	if (TextDisplay *disp = TextDisplay::getFirst()) {
+		if (DotMatrix *dm = disp->toDotMatrix()) {
+			lua_pushinteger(L, dm->maxX());
+			return 1;
+		}
 	}
-	DotMatrix *dm = disp->toDotMatrix();
-	if (dm == 0) {
-		lua_pushstring(L,"no dot-matrix");
-		lua_error(L);
-	}
-	lua_pushinteger(L, dm->maxX());
-	return 1;
+	lua_pushstring(L,"no display");
+	lua_error(L);
+	return 0;
 }
 
 
 int luax_disp_max_y(lua_State *L)
 {
-	TextDisplay *disp = TextDisplay::getFirst();
-	if (disp == 0) {
-		lua_pushstring(L,"no display");
-		lua_error(L);
+	if (TextDisplay *disp = TextDisplay::getFirst()) {
+		if (DotMatrix *dm = disp->toDotMatrix()) {
+			lua_pushinteger(L, dm->maxY());
+			return 1;
+		}
 	}
-	DotMatrix *dm = disp->toDotMatrix();
-	if (dm == 0) {
-		lua_pushstring(L,"no dot-matrix");
-		lua_error(L);
-	}
-	lua_pushinteger(L, dm->maxY());
-	return 1;
+	lua_pushstring(L,"no display");
+	lua_error(L);
+	return 0;
 }
 
 
@@ -496,15 +516,12 @@ int luax_disp_set_cursor(lua_State *L)
 {
 	int x = luaL_checkinteger(L,1);
 	int y = luaL_checkinteger(L,2);
-	TextDisplay *disp = TextDisplay::getFirst();
-	if (disp == 0) {
-		lua_pushstring(L,"no display");
-		lua_error(L);
+	if (TextDisplay *disp = TextDisplay::getFirst()) {
+		if (-1 != disp->setPos(x,y))
+			return 0;
 	}
-	if (-1 == disp->setPos(x,y)) {
-		lua_pushstring(L,"Invalid argument.");
-		lua_error(L);
-	}
+	lua_pushstring(L,"Invalid argument.");
+	lua_error(L);
 	return 0;
 }
 
@@ -515,20 +532,12 @@ int luax_disp_draw_rect(lua_State *L)
 	int y = luaL_checkinteger(L,2);
 	int w = luaL_checkinteger(L,3);
 	int h = luaL_checkinteger(L,4);
-	TextDisplay *disp = TextDisplay::getFirst();
-	if (disp == 0) {
-		lua_pushstring(L,"no display");
-		lua_error(L);
-	}
-	DotMatrix *dm = disp->toDotMatrix();
-	if (dm == 0) {
-		lua_pushstring(L,"no dot-matrix");
-		lua_error(L);
-	}
-	if (-1 == dm->drawRect(x,y,w,h)) {
-		lua_pushstring(L,"Invalid argument.");
-		lua_error(L);
-	}
+	if (TextDisplay *disp = TextDisplay::getFirst())
+		if (DotMatrix *dm = disp->toDotMatrix())
+			if (-1 != dm->drawRect(x,y,w,h))
+				return 0;
+	lua_pushstring(L,"no dot-matrix");
+	lua_error(L);
 	return 0;
 }
 
@@ -536,15 +545,11 @@ int luax_disp_draw_rect(lua_State *L)
 int luax_disp_set_font(lua_State *L)
 {
 	const char *fn = luaL_checkstring(L,1);
-	TextDisplay *disp = TextDisplay::getFirst();
-	if (disp == 0) {
-		lua_pushstring(L,"no display");
-		lua_error(L);
-	}
-	if (-1 == disp->setFont(fn)) {
-		lua_pushstring(L,"invalid font");
-		lua_error(L);
-	}
+	if (TextDisplay *disp = TextDisplay::getFirst())
+		if (-1 != disp->setFont(fn))
+			return 0;
+	lua_pushstring(L,"invalid font");
+	lua_error(L);
 	return 0;
 }
 
@@ -552,15 +557,12 @@ int luax_disp_set_font(lua_State *L)
 int luax_disp_write(lua_State *L)
 {
 	const char *txt = luaL_checkstring(L,1);
-	TextDisplay *disp = TextDisplay::getFirst();
-	if (disp == 0) {
-		lua_pushstring(L,"no display");
-		lua_error(L);
+	if (TextDisplay *disp = TextDisplay::getFirst()) {
+		if (-1 != disp->write(txt))
+			return 0;
 	}
-	if (-1 == disp->write(txt)) {
-		lua_pushstring(L,"Invalid argument.");
-		lua_error(L);
-	}
+	lua_pushstring(L,"Invalid argument.");
+	lua_error(L);
 	return 0;
 
 }
@@ -601,7 +603,7 @@ int screen_setup()
 	d->setBlink(false);
 	action_add("display!set_mode",switch_mode,0,"switch to next or specified display mode");
 	if (d->maxDim() > 1) {
-		action_add("display!set_bright",bright_set,(void*)d,"set brightness to argument value");
+		action_add("display!set_bright",bright_set,0,"set brightness to argument value");
 	}
 	action_add("display!off",shutdown,Ctx,"clock: turn off");
 	action_add("display!on",poweron,Ctx,"clock: turn on");
