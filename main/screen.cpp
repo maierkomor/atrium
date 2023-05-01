@@ -157,9 +157,8 @@ void Screen::display_time()
 {
 	uint8_t h=0,m=0,s=0;
 	unsigned y=0;
-	get_time_of_day(&h,&m,&s,0,0,0,&y);
 	bool colon = disp->hasChar(':');
-	if (y < 2000) {
+	if (get_time_of_day(&h,&m,&s,0,0,0,&y)) {
 		if (colon)
 			disp->write("--:--:--");
 		else
@@ -185,8 +184,7 @@ void Screen::display_date()
 {
 	uint8_t wd=0,day=0,mon=0;
 	unsigned year=0;
-	get_time_of_day(0,0,0,&wd,&day,&mon,&year);
-	if (year < 2000) {
+	if (get_time_of_day(0,0,0,&wd,&day,&mon,&year)) {
 		disp->write("--.--.----");
 		return;
 	}

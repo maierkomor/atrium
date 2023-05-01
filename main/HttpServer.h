@@ -40,7 +40,6 @@ class HttpServer
 
 	void setUploadDir(const char *);
 	void addDirectory(const char *);
-	void addFile(const char *);
 	void addFunction(const char *, www_fun_t f);
 	void addMemory(const char *, const char *);
 	virtual bool authorized(const char *, const char *)
@@ -55,16 +54,20 @@ class HttpServer
 	bool runFile(HttpRequest *);
 	bool runDirectory(HttpRequest *);
 	bool runFunction(HttpRequest *);
+#ifdef WITH_MEMFILES
 	bool runMemory(HttpRequest *);
+#endif
 	void performGET(HttpRequest *);
 	void performPOST(HttpRequest *);
 	void performPUT(HttpRequest *);
 
 	const char *m_wwwroot, *m_rootmap, *m_upload;
-	std::set<const char *,CStrLess> m_files;
 	std::set<const char *,SubstrLess> m_dirs;
 	std::map<const char *,www_fun_t,CStrLess> m_functions;
+#ifdef WITH_MEMFILES
 	std::map<const char *,const char *,CStrLess> m_memfiles;
+#endif
+	uint8_t m_rootlen;
 };
 
 

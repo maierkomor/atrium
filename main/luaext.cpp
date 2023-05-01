@@ -24,6 +24,7 @@ extern "C" {
 #include "lua.h"
 #include "lualib.h"
 #include "lauxlib.h"
+#include "lstate.h"
 }
 
 #include "actions.h"
@@ -113,10 +114,10 @@ static int f_event_create(lua_State *L)
 	const char *n = luaL_checkstring(L,1);
 	const char *a = strchr(n,'`');
 	if (a == 0) {
-		lua_pushliteral(L,"Invalid argument #1.");
+		lua_pushliteral(L,"event_create: Invalid argument #1.");
 		lua_error(L);
 	}
-	int e = event_register(n);
+	int e = event_register(strdup(n));
 	if (e == 0) {
 		lua_pushliteral(L,"Error registering event.");
 		lua_error(L);
@@ -130,7 +131,7 @@ static int f_event_trigger(lua_State *L)
 {
 	const char *arg = 0;
 	if (lua_type(L,2) == LUA_TSTRING) {
-		arg = strdup(lua_tostring(L,2));
+		arg = lua_tostring(L,2);	// strdup done in even_trigger_arg
 	}
 	switch (lua_type(L,1)) {
 	case LUA_TSTRING:
@@ -208,6 +209,35 @@ int f_timestamp(lua_State *L)
 {
 	lua_pushinteger(L,timestamp()&UINT32_MAX);
 	return 1;
+}
+
+
+int f_time(lua_State *L)
+{
+	uint8_t h, m, s;
+	if (get_time_of_day(&h,&m,&s,0,0,0,0)) {
+		lua_pushliteral(L,"get time failed");
+		lua_error(L);
+	}
+	lua_pushinteger(L,h);
+	lua_pushinteger(L,m);
+	lua_pushinteger(L,s);
+	return 3;
+}
+
+
+int f_date(lua_State *L)
+{
+	uint8_t d, m;
+	unsigned y;
+	if (get_time_of_day(0,0,0,0,&d,&m,&y)) {
+		lua_pushliteral(L,"get time failed");
+		lua_error(L);
+	}
+	lua_pushinteger(L,y);
+	lua_pushinteger(L,m);
+	lua_pushinteger(L,d);
+	return 3;
 }
 
 
@@ -301,12 +331,31 @@ static int f_getvar(lua_State *L)
 
 static int f_print(lua_State *L)
 {
-	const char *str = lua_tostring(L,1);
-	if (str) {
-		log_dbug(TAG,"con_print '%s'",str);
+	int n = lua_gettop(L);
+	for (int x = 1; x < n; ++x) {
+		const char *str = lua_tostring(L,x);
+		if (str != 0) {
+			size_t l = strlen(str);
+			if (L->term) {
+				L->term->write(str,l);
+			} else {
+				con_write(str,l);
+			}
+		} else {
+			lua_error(L);
+		}
+		if (L->term)
+			L->term->write("\t",1);
+		else
+			con_write("\t",1);
+	}
+	const char *str = lua_tostring(L,n);
+	if (str == 0) {
+	} else if (L->term) {
+		L->term->println(str);
+	} else {
 		con_print(str);
 	}
-	lua_pop(L,1);
 	return 0;
 }
 
@@ -323,7 +372,7 @@ static int f_tmr_create(lua_State *L)
 	const char *n = luaL_checkstring(L,1);
 	int iv = luaL_checkinteger(L,2);
 	if (iv < 10) {
-		lua_pushliteral(L,"Invalid argument #2.");
+		lua_pushliteral(L,"tmr_create: Invalid argument #2.");
 		lua_error(L);
 	}
 	if (timefuse_t t = timefuse_create(n,iv,false)) {
@@ -331,7 +380,7 @@ static int f_tmr_create(lua_State *L)
 		lua_pushinteger(L,(int)t);
 		return 1;
 	}
-	lua_pushliteral(L,"Invalid argument #1.");
+	lua_pushliteral(L,"tmr_create: Invalid argument #1.");
 	lua_error(L);
 	return 0;
 }
@@ -357,7 +406,7 @@ static int f_tmr_start(lua_State *L)
 		r = timefuse_start(n);
 	}
 	if (r) {
-		lua_pushliteral(L,"Invalid argument #1.");
+		lua_pushliteral(L,"tmr_start: Invalid argument #1.");
 		lua_error(L);
 	}
 	return 0;
@@ -375,7 +424,28 @@ static int f_tmr_stop(lua_State *L)
 		r = timefuse_stop(n);
 	}
 	if (r) {
-		lua_pushliteral(L,"Invalid argument #1.");
+		lua_pushliteral(L,"tmr_stop: Invalid argument #1.");
+		lua_error(L);
+	}
+	return 0;
+}
+
+
+static int f_tmr_active(lua_State *L)
+{
+	int r;
+	if (lua_isinteger(L,1)) {
+		int t = lua_tointeger(L,1);
+		r = timefuse_active((timefuse_t)t);
+	} else {
+		const char *n = luaL_checkstring(L,1);
+		if (timefuse_t t = timefuse_get(n))
+			r = timefuse_active(t);
+		else
+			r = 1;
+	}
+	if (r) {
+		lua_pushliteral(L,"tmr_active: Invalid argument #1.");
 		lua_error(L);
 	}
 	return 0;
@@ -399,7 +469,7 @@ static const LuaFn CoreFunctions[] = {
 	{ "var_get", f_getvar, "get variable visible via env command" },
 	{ "var_set", f_setvar, "set variable visible via env command" },
 	{ "var_new", f_newvar, "create variable visible via env command" },
-	{ "con_print", f_print, "print to console" },
+	{ "print", f_print, "print to terminal/console" },
 	// math.random yields a float....
 	{ "random", f_random, "create a 32-bit integer random number" },
 	{ "action_activate", f_action_activate, "activate an action (action[,arg])" },
@@ -411,10 +481,13 @@ static const LuaFn CoreFunctions[] = {
 	{ "log_dbug", f_dbug, "write debug message to log" },
 	{ "uptime", f_uptime, "returns uptime as float in seconds" },
 	{ "timestamp", f_timestamp, "returns timestamp as 32-bit us (will wrap)" },
+	{ "time", f_time, "returns the current time as h,m,s" },
+	{ "date", f_date, "returns the current time as y,m,d" },
 	{ "tmr_create", f_tmr_create, "creates a timer (name,interval)" },
 	{ "tmr_getid", f_tmr_getid, "queries the id of a timer, returns 0 if non-existent" },
 	{ "tmr_start", f_tmr_start, "start a timer" },
 	{ "tmr_stop", f_tmr_stop, "stop a timer" },
+	{ "tmr_active", f_tmr_active, "querys if the timer is running" },
 	{ 0, 0, 0 },
 };
 
@@ -660,6 +733,7 @@ void xlua_run(const char *s, size_t l)
 {
 	if (LS == 0)
 		xlua_init();
+	Lock lock(Mtx);
 	bool exe = false;
 	if (l < 64) {
 		char tmp[l+1];
@@ -673,8 +747,10 @@ void xlua_run(const char *s, size_t l)
 			exe = true;
 	}
 	if (exe) {
-		if (int e = lua_pcall(LS,0,1,0))
-			log_warn(TAG,"Lua execution error %d",e);
+		if (int e = lua_pcall(LS,0,1,0)) {
+			const char *err = lua_tostring(LS,-1);
+			log_warn(TAG,"Lua execution error %d: %s",e,err?err:"");
+		}
 	}
 }
 
@@ -694,10 +770,12 @@ const char *xlua_exe(Terminal &t, const char *script)
 		r = "Parser error.";
 	}
 	if (r == 0) {
+		LS->term = &t;
 		if (int e = lua_pcall(LS,0,1,0)) {
 			r = "Execution error.";
 			log_warn(TAG,"Lua execution error %d",e);
 		}
+		LS->term = 0;
 	}
 	if (const char *str = lua_tostring(LS,-1)) {
 		t.println(str);
@@ -705,6 +783,7 @@ const char *xlua_exe(Terminal &t, const char *script)
 	}
 	lua_settop(LS,0);
 	lua_gc(LS,LUA_GCCOLLECT);
+	log_dbug(TAG,"done exe '%s'",script);
 	return r;
 }
 
@@ -735,6 +814,7 @@ static void xlua_script(void *arg)
 	}
 	lua_settop(LS,0);
 	lua_gc(LS,LUA_GCCOLLECT);
+	log_dbug(TAG,"exe done '%s'",script);
 }
 
 
@@ -742,6 +822,7 @@ static void xlua_init()
 {
 	if (LS == 0) {
 		LS = luaL_newstate();
+		LS->term = 0;
 		luaL_requiref(LS,"base",luaopen_base,1);
 		lua_pop(LS,1);
 		luaL_requiref(LS,"math",luaopen_math,1);

@@ -140,58 +140,6 @@ static int set_dns_server(const char *v)
 */
 
 
-#ifdef CONFIG_LIGHTCTRL
-static int set_threshold_off(Terminal &t, const char *v)
-{
-	if (v == 0) {
-		t.printf("%lu\n",Config.threshold_off());
-		return 0;
-	}
-	if (!strcmp(v,"-c")) {
-		Config.clear_threshold_off();
-		return 0;
-	}
-	long l = strtol(v,0,0);
-	if ((l < 0) || (l > 1023))
-		return 1;
-	Config.set_threshold_off(l);
-	return 0;
-}
-
-
-static int set_threshold_on(Terminal &t, const char *v)
-{
-	if (v == 0) {
-		t.printf("%lu\n",Config.threshold_on());
-	} else if (!strcmp(v,"-c")) {
-		Config.clear_threshold_on();
-	} else {
-		long l = strtol(v,0,0);
-		if ((l < 0) || (l > 1023))
-			return 1;
-		Config.set_threshold_on(l);
-	}
-	return 0;
-}
-
-
-static int set_dim_step(Terminal &t, const char *v)
-{
-	if (v == 0) {
-		t.printf("%lu\n",Config.dim_step());
-	} else if (!strcmp(v,"-c")) {
-		Config.clear_dim_step();
-	} else {
-		long l = strtol(v,0,0);
-		if ((l < 0) || (l > 1023))
-			return 1;
-		Config.set_dim_step(l);
-	}
-	return 0;
-}
-#endif
-
-
 template <typename S>
 int set_string_option(Terminal &t, S *s, const char *v)
 {
@@ -695,7 +643,7 @@ void initDns()
 			log_info(TAG,"DNS %s",dns.c_str());
 			dns_setserver(x++,&a);
 		} else {
-			log_warn(TAG,"invalid DNS server '%s'",dns);
+			log_warn(TAG,"invalid DNS IP '%s'",dns);
 		}
 	}
 #endif
@@ -716,7 +664,7 @@ void sntp_setup()
 void cfg_activate()
 {
 	PROFILE_FUNCTION();
-	log_info(TAG,"activating config");
+	log_info(TAG,"activate config");
 
 	if (!Config.has_nodename()) 
 		initNodename();
@@ -782,7 +730,7 @@ void cfg_activate_triggers()
 			continue;
 		}
 		EnvNumber *n = e->toNumber();
-		const char *nn = 0;
+		const char *nn = name;
 		if (n == 0) {
 			e = RTData->find(name);
 			if (e == 0)

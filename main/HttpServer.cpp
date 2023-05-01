@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2021, Thomas Maier-Komor
+ *  Copyright (C) 2018-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -61,27 +61,18 @@ HttpServer::HttpServer(const char *wwwroot, const char *rootmap)
 : m_wwwroot(wwwroot)
 , m_rootmap(rootmap)
 , m_upload(0)
-, m_files()
 , m_dirs()
+, m_rootlen(wwwroot ? strlen(wwwroot) : 0)
 {
+	if (rootmap == 0)
+		rootmap = "/index.htmt";
+	assert((rootmap == 0) || (rootmap[0] == '/'));
 }
 
 
 void HttpServer::addDirectory(const char *d)
 {
 	m_dirs.insert(d);
-}
-
-
-void HttpServer::addFile(const char *f)
-{
-	m_files.insert(strdup(f));
-}
-
-
-void HttpServer::addMemory(const char *name, const char *contents)
-{
-	m_memfiles.insert(make_pair(name,contents));
 }
 
 
@@ -131,7 +122,7 @@ bool HttpServer::runDirectory(HttpRequest *req)
 
 
 #ifdef CONFIG_ROMFS
-static bool send_romfs(int r, HttpRequest *req)
+static void send_romfs(int r, HttpRequest *req)
 {
 	HttpResponse ans;
 	LwTcp *con = req->getConnection();
@@ -149,7 +140,7 @@ static bool send_romfs(int r, HttpRequest *req)
 	log_dbug(TAG,"mmaped romfs file to %p",addr);
 	if (-1 == con->write(addr,s,true)) {
 		log_warn(TAG,"error sending: %s",strerror(errno));
-		return false;
+		return;
 	}
 #else
 	int off = 0;
@@ -161,13 +152,12 @@ static bool send_romfs(int r, HttpRequest *req)
 		// no copy, force sync
 		if (-1 == con->write(tmp,n,false)) {
 			log_warn(TAG,"error sending: %s",con->error());
-			return false;
+			return;
 		}
 		con->sync(true);
 		s -= n;
 	} while (s > 0);
 #endif // CONFIG_ENABLE_FLASH_MMAP
-	return true;
 }
 #endif // CONFIG_ROMFS
 
@@ -176,47 +166,37 @@ bool HttpServer::runFile(HttpRequest *req)
 {
 #if defined CONFIG_ROMFS || defined HAVE_FS
 	const char *uri = req->getURI();
+	assert(*uri == '/');
 #endif
 #ifdef CONFIG_ROMFS
-	if (*uri == '/') {
-		int r = romfs_open(uri+1);
-		if (r >= 0) {
-			log_dbug(TAG,"found %s in romfs",uri);
-			return send_romfs(r,req);
-		}
+	int r = romfs_open(uri+1);
+	if (r >= 0) {
+		log_dbug(TAG,"found %s in romfs",uri);
+		send_romfs(r,req);
+		return true;
 	}
 #endif // CONFIG_ROMFS
 #ifdef HAVE_FS
-	auto i = m_files.find(uri);
-	if (i == m_files.end())
-		return false;
 	if (m_wwwroot == 0) {
 		log_warn(TAG,"wwwroot not set");
 		return false;
 	}
-	log_devel(TAG,"found file %s",uri);
-	size_t rl = strlen(m_wwwroot);
-	if (m_wwwroot[rl-1] == '/')
-		--rl;
 	size_t ul = strlen(uri);
-	char fn[ul+rl+1];
-	memcpy(fn,m_wwwroot,rl);
-	memcpy(fn+rl,uri,ul+1);
-	log_devel(TAG,"open(%s)",fn);
-	HttpResponse ans;
-	int fd = open(fn,O_RDONLY);
-	if (fd == -1) {
-		log_dbug(TAG,"open of %s failed",fn);
-		ans.setResult(HTTP_NOT_FOUND);
-		ans.senddata(req->getConnection());
-	} else {
-		log_dbug(TAG,"sending file %s",fn);
+	char path[m_rootlen + ul + 1];
+	memcpy(path,m_wwwroot,m_rootlen);
+	memcpy(path+m_rootlen,uri,ul+1);
+	log_dbug(TAG,"open(%s)",path);
+	int fd = open(path,O_RDONLY);
+	if (fd != -1) {
+		log_dbug(TAG,"sending file %s",path);
+		HttpResponse ans;
 		ans.setResult(HTTP_OK);
 		ans.senddata(req->getConnection(),fd);
 		close(fd);
+		return true;
 	}
 #endif // HAVE_FS
-	return true;
+	return false;
 }
 
 
@@ -233,6 +213,13 @@ bool HttpServer::runFunction(HttpRequest *req)
 }
 
 
+#ifdef WITH_MEMFILES
+void HttpServer::addMemory(const char *name, const char *contents)
+{
+	m_memfiles.insert(make_pair(name,contents));
+}
+
+
 bool HttpServer::runMemory(HttpRequest *req)
 {
 	auto m = m_memfiles.find(req->getURI());
@@ -245,6 +232,7 @@ bool HttpServer::runMemory(HttpRequest *req)
 	ans.senddata(req->getConnection());
 	return true;
 }
+#endif
 
 
 void HttpServer::performGET(HttpRequest *req)
@@ -255,10 +243,12 @@ void HttpServer::performGET(HttpRequest *req)
 		log_dbug(TAG,"root query mapped to %s",m_rootmap);
 		req->setURI(m_rootmap);
 	}
-	if (runMemory(req)) {
-	} else if (runFunction(req)) {
+	if (runFunction(req)) {
 	} else if (runFile(req)) {
 	} else if (runDirectory(req)) {
+#ifdef WITH_MEMFILES
+	} else if (runMemory(req)) {
+#endif
 	} else {
 		log_dbug(TAG,"%s: not found",uri);
 		HttpResponse ans;

@@ -82,7 +82,7 @@ const char ResetReasons[][12] = {
 	"external",
 	"software",
 	"panic",
-	"internal_wd",
+	"watchdog",
 	"task_wd",
 	"watchdog",
 	"deepsleep",
@@ -142,8 +142,7 @@ const char *localtimestr(char *s)
 {
 	uint8_t h,m,d;
 	unsigned y;
-	get_time_of_day(&h,&m,0,&d,0,0,&y);
-	if ((h < 24) && (y > 2020))
+	if (0 == get_time_of_day(&h,&m,0,&d,0,0,&y))
 		sprintf(s,"%s, %u:%02u",Weekdays_de[d],h,m);
 	else
 		s[0] = 0;
@@ -245,17 +244,15 @@ static int daylight_saving_cet(struct tm *tm)
 
 
 #if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3 || defined CONFIG_IDF_TARGET_ESP8266
-void get_time_of_day(uint8_t *h, uint8_t *m, uint8_t *s, uint8_t *wd, uint8_t *mday, uint8_t *month, unsigned *year)
+int get_time_of_day(uint8_t *h, uint8_t *m, uint8_t *s, uint8_t *wd, uint8_t *mday, uint8_t *month, unsigned *year)
 {
 	time_t now;
 	time(&now);
-	if (now == 0) {
-		*h = 0xff;
-		*m = 0xff;
-		return;
-	}
+	if (now == 0)
+		return -1;
 	struct tm tm;
-	gmtime_r(&now,&tm);
+	if (0 == gmtime_r(&now,&tm))
+		return -1;
 	//dbug("get_time_of_day(): %u:%02u:%02u, %s %d.%d, TZ%d",tm.tm_hour,tm.tm_min,tm.tm_sec,Weekdays_en[tm.tm_wday],tm.tm_mday,tm.tm_mon+1,Timezone);
 	int tz = 0;
 	if (const char *t = Config.timezone().c_str()) {
@@ -288,18 +285,22 @@ void get_time_of_day(uint8_t *h, uint8_t *m, uint8_t *s, uint8_t *wd, uint8_t *m
 		*mday = tm.tm_mday;
 	if (year)
 		*year = 1900 + tm.tm_year;
+	return 0;
 }
 
 #else
 // can be used when the platform supports it
-void get_time_of_day(uint8_t *h, uint8_t *m, uint8_t *s, uint8_t *wd, uint8_t *md, uint8_t *mon, unsigned *year)
+int get_time_of_day(uint8_t *h, uint8_t *m, uint8_t *s, uint8_t *wd, uint8_t *md, uint8_t *mon, unsigned *year)
 {
 	time_t now;
 	time(&now);
 	struct tm tm;
-	localtime_r(&now,&tm);
-	*h = tm.tm_hour;
-	*m = tm.tm_min;
+	if (0 == localtime_r(&now,&tm))
+		return -1;
+	if (h)
+		*h = tm.tm_hour;
+	if (m)
+		*m = tm.tm_min;
 	if (s)
 		*s = tm.tm_sec;
 	if (wd)
@@ -310,6 +311,7 @@ void get_time_of_day(uint8_t *h, uint8_t *m, uint8_t *s, uint8_t *wd, uint8_t *m
 		*mon = tm.tm_mon;
 	if (year)
 		*year = tm.tm_year;
+	return 0;
 }
 #endif
 

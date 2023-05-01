@@ -215,7 +215,7 @@ void Gpio::action_toggle(void *arg)
 
 void Gpio::init(unsigned config)
 {
-	log_info(TAG,"gpio%d named %s",m_gpio,m_env.name());
+	log_info(TAG,"gpio%d named %s, config 0x%x",m_gpio,m_env.name(),config);
 	m_next = First;
 	First = this;
 	xio_cfg_t cfg = XIOCFG_INIT;
@@ -223,17 +223,16 @@ void Gpio::init(unsigned config)
 	cfg.cfg_intr = (xio_cfg_intr_t)(((config >> 2) & 0x7));
 	if (config & (1<<7))
 		cfg.cfg_pull = xio_cfg_pull_up;
-	else if (config & (1<<7))
+	else if (config & (1<<8))
 		cfg.cfg_pull = xio_cfg_pull_down;
+	if (config & (1<<5)) {	// set-init?
+		bool inithi = config & (1 << 6);
+		cfg.cfg_initlvl = inithi ? xio_cfg_initlvl_high : xio_cfg_initlvl_low;
+		log_dbug(TAG,"init %s",inithi ? "high" : "low");
+	}
 	if (0 > xio_config(m_gpio,cfg)) {
 		log_warn(TAG,"config gpio %u failed",m_gpio);
 		return;
-	}
-	if (config & (1<<5)) {
-		unsigned lvl = (config>>6)&0x1;
-		log_dbug(TAG,"set level %d",lvl);
-		if (xio_set_lvl(m_gpio,(xio_lvl_t)lvl))
-			log_warn(TAG,"set level %d on gpio %d failed",lvl,m_gpio);
 	}
 	const char *name = m_env.name();
 	Action *a = 0;
@@ -572,13 +571,13 @@ static int luax_gpio_set(lua_State *L)
 {
 	int v = luaL_checkinteger(L,2);
 	if ((v < 0) || (v > 1)) {
-		lua_pushliteral(L,"Invalid argument #2.");
+		lua_pushfstring(L,"gpio_set(%d)",v);
 		lua_error(L);
 	}
 	const char *n = luaL_checkstring(L,1);
 	Gpio *g = Gpio::get(n);
 	if (g == 0) {
-		lua_pushliteral(L,"Invalid argument #1.");
+		lua_pushfstring(L,"gpio_set(%s)",n);
 		lua_error(L);
 	}
 	log_dbug(TAG,"gpio %d <= %d",g->get_xio(),v);
@@ -592,7 +591,7 @@ static int luax_gpio_get(lua_State *L)
 	const char *n = luaL_checkstring(L,1);
 	Gpio *g = Gpio::get(n);
 	if (g == 0) {
-		lua_pushliteral(L,"Invalid argument #1.");
+		lua_pushfstring(L,"gpio_get(%s)",n);
 		lua_error(L);
 	}
 	int lvl = g->get_lvl();

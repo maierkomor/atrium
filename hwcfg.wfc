@@ -94,14 +94,14 @@ option esp8285 : esp8266 {
 
 message SystemConfig
 {
-	string manufacturer = 1	[ unset = ""];
-	string board_name = 2	[ unset = ""];
-	string board_rev = 3	[ unset = ""];
+	string manufacturer = 1;
+	string board_name = 2;
+	string board_rev = 3;
 	sint8 diag_uart = 4	[ unset = 0 ];
 	sint8 console_rx = 5	[ default = 0 ];
 	sint8 console_tx = 6	[ default = 0 ];
-	string model_name = 7	[ unset = ""];
-	string model_number = 8	[ unset = ""];
+	string model_name = 7;
+	string model_number = 8;
 	bool usb_diag = 9	[ unset = true, ifdef=CONFIG_USB_DIAGLOG ];
 	bool usb_con = 10	[ unset = true, ifdef=CONFIG_USB_CONSOLE ];
 }
@@ -119,7 +119,7 @@ message TouchpadConfig
 
 message TouchChannelConfig
 {
-	string name = 1		[ unset = "" ];
+	string name = 1;
 	sint8 channel = 2	[ unset = -1 ];
 	fixed16 threshold = 3;
 	uint8 slope = 4;
@@ -147,7 +147,7 @@ bitset pull_mode_t
 
 message ButtonConfig
 {
-	string name = 1			[ unset = "" ];
+	string name = 1;
 	sint8 gpio = 2			[ unset = -1 ];
 	bool presslvl = 3		[ unset = 0 ];
 	pull_mode_t pull_mode = 4	[ unset = pull_none ];
@@ -168,7 +168,7 @@ bitset relay_cfg_t
 
 message RelayConfig
 {
-	string name = 1		[ unset = "" ];
+	string name = 1;
 	sint8 gpio = 2		[ unset = -1 ];
 	relay_cfg_t config = 3	[ unset = 0 ];
 	unsigned min_itv = 4	[ default = 0 ];	// minimum interval
@@ -201,7 +201,7 @@ message Ws2812bConfig
 	sint8 gpio = 1		[ unset = -1 ];
 	sint8 ch = 2		[ unset = -1 ];
 	uint8 nleds = 3		[ unset = 0 ];
-	string name = 4		[ unset = "" ];
+	string name = 4;
 }
 
 
@@ -268,7 +268,7 @@ message HcSr04Config
 {
 	sint8 trigger = 1	[ unset = -1 ];
 	sint8 echo = 2		[ unset = -1 ];
-	string name = 3		[ unset = "" ];
+	string name = 3;
 }
 
 
@@ -283,7 +283,7 @@ message LedConfig
 {
 	sint8 gpio = 1		[ unset = -1 ];
 	ledcfg_t config = 2	[ default = 0 ];
-	string name = 3		[ unset = "" ];
+	string name = 3;
 	sint8 pwm_ch = 4	[ unset = -1 ];
 }
 
@@ -309,7 +309,7 @@ message UartConfig
 
 message AdcChannel
 {
-	string name = 1		[ unset = "" ];
+	string name = 1;
 
 	// ADC1 or ADC2 - ADC2 cannot be used with WiFi started
 	uint8 unit = 2		[ unset = 0 ];
@@ -337,7 +337,7 @@ message AdcConfig
 {
 	// esp8266: set name to enable
 	// esp32: not used
-	string adc_name = 1	[ unset = "" ];
+	string adc_name = 1;
 
 	// adc_width_t: 0=9bit .. 3=12bit, adc is disabled if not set
 	uint8 adc1_bits = 2	[ default = 0 ];
@@ -347,7 +347,7 @@ message AdcConfig
 	uint8 clk_div = 5;	// esp8266 only
 
 	// name of hall sensor
-	string hall_name = 6	[ unset = "" ];
+	string hall_name = 6;
 
 	repeated AdcChannel channels = 7;
 }
@@ -456,7 +456,7 @@ message SpiBusConfig
 
 message GpioCluster
 {
-	string name = 1		[ unset = "" ];
+	string name = 1;
 	uint8 base = 2		[ unset = 0 ];
 	uint8 numio = 3		[ unset = 0 ];
 	sint8 int_a = 4		[ unset = -1 ];
@@ -466,7 +466,7 @@ message GpioCluster
 
 message Hlw8012Config
 {
-//	string name = 1		[ unset = "" ];
+//	string name = 1;
 	sint8 sel = 2		[ unset = -1 ];
 	sint8 cf = 3		[ unset = -1 ];
 	sint8 cf1 = 4		[ unset = -1 ];

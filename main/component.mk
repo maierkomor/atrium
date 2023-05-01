@@ -2,3 +2,6 @@
 
 #COMPONENT_EXTRA_CLEAN:
 
+TIMESTAMP	=$(shell date +%s)
+#COMPONENT_ADD_LDFLAGS=-Xlinker -gc-sections,--defsym,LDTIMESTAMP=$(TIMESTAMP) -lmain
+COMPONENT_ADD_LDFLAGS=-Xlinker --defsym -Xlinker LDTIMESTAMP=$(TIMESTAMP) -lmain

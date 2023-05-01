@@ -84,6 +84,13 @@ typedef enum xio_cfg_wakeup_e {
 } xio_cfg_wakeup_t;
 
 
+typedef enum xio_cfg_initlvl_e {
+	xio_cfg_initlvl_low,
+	xio_cfg_initlvl_high,
+	xio_cfg_initlvl_keep,
+} xio_cfg_initlvl_t;
+
+
 typedef struct xio_cfg
 {
 	xio_cfg_io_t cfg_io : 2;
@@ -93,10 +100,13 @@ typedef struct xio_cfg
 	xio_cfg_intr_t cfg_intr : 3;
 	uint8_t reserve2 : 1;
 	xio_cfg_wakeup_t cfg_wakeup : 2;
+	uint8_t reserve3 : 2;
+	xio_cfg_initlvl_t cfg_initlvl : 2;
+	uint8_t reserve4 : 2;
 } xio_cfg_t;
 
 
-#define XIOCFG_INIT { .cfg_io = xio_cfg_io_keep, .reserve0=0, .cfg_pull = xio_cfg_pull_keep, .reserve1=0, .cfg_intr = xio_cfg_intr_keep, .reserve2=0, .cfg_wakeup = xio_cfg_wakeup_keep }
+#define XIOCFG_INIT { .cfg_io = xio_cfg_io_keep, .reserve0=0, .cfg_pull = xio_cfg_pull_keep, .reserve1=0, .cfg_intr = xio_cfg_intr_keep, .reserve2=0, .cfg_wakeup = xio_cfg_wakeup_keep, .reserve3=0, .cfg_initlvl = xio_cfg_initlvl_keep, .reserve4=0 }
 
 extern const char *GpioDirStr[];
 extern const char *GpioIntrTriggerStr[];

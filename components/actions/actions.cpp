@@ -127,7 +127,7 @@ Action *action_add(const char *name, void (*func)(void *), void *arg, const char
 			log_dbug(TAG,"add %s",name);
 			return (Action*) &(*Actions.emplace(name,func,arg,text).first);
 		}
-		log_warn(TAG,"duplicated action %s",name);
+		log_warn(TAG,"action exists: %s",name);
 	}
 	return 0;
 }

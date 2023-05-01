@@ -29,6 +29,7 @@ typedef uint32_t trigger_t;
 #include <vector>
 
 class Action;
+class Terminal;
 
 struct Callback
 {
@@ -56,6 +57,7 @@ struct EventHandler
 	std::vector<Callback> callbacks;
 };
 
+void event_status(Terminal &);
 
 trigger_t event_callback(event_t e, Action *a);
 // strdup's arg
@@ -92,6 +94,10 @@ const char *event_name(event_t);
 uint32_t event_occur(event_t);
 uint64_t event_time(event_t);
 char *concat(const char *s0, const char *s1);
+
+const char *trigger_get_eventname(trigger_t);
+const char *trigger_get_actionname(trigger_t);
+const char *trigger_get_arg(trigger_t);
 
 #ifdef __cplusplus
 }

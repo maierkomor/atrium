@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020, Thomas Maier-Komor
+ *  Copyright (C) 2020-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -21,36 +21,40 @@
 
 #include "event.h"
 
-class Timer;
-typedef Timer* timefuse_t;
+typedef uint16_t timefuse_t;
 
+#ifdef __cplusplus
 timefuse_t timefuse_create(const char *name, unsigned itv, bool repeat = false);
-timefuse_t timefuse_get(const char *name);
-const char *timefuse_name(timefuse_t);
-int timefuse_delete(const char *name);
 int timefuse_start(const char *name);
 int timefuse_stop(const char *name);
-int timefuse_delete(timefuse_t);
+int timefuse_interval_set(const char *,unsigned);
+unsigned timefuse_interval_get(const char *);
+event_t timefuse_start_event(const char *);
+event_t timefuse_stop_event(const char *);
+event_t timefuse_timeout_event(const char *);
+int timefuse_repeat_get(const char *);			// ESP32 only
+int timefuse_repeat_set(const char *,bool);		// ESP32 only
+//int timefuse_delete(const char *name);	-- not supported
+
+extern "C" {
+#endif
+timefuse_t timefuse_get(const char *name);
+const char *timefuse_name(timefuse_t);
+//int timefuse_delete(timefuse_t);		-- not supported
 int timefuse_start(timefuse_t);
 int timefuse_stop(timefuse_t);
 int timefuse_active(timefuse_t);
 unsigned timefuse_interval_get(timefuse_t);
-unsigned timefuse_interval_get(const char *);
 int timefuse_interval_set(timefuse_t,unsigned);
-int timefuse_interval_set(const char *,unsigned);
-event_t timefuse_start_event(const char *);
-event_t timefuse_stop_event(const char *);
-event_t timefuse_timeout_event(const char *);
 event_t timefuse_start_event(timefuse_t);
 event_t timefuse_stop_event(timefuse_t);
 event_t timefuse_timeout_event(timefuse_t);
 timefuse_t timefuse_iterator();
 timefuse_t timefuse_next(timefuse_t);
-
-// unsupported by FreeRTOS
-//bool timefuse_repeat_get(const char *);
-//bool timefuse_repeat_get(timefuse_t);
-//int timefuse_repeat_set(const char *,bool);
-//int timefuse_repeat_set(timefuse_t,bool);
+int timefuse_repeat_get(timefuse_t);			// ESP32 only
+int timefuse_repeat_set(timefuse_t,bool);		// ESP32 only
+#ifdef __cplusplus
+}	// extern "C"
+#endif
 
 #endif

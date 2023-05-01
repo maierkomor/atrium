@@ -8,7 +8,7 @@ set autostart: -a <name> <autostart>
 start        : -s <name>
 terminate    : -t <name>
 list         : -l 
-The format of <time> is: <integer>[hms]
+The format of <time> is: <integer>[{h,m,s,ms}]
 The integer value is interpreted as ms time per default. When adding an
-h, m, of s after the integer, the time is interpreted as hours, minutes,
-and seconds respectively.
+h, m, s, ms after the integer, the time is interpreted as hours,
+minutes, seconds or millisconds accordingly.

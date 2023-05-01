@@ -78,7 +78,7 @@ HttpResponse::HttpResponse(const char *r)
 , m_content()
 , m_fd(-1)
 {
-	log_dbug(TAG,"HttpResponse('%s')",r);
+	log_dbug(TAG,"HttpResponse('%s')",r?r:"");
 
 }
 

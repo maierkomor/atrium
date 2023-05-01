@@ -212,7 +212,7 @@ static unsigned adc_cyclic_cb(void *arg)
 }
 
 
-#if defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
+#if defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
 static unsigned temp_cyclic(void *arg)
 {
 	float celsius;
@@ -231,7 +231,7 @@ void temp_sensor_setup()
 	temp_sensor_set_config(cfg);
 	if (0 == temp_sensor_start()) {
 		EnvNumber *t = RTData->add("core-temperature",NAN,"\u00b0C","%4.1f");
-		cyclic_add_task("tsense",temp_cyclic,t,0);
+		cyclic_add_task("coretemp",temp_cyclic,t,0);
 	} else {
 		log_warn(TAG,"temperature sensor init failed");
 	}

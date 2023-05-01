@@ -1,3 +1,15 @@
+diff --git a/src/api/tcpip.c b/src/api/tcpip.c
+index 3cacff25..5944e87d 100644
+--- a/src/api/tcpip.c
++++ b/src/api/tcpip.c
+@@ -145,6 +145,7 @@ tcpip_thread(void *arg)
+   while (1) {                          /* MAIN Loop */
+     LWIP_TCPIP_THREAD_ALIVE();
+     /* wait for a message, timeouts are processed while waiting */
++    msg = 0;
+     TCPIP_MBOX_FETCH(&tcpip_mbox, (void **)&msg);
+     if (msg == NULL) {
+       LWIP_DEBUGF(TCPIP_DEBUG, ("tcpip_thread: invalid message: NULL\n"));
 diff --git a/src/core/dns.c b/src/core/dns.c
 index bd02aa83..42ae5f1d 100644
 --- a/src/core/dns.c
@@ -74,3 +86,17 @@ index bd02aa83..42ae5f1d 100644
  
  #if ESP_DNS
  static bool dns_server_is_set (void)
+diff --git a/src/include/lwip/opt.h b/src/include/lwip/opt.h
+index 11c9b10b..1ef127d6 100644
+--- a/src/include/lwip/opt.h
++++ b/src/include/lwip/opt.h
+@@ -3516,7 +3516,8 @@
+  * DHCP_DEBUG: Enable debugging in dhcp.c.
+  */
+ #if !defined DHCP_DEBUG || defined __DOXYGEN__
+-#define DHCP_DEBUG                      LWIP_DBG_OFF
++//#define DHCP_DEBUG                      LWIP_DBG_OFF
++#define DHCP_DEBUG                      1
+ #endif
+ 
+ /**

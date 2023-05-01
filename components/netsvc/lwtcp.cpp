@@ -550,7 +550,7 @@ int LwTcp::read(char *buf, size_t l, unsigned timeout)
 	}
 	xSemaphoreGiveRecursive(m_mtx);
 	if (tofree) {
-#ifdef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 1
 		LWIP_LOCK();
 		pbuf_free(tofree);
 		LWIP_UNLOCK();
@@ -576,15 +576,24 @@ int LwTcp::send(const char *buf, size_t l, bool copy)
 		return -1;
 	PROFILE_FUNCTION();
 	log_devel(TAG,"send@%u %u %scopy",m_port,l,copy?"":"no-");
-#ifdef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 1
 	{
 		RLock lock(m_mtx);
 		m_nwrite += l;
 		m_nout += l;
 	}
-	LWIP_LOCK();
-	err_t e = tcp_write(m_pcb,buf,l,copy ? TCP_WRITE_FLAG_COPY : 0);
-	LWIP_UNLOCK();
+	err_t e;
+//	for (;;) {
+		LWIP_LOCK();
+		e = tcp_write(m_pcb,buf,l,copy ? TCP_WRITE_FLAG_COPY : 0);
+//		if (e == -1)
+//			tcp_output(m_pcb);
+		LWIP_UNLOCK();
+//		if (e != -1)
+//			break;
+//		log_dbug(TAG,"tcp_write -1");
+//		vTaskDelay(1);
+//	}
 #else
 	tcpwrite_arg_t a;
 	a.pcb = m_pcb;
@@ -597,7 +606,13 @@ int LwTcp::send(const char *buf, size_t l, bool copy)
 		m_nwrite += l;
 		m_nout += l;
 	}
-	tcpip_send_msg_wait_sem(tcpwrite_fn,&a,&m_lwip);
+	for (;;) {
+		tcpip_send_msg_wait_sem(tcpwrite_fn,&a,&m_lwip);
+		// error -1 means out of memory, so we retry
+		if (a.err != -1)
+			break;
+		vTaskDelay(1);
+	}
 	err_t e = a.err;
 #endif
 	if (e == 0) {
@@ -642,7 +657,7 @@ void LwTcp::sync(bool block)
 	PROFILE_FUNCTION();
 	log_local(TAG,"@%u sync %d",m_port,block);
 	err_t r = 0;
-#ifdef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 1
 	LWIP_LOCK();
 	unsigned w = m_nwrite;
 	if (m_nout) {
@@ -686,7 +701,7 @@ LwTcpListener::LwTcpListener(uint16_t port, void (*session)(LwTcp *), const char
 , m_stack(stack)
 , m_prio(prio)
 {
-#ifdef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 1
 	LWIP_LOCK();
 	m_pcb = tcp_new_ip_type(IPADDR_TYPE_ANY);
 	if (err_t e = tcp_bind(m_pcb,IP_ADDR_ANY,port)) {
@@ -713,7 +728,7 @@ LwTcpListener::LwTcpListener(uint16_t port, void (*session)(LwTcp *), const char
 }
 
 
-#ifndef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 0
 void LwTcpListener::create_fn(void *arg)
 {
 	LwTcpListener *a = (LwTcpListener *) arg;

@@ -64,7 +64,7 @@ static uint16_t Interval = 0;
 static int64_t LastUpdate = 0;
 static char *Server = 0;
 static bool Queried = false;
-#ifndef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 0
 static sys_sem_t LwipSem = 0;
 #endif
 
@@ -87,7 +87,7 @@ static inline void sntp_req_fn(void *arg)
 	else
 		log_dbug(TAG,"send req");
 	pbuf_free(pb);
-#ifndef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 0
 	if (pdTRUE != xSemaphoreGive(LwipSem))
 		abort();
 #endif
@@ -99,7 +99,7 @@ static void sntp_connect(const char *hn, const ip_addr_t *addr, void *arg);
 static unsigned sntp_cyclic(void *arg)
 {
 	if (SPCB != 0) {
-#ifdef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 1
 		LWIP_LOCK();
 		sntp_req_fn(0);
 		LWIP_UNLOCK();
@@ -195,7 +195,7 @@ static void sntp_mc_init_fn(void *)
 		LWIP_UNLOCK();
 	}
 #endif
-#ifndef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 0
 	if (pdTRUE != xSemaphoreGive(LwipSem))
 		abort();
 #endif
@@ -204,7 +204,7 @@ static void sntp_mc_init_fn(void *)
 
 void sntp_mc_init()
 {
-#ifdef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 1
 	sntp_mc_init_fn(0);
 #else
 	if (LwipSem == 0)
@@ -272,7 +272,7 @@ static void sntp_bc_init_fn(void *)
 		ip_set_option(BPCB,SOF_BROADCAST);
 		log_dbug(TAG,"initialized broadcast SNTP");
 	}
-#ifndef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 0
 	if (pdTRUE != xSemaphoreGive(LwipSem))
 		abort();
 #endif
@@ -281,7 +281,7 @@ static void sntp_bc_init_fn(void *)
 
 void sntp_bc_init()
 {
-#ifdef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 1
 	LWIP_LOCK();
 	sntp_bc_init_fn(0);
 	LWIP_UNLOCK();

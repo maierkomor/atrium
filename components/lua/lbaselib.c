@@ -21,6 +21,7 @@
 #include "lualib.h"
 
 
+#if 0	// Atrium has its own implementation
 static int luaB_print (lua_State *L) {
   int n = lua_gettop(L);  /* number of arguments */
   int i;
@@ -35,6 +36,7 @@ static int luaB_print (lua_State *L) {
   lua_writeline();
   return 0;
 }
+#endif
 
 
 /*
@@ -515,7 +517,7 @@ static const luaL_Reg base_funcs[] = {
   {"next", luaB_next},
   {"pairs", luaB_pairs},
   {"pcall", luaB_pcall},
-  {"print", luaB_print},
+//  {"print", luaB_print},
   {"warn", luaB_warn},
   {"rawequal", luaB_rawequal},
   {"rawlen", luaB_rawlen},

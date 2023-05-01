@@ -408,8 +408,12 @@ void abort_on_mutex(SemaphoreHandle_t mtx, const char *usage)
 	uart_print(__FUNCTION__);
 	TaskHandle_t h = xSemaphoreGetMutexHolder(mtx);
 #if defined ESP32
-	uart_print(pcTaskGetTaskName(0));
-	uart_print(pcTaskGetTaskName(h));
+	const char *n = pcTaskGetTaskName(0);
+	if (n)
+		uart_print(n);
+	n = pcTaskGetTaskName(h);
+	if (n)
+		uart_print(n);
 #else
 	uart_print(pcTaskGetName(0));
 	uart_print(pcTaskGetName(h));

@@ -21,6 +21,7 @@
 #include "event.h"
 #include "log.h"
 //#include "profiling.h"
+#include "terminal.h"
 
 #include <assert.h>
 #include <string.h>
@@ -29,6 +30,7 @@
 #include <freertos/semphr.h>
 #include <freertos/task.h>
 #include <freertos/timers.h>
+#include <atomic>
 #include <vector>
 
 using namespace std;
@@ -37,6 +39,16 @@ using namespace std;
 #define log_devel log_dbug
 #else
 #define log_devel(...)
+#endif
+
+// WARNING: no debug support on 1MB devices!!!
+#ifdef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
+#define log_dbug(...)
+#define busy_set(...)
+#elif defined CONFIG_LEDS
+extern "C" void busy_set(int on);
+#else
+#define busy_set(...)
 #endif
 
 
@@ -54,7 +66,11 @@ static QueueHandle_t EventsQ = 0;
 static SemaphoreHandle_t EventMtx = 0;
 static vector<EventHandler> EventHandlers;
 #define TAG MODULE_EVENT
-static uint8_t Lost = 0;
+#ifdef ESP32
+static atomic<uint32_t> Lost, Discarded, Invalid, Processed;
+#else
+static uint32_t Lost = 0, Discarded = 0, Invalid = 0, Processed = 0;
+#endif
 
 
 char *concat(const char *s0, const char *s1)
@@ -83,7 +99,7 @@ event_t event_register(const char *cat, const char *type)
 	// event_t 0: name: empty string; invalid event, catched in this loop
 	for (size_t i = 1; i < n; ++i) {
 		if (!strcmp(name,EventHandlers[i].name)) {
-			log_error(TAG,"duplicate event %d: %s",i,name);
+			log_warn(TAG,"duplicate event %d: %s",i,name);
 			if (name != cat)
 				free((void*)name);
 			return (event_t) i;
@@ -113,37 +129,42 @@ uint64_t event_time(event_t e)
 
 trigger_t event_callback(event_t e, Action *a)
 {
+	/*
+	trigger_t t = 0;
 	if (pdFALSE == xSemaphoreTake(EventMtx,MUTEX_ABORT_TIMEOUT))
 		abort_on_mutex(EventMtx,__FUNCTION__);
-	if (e < EventHandlers.size()) {
+	if ((e != 0) && (e < EventHandlers.size())) {
 		Callback c(a);
-		trigger_t t = (trigger_t) ((e << 16) | EventHandlers[e].callbacks.size());
+		t = (trigger_t) ((e << 16) | EventHandlers[e].callbacks.size());
 		EventHandlers[e].callbacks.push_back(c);
-		xSemaphoreGive(EventMtx);
-		log_dbug(TAG,"add %s -> %s",EventHandlers[e].name,a->name);
-		return t;
 	}
 	xSemaphoreGive(EventMtx);
-	log_warn(TAG,"invalid event %u",e);
-	return 0;
+	if (t) {
+		log_dbug(TAG,"add %s -> %s",EventHandlers[e].name,a->name);
+	} else {
+		log_dbug(TAG,"callback got invalid event %u",e);
+	}
+	return t;
+	*/
+	return event_callback_arg(e,a,0);
 }
 
 
 trigger_t event_callback_arg(event_t e, Action *a, const char *arg)
 {
-	if (pdFALSE == xSemaphoreTake(EventMtx,MUTEX_ABORT_TIMEOUT))
-		abort_on_mutex(EventMtx,__FUNCTION__);
-	if (e < EventHandlers.size()) {
+	trigger_t t = 0;
+	Lock lock(EventMtx);
+	if ((e != 0) && (e < EventHandlers.size())) {
 		Callback c(a,arg ? strdup(arg) : 0);	// copy arg
-		trigger_t t = (trigger_t) ((e << 16) | EventHandlers[e].callbacks.size());
+		t = (trigger_t) ((e << 16) | EventHandlers[e].callbacks.size());
 		EventHandlers[e].callbacks.push_back(c);
-		xSemaphoreGive(EventMtx);
-		log_dbug(TAG,"add %s -> %s",EventHandlers[e].name,a->name);
-		return t;
 	}
-	xSemaphoreGive(EventMtx);
-	log_warn(TAG,"invalid event %u",e);
-	return 0;
+	if (t) {
+		log_dbug(TAG,"add %s -> %s",EventHandlers[e].name,a->name);
+	} else {
+		log_dbug(TAG,"callback_arg got invalid event %u",e);
+	}
+	return t;
 }
 
 
@@ -152,7 +173,7 @@ int event_trigger_en(trigger_t t, bool en)
 	event_t e = t >> 16;
 	uint16_t c = t;
 	if ((e == 0) || (e >= EventHandlers.size()) ||  (c >= EventHandlers[e].callbacks.size())) {
-		log_warn(TAG,"invalid trigger %u",t);
+		log_dbug(TAG,"invalid trigger %u",t);
 		return 1;
 	}
 	EventHandlers[e].callbacks[c].enabled = en;
@@ -168,10 +189,11 @@ trigger_t event_callback(const char *event, const char *action)
 			++sp;
 			char tmp[sp-action];
 			memcpy(tmp,action,sizeof(tmp));
+			tmp[sp-action-1] = 0;
 			if (Action *a = action_get(tmp))
 				return event_callback_arg(e,a,sp);
 		} else if (Action *a = action_get(action))
-			return event_callback(e,a);
+			return event_callback_arg(e,a,0);
 		x = action;
 	} else {
 		x = event;
@@ -197,6 +219,29 @@ trigger_t event_callback_arg(const char *event, const char *action, const char *
 }
 
 
+const char *trigger_get_eventname(trigger_t t)
+{
+	event_t e = t >> 16;
+	return event_name(e);
+}
+
+
+const char *trigger_get_actionname(trigger_t t)
+{
+	event_t e = t >> 16;
+	unsigned id = t & 0xffff;
+	return EventHandlers[e].callbacks[id].action->name;
+}
+
+
+const char *trigger_get_arg(trigger_t t)
+{
+	event_t e = t >> 16;
+	unsigned id = t & 0xffff;
+	return EventHandlers[e].callbacks[id].arg;
+}
+
+
 const EventHandler *event_handler(event_t e)
 {
 	if (e < EventHandlers.size())
@@ -208,18 +253,16 @@ const EventHandler *event_handler(event_t e)
 int event_detach(event_t e, Action *a)
 {
 	const char *err = "invalid event";
-	if (e != 0) {
+	if ((e != 0) && (e < EventHandlers.size())) {
 		Lock lock(EventMtx,__FUNCTION__);
-		if (e < EventHandlers.size()) {
-			EventHandler &h = EventHandlers[e];
-			for (size_t i = 0, j = h.callbacks.size(); i != j; ++i) {
-				if (h.callbacks[i].action == a) {
-					h.callbacks.erase(h.callbacks.begin()+i);
-					return 0;
-				}
+		EventHandler &h = EventHandlers[e];
+		for (size_t i = 0, j = h.callbacks.size(); i != j; ++i) {
+			if (h.callbacks[i].action == a) {
+				h.callbacks.erase(h.callbacks.begin()+i);
+				return 0;
 			}
-			err = "action not found";
 		}
+		err = "action not found";
 	}
 	log_warn(TAG,"detach %u: %s",e,err);
 	return 1;
@@ -253,31 +296,33 @@ event_t event_id(const char *n)
 }
 
 
-
 const char *event_name(event_t e)
 {
-	if (e != 0) {
-		if (e < EventHandlers.size())
-			return EventHandlers[e].name;
+	const char *name;
+	if ((e != 0) && (e < EventHandlers.size())) {
+		name = EventHandlers[e].name;
+	} else {
+		name = 0;
 	}
-	log_dbug(TAG,"invalid event %u",e);
-	return 0;
+	return name;
 }
 
 
 void event_trigger(event_t id)
 {
-	if (id == 0) {
-		log_devel(TAG,"trigger 0");
-		return;
+	if ((id == 0) || (id >= EventHandlers.size())) {
+		++Invalid;
+	} else if (EventHandlers[id].callbacks.empty()) {
+		++Discarded;
+	} else {
+		Event e(id);
+		BaseType_t r = xQueueSend(EventsQ,&e,1000);
+		if (r != pdTRUE) {
+			++Lost;
+		} else {
+			log_dbug(TAG,"trigger %s",EventHandlers[id].name);
+		}
 	}
-	Event e(id);
-	BaseType_t r = xQueueSend(EventsQ,&e,1000);
-	if (r != pdTRUE) {
-		log_dbug(TAG,"lost event %d",id);
-		++Lost;
-	} else
-		log_dbug(TAG,"trigger %s",EventHandlers[id].name);
 }
 
 
@@ -292,13 +337,20 @@ void event_trigger_nd(event_t id)	// no-debug version for syslog only
 
 void event_trigger_arg(event_t id, void *arg)
 {
-	if (id != 0) {
-		Event e(id,arg);
-		log_dbug(TAG,"trigger %d %p",id,arg);
-		BaseType_t r = xQueueSend(EventsQ,&e,1000);
-		if (r != pdTRUE)
-			++Lost;
+	if ((id != 0) && (id < EventHandlers.size())) {
+		if (!EventHandlers[id].callbacks.empty()) {
+			Event e(id,arg);
+			log_dbug(TAG,"trigger %d %p",id,arg);
+			BaseType_t r = xQueueSend(EventsQ,&e,1000);
+			if (r != pdTRUE)
+				++Lost;
+			return;
+		}
+		++Discarded;
+	} else {
+		++Invalid;
 	}
+	free(arg);
 }
 
 
@@ -325,83 +377,113 @@ void event_isr_trigger_arg(event_t id, void *arg)
 	}
 }
 
-
 static void event_task(void *)
 {
 #ifdef ESP32
-	#ifdef CONFIG_VERIFY_HEAP
-	#define dt 100
-	#else
-	#define dt portMAX_DELAY
-	#endif // CONFIG_VERIFY_HEAP
+	#define dt 1000
 #else
-	unsigned d = 1;
-#define dt (d * portTICK_PERIOD_MS)
+	unsigned d = portTICK_PERIOD_MS;
+	#define dt (d / portTICK_PERIOD_MS)
 #endif
+	uint32_t invalid = 0, lost = 0, discarded = 0;
 	for (;;) {
 		Event e;
 		BaseType_t r = xQueueReceive(EventsQ,&e,dt);
-		if (Lost) {
-			log_warn(TAG,"%u lost",(unsigned)Lost);
-			Lost = 0;
-		}
 		if (r == pdFALSE) {
 			// timeout: process cyclic
-#ifdef ESP32
 			// cyclic has its own task
-	#ifdef CONFIG_VERIFY_HEAP
-			heap_caps_check_integrity_all(true);
-	#endif
-#else
+#ifndef ESP32
 			d = cyclic_execute();
 #endif
-			if (e.id == 0)
-				continue;
+#ifdef CONFIG_VERIFY_HEAP
+			heap_caps_check_integrity_all(true);
+#endif
+			// low prio stuff
+			if (Lost != lost) {
+				log_warn(TAG,"%u lost",Lost-lost);
+				lost = Lost;
+			}
+			if (Invalid != invalid) {
+				log_warn(TAG,"%u invalid",Invalid-invalid);
+				invalid = Invalid;
+			}
+			if (Discarded != discarded) {
+				log_dbug(TAG,"%u discarded",Discarded-discarded);
+				discarded = Discarded;
+			}
+			continue;
 		}
 		MLock lock(EventMtx,__FUNCTION__);
 		int64_t start = esp_timer_get_time();
+		log_devel(TAG,"process %d",e.id);
 		if (e.id < EventHandlers.size()) {
 			EventHandler &h = EventHandlers[e.id];
 			++h.occur;
 			if (!h.callbacks.empty()) {
+				busy_set(true);
 				log_local(TAG,"%s: %u callbacks, arg %p",h.name,h.callbacks.size(),e.arg);
 				// need to copy the enabled callbacks,
 				// because the enabling might be changed
 				// with an action
 				bool enabled[h.callbacks.size()];
-				bzero(enabled,sizeof(enabled));
-				unsigned x = 0;
+				unsigned x = 0, y = sizeof(enabled);
 				for (const auto &c : h.callbacks) {
 					enabled[x] = c.enabled;
-					++x;
-				}
-				x = 0;
-				for (const auto &c : h.callbacks) {
-				// action arg	: set on action_add (cannot be overwritten)
-				// callback arg	: set on event_callback_arg
-				// event arg    : set on event_trigger_arg
-				// no unlocking! causes problems...
-				// unlock sitation need other solution!
-					if (enabled[x]) {
-						log_local(TAG,"\t%s, arg %-16s",c.action->name?c.action->name:"<null>",c.arg ? c.arg : "<null>");
-//						c.action->activate(e.arg ? e.arg : (c.arg ? strdup((const char *)c.arg) : 0));
-						c.action->activate(e.arg ? e.arg : c.arg);
+					if (enabled[x] && (y == sizeof(enabled))) {
+						y = x;
+						++Processed;
 					}
 					++x;
 				}
+				if (y == sizeof(enabled))
+					++Discarded;
+				// after unlock 'EventHandler h' may be
+				// a wild pointer! Therefore, reinit it
+				// from its vector every iteration.
+				for (size_t n = sizeof(enabled); y != n; ++y) {
+				// action arg	: set on action_add (cannot be overwritten)
+				// callback arg	: set on event_callback_arg
+				// event arg    : set on event_trigger_arg
+					if (enabled[y]) {
+						const auto &c = EventHandlers[e.id].callbacks[y];
+						log_devel(TAG,"\t%s, %s-arg %-16s",c.action->name?c.action->name:"<null>",e.arg?"event": c.arg?"callback":"null",e.arg ? e.arg : c.arg ? c.arg : "");
+						Action *a = c.action;
+						void *arg = e.arg ? e.arg : c.arg;
+						lock.unlock();
+						a->activate(arg);
+						lock.lock();
+					}
+				}
 				int64_t end = esp_timer_get_time();
-				log_local(TAG,"%s time: %lu",h.name,end-start);
-				h.time += end-start;
+				EventHandler &h2 = EventHandlers[e.id];
+				log_local(TAG,"%s time: %lu",h2.name,end-start);
+				h2.time += end-start;
+				busy_set(false);
 			} else {
-				log_local(TAG,"%s %p: no callbacks",EventHandlers[e.id].name,e.arg);
+				++Discarded;
 			}
 		} else {
-			log_warn(TAG,"invalid event %u",e);
+			log_local(TAG,"invalid event %d",e.id);
+			++Invalid;
 		}
 		if (e.arg) {
+			log_devel(TAG,"free arg %p",e.arg);
 			free(e.arg);
 		}
+		log_devel(TAG,"finished %d",e.id);
 	}
+}
+
+
+void event_status(Terminal &t)
+{
+#ifdef ESP32
+	t.printf("%u processed, %u discarded, %u lost, %u invalid\n"
+			,Processed.load(),Discarded.load(),Lost.load(),Invalid.load());
+#else
+	t.printf("%u processed, %u discarded, %u lost, %u invalid\n"
+			,Processed,Discarded,Lost,Invalid);
+#endif
 }
 
 
@@ -418,7 +500,7 @@ void event_init(void)
 
 int event_start(void)
 {
-	BaseType_t r = xTaskCreatePinnedToCore(&event_task, "events", 8192, (void*)0, 9, NULL, 1);
+	BaseType_t r = xTaskCreatePinnedToCore(&event_task, "events", 8*1024, (void*)0, 9, NULL, 1);
 	if (r != pdPASS) {
 		log_error(TAG,"create task: %d",r);
 		return 1;

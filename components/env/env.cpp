@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2022, Thomas Maier-Komor
+ *  Copyright (C) 2020-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -22,6 +22,8 @@
 #include <assert.h>
 #include <float.h>
 #include <math.h>
+#include <stdio.h>
+
 #include <algorithm>
 
 using namespace std;
@@ -89,16 +91,13 @@ void EnvNumber::set(float v)
 				event_trigger(m_evhi);
 				m_tst = 1;
 			}
-		} else if (m_tst >= 0) {
+		}
+		// no else for m_tst == 0 to work below
+		if (m_tst >= 0) {
 			if (v < m_low) {
 				event_trigger(m_evlo);
 				m_tst = -1;
 			}
-		} else {
-			if (v > m_high)
-				m_tst = 1;
-			else if (v < m_low)
-				m_tst = -1;
 		}
 	}
 }
@@ -120,8 +119,23 @@ int EnvNumber::setThresholds(float l, float h, const char *n)
 
 void EnvNumber::writeValue(stream &o) const
 {
+	// writeValue is used for influx
+	// i.e. spaces must not be included in the output
 	if (isValid()) {
+#ifdef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
+		// variant needed if printf %f support is missing
 		o << get();
+#else
+		char buf[128];
+		int n = snprintf(buf,sizeof(buf),m_fmt,m_value);
+		assert((n > 0) && (n < sizeof(buf)));
+		char *b = buf;
+		while (*b == ' ') {
+			++b;
+			--n;
+		}
+		o.write(b,n);
+#endif
 	} else if (m_dim) {
 		o.write("NaN",3);
 	} else {

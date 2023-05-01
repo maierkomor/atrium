@@ -24,6 +24,7 @@ option common {
 	getMember=getMember;
 	id0=true;
 	wfclib=extern;
+	SortMembers=size;
 }
 
 option pc : common {
@@ -93,8 +94,8 @@ enum rstrsn_t {
 
 message WifiConfig
 {
-	string ssid = 1			[ unset = "" ];
-	string pass = 2			[ unset = "" ];
+	string ssid = 1;
+	string pass = 2;
 	bytes mac = 3;
 	required bool activate = 4	[ unset = false ];
 	fixed32 addr4 = 5		[ to_ascii=ip4_to_ascii, to_json=ip4_to_ascii, parse_ascii=parse_ipv4 ];
@@ -105,10 +106,10 @@ message WifiConfig
 
 message MQTT
 {
-	string uri = 1			[ unset = "" ];
+	string uri = 1;
 	bool enable = 2			[ unset = false ];
-	string username = 3		[ unset = "" ];
-	string password = 4		[ unset = "" ];
+	string username = 3;
+	string password = 4;
 	repeated string subscribtions = 5;	// qos0 subscribptions
 	// keepalive in [s], 0 for no timeout
 	uint16 keepalive = 6		[ default = 60 ];
@@ -153,11 +154,11 @@ message AtAction
 
 message Influx
 {
-	string hostname = 1	[ unset = "" ];
+	string hostname = 1;
 	fixed16 port = 2	[ unset = 0 ];
-	string measurement = 3	[ unset = "" ];
+	string measurement = 3;
 	unsigned interval = 4	[ default = 60000, usage = obsolete ];
-	string database = 5	[ unset = "" ];		// implies TCP
+	string database = 5;		// implies TCP
 }
 
 enum uart_wl_t
@@ -212,8 +213,8 @@ message FtpHttpConfig
 {
 	fixed16 port = 1	[ unset = 0 ];
 	bool start = 2		[ default = true ];
-	string root = 3		[ unset = "" ];
-	string uploaddir = 4	[ unset = "" ];
+	string root = 3;
+	string uploaddir = 4;
 }
 
 
@@ -251,7 +252,7 @@ bitset eventcfg_t
 
 message EventTimer
 {
-	string name = 1		[ unset = "" ];
+	string name = 1;
 	unsigned time = 2;	// in msec
 	// bit0: repeat, bit1: autostart
 	eventcfg_t config = 3	[ unset = 0 ];
@@ -277,9 +278,9 @@ enum sigtype_t
 
 message SignalConfig
 {
-	string name = 1		[ unset = "" ];
+	string name = 1;
 	sigtype_t type = 2	[ unset = st_invalid ];
-	string iv = 3		[ unset = "" ];
+	string iv = 3;
 	// TODO
 	//bool persistent = 4	[ unset = false ];	// store every update to NVS
 }
@@ -304,6 +305,9 @@ message StateMachineConfig
 	string name = 1;
 	uint8 ini_st = 2	[ default = 0 ];
 	repeated StateConfig states = 3;
+
+	// store state-change in NVM, start with NVM value
+	bool persistent = 4	[ unset = false ];
 }
 
 
@@ -325,20 +329,20 @@ message LuaConfig
 message NodeConfig
 {
 	fixed32 magic = 0;	// should always be set to 0xAE54EDC0
-	string nodename = 1		[ unset = "" ];
+	string nodename = 1;
 	bytes pass_hash = 2;
 	unsigned cpu_freq = 3;
 	WifiConfig station = 4;
 	WifiConfig softap = 5;
-	repeated string dns_server = 6	[ unset = "" ];
-	string syslog_host = 7		[ unset = "" ];
-	string sntp_server = 8		[ unset = "" ];
-	string timezone = 9		[ unset = "" ];
+	repeated string dns_server = 6;
+	string syslog_host = 7;
+	string sntp_server = 8;
+	string timezone = 9;
 	MQTT mqtt = 10			[ ifdef=CONFIG_MQTT ];
 	fixed16 dmesg_size = 11		[ default = 2048 ];
 	Influx influx = 12		[ ifdef=CONFIG_INFLUX ];
 	unsigned station2ap_time = 13;	// failover time from station to ap mode [s]
-	string domainname = 15		[ unset = "" ];
+	string domainname = 15;
 
 	// action timers
 	repeated Date holidays = 16;
@@ -370,8 +374,8 @@ message NodeConfig
 	unsigned max_on_time = 34	[ unset = 0, usage=deprecated ];	// in minutes
 
 	// application: light sensor controlled LED
-	unsigned threshold_off = 35;
-	unsigned threshold_on = 36;
+	unsigned threshold_off = 35	[ usage=deprecated ];	// replaced by thresholds
+	unsigned threshold_on = 36	[ usage=deprecated ];
 	unsigned dim_step = 37;		// ms per 1% step
 	bool lightctrl = 38;		// true=auto, false=manual
 	unsigned pwm_freq = 39;		// base PWM frequenzy in Hz - shared for all channels

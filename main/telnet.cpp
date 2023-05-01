@@ -137,6 +137,8 @@ class Telnet : public Terminal
 	{ return "telnet"; }
 
 	int process_input(char in);
+	int disconnect() override
+	{ return m_con->close(); }
 
 	// inherited from Terminal
 	int write(const char *, size_t) override;

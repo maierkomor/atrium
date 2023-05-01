@@ -43,6 +43,10 @@ extern "C" {
 #include <esp_wifi.h>
 #include <esp_err.h>
 
+#ifdef ESP32
+#include <esp_core_dump.h>
+#endif
+
 #include <driver/uart.h>
 #include <driver/gpio.h>
 
@@ -132,6 +136,7 @@ int screen_setup();
 int sm_setup();
 void spi_setup();
 int telnet_setup();
+void timefuse_setup();
 void tlc5947_setup();
 int touchpads_setup();
 void udns_setup();
@@ -282,8 +287,12 @@ void app_main()
 	log_info(TAG,"%s, %s",Copyright,License);
 	log_info(TAG,"Version %s, IDF %s",Version,esp_get_idf_version());
 	system_info();
+#ifdef CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH
+	esp_core_dump_init();
+#endif
 
 	action_setup();
+	timefuse_setup();
 	settings_setup();
 	verify_heap();
 	uart_setup();		// init configured uarts, set diag uart

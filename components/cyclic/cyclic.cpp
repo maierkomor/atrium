@@ -76,6 +76,14 @@ static SubTask *SubTasks = 0;
 static SemaphoreHandle_t Mtx = 0;
 static volatile uint64_t TimeSpent = 0;
 
+#ifdef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
+#define busy_set(...)
+#elif defined CONFIG_LEDS
+extern "C" void busy_set(int on);
+#else
+#define busy_set(...)
+#endif
+
 
 int cyclic_add_task(const char *name, unsigned (*loop)(void*), void *arg, unsigned initdelay)
 {
@@ -134,7 +142,9 @@ unsigned cyclic_execute()
 		if (off <= 0) {
 			lock.unlock();
 //			con_printf("subtask => %s\n",t->name);
+			busy_set(true);
 			unsigned d = t->code(t->arg);
+			busy_set(false);
 			int64_t end = esp_timer_get_time();
 			lock.lock();
 			t->nextrun = end + (uint64_t)d * 1000LL;

@@ -415,7 +415,7 @@ int dimmer_setup()
 	if (Config.has_pwm_freq()) {
 		unsigned f = Config.pwm_freq();
 		if ((f < 10) || (f > 50000)) {
-			log_warn(TAG,"pwm frequency %u is out of range",f);
+			log_warn(TAG,"PWM frequency %u is out of range",f);
 		} else {
 			Period = 1000000 / f;
 			freq = f;
@@ -498,8 +498,8 @@ int dimmer_setup()
 #endif
 	}
 #ifdef CONFIG_AT_ACTIONS
-	action_add("all_dimmers!backup",dimmers_backup,0,"backup dimmer and fade off");
-	action_add("all_dimmers!off",dimmers_off,0,"backup dimmer and fade off");
+	action_add("all_dimmers!backup",dimmers_backup,0,"backup dimmer values");
+	action_add("all_dimmers!off",dimmers_off,0,"fade off");
 	action_add("all_dimmers!restore",dimmers_restore,0,"restore dimmer from backup");
 	action_add("dim!set",dim_set,0,"set dimmer(s) <d> to value <v>: arg = [<d>:]<v>");
 #endif

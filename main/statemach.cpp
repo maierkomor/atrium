@@ -24,6 +24,7 @@
 #include "env.h"
 #include "event.h"
 #include "globals.h"
+#include "nvm.h"
 #include "swcfg.h"
 #include "terminal.h"
 #include "log.h"
@@ -47,8 +48,15 @@ using namespace std;
 
 struct State
 {
+	State()
+	{ }
+
+	State(const StateConfig &c, const char *machname)
+	{ init(c,machname); }
+
 	void init(const StateConfig &c, const char *machname);
 	estring name;
+	uint8_t id;
 	event_t enter,exit;
 	vector<trigger_t> conds;
 };
@@ -97,17 +105,25 @@ class StateMachine
 		return 0;
 	}
 
+	const vector<State> &getStates() const
+	{ return m_states; }
+
+	void attach(EnvObject *r);
+
 	void addState(const StateConfig &st);
 	void addState(const char *st);
+	static void set_state(void*);
+	static void set_next(void*);
 
 	const estring m_name;
-	vector<State> m_states;
+
 	private:
+	EnvString m_env;
+	vector<State> m_states;
 	StateMachine *m_next = 0;
 	int8_t m_st = -1;
+	bool m_persistent = false;
 	static StateMachine *First;
-	friend void sm_set_state(void*);
-	friend void sm_set_next(void*);
 };
 
 
@@ -156,20 +172,23 @@ void State::init(const StateConfig &cfg, const char *stname)
 }
 
 
-void sm_set_state(void *arg)
+void StateMachine::set_state(void *arg)
 {
 	if (0 == arg) 
 		return;
 	char *sm = (char *) arg;
-	char *c = strchr(sm,':');
+	size_t l = strlen(sm);
+	char ns[l+1];
+	strcpy(ns,sm);
+	char *c = strchr(ns,':');
 	if (c == 0)
 		return;
 	*c = 0;
 	char *st = c+1;
-	log_dbug(TAG,"switch state of %s to %s",sm,st);
+	log_dbug(TAG,"switch state of %s to %s",ns,st);
 	StateMachine *m = StateMachine::first();
 	while (m) {
-		if (0 == strcmp(sm,m->m_name.c_str())) {
+		if (0 == strcmp(ns,m->m_name.c_str())) {
 			m->switch_state(st);
 			return;
 		}
@@ -179,7 +198,7 @@ void sm_set_state(void *arg)
 }
 
 
-void sm_set_next(void *arg)
+void StateMachine::set_next(void *arg)
 {
 	if (0 == arg) 
 		return;
@@ -205,11 +224,12 @@ void sm_set_next(void *arg)
 
 StateMachine::StateMachine(const char *n)
 : m_name(n)
+, m_env(n,"")
 , m_next(First)
 {
 	if (0 == First) {
-		action_add("sm!set",sm_set_state,0,"set state of state-machine to <machine>:<state>");
-		action_add("sm!next",sm_set_next,0,"set next state of state-machine <machine>");
+		action_add("sm!set",set_state,0,"set state of state-machine to <machine>:<state>");
+		action_add("sm!next",set_next,0,"set next state of state-machine <machine>");
 	}
 	First = this;
 }
@@ -217,12 +237,13 @@ StateMachine::StateMachine(const char *n)
 
 StateMachine::StateMachine(const StateMachineConfig &cfg)
 : m_name(cfg.name())
+, m_env(cfg.name().c_str(),"")
 , m_next(First)
+, m_persistent(cfg.persistent())
 {
 	if (0 == First) {
-		log_dbug(TAG,"add sm!set");
-		action_add("sm!set",sm_set_state,0,"set state of state-machine to <machine>:<state>");
-		action_add("sm!next",sm_set_next,0,"set next state of state-machine <machine>");
+		action_add("sm!set",set_state,0,"set state of state-machine to <machine>:<state>");
+		action_add("sm!next",set_next,0,"set next state of state-machine <machine>");
 	}
 	for (const auto &st : cfg.states())
 		addState(st);
@@ -232,7 +253,9 @@ StateMachine::StateMachine(const StateMachineConfig &cfg)
 		uint8_t x = cfg.ini_st();
 		if (x >= numst)
 			x = 0;
-		switch_state(cfg.states(x).name().c_str());
+		x = nvm_read_u8(m_name.c_str(),x);
+		if (x < cfg.states_size())
+			switch_state(cfg.states(x).name().c_str());
 	}
 }
 
@@ -246,8 +269,7 @@ void StateMachine::addState(const StateConfig &st)
 	memcpy(stn,n,mnl);
 	stn[mnl] = ':';
 	memcpy(stn+mnl+1,st.name().c_str(),stnl);
-	m_states.emplace_back();
-	m_states.back().init(st,stn);
+	m_states.emplace_back(st,(char*)stn);
 	log_dbug(TAG,"added %s",stn);
 }
 
@@ -277,6 +299,12 @@ void StateMachine::addState(const char *n)
 }
 
 
+void StateMachine::attach(EnvObject *r)
+{
+	r->add(&m_env);
+}
+
+
 int StateMachine::switch_state(const char *nst)
 {
 	uint8_t x = 0;
@@ -285,6 +313,12 @@ int StateMachine::switch_state(const char *nst)
 			break;
 		++x;
 	}
+#if 0
+	// we don't want to hide state self-transisitons,
+	// as this would hide the exit and enter events
+	if (x == m_st)
+		return 0;
+#endif
 	if (x < m_states.size()) {
 		// de-register old 
 		if (m_st >= 0) {
@@ -298,6 +332,9 @@ int StateMachine::switch_state(const char *nst)
 		for (auto t : m_states[x].conds)
 			event_trigger_en(t,true);
 		log_dbug(TAG,"%s: new state %s",m_name.c_str(),nst);
+		m_env.set(nst);
+		if (m_persistent)
+			nvm_store_u8(m_name.c_str(),x);
 		m_st = x;
 		return 0;
 	} else {
@@ -308,6 +345,21 @@ int StateMachine::switch_state(const char *nst)
 }
 
 
+static void sm_print_sm(Terminal &term, StateMachine *m)
+{
+	term.printf("%s: %s\n",m->m_name.c_str(),m->active_state());
+	for (const auto &st : m->getStates()) {
+		term.printf("\t%s:\n",st.name.c_str());
+		for (auto t : st.conds) {
+			const char *arg = trigger_get_arg(t);
+			if (arg == 0)
+				arg = "";
+			term.printf("\t\t%s => %s(%s)\n",trigger_get_eventname(t),trigger_get_actionname(t),arg);
+		}
+	}
+}
+
+
 const char *sm_cmd(Terminal &term, int argc, const char *args[])
 {
 	if (argc == 1) {
@@ -315,10 +367,7 @@ const char *sm_cmd(Terminal &term, int argc, const char *args[])
 		if (m == 0)
 			term.println("no state-machines defined");
 		while (m) {
-			term.printf("%s: %s\n",m->m_name.c_str(),m->active_state());
-			for (const auto &st : m->m_states) {
-				term.printf("\t%s\n",st.name.c_str());
-			}
+			sm_print_sm(term,m);
 			m = m->next();
 		}
 		return 0;
@@ -437,11 +486,15 @@ static LuaFn Functions[] = {
 
 void sm_setup()
 {
+	if (Config.statemachs().empty())
+		return;
+	EnvObject *root = RTData->add("sm");
 	for (const auto &sm : Config.statemachs()) {
 		if (sm.name().empty() || (sm.states().empty()))
 			continue;
 		log_info(TAG,"add statemachine %s",sm.name().c_str());
-		new StateMachine(sm);
+		StateMachine *m = new StateMachine(sm);
+		m->attach(root);
 	}
 #ifdef CONFIG_LUA
 	xlua_add_funcs("sm",Functions);

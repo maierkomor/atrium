@@ -207,7 +207,7 @@ static ip_addr_t NameServer[4];
 static uint16_t CacheSize = 0, MaxCache = 256, Id = 0;
 static mdns_state_t State = mdns_wifidown;
 static SemaphoreHandle_t Mtx = 0;
-#ifndef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 0
 static SemaphoreHandle_t LwipSem = 0;
 #endif
 
@@ -333,7 +333,7 @@ ip_addr_t *cache_lookup(const char *hn)
 	Lock lock(Mtx,__FUNCTION__);
 	long now = xTaskGetTickCount();
 	while (CacheS && (CacheS->ttl < now)) {
-		log_dbug(TAG,"entry timed out: %d",CacheS->ttl);
+		log_dbug(TAG,"entry timeout: %d",CacheS->ttl);
 		cache_remove_head();
 	}
 	DnsEntry *e = CacheS;
@@ -863,7 +863,7 @@ static int udns_send_ns(uint8_t *buf,size_t ql)
 }
 
 
-#ifndef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 0
 static void query_fn(void *a)
 {
 	Query *q = (Query *)a;
@@ -890,7 +890,7 @@ static void query_fn(void *a)
 #endif
 
 
-#ifndef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 0
 typedef struct cb_arg_s {
 	void (*cb)(const char *,const ip_addr_t *,void *);
 	const char *hn;
@@ -926,7 +926,7 @@ int udns_query(const char *hn, ip_addr_t *ip, void (*cb)(const char *, const ip_
 		if (ip)
 			*ip = *ce;
 		if (cb) {
-#ifdef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 1
 			LWIP_LOCK();
 			cb(hn,ce,arg);
 			LWIP_UNLOCK();
@@ -989,7 +989,7 @@ int udns_query(const char *hn, ip_addr_t *ip, void (*cb)(const char *, const ip_
 		Queries = q;
 	}
 	uint8_t c = 0;
-#ifdef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 1
 	LWIP_LOCK();
 	if (local) {
 		if (MPCB) {
@@ -1055,7 +1055,7 @@ static err_t sendSelfQuery()
 }
 
 
-#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
+#if LWIP_TCPIP_CORE_LOCKING == 0
 static void udns_cyclic_fn(void *arg)
 {
 	// no LWIP_LOCK as cyclic is called from tcpip_task via dns_tmr
@@ -1082,7 +1082,7 @@ static void udns_cyclic_fn(void *arg)
 		State = mdns_up;
 		break;
 	default:
-		abort();
+		log_fatal(TAG,"invalid State %d",State);
 	}
 	if (Queries) {
 		Lock lock(Mtx,__FUNCTION__);
@@ -1108,7 +1108,7 @@ static unsigned udns_cyclic(void *arg)
 	tcpip_send_msg_wait_sem(udns_cyclic_fn,&d,&LwipSem);
 	return d;
 }
-#elif defined CONFIG_LWIP_IGMP
+#elif LWIP_IGMP == 1
 static unsigned udns_cyclic(void *arg)
 {
 	// no LWIP_LOCK as cyclic is called from tcpip_task via dns_tmr
@@ -1202,7 +1202,7 @@ static inline void mdns_init_fn(void *)
 	}
 #endif
 	State = mdns_wifiup;
-#ifndef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 0
 	assert(LwipSem);
 	if (pdTRUE != xSemaphoreGive(LwipSem))
 		abort();
@@ -1213,7 +1213,7 @@ static inline void mdns_init_fn(void *)
 static void mdns_init(void *)
 {
 	log_dbug(TAG,"init");
-#ifndef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 0
 	tcpip_send_msg_wait_sem(mdns_init_fn,0,&LwipSem);
 #else
 	mdns_init_fn(0);
@@ -1310,7 +1310,7 @@ void dns_init()
 		udp_recv(SPCB,recv_callback,0);
 		udp_bind(SPCB,IP_ANY_TYPE,5353);
 		cyclic_add_task("udns",udns_cyclic,0,250);
-#ifndef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 0
 		LwipSem = xSemaphoreCreateBinary();
 #endif
 	}

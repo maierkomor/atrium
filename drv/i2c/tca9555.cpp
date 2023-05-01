@@ -47,22 +47,57 @@ TCA9555 *TCA9555::Instance = 0;
 
 TCA9555 *TCA9555::create(uint8_t bus, uint8_t addr)
 {
-	uint8_t data[6];
 	if ((addr < DEV_ADDR_MIN) || (addr >= DEV_ADDR_MAX)) {
 		log_warn(TAG,"address %x out of range",addr);
 		return 0;
 	}
 	addr <<= 1;
-	if (i2c_w1rd(bus,addr,REG_CFG_0,&data[0],2)) {
-		log_warn(TAG,"no response from %u/0x%x",bus,addr);
-		return 0;
+	bool reinit = false;
+	for (int r = 0; r < 8; ++r) {
+		uint8_t data;
+		if (i2c_w1rd(bus,addr,r,&data,1)) {
+			log_warn(TAG,"no response from %u/0x%x",bus,addr);
+			return 0;
+		}
+		log_dbug(TAG,"reg %d: 0x%x",r,data);
+		if (r & 2) {
+			if (data != 0xff) {
+				reinit = true;
+			}
+		} else if (r & 4) {
+			if (data != 0) {
+				reinit = true;
+			}
+		}
 	}
-	log_info(TAG,"device at %x",addr);
-	// restore power-off state after reset
-	uint8_t init[] = { addr, REG_OUT_0, 0xff, 0xff, 0x0, 0x0, 0xff, 0xff };
-	if (i2c_write(bus,init,sizeof(init),1,1))
-		log_warn(TAG,"reset failed");
-	log_dbug(TAG,"device at %u/0x%x",bus,addr);
+	log_info(TAG,"device at %u/0x%x",bus,addr);
+	if (reinit) {
+		log_dbug(TAG,"reinitializing...");
+		// restore power-off state after reset
+		bool err = false;
+		uint8_t out0[] = { addr, REG_OUT_0, 0xff };
+		uint8_t out1[] = { addr, REG_OUT_1, 0xff };
+		uint8_t pol0[] = { addr, REG_POL_0, 0x0 };
+		uint8_t pol1[] = { addr, REG_POL_1, 0x0 };
+		uint8_t cfg0[] = { addr, REG_CFG_0, 0xff };
+		uint8_t cfg1[] = { addr, REG_CFG_1, 0xff };
+		if (i2c_write(bus,out0,sizeof(out0),1,1))
+			err = true;
+		else if (i2c_write(bus,out1,sizeof(out1),1,1))
+			err = true;
+		else if (i2c_write(bus,pol0,sizeof(pol0),1,1))
+			err = true;
+		else if (i2c_write(bus,pol1,sizeof(pol1),1,1))
+			err = true;
+		else if (i2c_write(bus,cfg0,sizeof(cfg0),1,1))
+			err = true;
+		else if (i2c_write(bus,cfg1,sizeof(cfg1),1,1))
+			err = true;
+		if (err) {
+			log_warn(TAG,"reset failed");
+			return 0;
+		}
+	}
 	TCA9555 *dev = new TCA9555(bus,addr);
 	if (Instance) {
 		TCA9555 *i = Instance;
@@ -204,6 +239,25 @@ int TCA9555::config(uint8_t io, xio_cfg_t cfg)
 	log_dbug(TAG,"config %d,0x%x",io,cfg);
 	if (io >> 4)
 		return -1;
+	if (cfg.cfg_initlvl == xio_cfg_initlvl_low) {
+		log_dbug(TAG,"init-low");
+		m_out &= ~(1 << io);
+		uint8_t data[] = {
+			m_addr,
+			(uint8_t)(io & 8 ? REG_OUT_1 : REG_OUT_0),
+			(uint8_t)(io & 8 ? m_out >> 8 : m_out)
+		};
+		i2c_write(m_bus,data,sizeof(data),1,1);
+	} else if (cfg.cfg_initlvl == xio_cfg_initlvl_high) {
+		log_dbug(TAG,"init-high");
+		m_out |= 1 << io;
+		uint8_t data[] = {
+			m_addr,
+			(uint8_t)(io & 8 ? REG_OUT_1 : REG_OUT_0),
+			(uint8_t)(io & 8 ? m_out >> 8 : m_out)
+		};
+		i2c_write(m_bus,data,sizeof(data),1,1);
+	}
 	if (cfg.cfg_io == xio_cfg_io_keep) {
 		log_dbug(TAG,"io keep");
 	} else if (cfg.cfg_io == xio_cfg_io_in) {
@@ -247,11 +301,11 @@ int TCA9555::config(uint8_t io, xio_cfg_t cfg)
 
 int TCA9555::set_lvl(uint8_t io, xio_lvl_t v)
 {
-	log_dbug(TAG,"set %u: %u",io,v);
 	if (v == xio_lvl_0)
 		return set_lo(io);
 	if (v == xio_lvl_1)
 		return set_hi(io);
+	log_dbug(TAG,"set %u: %u: invalid",io,v);
 	return -1;
 }
 

@@ -85,8 +85,7 @@ static unsigned alarms_loop(void *)
 	static uint8_t last_m = 0xf0;
 	uint8_t h,m,s,d,md,mon;
 	unsigned y;
-	get_time_of_day(&h,&m,&s,&d,&md,&mon,&y);
-	if ((h > 23) || (m == last_m) || (y == 1970))
+	if ((0 != get_time_of_day(&h,&m,&s,&d,&md,&mon,&y)) || (m == last_m))
 		return 300;
 	last_m = m;
 	if (!Config.actions_enable())
@@ -211,16 +210,17 @@ const char *holiday(Terminal &t, int argc, const char *args[])
 	if (!strcmp(args[1],"-l")) {
 		for (size_t i = 0; i < Config.holidays_size(); ++i) {
 			const Date &h = Config.holidays(i);
+			t.printf("%d: %d.%d",i,h.day(),h.month());
 			if (h.has_endday())
-				t.printf("%d: %d.%d.%d-%d.%d.%d\n",i,h.day(),h.month(),h.year(),h.endday(),h.endmonth(),h.year()+h.endyear());
+				t.printf(".%d-%d.%d.%d",h.year(),h.endday(),h.endmonth(),h.year()+h.endyear());
 			else if (h.has_year())
-				t.printf("%d: %d.%d.%d\n",i,h.day(),h.month(),h.year());
-			else
-				t.printf("%d: %d.%d\n",i,h.day(),h.month());
+				t.printf(".%d",h.year());
+			t.println();
 		}
 		uint8_t hr,m,s,d,md,mon;
 		unsigned y;
-		get_time_of_day(&hr,&m,&s,&d,&md,&mon,&y);
+		if (get_time_of_day(&hr,&m,&s,&d,&md,&mon,&y))
+			return "Time invalid.";
 		t.printf("today is %sa holiday\n", is_holiday(md,mon,y) ? "" : "not ");
 		return 0;
 	}

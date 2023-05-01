@@ -48,6 +48,10 @@
 #include <float.h>
 #include <sstream>
 
+#ifdef ESP32
+#include <esp_core_dump.h>
+#endif
+
 #include <esp_image_format.h>
 #include <esp_system.h>
 #include <esp_ota_ops.h>
@@ -286,14 +290,17 @@ static const char *env(Terminal &t, int argc, const char *args[])
 }
 
 
-static const char *event(Terminal &t, int argc, const char *args[])
+const char *event(Terminal &t, int argc, const char *args[])
 {
 	if (argc == 1) {
 		return help_cmd(t,args[0]);
 	} else if ((args[1][0] != '-') || (args[1][2])) {
 		return "Invalid argument #1.";
-	} else if (argc == 2) {
-		if (args[1][1] == 'l') {
+	}
+	char com = args[1][1];
+	const char *err = "Invalid argument #1.";
+	if (argc == 2) {
+		if (com == 'l') {
 			event_t e = 0;
 			while (const char *name = event_name(++e)) {
 				if (name[0] == '*')
@@ -309,20 +316,22 @@ static const char *event(Terminal &t, int argc, const char *args[])
 				for (const auto &c : h->callbacks)
 					t.printf("\t%s (%s)%s\n", c.action->name, c.arg ? c.arg : "", c.enabled ? "" : " [disabled]");
 			}
-		} else {
-			return "Invalid argument #1.";
+			err = 0;
+		} else if (com == 's') {
+			event_status(t);
+			err = 0;
 		}
-		return 0;
 	} else if (argc == 3) {
-		if (args[1][1] == 't') {
+		if (com == 't') {
 			if (event_t e = event_id(args[2])) {
 				event_trigger(e);
-				return 0;
+				err = 0;
+			} else {
+				err = "Invalid argument #2.";
 			}
-			return "Invalid argument #2.";
 		}
 	} else if (argc == 4) {
-		if (args[1][1] == 't') {
+		if (com == 't') {
 			if (event_t e = event_id(args[2])) {
 				event_trigger_arg(e,strdup(args[3]));
 				return 0;
@@ -332,12 +341,12 @@ static const char *event(Terminal &t, int argc, const char *args[])
 		if (0 == t.getPrivLevel())
 			return "Access denied.";
 		Action *a = action_get(args[3]);
-		if (a == 0)
-			return "Invalid argument #3.";
 		event_t e = event_id(args[2]);
-		if (e == 0) {
-			return "Invalid argument #2.";
-		} else if (args[1][1] == 'a') {
+		if (a == 0) {
+			err = "Invalid argument #3.";
+		} else if (e == 0) {
+			err = "Invalid argument #2.";
+		} else if (com == 'a') {
 			event_callback(e,a);
 			for (auto &t : *Config.mutable_triggers()) {
 				if (t.event() == args[2]) {
@@ -348,10 +357,10 @@ static const char *event(Terminal &t, int argc, const char *args[])
 			Trigger *t = Config.add_triggers();
 			t->set_event(args[2]);
 			t->add_action(args[3]);
-			return 0;
-		} else if (args[1][1] == 'd') {
+			err = 0;
+		} else if (com == 'd') {
 			event_detach(e,a);
-			int r = 1;
+			err = "Failed.";
 			auto &t = *Config.mutable_triggers();
 			for (auto i = t.begin(), e = t.end(); i != e; ++i) {
 				if (i->event() == args[2]) {
@@ -360,26 +369,24 @@ static const char *event(Terminal &t, int argc, const char *args[])
 					while (j != ma.end()) {
 						if (*j == args[3]) {
 							j = ma.erase(j);
-							r = 0;
-						} else
+							err = 0;
+						} else {
 							++j;
+						}
 					}
 				}
 			}
-			return r ? "Failed." : 0;
-		} else {
-			return "Invalid argument #1.";
 		} 
 	} else if (argc == 5) {
 		if (0 == t.getPrivLevel())
 			return "Access denied.";
 		Action *a = action_get(args[3]);
-		if (a == 0)
-			return "Invalid argument #3.";
 		event_t e = event_id(args[2]);
-		if (e == 0) {
-			return "Invalid argument #2.";
-		} else if (args[1][1] == 'a') {
+		if (a == 0) {
+			err = "Invalid argument #3.";
+		} else if (e == 0) {
+			err = "Invalid argument #2.";
+		} else if (com == 'a') {
 			size_t cl = strlen(args[3]);
 			char *arg = (char*) malloc(cl+strlen(args[4])+2);
 			memcpy(arg,args[3],cl);
@@ -395,14 +402,12 @@ static const char *event(Terminal &t, int argc, const char *args[])
 			Trigger *t = Config.add_triggers();
 			t->set_event(args[2]);
 			t->add_action(arg);
-			return 0;
-		} else {
-			return "Invalid argument #1.";
+			err = 0;
 		} 
 	} else {
-		return "Invalid number of arguments.";
+		err = "Invalid number of arguments.";
 	}
-	return "Invalid argument.";
+	return err;
 }
 
 
@@ -499,6 +504,42 @@ static const char *shell_mv(Terminal &term, int argc, const char *args[])
 #endif
 
 
+#ifdef HAVE_FS
+static const char *ls_print_dir(Terminal &term, const char *dir)
+{
+	DIR *d = opendir(dir);
+	if (d == 0) {
+		term.printf("unable to open dir %s: %s\n",dir,strerror(errno));
+		return "";
+	}
+	size_t dl = strlen(dir);
+	char fn[128];
+	memcpy(fn,dir,dl);
+	if (fn[dl-1] != '/') {
+		fn[dl] = '/';
+		++dl;
+	}
+	while (struct dirent *e = readdir(d)) {
+		size_t el = strlen(e->d_name);
+		if (dl+el+1 > sizeof(fn)) {
+			term.printf("%s\t[name too long]\n",e->d_name);
+			continue;
+		}
+		memcpy(fn+dl,e->d_name,el+1);
+		struct stat st;
+		if (stat(fn,&st) != 0)
+			term.printf("%-15s [%s]\n",e->d_name,strerror(errno));
+		else if ((st.st_mode & S_IFDIR) == S_IFDIR)
+			term.printf("%-15s  <DIR>\n",e->d_name);
+		else
+			term.printf("%-15s %6u\n",e->d_name,st.st_size);
+	}
+	closedir(d);
+	return 0;
+}
+#endif
+
+
 static const char *shell_ls(Terminal &term, int argc, const char *args[])
 {
 #if defined CONFIG_ROMFS && !defined CONFIG_ROMFS_VFS
@@ -514,61 +555,16 @@ static const char *shell_ls(Terminal &term, int argc, const char *args[])
 	return 0;
 #endif
 #ifdef HAVE_FS
-	if (argc == 1) {
-		estring pwd = term.getPwd();
-		if ((pwd.size() > 1) && (pwd.back() == '/'))
-			pwd.resize(pwd.size()-1);
-		term.println(pwd.c_str());
-		DIR *d = opendir(pwd.c_str());
-		if (d == 0) {
-			return strerror(errno);
-		}
-		while (struct dirent *e = readdir(d))
-			term.println(e->d_name);
-		closedir(d);
-		return 0;
-	}
-	bool nlst = false;
+	if (argc == 1)
+		return ls_print_dir(term,term.getPwd().c_str());
 	int a = 1;
-	if (!strcmp(args[1],"-1")) {
-		++a;
-		nlst = true;
-	}
+	const char *r = 0;
 	while (a < argc) {
-		estring dir;
-		if (args[a][0] != '/')
-			dir = term.getPwd();
-		dir += args[a];
-		if (dir.back() == '/')
-			dir.resize(dir.size()-1);
+		if (ls_print_dir(term,args[a]))
+			r = "Had errors.";
 		++a;
-		DIR *d = opendir(dir.c_str());
-		if (d == 0) {
-			term.printf("unable to open dir %s: %s\n",dir.c_str(),strerror(errno));
-			continue;
-		}
-		if (dir.c_str()[dir.size()-1] != '/')
-			dir += '/';
-		while (struct dirent *e = readdir(d)) {
-			estring f = dir;
-			f += e->d_name;
-			if (nlst) {
-				term.println(e->d_name);
-				continue;
-			}
-			struct stat st;
-			if (stat(f.c_str(),&st) != 0) {
-				term.printf("%s\t<%s>\n",e->d_name,strerror(errno));
-				continue;
-			}
-			if ((st.st_mode & S_IFDIR) == S_IFDIR)
-				term.printf("%s\t<DIR>\n",e->d_name);
-			else
-				term.printf("%s\t%6u\n",e->d_name,st.st_size);
-		}
-		closedir(d);
 	}
-	return 0;
+	return r;
 #else
 	return "no filesystem";
 #endif
@@ -702,9 +698,9 @@ static const char *shell_cp(Terminal &term, int argc, const char *args[])
 #endif
 
 
-void print_hex(Terminal &term, uint8_t *b, size_t s, size_t off = 0)
+void print_hex(Terminal &term, const uint8_t *b, size_t s, size_t off = 0)
 {
-	uint8_t *a = b, *e = b + s;
+	const uint8_t *a = b, *e = b + s;
 	while (a != e) {
 		char tmp[64], *t = tmp;
 		t += sprintf(t,"%04x: ",a-b+off);
@@ -713,7 +709,7 @@ void print_hex(Terminal &term, uint8_t *b, size_t s, size_t off = 0)
 			*t++ = ' ';
 			if (i == 8)
 				*t++ = ' ';
-			/*
+#if 0
 			uint8_t d = *a;
 			uint8_t h = d >> 4;
 			if (h > 9)
@@ -727,8 +723,9 @@ void print_hex(Terminal &term, uint8_t *b, size_t s, size_t off = 0)
 			else 
 				*t = '0' + l;
 			++t;
-			*/
+#else
 			t += sprintf(t,"%02x",*a);
+#endif
 			++i;
 			++a;
 		}
@@ -767,7 +764,17 @@ static const char *shell_xxd(Terminal &term, int argc, const char *args[])
 	if (argc != 2) {
 		return "Invalid number of arguments.";
 	}
-	int fd = open(args[1],O_RDONLY);
+	const char *p = args[1];
+	if (p[0] != '/') {
+		size_t al = strlen(args[1]);
+		const estring &pwd = term.getPwd();
+		size_t pl = pwd.size();
+		char *path = (char *)alloca(al+pl+1);
+		memcpy(path,pwd.data(),pl);
+		memcpy(path+pl,args[1],al+1);
+		p = path;
+	}
+	int fd = open(p,O_RDONLY);
 	if (fd == -1) {
 		return strerror(errno);
 	}
@@ -794,6 +801,10 @@ static const char *shell_reboot(Terminal &term, int argc, const char *args[])
 {
 	mqtt_stop();
 	syslog_stop();
+	term.println("rebooting...");
+	term.sync();
+	term.disconnect();
+	vTaskDelay(400);
 #ifndef CONFIG_IDF_TARGET_ESP8266
 	esp_unregister_shutdown_handler((shutdown_handler_t)esp_wifi_stop);
 #endif
@@ -1077,7 +1088,12 @@ static const char *hwconf(Terminal &term, int argc, const char *args[])
 	} else if (!strcmp("set",args[1])) {
 		if (argc < 4)
 			return "Missing argument.";
-		return (0 > HWConf.setByName(args[2],args[3])) ? "Failed." : 0;
+		int r = HWConf.setByName(args[2],args[3]);
+		if (r) {
+			term.printf("error %d\n",r);
+			return "";
+		}
+		return 0;
 	} else if (!strcmp("reset",args[1])) {
 		return cfg_read_hwcfg() >= 0 ? "Failed." : 0;
 	} else if (!strcmp("clear",args[1])) {
@@ -1165,23 +1181,34 @@ static const char *hwconf(Terminal &term, int argc, const char *args[])
 }
 
 
+static const char *OnStr[] = { "true","on","yes" };
+static const char *OffStr[] = { "false","off","no" };
+
+
+static int arg_bool(const char *v, bool &b)
+{
+	for (const char *on : OnStr) {
+		if (0 == strcasecmp(on,v)) {
+			b = true;
+			return 0;
+		}
+	}
+	for (const char *off : OffStr) {
+		if (0 == strcasecmp(off,v)) {
+			b = false;
+			return 0;
+		}
+	}
+	return 1;
+}
+
+
 static bool parse_bool(int argc, const char *args[], int a, bool d)
 {
-	if (a >= argc)
+	bool r;
+	if ((a >= argc) || arg_bool(args[a],r))
 		return d;
-	if (!strcmp(args[a],"true"))
-		return true;
-	if (!strcmp(args[a],"false"))
-		return false;
-	if (!strcmp(args[a],"on"))
-		return true;
-	if (!strcmp(args[a],"off"))
-		return false;
-	if (!strcmp(args[a],"yes"))
-		return true;
-	if (!strcmp(args[a],"no"))
-		return false;
-	return d;
+	return r;
 }
 
 
@@ -1209,19 +1236,39 @@ static const char *timefuse(Terminal &term, int argc, const char *args[])
 {
 	if (argc == 1)
 		return "Invalid number of arguments.";
+	if ((args[1][0] != '-') || (args[1][2] != 0))
+		return "Invalid argument #1.";
+	char optchr = args[1][1];
 	if (argc == 2) {
-		if (!strcmp("-l",args[1])) {
+		if ('l' == optchr) {
 			timefuse_t t = timefuse_iterator();
 			// active timers cannot be queried for repeat!
-			term.printf("%-16s %-16s active\n","name","interval");
+#ifdef ESP32
+			term.printf(" id %-10s interval state   repeat\n","name");
+#else
+			term.printf(" id %-10s interval state\n","name");
+#endif
 			while (t) {
 				char buf[20];
 				int on = timefuse_active(t);
 				ms_to_timestr(buf,timefuse_interval_get(t));
-				term.printf("%-16s %-16s %-7s\n"
+#ifdef ESP32
+				bool rep = timefuse_repeat_get(t);
+				term.printf("%3u %-10s %-8s %-7s %s\n"
+						,t
 						,timefuse_name(t)
 						,buf
-						,on==0?"false":on==1?"true":"unknown");
+						,on==0?"dormant":on==1?"active":"unknown"
+						,rep?"true":"false"
+						);
+#else
+				term.printf("%3u %-10s %-8s %-7s\n"
+						,t
+						,timefuse_name(t)
+						,buf
+						,on==0?"dormant":on==1?"active":"unknown"
+						);
+#endif
 				t = timefuse_next(t);
 			}
 			return 0;
@@ -1231,16 +1278,20 @@ static const char *timefuse(Terminal &term, int argc, const char *args[])
 	if (0 == term.getPrivLevel())
 		return "Access denied.";
 	if (argc == 3) {
-		if (!strcmp("-s",args[1]))
-			return timefuse_start(args[2]) ? "Failed." : 0;
-		if (!strcmp("-t",args[1]))
-			return timefuse_stop(args[2]) ? "Failed." : 0;
-		if (!strcmp("-d",args[1])) {
+		const char *r = 0;
+		if ('s' == optchr) {
+			if (timefuse_start(args[2]))
+				r = "Failed.";
+		} else if ('t' == optchr) {
+			if (timefuse_stop(args[2]))
+				r = "Failed.";
+		} else if ('d' == optchr) {
 			/*
 			 * Deletes only from config.
 			 * dynamic deletion would require deletion of
 			 * actions and events associated with the timer!
 			 */
+			timefuse_stop(args[2]);
 			auto t = Config.mutable_timefuses();
 			for (auto i = t->begin(), e = t->end(); i != e; ++i) {
 				if (i->name() == args[2]) {
@@ -1248,26 +1299,35 @@ static const char *timefuse(Terminal &term, int argc, const char *args[])
 					return 0;
 				}
 			}
-			return "No such timer.";
+			r = "Invalid argument #2.";
 			// return timefuse_delete(args[2]);	-- incomplete
+		} else {
+			r = "Invalid argument #1.";
 		}
-		return "Invalid argument #1.";
+		return r;
 	}
 	// argc >= 4
-	if (!strcmp("-r",args[1])) {
+	if ('r' == optchr) {
+		const char *r = 0;
+		bool rep;
+		if (arg_bool(args[3],rep))
+			r = "Invalid argument #3.";
+#ifdef ESP32
+		else if (timefuse_repeat_set(args[2],rep))
+			r = "Failed.";
+#endif
 		for (EventTimer &t : *Config.mutable_timefuses()) {
 			if (t.name() == args[2]) {
 				unsigned config = t.config();
-				bool r = parse_bool(argc,args,3,config&1);
 				config &= ~1;
-				config |= r;
+				config |= rep;
 				t.set_config(config);
-				return 0;
+				return r;
 			}
 		}
-		return "Invalid argument #1.";
+		return "Invalid argument #2.";
 	}
-	if (!strcmp("-a",args[1])) {
+	if ('a' == optchr) {
 		for (EventTimer &t : *Config.mutable_timefuses()) {
 			if (t.name() == args[2]) {
 				unsigned config = t.config();
@@ -1288,7 +1348,7 @@ static const char *timefuse(Terminal &term, int argc, const char *args[])
 #else
 	float ms = strtof(args[3],&e);
 #endif
-	if ((e == args[3]) || (ms < portTICK_PERIOD_MS))
+	if (e == args[3])
 		return "Invalid argument #3.";
 	switch (*e) {
 	default:
@@ -1297,19 +1357,22 @@ static const char *timefuse(Terminal &term, int argc, const char *args[])
 		ms *= 60*60*1000;
 		break;
 	case 'm':
-		if (e[1] == 's')
-			;	// milli-seconds
-		else if (e[1] == 0)
+		if (e[1] == 's') {
+			// milli-seconds
+			if (ms < portTICK_PERIOD_MS)
+				return "Invalid argument #3.";
+		} else if (e[1] == 0) {
 			ms *= 60000;
-		else
+		} else {
 			return "Invalid argument #3.";
+		}
 		break;
 	case 0:
 	case 's':
 		ms *= 1000;
 		break;
 	}
-	if (0 == strcmp("-i",args[1])) {
+	if ('i' == optchr) {
 		for (auto &t : *Config.mutable_timefuses()) {
 			if (t.name() == args[2]) {
 				t.set_time((unsigned)ms);
@@ -1318,7 +1381,7 @@ static const char *timefuse(Terminal &term, int argc, const char *args[])
 		}
 		return "Invalid argument #1.";
 	}
-	if (strcmp("-c",args[1]))
+	if ('c' != optchr)
 		return "Invalid argument #1.";
 	EventTimer *t = Config.add_timefuses();
 	t->set_name(args[2]);
@@ -1588,6 +1651,92 @@ static const char *download(Terminal &term, int argc, const char *args[])
 #endif
 
 
+#ifdef CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH
+static const char *dumpcore(Terminal &term, const char *fn)
+{
+#ifndef HAVE_FS
+	if (fn)
+		return "No filesystem.";
+#endif
+	size_t addr,size;
+	if (esp_err_t e = esp_core_dump_image_get(&addr,&size))
+		return esp_err_to_name(e);
+	spi_flash_mmap_handle_t handle;
+	const uint8_t *data = 0;
+	if (esp_err_t e = spi_flash_mmap(addr,size,SPI_FLASH_MMAP_DATA,(const void**)&data,&handle)) {
+		term.printf("mmap flash: %s\n",esp_err_to_name(e));
+		return "";
+	}
+	const char *ret = 0;
+	if (fn == 0) {
+		print_hex(term,data,size);
+	} else {
+		const char *f = fn;
+		if (fn[0] != '/') {
+			const estring &pwd = term.getPwd();
+			size_t pl = pwd.size();
+			size_t l = strlen(fn);
+			char *p = (char *)alloca(l+pl+1);
+			memcpy(p,pwd.data(),pl);
+			memcpy(p+pl,fn,l+1);
+			f = p;
+		}
+		int fd = open(f,O_CREAT|O_RDWR|O_EXCL);
+		if (fd == -1) {
+			ret = strerror(errno);
+		} else {
+			int n = write(fd,data,size);
+			if (n == -1)
+				ret = strerror(errno);
+			close(fd);
+		}
+	}
+	spi_flash_munmap(handle);
+	return ret;;
+}
+
+
+static const char *dumpadm(Terminal &term, int argc, const char *args[])
+{
+	if (argc == 1) {
+
+	} else if (argc == 2) {
+		if (0 == strcmp(args[1],"-s")) {
+			size_t addr,size;
+			if (esp_err_t e = esp_core_dump_image_get(&addr,&size))
+				return esp_err_to_name(e);
+			term.printf("core dump: %d@0x%x\n",size,addr);
+			esp_core_dump_summary_t sum;
+			if (esp_err_t e = esp_core_dump_get_summary(&sum))
+				return esp_err_to_name(e);
+			term.printf("crash at 0x%x in task %s\n",sum.exc_pc,sum.exc_task);
+		} else if (0 == strcmp(args[1],"-c")) {
+			esp_err_t e = esp_core_dump_image_check();
+			term.println(esp_err_to_name(e));
+		} else if (0 == strcmp(args[1],"-e")) {
+			if (esp_err_t e = esp_core_dump_image_erase())
+				return esp_err_to_name(e);
+		} else if (0 == strcmp(args[1],"-f")) {
+			dumpcore(term,"core");
+		} else if (0 == strcmp(args[1],"-x")) {
+			dumpcore(term,0);
+		} else {
+			return "Invalid argument #1.";
+		}
+	} else if (argc == 3) {
+		if (0 == strcmp(args[1],"-f")) {
+			dumpcore(term,args[2]);
+		} else {
+			return "Invalid argument #1.";
+		}
+	} else {
+		return "Invalid number of arguments";
+	}
+	return 0;
+}
+#endif
+
+
 static const char *nslookup(Terminal &term, int argc, const char *args[])
 {
 	if (argc != 2)
@@ -1604,8 +1753,8 @@ static const char *nslookup(Terminal &term, int argc, const char *args[])
 }
 
 
-#if 0
-static int segv(Terminal &term, int argc, const char *args[])
+#ifdef CONFIG_DEVEL
+static const char *segv(Terminal &term, int argc, const char *args[])
 {
 	term.printf("triggering segment violoation\n");
 	*(char*)0 = 1;
@@ -1639,7 +1788,8 @@ static const char *sntp(Terminal &term, int argc, const char *args[])
 		if (const char *tz = Config.timezone().c_str()) {
 			term.printf("timezone   : %s\n",tz);
 			uint8_t h,m;
-			get_time_of_day(&h,&m);
+			if (get_time_of_day(&h,&m))
+				return "Time invalid.";
 			term.printf("local time : %u:%02u\n",h,m);
 		}
 		return 0;
@@ -1736,18 +1886,21 @@ static const char *config(Terminal &term, int argc, const char *args[])
 			return "Failed.";
 		return 0;
 	} else if (!strcmp("set",args[1])) {
+		int err;
 		if (argc == 4) {
-			if (0 > Config.setByName(args[2],args[3]))
-				return "Failed.";
+			err = Config.setByName(args[2],args[3]);
 		} else if (argc == 5) {
 			char tmp[strlen(args[3])+strlen(args[4])+2];
 			strcpy(tmp,args[3]);
 			strcat(tmp," ");
 			strcat(tmp,args[4]);
-			if (0 > Config.setByName(args[2],tmp))
-				return "Failed.";
+			err = Config.setByName(args[2],tmp);
 		} else
 			return "Missing argument.";
+		if (err < 0) {
+			term.printf("error %d\n",err);
+			return "";
+		}
 		return 0;
 	} else if (!strcmp(args[1],"write")) {
 		return cfg_store_nodecfg() ? "Failed." : 0;
@@ -1872,10 +2025,6 @@ static const char *update(Terminal &term, int argc, const char *args[])
 		if (0 == strcmp(args[1],"-b")) {
 			r = perform_ota(term,(char*)args[2],true);
 			if (r == 0) {
-				term.println("rebooting...");
-				term.sync();
-				term.disconnect();
-				vTaskDelay(400);
 				shell_reboot(term,argc,args);
 			}
 		} else if (0 == strcmp(args[1],"-v")) {
@@ -2111,7 +2260,12 @@ static const char *thresholds(Terminal &term, int argc, const char *args[])
 	if (argc == 1) {
 		print_thresholds(term,RTData,0);
 	} else if (argc == 2) {
-		if (EnvElement *e = RTData->find(args[1])) {
+		if (EnvElement *e = RTData->getByPath(args[1])) {
+			if (EnvNumber *n = e->toNumber()) {
+				term << n->name() << ": " << n->getLow() << ", " << n->getHigh() << '\n';
+				return 0;
+			}
+		} else if (EnvElement *e = RTData->find(args[1])) {
 			if (EnvNumber *n = e->toNumber()) {
 				term << n->name() << ": " << n->getLow() << ", " << n->getHigh() << '\n';
 				return 0;
@@ -2128,15 +2282,15 @@ static const char *thresholds(Terminal &term, int argc, const char *args[])
 			return "Invalid argument #3.";
 		if (hi <= lo + FLT_EPSILON)
 			return "Invalid arguments.";
-		if (EnvElement *e = RTData->find(args[1])) {
-			if (EnvNumber *n = e->toNumber()) {
-				n->setThresholds(lo,hi);
-			} else {
-				return "Invalid argument #1.";
-			}
-		} else {
-			return "Invalid argument #1.";
+		EnvNumber *n = 0;
+		if (EnvElement *e = RTData->getByPath(args[1])) {
+			n = e->toNumber();
+		} else if (EnvElement *e = RTData->find(args[1])) {
+			n = e->toNumber();
 		}
+		if (n == 0)
+			return "Invalid argument #1.";
+		n->setThresholds(lo,hi);
 		bool updated = false;
 		for (auto t : *Config.mutable_thresholds()) {
 			if (t.name() == args[1]) {
@@ -2245,22 +2399,31 @@ static const char *ifconfig(Terminal &term, int argc, const char *args[])
 	return 0;
 }
 
+#ifdef CONFIG_IDF_TARGET_ESP8266
+extern char LDTIMESTAMP;	// address set by linker, no value, content is inaccessible!
+#else
+char LDTIMESTAMP;		// address set by linker, no value, content is inaccessible!
+#endif
 
 static const char *version(Terminal &term, int argc, const char *args[])
 {
 	if (argc != 1)
 		return "Invalid number of arguments.";
+	int32_t s = (uint32_t) &LDTIMESTAMP;
+	struct tm tm;
+	gmtime_r((time_t *)&s,&tm);
 	term.printf("Atrium Version %s\n"
 		"%s\n"
 		"%s\n"
 		"firmware config %s\n"
-		"build on " __DATE__ ", " __TIME__ "\n"
+		"built on %u-%u-%u, %u:%02u:%02u, UTC\n" 
 		"IDF version: %s\n"
 		"https://github.com/maierkomor/atrium\n"
 		, Version
 		, Copyright
 		, License
 		, FwCfg
+		, tm.tm_year+1900, tm.tm_mon+1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec
 		, esp_get_idf_version()
 		);
 	return 0;
@@ -2347,6 +2510,9 @@ ExeName ExeNames[] = {
 #if defined HAVE_FS && defined CONFIG_OTA
 	{"download",1,download,"http file download",0},
 #endif
+#ifdef CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH
+	{"dumpadm",1,dumpadm,"handle core dumps",dumpadm_man},
+#endif
 	{"env",0,env,"print variables",0},
 	{"event",0,event,"handle trigger events as actions",event_man},
 #if defined CONFIG_SPIFFS || defined CONFIG_FATFS
@@ -2422,13 +2588,10 @@ ExeName ExeNames[] = {
 	{"rmdir",1,shell_rmdir,"remove directory",0},
 #endif
 #ifdef CONFIG_SMARTCONFIG
-	{"sc",1,sc,"SmargConfig actions",0},
+	{"sc",1,sc,"SmartConfig actions",0},
 #endif
-#if 0
+#ifdef CONFIG_DEVEL
 	{"segv",1,segv,"trigger a segmentation violation",0},
-#endif
-#if 0
-	{"set",1,set,"variable settings",set_man},
 #endif
 #ifdef CONFIG_SPI
 	{"spi",0,spicmd,"list/configure/operate SPI devices",0},
@@ -2645,10 +2808,16 @@ void shell(Terminal &term, bool prompt)
 			term.sync();
 		}
 		r = term.readInput(com,sizeof(com)-1,true);
-		if ((r < 0) || ((r == 4) && !memcmp(com,"exit",4)))
+		char *at = com;
+		while ((r != 0) && ((*at == ' ') || (*at == '\t'))) {
+			++at;
+			--r;
+		}
+		if ((r < 0) || ((r == 4) && !memcmp(at,"exit",4)))
 			return;
 		const char *msg = 0;
-		if (r > 0) {
+		if (com[0] == '#') {
+		} else if (r > 0) {
 			term.println();
 			com[r] = 0;
 			msg = shellexe(term,com);

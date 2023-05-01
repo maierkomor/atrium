@@ -62,6 +62,7 @@ typedef struct ftpctx
 	char *rnfr;
 	LwTcp *con, *dcon;
 	uint8_t login;	// 2 = ftp, 4 = root, 1 = unlocked
+	bool bin_xfer;
 } ftpctx_t;
 
 
@@ -264,6 +265,20 @@ static void rmd(ftpctx_t *ctx, const char *arg)
 }
 
 
+static void type(ftpctx_t *ctx, const char *arg)
+{
+	if (0 == strcmp(arg,"I")) {
+		ctx->bin_xfer = true;
+	} else if (0 == strcmp(arg,"A")) {
+		ctx->bin_xfer = false;
+	} else {
+		answer(ctx,"501 invalid argument");
+		return;
+	}
+	answer(ctx,"200 OK");
+}
+
+
 static void retrive(ftpctx_t *ctx, const char *arg)
 {
 	if (arg == 0) {
@@ -352,14 +367,13 @@ cleanup:
 				log_warn(TAG,"unable to retrive %s: %s",arg,ctx->dcon->error());
 				goto cleanup;
 			}
-			total += n;
+			total += r;
 		} else if (r < 0) {
 			// 552: action aborted
 			answer(ctx,"552 unable to read from %s: %s",arg,strerror(errno));
 			log_warn(TAG,"unable to read from %s: %s",arg,strerror(errno));
 			goto cleanup;
 		}
-		log_dbug(TAG,"sent %d bytes",r);
 	} while (r > 0);
 	log_dbug(TAG,"sent %d bytes",total);
 	answer(ctx,"200");
@@ -725,6 +739,7 @@ static const ftpcom_t Commands[] = {
 	{ "RNTO", rnto },
 	{ "NOOP", noop },
 	{ "SIZE", size },
+	{ "TYPE", type },
 };
 
 

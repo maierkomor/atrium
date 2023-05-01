@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.5)
 add_compile_definitions(ESP$ENV{ESP_FAM})
 add_compile_definitions(IDF_VERSION=$ENV{IDF_VERSION})
 add_compile_definitions(FWCFG="$ENV{FWCFG}")
+add_link_options(LINKER:SHELL:"-gc-sections,--defsym,LDTIMESTAMP=$ENV{TIMESTAMP}")
 #set(FWCFG $ENV{FWCFG})	# ignored - for whatever reason...
 
 #add_compile_definitions(FWCFG="$ENV{FWCFG}")

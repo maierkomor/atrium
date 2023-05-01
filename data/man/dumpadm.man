@@ -1,0 +1,5 @@
+synopsis: dumpadm <OPTION>
+Options are:
+-e:	enable core dumps
+-s:	print core dump summary
+-g:	get core dump info

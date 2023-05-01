@@ -46,15 +46,14 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
+#ifdef ESP32
+#include <esp_core_dump.h>
+#endif
 #include <esp_ota_ops.h>
 
 #include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>
-
-#ifdef CONFIG_IDF_TARGET_ESP32
-#include <lwip/sockets.h>
-#endif
 
 #ifndef WWW_ROOT
 #define WWW_ROOT "/"
@@ -293,6 +292,40 @@ static void exeShell(HttpRequest *req)
 		ans.addContent(term.getBuffer(),s);
 	ans.senddata(req->getConnection());
 }
+
+
+#ifdef CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH
+#define MTU 1024
+static void getCore(HttpRequest *req)
+{
+	LwTcp *con = req->getConnection();
+	size_t addr,size;
+	esp_err_t e = esp_core_dump_image_get(&addr,&size);
+	spi_flash_mmap_handle_t handle = 0;
+	const char *data = 0;
+	HttpResponse res;
+	if (e == 0)
+		e = spi_flash_mmap(addr,size,SPI_FLASH_MMAP_DATA,(const void**)&data,&handle);
+	if (e) {
+		res.setResult(HTTP_BAD_REQ);
+		res.senddata(con);
+	} else {
+		res.setResult(HTTP_OK);
+		res.setContentType(CT_APP_OCTET_STREAM);
+		res.setContentLength(size);
+		res.senddata(con);
+		size_t off = 0;
+		while (off != size) {
+			size_t n = size-off > MTU ? MTU : size-off;
+			con->write((char*)data+off,n,false);
+			con->sync(true);
+			off += n;
+		}
+	}
+	if (handle)
+		spi_flash_munmap(handle);
+}
+#endif
 
 
 #define FLASHBUFSIZE 1024
@@ -540,65 +573,64 @@ static void httpd_session(LwTcp *con)
 
 void httpd_setup()
 {
-	bool index_html = false;
-	const char *root = "/flash";
-	uint16_t port = HTTP_PORT;
-#ifdef CONFIG_ROMFS
-	if (-1 != romfs_open("index.html")) {
-		WWW = new HttpServer(root,"/index.html");
-		WWW->addDirectory(root);
-		index_html = true;
-	}
-#endif
 	auto &c = Config.httpd();
-	if (!c.start())
+	if (c.has_start() && !c.start())
 		return;
+	const char *index_html = 0;
+	const char *root = "/flash";
+	uint16_t port = c.has_port() ? c.port() : HTTP_PORT;
+#ifdef CONFIG_ROMFS
+	if (-1 != romfs_open("index.html"))
+		index_html = "/index.html";
+#endif
 #ifdef HAVE_FS
-	if (c.has_root())
-		root = Config.httpd().root().c_str();
-	if (c.has_port())
-		port = c.port();
-	char index[64];
-	strcpy(index,root);
-	strcat(index,"/index.html");
 	struct stat st;
-	if (stat(index,&st) != -1) {
-		WWW = new HttpServer(root,"/index.html");
-		WWW->addDirectory(root);
-		const char *upload = "/flash/upload";
-		if (Config.httpd().has_uploaddir())
-			upload = c.uploaddir().c_str();
-		if (upload && upload[0]) {
-			if (stat(upload,&st) == -1) {
-				log_dbug(TAG,"creating upload directory");
-				if (-1 == mkdir(upload,0777)) {
-					log_warn(TAG,"create upload directory %s: %s",upload,strerror(errno));
-				} else {
-					WWW->setUploadDir(upload);
-				}
-			} else {
-				WWW->setUploadDir(upload);
-			}
-		}
-		index_html = true;
+	const char *upload = "/flash/upload";
+	if (c.has_uploaddir())
+		upload = c.uploaddir().c_str();
+	if ((stat(upload,&st) == 0) && S_ISDIR(st.st_mode)) {
+		log_info(TAG,"uplaod dir %s",upload);
+	} else {
+		log_info(TAG,"no uplaod dir");
+		upload = 0;
+	}
+	char file[64];
+	char *f;
+	if (c.has_root()) {
+		size_t rl = c.root().size();
+		memcpy(file,c.root().data(),rl);
+		f = file+rl;
+		if (f[-1] != '/')
+			*f++ = '/';
+	} else {
+		file[0] = '/';
+		f = file+1;
+	}
+	strcpy(f,"index.htm");
+	if (stat(file,&st) == 0) {
+		index_html = "/index.htm";
+	} else {
+		strcpy(f,"index.html");
+		if (stat(file,&st) == 0)
+			index_html = "/index.html";
 	}
 #endif
-
-	if (!index_html) {
-		log_info(TAG,"no index.html found");
+	if (!c.has_start() && (index_html == 0)) {
+		log_info(TAG,"no index.html found, no start requested.");
 		return;
 	}
-	WWW->addFile("/alarms.html");
-	WWW->addFile("/config.html");
-	WWW->addFile("/index.html");
-	WWW->addFile("/shell.html");
-	WWW->addFile("/setpass.html");
+	WWW = new HttpServer(root,index_html);
+	if (root)
+		WWW->addDirectory(root);
+#ifdef HAVE_FS
+	if (upload)
+		WWW->setUploadDir(upload);
+#endif
 #ifdef CONFIG_OTA
-	WWW->addFile("/update.html");
 	WWW->addFunction("/do_update",updateFirmware);
 #endif
-	WWW->addFunction("/config.json",config_json);	// reveals passwords
-	WWW->addFunction("/actions.json",actions_json);	// reveals passwords
+	WWW->addFunction("/config.json",config_json);
+	WWW->addFunction("/actions.json",actions_json);
 #ifdef CONFIG_HTTP_REVEAL_CONFIG
 	WWW->addFunction("/config.bin",config_bin);	// reveals passwords
 #endif
@@ -608,6 +640,9 @@ void httpd_setup()
 	WWW->addFunction("/post_config",postConfig);
 #ifdef CONFIG_CAMERA
 	WWW->addFunction("/webcam.jpeg",webcam_sendframe);
+#endif
+#ifdef CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH
+	WWW->addFunction("/core",getCore);
 #endif
 	Sem = xSemaphoreCreateCounting(4,4);
 	listen_port(port,m_tcp,httpd_session,"httpd","_http",7,4096);

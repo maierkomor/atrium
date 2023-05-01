@@ -179,10 +179,12 @@ static int sendmsg(LogMsg *m)
 	pbuf_take_at(pbuf,m->msg,m->ml,n);
 	err_t e = udp_send(Ctx->pcb,pbuf);
 	pbuf_free(pbuf);
-	LWIP_UNLOCK();
 	if (e) {
+		udp_remove(Ctx->pcb);
+		Ctx->pcb = 0;
 		log_local(TAG,"sendto %d",e);
 	}
+	LWIP_UNLOCK();
 	return e;
 }
 
@@ -251,13 +253,13 @@ done:
 static void syslog_hostip(const char *hn, const ip_addr_t *ip, void *arg)
 {
 	// no LWIP_LOCK as called from tcpip_task
-	if (ip == 0)
+	if ((ip == 0) || (Ctx->pcb))
 		return;
 	log_info(TAG,"connect %s",hn);
 	err_t e;
-	udp_pcb *pcb;
 	{
 		Lock lock(Mtx,__FUNCTION__);
+		udp_pcb *pcb;
 		if (Ctx->pcb) {
 			pcb = Ctx->pcb;
 			Ctx->pcb = 0;
@@ -267,16 +269,15 @@ static void syslog_hostip(const char *hn, const ip_addr_t *ip, void *arg)
 		e = udp_connect(pcb,ip,SYSLOG_PORT);
 		if (e) {
 			udp_remove(pcb);
-			pcb = 0;
+		} else {
+			Ctx->pcb = pcb;
+			if (Ctx->ev == 0)
+				Ctx->ev = event_id("syslog`msg");
+			event_trigger_nd(Ctx->ev);
 		}
 	}
 	if (e) {
 		log_warn(TAG,"connect %d",e);
-	} else {
-		Ctx->pcb = pcb;
-		if (Ctx->ev == 0)
-			Ctx->ev = event_id("syslog`msg");
-		event_trigger_nd(Ctx->ev);
 	}
 }
 

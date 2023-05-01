@@ -117,10 +117,10 @@ void Button::release_ev(void *arg)
 		b->m_treleased = esp_timer_get_time() / 1000;
 		event_trigger(b->m_rev);
 	}
-	log_dbug(TAG,"%s released",b->m_name);
 	if (b->m_st != btn_released) {
 		event_t ev = 0;
 		unsigned dt = b->m_treleased - b->m_tpressed;
+		log_dbug(TAG,"%s released %u",b->m_name,dt);
 		b->m_st = btn_released;
 		b->m_pressed.set(false);
 		b->m_ptime.set((float)dt);
@@ -143,19 +143,19 @@ void IRAM_ATTR Button::intr(void *arg)
 	// no log_* from ISRs!
 	int32_t now = esp_timer_get_time() / 1000;
 	Button *b = static_cast<Button*>(arg);
-	event_t ev;
+	event_t ev = 0;
 	if (xio_get_lvl(b->m_gpio) == b->m_presslvl) {
-		if ((now - b->m_tpressed) < 10)
-			return;
-		b->m_tpressed = now;
-		ev = b->m_pev;
+		if (b->m_lastev != b->m_pev) {
+			ev = b->m_pev;
+			b->m_tpressed = now;
+		}
 	} else {
-		if ((now - b->m_treleased) < 10)
-			return;
-		b->m_treleased = now;
-		ev = b->m_rev;
+		if (b->m_lastev != b->m_rev) {
+			b->m_treleased = now;
+			ev = b->m_rev;
+		}
 	}
-	if (ev != b->m_lastev) {
+	if (ev) {
 		b->m_lastev = ev;
 		event_isr_trigger(ev);
 	}

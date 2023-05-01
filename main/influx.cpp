@@ -60,8 +60,12 @@ using namespace std;
 #define TAG MODULE_INFLUX
 
 typedef enum state {
-	offline, connecting, running, error, stopped
+	offline = 0, connecting, running, error, stopped, bug
 } state_t;
+
+const char *States[] = {
+	"offline", "connecting", "running", "error", "stopped", "bug"
+};
 
 static struct udp_pcb *UPCB = 0;
 static struct tcp_pcb *TPCB = 0;
@@ -90,14 +94,14 @@ static void handle_err(void *arg, err_t e)
 
 static err_t handle_sent(void *arg, struct tcp_pcb *pcb, u16_t l)
 {
-//	log_dbug(TAG,"sent %p %u",pcb,l);
+	log_devel(TAG,"sent %p %u",pcb,l);
 	return 0;
 }
 
 
 static err_t handle_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *pbuf, err_t e)
 {
-//	log_dbug(TAG,"recv %u err=%d",pbuf ? pbuf->tot_len : 0,e);
+	log_devel(TAG,"recv %u err=%d",pbuf ? pbuf->tot_len : 0,e);
 	assert(pcb);
 	if (e == 0) {
 		if (pbuf && log_module_enabled(TAG)) {
@@ -134,14 +138,13 @@ static void influx_connect(const char *hn, const ip_addr_t *addr, void *arg);
 
 static inline void term_fn(void *)
 {
-	log_dbug(TAG,"stop_fn");
+	log_info(TAG,"terminating");
 	LWIP_LOCK();
 	if (struct udp_pcb *pcb = UPCB) {
 		UPCB = 0;
 		udp_remove(pcb);
 	}
 	if (struct tcp_pcb *pcb = TPCB) {
-		log_info(TAG,"closing connection");
 		TPCB = 0;
 		tcp_close(pcb);
 	}
@@ -312,30 +315,38 @@ typedef struct send_s {
 static void send_fn(void *arg)
 {
 	send_t *s = (send_t *)arg;
+	void *sp = memchr(s->data,' ',s->len);
+	if ((sp == 0) || (0 == memchr(sp,' ',s->len-((char*)sp-(char*)s->data)))) {
+		State = bug;
+		log_warn(TAG,"BUG: %.*s",s->len,s->data);
+		xSemaphoreGive(LwipSem);
+		return;
+	}
+	log_dbug(TAG,"send '%.*s'",s->len,s->data);
+	err_t e;
 	if (TPCB) {
-//		log_dbug(TAG,"tcp send '%.*s'",l,data);
 		char len[16];
 		int n = sprintf(len,"%u\r\n\r\n",s->len);
-		if (err_t e = tcp_write(TPCB,TcpHdr,THL,TCP_WRITE_FLAG_MORE)) {
-			log_warn(TAG,"send header: %s",strlwiperr(e));
-			State = error;
-		} else if (err_t e = tcp_write(TPCB,len,n,TCP_WRITE_FLAG_MORE|TCP_WRITE_FLAG_COPY)) {
-			log_warn(TAG,"send length: %s",strlwiperr(e));
-			State = error;
-		} else if (err_t e = tcp_write(TPCB,s->data,s->len,TCP_WRITE_FLAG_COPY)) {
-			log_warn(TAG,"send data: %s",strlwiperr(e));
-			State = error;
-		} else {
+		e = tcp_write(TPCB,TcpHdr,THL,TCP_WRITE_FLAG_MORE);
+		if (e == 0)
+			e = tcp_write(TPCB,len,n,TCP_WRITE_FLAG_MORE|TCP_WRITE_FLAG_COPY);
+		if (e == 0)
+			e = tcp_write(TPCB,s->data,s->len,TCP_WRITE_FLAG_COPY);
+		if (e == 0)
 			tcp_output(TPCB);
-		}
 	} else if (UPCB) {
 		struct pbuf *pbuf = pbuf_alloc(PBUF_TRANSPORT,s->len,PBUF_RAM);
 		pbuf_take(pbuf,s->data,s->len);
-		if (err_t e = udp_send(UPCB,pbuf))
-			log_warn(TAG,"send failed: %d",e);
+		e = udp_send(UPCB,pbuf);
 		pbuf_free(pbuf);
+	} else {
+		e = 0;
 	}
 	xSemaphoreGive(LwipSem);
+	if (e) {
+		State = error;
+		log_warn(TAG,"send: %s",strlwiperr(e));
+	}
 }
 #endif
 
@@ -348,33 +359,34 @@ int influx_send(const char *data, size_t l)
 			influx_init();
 		return 0;
 	}
-	log_devel(TAG,"send '%.*s'",l,data);
 	Lock lock(Mtx,__FUNCTION__);
 #ifdef CONFIG_IDF_TARGET_ESP8266
+	err_t e;
+	log_dbug(TAG,"send '%.*s'",l,data);
 	LWIP_LOCK();
 	if (TPCB) {
-//		log_dbug(TAG,"tcp send '%.*s'",l,data);
 		char len[16];
 		int n = sprintf(len,"%u\r\n\r\n",l);
-		esp_err_t e;
-		if (0 != (e = tcp_write(TPCB,TcpHdr,THL,TCP_WRITE_FLAG_MORE))) {
-		} else if (0 != (e = tcp_write(TPCB,len,n,TCP_WRITE_FLAG_MORE|TCP_WRITE_FLAG_COPY))) {
-		} else if (0 != (e = tcp_write(TPCB,data,l,TCP_WRITE_FLAG_COPY))) {
-		} else {
+		e = tcp_write(TPCB,TcpHdr,THL,TCP_WRITE_FLAG_MORE);
+		if (e == 0)
+			e = tcp_write(TPCB,len,n,TCP_WRITE_FLAG_MORE|TCP_WRITE_FLAG_COPY);
+		if (e == 0)
+			e = tcp_write(TPCB,data,l,TCP_WRITE_FLAG_COPY);
+		if (e == 0)
 			tcp_output(TPCB);
-		}
-		if (e) {
-			log_warn(TAG,"send: %s",strlwiperr(e));
-			State = error;
-		}
 	} else if (UPCB) {
 		struct pbuf *pbuf = pbuf_alloc(PBUF_TRANSPORT,l,PBUF_RAM);
 		pbuf_take(pbuf,data,l);
-		if (err_t e = udp_send(UPCB,pbuf))
-			log_warn(TAG,"send: %s",strlwiperr(e));
+		e = udp_send(UPCB,pbuf);
 		pbuf_free(pbuf);
+	} else {
+		e = 0;
 	}
 	LWIP_UNLOCK();
+	if (e) {
+		State = error;
+		log_warn(TAG,"send: %s",strlwiperr(e));
+	}
 #else
 	send_t a;
 	a.data = data;
@@ -544,14 +556,18 @@ const char *influx(Terminal &term, int argc, const char *args[])
 				term.printf("measurement: %s\n",i.measurement().c_str());
 			if (Header)
 				term.printf("header     : '%s'\n",Header);
+			const char *mode;
 			if (State == running) {
-				const char *mode = "";
 				if (UPCB)
 					mode = "UDP ready";
 				else if (TPCB)
 					mode = "TCP connected";
-				term.println(mode);
+				else
+					mode = "missing PCB";
+			} else {
+				mode = States[State];
 			}
+			term.println(mode);
 		} else {
 			return "Not configured.";
 		}

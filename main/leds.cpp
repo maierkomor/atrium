@@ -81,6 +81,11 @@ struct LedMode
 LedMode *LedMode::First = 0, *Status = 0;
 
 static uint32_t PressTime = 0;
+#ifndef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
+static xio_t Busy = XIO_INVALID;
+static bool BusyOn = false;
+static uint8_t BusyCnt = 0;
+#endif
 
 // 0: automatic
 // < 0: rewind x steps
@@ -286,7 +291,7 @@ static unsigned ledmode_subtask(void *arg)
 	if ((ctx == Status) && (ctx->mode))
 		update_mode(ctx,now);
 	if (now < ctx->update)
-		return now - ctx->update;
+		return ctx->update - now;
 	int state = ctx->state;
 	int8_t d = Modes[state];
 	if (d < 0) {
@@ -299,8 +304,12 @@ static unsigned ledmode_subtask(void *arg)
 	unsigned dt = (d>>1) * 10;
 	ctx->update = now + dt;
 	++ctx->state;
-	log_dbug(TAG,"led %s: mode %d, delay %d, update %u, state %u, %s",ctx->name,ctx->mode,d>>1,ctx->update,ctx->state,d&1?"on":"off");
-	return dt > 50 ? 50 : dt;
+	log_local(TAG,"led %s: mode %d, delay %d, update %u, state %u, %s",ctx->name,ctx->mode,d>>1,ctx->update,ctx->state,d&1?"on":"off");
+	if (dt > 50)
+		dt = 50;
+	else if (dt < 20)
+		dt = 20;
+	return dt;
 }
 
 
@@ -486,6 +495,25 @@ static LuaFn Functions[] = {
 #endif
 
 
+#ifndef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
+extern "C"
+void busy_set(int on)
+{
+	if (Busy != XIO_INVALID) {
+		if (on) {
+			if (BusyCnt == 0)
+				xio_set_lvl(Busy,(xio_lvl_t) BusyOn);
+			++BusyCnt;
+		} else {
+			--BusyCnt;
+			if (BusyCnt == 0)
+				xio_set_lvl(Busy,(xio_lvl_t) !BusyOn);
+		}
+	}
+}
+#endif
+
+
 int leds_setup()
 {
 	bool have_st = false;
@@ -503,7 +531,7 @@ int leds_setup()
 			continue;
 		}
 		uint8_t on = c.config_active_high();
-		LedMode *ctx;
+		LedMode *ctx = 0;
 		if (n == "heartbeat") {
 			ctx = new LedMode(name,ledmode_heartbeat,gpio,on);
 			cyclic_add_task("heartbeat",ledmode_subtask,(void*)ctx);
@@ -517,13 +545,19 @@ int leds_setup()
 			Status = ctx;
 			action_add("statusled!btnpress",button_press_callback,0,"bind to button press event to monitor with status LED");
 			action_add("statusled!btnrel",button_rel_callback,0,"bind to button release event to monitor with status LED");
+#ifndef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
+		} else if (n == "busy") {
+			Busy = gpio;
+			BusyOn = on;
+#endif
 		} else {
 			ctx = new LedMode(name,ledmode_off,gpio,on);
 			action_add(concat(name,"!on"), led_set_on, (void*)ctx, "led on");
 			action_add(concat(name,"!off"), led_set_off, (void*)ctx, "led off");
 			action_add(concat(name,"!toggle"), led_toggle, (void*)ctx, "toggle led");
 		}
-		cyclic_add_task(name,ledmode_subtask,(void*)ctx);
+		if (ctx)
+			cyclic_add_task(name,ledmode_subtask,(void*)ctx);
 		log_info(TAG,"added %s at %u",name,gpio);
 		++numled;
 	}

@@ -52,5 +52,5 @@ idf_component_register(
 	REQUIRES
 	actions app_update button cyclic event dht display event fatfs
 	hc-sr04 hlw8012 i2c logging lua max7219 memfiles onewire relay
-	spi timefuse tlc5947 wpa_supplicant ws8212b
+	spi timefuse tlc5947 wpa_supplicant ws8212b espcoredump
 )

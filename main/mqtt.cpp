@@ -461,31 +461,28 @@ static err_t send_sub(const char *t, bool commit, bool lock)
 
 static void parse_conack(uint8_t *buf, size_t rlen)
 {
-	if (rlen != 2) {
-		log_warn(TAG,"CONACK: invalid length %d",rlen);
-	} else {
+	if (rlen == 2) {
 		uint16_t status = buf[0] << 8 | buf[1];
-		if (status == 0) {
-			assert(Client->pcb != 0);
+		if ((status == 0) && (Client->pcb != 0)) {
 			log_devel(TAG,"CONACK OK");
 			Client->state = running;
-//			mqtt_pub_int("version",Version,0,1,1,false);
-//			mqtt_pub_int("reset_reason",ResetReasons[(int)esp_reset_reason()],0,1,1,false);
 			for (const auto &s : Client->subscriptions)
 				send_sub(s.first.c_str(),false,false);
-			if (err_t e = tcp_output(Client->pcb)) {
-				log_warn(TAG,"tcp output %d",e);
-			} else {
-				//log_dbug(TAG,"send ok");
+			err_t e = tcp_output(Client->pcb);
+			if (e == 0)
 				return;
-			}
+			log_warn(TAG,"tcp output %d",e);
 		} else {
-			log_warn(TAG,"CONACK %d",status);
+			log_warn(TAG,"CONACK 0x%x",status);
 		}
+	} else {
+		log_warn(TAG,"CONACK: invalid length %d",rlen);
 	}
 	Client->state = offline;
-	tcp_close(Client->pcb);
+	struct tcp_pcb *pcb = Client->pcb;
 	Client->pcb = 0;
+	if (pcb)
+		tcp_close(pcb);
 }
 
 
@@ -631,20 +628,6 @@ static err_t handle_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *pbuf, err_
 }
 
 
-static err_t handle_poll(void *arg, struct tcp_pcb *pcb)
-{
-	//log_dbug(TAG,"poll %p",pcb);
-	return 0;
-}
-
-
-static err_t handle_sent(void *arg, struct tcp_pcb *pcb, u16_t l)
-{
-//	log_dbug(TAG,"sent %p %u",pcb,l);
-	return 0;
-}
-
-
 static void handle_err(void *arg, err_t e)
 {
 	log_warn(TAG,"handle error %s",strlwiperr(e));
@@ -667,17 +650,20 @@ static err_t handle_connect(void *arg, struct tcp_pcb *pcb, err_t x)
 	assert(Client);
 	log_info(TAG,"connected %s",inet_ntoa(pcb->remote_ip));
 	tcp_recv(pcb,handle_recv);
-	tcp_sent(pcb,handle_sent);
-	tcp_poll(pcb,handle_poll,2);
 	uint8_t flags = 2;	// start with a clean session
 	const auto &mqtt = Config.mqtt();
 	size_t us = mqtt.username().size();
-	if (us)
+	size_t ts = HostnameLen + 14;
+	if (us) {
 		flags |= 0x40;
+		ts += us + 2;
+	}
 	size_t ps = mqtt.password().size();
-	if (ps)
+	if (ps) {
 		flags |= 0x80;
-	char tmp[(us ? us+2 : 0) + (ps ? ps+2 : 0) + HostnameLen + 14];
+		ts += ps + 2;
+	}
+	char tmp[ts];
 	char *b = tmp;
 	*b++ = CONNECT;		// MQTT connect
 	*b++ = sizeof(tmp) - 2;	// length of request
@@ -712,9 +698,9 @@ static err_t handle_connect(void *arg, struct tcp_pcb *pcb, err_t x)
 		memcpy(b,mqtt.password().data(),ps);
 		b += ps;
 	}
-	if (b-tmp != sizeof(tmp))
-		log_warn(TAG,"connect fill %d!=%d",b-tmp,sizeof(tmp));
+	assert(b-tmp == sizeof(tmp));
 	log_devel(TAG,"connect write %d",sizeof(tmp));
+	assert(pcb == Client->pcb);
 	err_t e = tcp_write(pcb,tmp,sizeof(tmp),TCP_WRITE_FLAG_COPY);
 	if (e) {
 		log_warn(TAG,"connect: write error %s",strlwiperr(e));
@@ -781,10 +767,12 @@ static unsigned mqtt_cyclic(void *)
 		return 1000;
 	if (rem > 500)
 		return 100;
-	if (rem < 0)
+	if (rem < 0) {
 		mqtt_stop(0);
-	else
+		Client->state = offline;
+	} else {
 		mqtt_ping();
+	}
 	return 50;
 }
 #endif	// FEATURE_KEEPALIVE
@@ -1021,6 +1009,7 @@ void mqtt_stop_fn(void *arg)
 		log_warn(TAG,"write DISCONNECT %d",e);
 	else
 		tcp_output(Client->pcb);
+	Client->pcb = 0;
 	e = tcp_close(pcb);
 	xSemaphoreGive(LwipSem);
 }
@@ -1028,7 +1017,7 @@ void mqtt_stop_fn(void *arg)
 
 void mqtt_stop(void *arg)
 {
-	if ((Client == 0) || (Client->state == offline))
+	if (Client == 0)
 		return;
 	log_dbug(TAG,"stop");
 	Lock lock(Client->mtx,__FUNCTION__);
@@ -1041,14 +1030,15 @@ void mqtt_stop(void *arg)
 			log_warn(TAG,"write DISCONNECT %d",e);
 		else
 			tcp_output(Client->pcb);
-		e = tcp_close(Client->pcb);
+		struct tcp_pcb *pcb = Client->pcb;
+		Client->pcb = 0;
+		e = tcp_close(pcb);
 		LWIP_UNLOCK();
 		if (e)
 			log_warn(TAG,"stop: close error %d",e);
 #else
 		tcpip_send_msg_wait_sem(mqtt_stop_fn,Client->pcb,&LwipSem);
 #endif
-		Client->pcb = 0;
 	}
 #ifdef FEATURE_KEEPALIVE
 	Client->recv_ts = 0;
@@ -1062,15 +1052,16 @@ static void mqtt_connect(const char *hn, const ip_addr_t *addr, void *arg)
 	// called as callback from tcpip_task
 	Lock lock(Client->mtx,__FUNCTION__);
 	if ((Client->state != connecting) && (Client->state != running) && (addr != 0)) {
-		Client->state = connecting;
 		uint16_t port = (uint16_t)(unsigned)arg;
 		if (Client->pcb) {
 			log_warn(TAG,"connect with PCB");
 			tcp_abort(Client->pcb);
 			Client->pcb = 0;
+			Client->state = offline;
 		} else {
 			Client->pcb = tcp_new();
 			tcp_err(Client->pcb,handle_err);
+			Client->state = connecting;
 			err_t e = tcp_connect(Client->pcb,addr,port,handle_connect);
 			if (e)
 				log_warn(TAG,"tcp_connect: %d",e);

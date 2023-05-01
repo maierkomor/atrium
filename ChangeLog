@@ -1,3 +1,18 @@
+R2304:
+======
+- added command line comment suport to ignore lines starting with a #
+- added core file handling support, including direct http download
+- added FTP binary transfer support
+- enhanced sm command to print all event/action associations of states
+- output of ls command could be better
+- timer infrastructure must deal with invalid timer ids
+- more event statistics
+- added busy LED that shows activity of event and cyclic processing
+- update stt command
+- TCA9555 init fix
+- fix: env output ignores printing format
+- fix: timer argument parsing error
+
 R2303:
 ======
 - added script for convenient flashing

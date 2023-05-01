@@ -1006,6 +1006,16 @@ a file, just executed e.g. `cp /usb/myfile.lua .`. This will copy the
 file to the current directory, which is per default `/flash`.
 
 
+Crash dumps:
+============
+Atrium projects for 4MB flash size are configured with a core dump
+partition and include infrastructure to save and download crash dumps.
+For this, the `dumpadm` command is available that allows copying the
+current crash dump to a writable storeage filesystem. Additionally, if
+the internal www server is started, a download of `http://nodename/core`
+will download the core binary from the crash partition.
+
+
 Known Issues:
 =============
 - The documentation is incomplete and not completely up-to-date
