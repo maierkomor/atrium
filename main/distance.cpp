@@ -40,7 +40,7 @@ static void hcsr04_sample(void *arg)
 }
 
 
-int distance_setup()
+void distance_setup()
 {
 	for (const auto &c : HWConf.hcsr04()) {
 		if (!c.has_trigger() || !c.has_echo()) {
@@ -55,7 +55,6 @@ int distance_setup()
 			drv->attach(RTData);
 		}
 	}
-	return 0;
 }
 
 #endif

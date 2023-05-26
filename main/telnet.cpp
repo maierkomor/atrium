@@ -315,9 +315,9 @@ static void telnet_session(LwTcp *con)
 #endif
 
 
-int telnet_setup()
+void telnet_setup()
 {
-	return listen_port(TELNET_PORT,m_tcp,telnet_session,"telnet","telnet",5,4096);
+	listen_port(TELNET_PORT,m_tcp,telnet_session,"telnet","telnet",5,4096);
 }
 
 

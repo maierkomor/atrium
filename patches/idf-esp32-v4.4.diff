@@ -1,5 +1,5 @@
 diff --git a/components/driver/i2c.c b/components/driver/i2c.c
-index f4beb3bcf1..06ed8286e5 100644
+index 164b9e9e6a..6ea2ec5254 100644
 --- a/components/driver/i2c.c
 +++ b/components/driver/i2c.c
 @@ -208,7 +208,7 @@ static i2c_clk_alloc_t i2c_clk_alloc[I2C_SCLK_MAX] = {
@@ -20,6 +20,57 @@ index f4beb3bcf1..06ed8286e5 100644
  {
  // A workaround for avoiding cause timeout issue when using
  // hardware reset.
+diff --git a/components/esp_system/startup.c b/components/esp_system/startup.c
+index 4b6f4e491f..25260471d1 100644
+--- a/components/esp_system/startup.c
++++ b/components/esp_system/startup.c
+@@ -282,13 +282,13 @@ static void do_core_init(void)
+ 
+     esp_newlib_time_init();
+ 
+-#if CONFIG_VFS_SUPPORT_IO
++#if 0 //CONFIG_VFS_SUPPORT_IO
+     // VFS console register.
+     esp_err_t vfs_err = esp_vfs_console_register();
+     assert(vfs_err == ESP_OK && "Failed to register vfs console");
+ #endif
+ 
+-#if defined(CONFIG_VFS_SUPPORT_IO) && !defined(CONFIG_ESP_CONSOLE_NONE)
++#if 0 //defined(CONFIG_VFS_SUPPORT_IO) && !defined(CONFIG_ESP_CONSOLE_NONE)
+     const static char *default_stdio_dev = "/dev/console/";
+     esp_reent_init(_GLOBAL_REENT);
+     _GLOBAL_REENT->_stdin  = fopen(default_stdio_dev, "r");
+diff --git a/components/tinyusb/additions/src/tusb_cdc_acm.c b/components/tinyusb/additions/src/tusb_cdc_acm.c
+index aa11c0dc1f..607249afde 100644
+--- a/components/tinyusb/additions/src/tusb_cdc_acm.c
++++ b/components/tinyusb/additions/src/tusb_cdc_acm.c
+@@ -267,6 +267,8 @@ esp_err_t tinyusb_cdcacm_read(tinyusb_cdcacm_itf_t itf, uint8_t *out_buf, size_t
+     }
+ 
+     *rx_data_size = read_sz;
++    ringbuf_mux_give(acm);
++    return ESP_OK;
+     /* Buffer's data can be wrapped, at that situations we should make another retrievement */
+     if (read_from_rx_unread_to_buffer(acm, out_buf + read_sz, out_buf_sz - read_sz, &read_sz) == ESP_OK) {
+         *rx_data_size += read_sz;
+diff --git a/components/vfs/vfs.c b/components/vfs/vfs.c
+index b433c98693..05adb7c251 100644
+--- a/components/vfs/vfs.c
++++ b/components/vfs/vfs.c
+@@ -65,11 +65,11 @@ esp_err_t esp_vfs_register_common(const char* base_path, size_t len, const esp_v
+ {
+     if (len != LEN_PATH_PREFIX_IGNORED) {
+         /* empty prefix is allowed, "/" is not allowed */
+-        if ((len == 1) || (len > ESP_VFS_PATH_MAX)) {
++        if (len > ESP_VFS_PATH_MAX) {
+             return ESP_ERR_INVALID_ARG;
+         }
+         /* prefix has to start with "/" and not end with "/" */
+-        if (len >= 2 && ((base_path[0] != '/') || (base_path[len - 1] == '/'))) {
++        if (base_path[0] != '/') {
+             return ESP_ERR_INVALID_ARG;
+         }
+     }
 diff --git a/components/wpa_supplicant/src/ap/ap_config.h b/components/wpa_supplicant/src/ap/ap_config.h
 index 9dad5f902e..6f90794c64 100644
 --- a/components/wpa_supplicant/src/ap/ap_config.h

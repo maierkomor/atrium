@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2022, Thomas Maier-Komor
+ *  Copyright (C) 2020-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -36,7 +36,6 @@ class OneWire
 	int resetBus();
 	int scanBus();
 	int readRom();
-	unsigned xmitBit(uint8_t);
 	void setPower(bool);
 
 	static OneWire *getInstance()

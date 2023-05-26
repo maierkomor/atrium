@@ -38,8 +38,8 @@ void romfs_getentry(const char *n, size_t *s, size_t *o);
 int romfs_open(const char *n);
 int romfs_read_at(int i, char *buf, size_t s, size_t o);
 const char *romfs_name(int i);
-void romfs_setup();
 void *romfs_mmap(int i);
+const char *romfs_setup();
 
 #ifdef __cplusplus
 }

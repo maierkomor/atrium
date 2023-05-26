@@ -115,7 +115,7 @@ static unsigned sntp_cyclic(void *arg)
 			log_info(TAG,"queried %s",Server);
 		Queried = true;
 	}
-	return 100;
+	return 1000;
 }
 
 
@@ -131,7 +131,9 @@ static void handle_recv(void *arg, struct udp_pcb *pcb, struct pbuf *pbuf, const
 	bzero(&p,sizeof(p));
 	pbuf_copy_partial(pbuf,&p,pbuf->tot_len,0);
 	pbuf_free(pbuf);
-	if (((p.mode&6) == 4) && (((p.mode>>6)&3) == 0)) {	// server reply? (4=unicat,5=broadcast)
+	log_dbug(TAG,"packet from %s, mode 0x%x",inet_ntoa(*ip),p.mode);
+	// allow clock not synchronized packets (p.mode>>6 == 3)
+	if (((p.mode&6) == 4) && ((((p.mode>>6)&3) == 0) || (((p.mode>>6)&3) == 3))) {	// server reply? (4=unicat,5=broadcast)
 		if (p.stratum == 0) {
 			// kiss-of-death packet
 			log_warn(TAG,"received kiss-of-death from %s",inet_ntoa(*ip));
@@ -228,7 +230,7 @@ static void sntp_connect(const char *hn, const ip_addr_t *addr, void *arg)
 	char ipstr[64];
 	ip2str_r(addr,ipstr,sizeof(ipstr));
 	if (err_t e = udp_connect(spcb,addr,SNTP_PORT)) {
-		log_warn(TAG,"connect %s: %s",ipstr,esp_err_to_name(e));
+		log_warn(TAG,"connect %s: %s",ipstr,strlwiperr(e));
 		udp_remove(spcb);
 	} else {
 		log_info(TAG,"connected to %s",ipstr);

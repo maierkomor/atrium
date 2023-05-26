@@ -255,7 +255,8 @@ static void syslog_hostip(const char *hn, const ip_addr_t *ip, void *arg)
 	// no LWIP_LOCK as called from tcpip_task
 	if ((ip == 0) || (Ctx->pcb))
 		return;
-	log_info(TAG,"connect %s",hn);
+	if (Ctx->ev == 0)
+		Ctx->ev = event_id("syslog`msg");
 	err_t e;
 	{
 		Lock lock(Mtx,__FUNCTION__);
@@ -271,13 +272,13 @@ static void syslog_hostip(const char *hn, const ip_addr_t *ip, void *arg)
 			udp_remove(pcb);
 		} else {
 			Ctx->pcb = pcb;
-			if (Ctx->ev == 0)
-				Ctx->ev = event_id("syslog`msg");
 			event_trigger_nd(Ctx->ev);
 		}
 	}
 	if (e) {
-		log_warn(TAG,"connect %d",e);
+		log_warn(TAG,"connect %s: %s",hn,strlwiperr(e));
+	} else {
+		log_local(TAG,"connected to %s",hn);
 	}
 }
 

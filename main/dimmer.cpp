@@ -399,17 +399,15 @@ static LuaFn Functions[] = {
 #endif
 
 
-int dimmer_setup()
+void dimmer_setup()
 {
-	if (HWConf.led_size() == 0)
-		return 0;
 	unsigned nleds = 0;
 	for (auto &conf : HWConf.led()) {
 		if ((conf.pwm_ch() != -1) && (conf.gpio() != -1))
 			++nleds;
 	}
 	if (nleds == 0)
-		return 0;;
+		return;
 	log_info(TAG,"setup");
 	unsigned freq = 1000;
 	if (Config.has_pwm_freq()) {
@@ -422,7 +420,6 @@ int dimmer_setup()
 			log_info(TAG,"frequency %u, period %u",freq,Period);
 		}
 	}
-	unsigned err = 0;
 #ifdef CONFIG_IDF_TARGET_ESP8266
 	unsigned nch = 0;
 	uint32_t pins[nleds];
@@ -437,7 +434,7 @@ int dimmer_setup()
 	tm.clk_cfg          = LEDC_AUTO_CLK;
 	if (esp_err_t e = ledc_timer_config(&tm)) {
 		log_error(TAG,"timer config %x",e);
-		return e;
+		return;
 	}
 #endif
 	for (auto &conf : HWConf.led()) {
@@ -475,8 +472,8 @@ int dimmer_setup()
 		ch.hpoint     = 0;
 		ch.intr_type  = LEDC_INTR_DISABLE;
 		if (esp_err_t e = ledc_channel_config(&ch)) {
-			log_error(TAG,"channel config %x",e);
-			return e;
+			log_warn(TAG,"channel config %x",e);
+			continue;
 		}
 #else
 #error missing implementation
@@ -509,7 +506,7 @@ int dimmer_setup()
 #ifdef CONFIG_IDF_TARGET_ESP8266
 	if (esp_err_t e = pwm_init(Period,duties,nch,pins)) {
 		log_error(TAG,"pwm_init %x",e);
-		return e;
+		return;
 	}
 	for (int i = 0; i < nch; ++i)
 		pwm_set_phase(i,0);
@@ -517,7 +514,6 @@ int dimmer_setup()
 		log_warn(TAG,"pwm start %d",e);
 #endif
 	cyclic_add_task("dimmer",dimmer_fade);
-	return err;
 }
 
 #endif

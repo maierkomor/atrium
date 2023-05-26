@@ -46,7 +46,7 @@
 #define TAG MODULE_WS2812
 
 
-#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
+#if defined SOC_RMT_GROUPS && SOC_RMT_GROUPS > 0
 // CONFIG_IDF_TARGET_ESP32 at 80MHz, numbers in cycles
 // OK!
 #define T0H	28	// 0.35us
@@ -165,7 +165,9 @@ IRAM_ATTR void ws2812b_reset(unsigned gpio, uint16_t tr)
 	portEXIT_CRITICAL();
 }
 
-
+#elif defined SOC_RMT_GROUPS && SOC_RMT_GROUPS > 0
+#else
+#error unsupported target
 #endif	// CONFIG_IDF_TARGET_ESP8266
 
 
@@ -199,7 +201,7 @@ int WS2812BDrv::init(gpio_num_t gpio, size_t nleds, rmt_channel_t ch)
 		return 1;
 	}
 	m_cur = m_set+nleds*3;
-#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
+#if defined SOC_RMT_GROUPS && SOC_RMT_GROUPS > 0
 	if (ch == (rmt_channel_t)-1) {
 		log_warn(TAG,"channel not set");
 		return 1;
@@ -362,12 +364,7 @@ void WS2812BDrv::commit()
 	//log_info(TAG,"update0");
 	assert(m_set);
 	uint8_t *v = m_cur, *e = m_cur+m_num*3;
-#if defined CONFIG_IDF_TARGET_ESP8266
-	uint8_t tmp[e-v];		// move data to IRAM!
-	memcpy(tmp,v,sizeof(tmp));
-	ws2812b_write(1 << m_gpio,tmp,tmp+sizeof(tmp),m_t0l,m_t0h,m_t1l,m_t1h);
-	ws2812b_reset(1 << m_gpio,m_tr);
-#else
+#if defined SOC_RMT_GROUPS && SOC_RMT_GROUPS > 0
 	assert(m_items);
 	rmt_item32_t *r = m_items;
 	while (v != e) {
@@ -395,6 +392,11 @@ void WS2812BDrv::commit()
 	assert(r-m_items <= 24*m_num+1);
 	//log_info(TAG,"writing %u items",r-m_items);
 	rmt_write_items(m_ch, m_items, m_num*24+1, false);
+#else
+	uint8_t tmp[e-v];		// move data to IRAM!
+	memcpy(tmp,v,sizeof(tmp));
+	ws2812b_write(1 << m_gpio,tmp,tmp+sizeof(tmp),m_t0l,m_t0h,m_t1l,m_t1h);
+	ws2812b_reset(1 << m_gpio,m_tr);
 #endif
 }
 
@@ -402,7 +404,7 @@ void WS2812BDrv::commit()
 void WS2812BDrv::reset()
 {
 	//log_info(TAG,"reset0");
-#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
+#if defined SOC_RMT_GROUPS && SOC_RMT_GROUPS > 0
 	rmt_item32_t rst;
 	rst.level0 = 0;
 	rst.level1 = 0;

@@ -1,5 +1,8 @@
 synopsis: dumpadm <OPTION>
 Options are:
--e:	enable core dumps
+-e:	erase core dump (to enable new dumps)
+-c:	check core dump area
 -s:	print core dump summary
 -g:	get core dump info
+-f <f>:	write core dump to file <f>
+-x:	hex output the core dump

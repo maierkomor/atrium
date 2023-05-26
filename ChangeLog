@@ -1,3 +1,11 @@
+R2305:
+======
+- support to list root directory
+- accept SNTP packets with alarm=unsynchronized
+- fix for ROMFS VFS integration
+- fix MQTT restart issue
+- fix timing issue on 1-wire bus
+
 R2304:
 ======
 - added command line comment suport to ignore lines starting with a #

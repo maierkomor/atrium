@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2022, Thomas Maier-Komor
+ *  Copyright (C) 2022-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -102,8 +102,8 @@ void spi_setup()
 {
 	for (const auto &c : HWConf.spibus()) {
 		int8_t host = c.host();
-		uint8_t dma = c.dma();
 		spi_bus_config_t cfg;
+		bzero(&cfg,sizeof(cfg));
 //		cfg.max_transfer_sz = 0;		// use defaults
 		cfg.max_transfer_sz = 512;
 		cfg.flags = SPICOMMON_BUSFLAG_MASTER;
@@ -134,7 +134,7 @@ void spi_setup()
 			cfg.quadwp_io_num = -1;
 			cfg.quadhd_io_num = -1;
 		}
-		if (esp_err_t e = spi_bus_initialize((spi_host_device_t)host,&cfg,dma)) {
+		if (esp_err_t e = spi_bus_initialize((spi_host_device_t)host,&cfg,c.has_dma() ? (spi_common_dma_t)c.dma() : SPI_DMA_CH_AUTO)) {
 			log_warn(TAG,"error initializing SPI host %u: %s",host,esp_err_to_name(e));
 		} else {
 			log_info(TAG,"initialized SPI%u",host);

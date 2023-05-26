@@ -819,27 +819,27 @@ void ftpd_session(LwTcp *con)
 }
 
 
-int ftpd_setup()
+void ftpd_setup()
 {
 	if (!Config.has_ftpd())
-		return 0;
+		return;
 	FtpHttpConfig *c = Config.mutable_ftpd();
 	if (!c->has_start() || !c->start())
-		return 0;
+		return;
 	uint16_t p = FTPD_PORT;
 	if (c->has_port())
 		p = c->port();
 	const char *r = "/flash";
 	if (c->has_root())
 		r = c->root().c_str();
-	DIR *d = opendir(r);
-	if (d == 0) {
+	
+	if (DIR *d = opendir(r)) {
+		closedir(d);
+		log_info(TAG,"port %hu, root '%s'",p,r);
+		listen_port(FTPD_PORT,m_tcp,ftpd_session,"ftp","ftp",5,4096);
+	} else {
 		log_warn(TAG,"error accessing root '%s': %s",r,strerror(errno));
-		return 1;
 	}
-	closedir(d);
-	log_info(TAG,"port %hu, root '%s'",p,r);
-	return listen_port(FTPD_PORT,m_tcp,ftpd_session,"ftp","ftp",5,4096);
 }
 
 #endif

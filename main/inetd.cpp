@@ -268,7 +268,7 @@ int listen_port(int port, inet_mode_t mode, void (*session)(LwTcp *), const char
 }
 
 
-int inetd_setup(void)
+void inetd_setup(void)
 {
 	log_dbug(TAG,"init");
 	FD_ZERO(&PortFDs);
@@ -281,7 +281,6 @@ int inetd_setup(void)
 	BaseType_t r = xTaskCreatePinnedToCore(&inet_server, "inetd", 2560, 0, 5, NULL, PRO_CPU_NUM);
 	if (r != pdPASS)
 		log_error(TAG,"create inetd: %s",esp_err_to_name(r));
-	return 0;
 }
 
 

@@ -508,7 +508,6 @@ int xlua_add_funcs(const char *name, const LuaFn *f)
 
 static int xlua_parse_file(const char *fn, const char *n = 0)
 {
-	int fd;
 	if (n == 0)
 		n = fn;
 	char vn[strlen(n)+1];
@@ -518,15 +517,15 @@ static int xlua_parse_file(const char *fn, const char *n = 0)
 		strcpy(vn,n);
 	if (char *d = strchr(vn,'.'))
 		*d = 0;
-#ifdef CONFIG_ROMFS
-	fd = romfs_open(fn);
-	if (fd != -1) {
-		size_t s = romfs_size_fd(fd);
+#if 0 //def CONFIG_ROMFS
+	int rfd = romfs_open(fn);
+	if (rfd != -1) {
+		size_t s = romfs_size_fd(rfd);
 #ifdef CONFIG_IDF_TARGET_ESP32
-		const char *buf = (const char *) romfs_mmap(fd);
+		const char *buf = (const char *) romfs_mmap(rfd);
 #else
 		char *buf = (char *) malloc(s);
-		romfs_read_at(fd,buf,s,0);
+		romfs_read_at(rfd,buf,s,0);
 #endif
 		Lock lock(Mtx);
 		if (LS == 0)
@@ -536,6 +535,7 @@ static int xlua_parse_file(const char *fn, const char *n = 0)
 			lua_setglobal(LS,vn);
 			Compiled.insert(vn);
 			r = 0;
+			log_info(TAG,"parsed file %s",fn);
 		} else {
 			r = 1;
 			log_warn(TAG,"parse %s: %s",fn,lua_tostring(LS,-1));
@@ -555,7 +555,7 @@ static int xlua_parse_file(const char *fn, const char *n = 0)
 	   }
 	   */
 #else
-	fd = open(fn,O_RDONLY);
+	int fd = open(fn,O_RDONLY);
 	if (fd != -1) {
 		struct stat st;
 		if (0 == fstat(fd,&st)) {
@@ -570,6 +570,7 @@ static int xlua_parse_file(const char *fn, const char *n = 0)
 					free(buf);
 					lua_setglobal(LS,vn);
 					Compiled.insert(vn);
+					log_info(TAG,"parsed file %s",fn);
 					return 0;
 				}
 				log_warn(TAG,"parse %s: %s",fn,lua_tostring(LS,-1));

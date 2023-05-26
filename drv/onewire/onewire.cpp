@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2022, Thomas Maier-Komor
+ *  Copyright (C) 2020-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -187,25 +187,53 @@ int OneWire::scanBus()
 }
 
 
-int OneWire::searchRom(uint64_t &id, vector<uint64_t> &coll)
+static IRAM_ATTR unsigned xmitBit(uint8_t bus, uint8_t b)
 {
-	if (resetBus()) {
-		log_warn(TAG,"reset failed");
-		return OW_PRESENCE_ERR;
+	// TESTED OK
+	// idle bus is input pull-up
+	unsigned r;
+	ets_delay_us(2);
+	xio_set_lvl(bus,xio_lvl_0);
+	if (b) {
+		ets_delay_us(3);
+		xio_set_lvl(bus,xio_lvl_hiz);
+		ets_delay_us(10);
+		r = xio_get_lvl(bus);
+		ets_delay_us(65);
+	} else {
+		ets_delay_us(70);
+		xio_set_lvl(bus,xio_lvl_hiz);
+		ets_delay_us(10);
+		r = 0;
 	}
-	uint64_t x0 = 0, x1 = 0;
-	uint8_t c = writeByte(OW_SEARCH_ROM);
-	if (OW_SEARCH_ROM != c) {
-		log_warn(TAG,"search ROM command failed: %02x",c);
-		return 1;
-	}
-	int r = 0;
-	unsigned nc = 0;
+//	log_dbug(TAG,"xmit(%d): %d",b,r);
+	return r;
+}
+
+
+static IRAM_ATTR uint8_t writeBits(uint8_t bus, uint8_t byte)
+{
+//	log_dbug(TAG,"writeBits 0x%02x",byte);
 	ENTER_CRITICAL();
-	setPower(false);
+	uint8_t r = 0;
+	for (uint8_t b = 1; b; b<<=1) {
+		if (xmitBit(bus, byte & b))
+			r |= b;
+	}
+	EXIT_CRITICAL();
+//	no debug here, as writeBits is used in timinig critical sections!
+	return r;
+}
+
+
+static IRAM_ATTR uint64_t searchId(uint8_t bus, uint64_t &xid, vector<uint64_t> &coll)
+{
+	uint64_t x0 = 0, x1 = 0, id = xid;
+	int r = 0;
+	ENTER_CRITICAL();
 	for (unsigned b = 0; b < 64; ++b) {
-		uint8_t t0 = xmitBit(1);
-		uint8_t t1 = xmitBit(1);
+		uint8_t t0 = xmitBit(bus, 1);
+		uint8_t t1 = xmitBit(bus, 1);
 //		log_dbug(TAG,"t0=%u,t1=%u",t0,t1);
 		if (t0 & t1) {
 			r = -1;	// no response
@@ -219,26 +247,44 @@ int OneWire::searchRom(uint64_t &id, vector<uint64_t> &coll)
 			// collision
 //			log_dbug(TAG,"collision id %x",id|1<<b);
 			if ((id >> b) & 1) {	// collision seen before
-				xmitBit(1);
+				xmitBit(bus, 1);
 			} else {
-				++nc;
 				coll.push_back(id|1<<b);
-				xmitBit(0);
+				xmitBit(bus, 0);
 			}
 		} else
-			xmitBit(t0);
+			xmitBit(bus, t0);
 	}
-	setPower(true);
 	EXIT_CRITICAL();
-	while (nc) {
-		uint64_t c = coll[coll.size()-nc];
-		log_dbug(TAG,"collision %08lx%08lx",(uint32_t)(c>>32),(uint32_t)c);
-		--nc;
+	xid = id;
+//	log_dbug(TAG,"x0=%016lx, x1=%016lx",x0,x1);
+	return r;
+}
+
+
+int OneWire::searchRom(uint64_t &id, vector<uint64_t> &coll)
+{
+	if (resetBus()) {
+		log_warn(TAG,"reset failed");
+		return OW_PRESENCE_ERR;
 	}
-	if (r == -1)
-		log_dbug(TAG,"no response");
-	log_dbug(TAG,"x0=%016lx, x1=%016lx",x0,x1);
-	log_dbug(TAG,"id=" IDFMT,IDARG(id));
+	setPower(false);
+	uint8_t c = writeBits(m_bus,OW_SEARCH_ROM);
+	if (OW_SEARCH_ROM != c) {
+		log_warn(TAG,"search ROM command failed: %02x",c);
+		return 1;
+	}
+	size_t nc = coll.size();
+	log_dbug(TAG,"search id %lx",id);
+	int r = searchId(m_bus,id,coll);
+	setPower(true);
+	if (Modules[TAG]) {
+		while (nc < coll.size()) {
+			uint64_t c = coll[nc++];
+			log_dbug(TAG,"collision %08lx%08lx",(uint32_t)(c>>32),(uint32_t)c);
+		}
+	}
+//	log_dbug(TAG,"x0=%016lx, x1=%016lx",x0,x1);
 	return r;
 }
 
@@ -249,7 +295,7 @@ int OneWire::readRom()
 		log_error(TAG,"reset failed");
 		return OW_PRESENCE_ERR;
 	}
-	uint8_t r = writeByte(OW_READ_ROM);
+	uint8_t r = writeBits(m_bus,OW_READ_ROM);
 	if (OW_READ_ROM != r) {
 		log_error(TAG,"search ROM command failed: %02x",r);
 		return 1;
@@ -276,7 +322,6 @@ int OneWire::resetBus(void)
 	log_dbug(TAG,"reset");
 	assert((m_pwr == XIO_INVALID) || (m_pwron == true));
 	ENTER_CRITICAL();
-	setPower(false);
 	xio_set_lvl(m_bus,xio_lvl_0);
 	ets_delay_us(500);
 	xio_set_lvl(m_bus,xio_lvl_hiz);
@@ -289,7 +334,6 @@ int OneWire::resetBus(void)
 		ets_delay_us(10);
 	}
 	ets_delay_us(220);
-	setPower(true);
 	EXIT_CRITICAL();
 	if (r)
 		log_warn(TAG,"reset: no response");
@@ -298,50 +342,17 @@ int OneWire::resetBus(void)
 
 
 
-unsigned OneWire::xmitBit(uint8_t b)
-{
-	// TESTED OK
-	// idle bus is input pull-up
-	unsigned r;
-	ets_delay_us(2);
-	xio_set_lvl(m_bus,xio_lvl_0);
-	if (b) {
-		ets_delay_us(3);
-		xio_set_lvl(m_bus,xio_lvl_hiz);
-		ets_delay_us(10);
-		r = xio_get_lvl(m_bus);
-		ets_delay_us(65);
-	} else {
-		ets_delay_us(70);
-		xio_set_lvl(m_bus,xio_lvl_hiz);
-		ets_delay_us(10);
-		r = 0;
-	}
-	//log_dbug(TAG,"xmit(%d): %d",b,r);
-	return r;
-}
-
-
 uint8_t OneWire::writeByte(uint8_t byte)
 {
-	ENTER_CRITICAL();
-	setPower(false);
-	uint8_t r = 0;
-	for (uint8_t b = 1; b; b<<=1) {
-		if (xmitBit(byte & b))
-			r |= b;
-	}
-	setPower(true);
-	EXIT_CRITICAL();
-//	no debug here, as writeByte is used in timinig critical sections!
-	return r;
+	log_dbug(TAG,"writeByte 0x%02x",byte);
+	return writeBits(m_bus,byte);
 }
 
 
 uint8_t OneWire::readByte()
 {
 	// read by sending 0xff
-	uint8_t r = writeByte(0xFF);
+	uint8_t r = writeBits(m_bus,0xFF);
 	log_dbug(TAG,"readByte() = 0x%02x",r);
 	return r;
 }
@@ -350,21 +361,23 @@ uint8_t OneWire::readByte()
 int OneWire::sendCommand(uint64_t id, uint8_t command)
 {
 	log_dbug(TAG,"sendCommand(" IDFMT ",%02x)",IDARG(id),command);
+	setPower(false);
 	resetBus();
 	if (id) {
-		uint8_t c = writeByte(OW_MATCH_ROM);            // to a single device
+		uint8_t c = writeBits(m_bus,OW_MATCH_ROM);            // to a single device
 		if (c != OW_MATCH_ROM) {
 			log_warn(TAG,"match rom command failed");
 			return 1;
 		}
 		for (unsigned i = 0; i < sizeof(id); ++i) {
-			writeByte(id&0xff);
+			writeBits(m_bus,id&0xff);
 			id >>= 8;
 		}
 	} else {
-		writeByte(OW_SKIP_ROM);            // to all devices
+		writeBits(m_bus,OW_SKIP_ROM);            // to all devices
 	}
-	writeByte(command);
+	writeBits(m_bus,command);
+	setPower(true);
 	return 0;
 }
 

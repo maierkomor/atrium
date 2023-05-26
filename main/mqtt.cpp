@@ -589,6 +589,8 @@ static err_t handle_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *pbuf, err_
 		}
 		switch (type & 0xf0) {
 		case CONACK:
+			if (Client->pcb == 0)
+				Client->pcb = pcb;
 			parse_conack(buf,rlen);
 			break;
 		case PUBLISH:
@@ -699,8 +701,10 @@ static err_t handle_connect(void *arg, struct tcp_pcb *pcb, err_t x)
 		b += ps;
 	}
 	assert(b-tmp == sizeof(tmp));
-	log_devel(TAG,"connect write %d",sizeof(tmp));
+	if (Client->pcb == 0)
+		Client->pcb = pcb;
 	assert(pcb == Client->pcb);
+	log_devel(TAG,"connect write %d",sizeof(tmp));
 	err_t e = tcp_write(pcb,tmp,sizeof(tmp),TCP_WRITE_FLAG_COPY);
 	if (e) {
 		log_warn(TAG,"connect: write error %s",strlwiperr(e));
@@ -754,9 +758,9 @@ static unsigned mqtt_cyclic(void *)
 {
 	if (Client == 0)
 		return 1000;
-	if (Client->recv_ts == 0) {
+	if (Client->state == offline) {
 		log_devel(TAG,"ts=0, state=%s, %sabled",States[Client->state],Config.mqtt().enable()?"en":"dis");
-		if ((Client->state == offline) && Config.mqtt().enable())
+		if (Config.mqtt().enable() && (Client->recv_ts == 0))
 			mqtt_start();
 		return 1000;
 	}

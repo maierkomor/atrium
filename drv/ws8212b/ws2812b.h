@@ -24,9 +24,18 @@
 
 #include <driver/gpio.h>
 
-#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
+#if IDF_VERSION >= 44
+#include <soc/soc_caps.h>
+#if defined SOC_RMT_GROUPS && SOC_RMT_GROUPS > 0
 #include <driver/rmt.h>
-#else
+#endif
+#endif
+
+#ifndef SOC_RMT_GROUPS
+#define SOC_RMT_GROUPS 0
+#endif
+
+#if SOC_RMT_GROUPS == 0
 typedef uint8_t rmt_channel_t;
 typedef struct rmt_item32_s rmt_item32_t;
 #endif
@@ -83,15 +92,15 @@ class WS2812BDrv
 	char *m_name;
 	WS2812BDrv *m_next = 0;
 	uint8_t *m_set, *m_cur;
-#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
+#if defined SOC_RMT_GROUPS && SOC_RMT_GROUPS > 0
 	rmt_item32_t *m_items = 0;
 #endif
 	size_t m_num;
 	TimerHandle_t m_tmr;
 	gpio_num_t m_gpio;
-#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
+#if defined SOC_RMT_GROUPS && SOC_RMT_GROUPS > 0
 	rmt_channel_t m_ch;
-#elif defined CONFIG_IDF_TARGET_ESP8266
+#else
 	uint8_t m_t0l,m_t0h,m_t1l,m_t1h;
 	uint16_t m_tr;
 #endif

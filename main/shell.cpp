@@ -831,7 +831,7 @@ static const char *shell_df(Terminal &term, int argc, const char *args[])
 	FATFS *fs = 0;
 	int err = f_getfree(term.getPwd().c_str(),&nc,&fs);
 	if ((err == 0) && (fs != 0)) {
-		term.printf("%s: %lu kiB free\n",term.getPwd().c_str(),nc*fs->csize*fs->ssize>>10);
+		term.printf("%lu kiB free\n",nc*fs->csize*fs->ssize>>10);
 		return 0;
 	}
 	term.printf("error: %d\n",err);
@@ -1089,7 +1089,7 @@ static const char *hwconf(Terminal &term, int argc, const char *args[])
 		if (argc < 4)
 			return "Missing argument.";
 		int r = HWConf.setByName(args[2],args[3]);
-		if (r) {
+		if (r < 0) {
 			term.printf("error %d\n",r);
 			return "";
 		}

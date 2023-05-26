@@ -82,14 +82,11 @@ const char *dht(Terminal &term, int argc, const char *args[])
 }
 
 
-int dht_setup(void)
+void dht_setup(void)
 {
-	if (!HWConf.has_dht())
-		return 0;
-	if (dht_init(RTData))
-		return 1;
+	if (!HWConf.has_dht() || dht_init(RTData))
+		return;
 	action_add("dht!sample",gatherData,0,"poll DHT data");
-	return 0;
 }
 
 

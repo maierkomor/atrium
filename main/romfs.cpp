@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2022, Thomas Maier-Komor
+ *  Copyright (C) 2018-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -26,6 +26,7 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 #include "log.h"
@@ -317,10 +318,10 @@ static DIR *romfs_vfs_opendir(const char *path)
 
 static int romfs_vfs_readdir_r(DIR *d, struct dirent *e, struct dirent **r)
 {
-	log_dbug(TAG,"romfs_vfs_readdir_r(%d,...)",d ? d->dd_vfs_idx : -1);
-	if (d == 0)
+	log_dbug(TAG,"romfs_vfs_readdir_r(%d,...)",d ? d->dd_rsv : -1);
+	if ((d == 0) || (e == 0))
 		return EINVAL;
-	if (NumEntries >= d->dd_vfs_idx) {
+	if (NumEntries <= d->dd_rsv) {
 		if (r)
 			*r = 0;
 		e->d_name[0] = 0;
@@ -330,8 +331,9 @@ static int romfs_vfs_readdir_r(DIR *d, struct dirent *e, struct dirent **r)
 		*r = e;
 	e->d_ino = 0;
 	e->d_type = 1;
-	strcpy(e->d_name,Entries[d->dd_vfs_idx].name);
-	++d->dd_vfs_idx;
+	strcpy(e->d_name,Entries[d->dd_rsv].name);
+	log_dbug(TAG,"entry %s",e->d_name);
+	++d->dd_rsv;
 	return 0;
 }
 
@@ -339,21 +341,10 @@ static int romfs_vfs_readdir_r(DIR *d, struct dirent *e, struct dirent **r)
 static struct dirent *romfs_vfs_readdir(DIR *d)
 {
 	static struct dirent e;
-	log_dbug(TAG,"romfs_vfs_readdir(%d,...)",d ? d->dd_vfs_idx : -1);
-	if (d == 0) {
-		errno = EINVAL;
-		return 0;
-	}
-	if (NumEntries <= d->dd_vfs_idx-2) {
-		log_dbug(TAG,"entries = %d",NumEntries);
-		return 0;
-	}
-	log_dbug(TAG,"entry %s",Entries[d->dd_vfs_idx-2].name);
-	e.d_ino = 0;
-	e.d_type = 1;
-	strcpy(e.d_name,Entries[d->dd_vfs_idx-2].name);
-	++d->dd_vfs_idx;
-	return &e;
+	struct dirent *r = 0;
+	if (0 == romfs_vfs_readdir_r(d,&e,&r))
+		return r;
+	return 0;
 }
 
 
@@ -389,6 +380,13 @@ static int romfs_vfs_stat(const char *p, struct stat *st)
 		errno = EINVAL;
 		return -1;
 	}
+#ifdef CONFIG_ROMFS_VFS
+	if ((p[0] == '/') && (p[1] == 0)) {
+		st->st_size = 0;
+		st->st_mode = S_IFDIR;
+		return 0;
+	}
+#endif
 	RomEntry *i  = get_entry(p+1);	// omit leading slash
 	if (i == 0) {
 		errno = ENOENT;
@@ -400,8 +398,9 @@ static int romfs_vfs_stat(const char *p, struct stat *st)
 }
 #endif
 
+
 extern "C"
-void romfs_setup()
+const char *romfs_setup()
 {
 	auto pi = esp_partition_find(ESP_PARTITION_TYPE_DATA,ESP_PARTITION_SUBTYPE_ANY,0);
 	const esp_partition_t *p = 0;
@@ -440,7 +439,7 @@ void romfs_setup()
 #endif
 	if (p == 0) {
 		log_dbug(TAG,"no romfs found");
-		return;
+		return 0;
 	}
 	log_dbug(TAG,"using partition %s",p->label);
 
@@ -451,7 +450,7 @@ void romfs_setup()
 	if (esp_err_t e = spi_flash_mmap(p->address,p->size,SPI_FLASH_MMAP_DATA,(const void**)&RomfsBaseAddr,&handle)) {
 		log_error(TAG,"mmap failed: %s",esp_err_to_name(e));
 		NumEntries = 0;
-		return;
+		return 0;
 	}
 	if (esp_err_t e = spi_flash_mmap(p->address,p->size,SPI_FLASH_MMAP_INST,(const void**)&RomfsBaseInstr,&handle))
 		log_warn(TAG,"mmap instr failed: %s",esp_err_to_name(e));
@@ -469,7 +468,7 @@ void romfs_setup()
 		log_warn(TAG,"flash read %u@0x%x: %s",sizeof(magic),flashrom,esp_err_to_name(e));
 	if (strcmp(magic,ROMFS_MAGIC)) {
 		log_info(TAG,"no " ROMFS_MAGIC " at 0x%x: %02x %02x %02x %02x",flashrom, magic[0], magic[1], magic[2], magic[3]);
-		return;
+		return 0;
 	}
 	flashrom += 8;
 	RomEntry e;
@@ -487,7 +486,7 @@ void romfs_setup()
 			if (Entries)
 				free(Entries);
 			Entries = 0;
-			return;
+			return 0;
 		}
 		Entries = n;
 		memcpy(Entries+(NumEntries-1),&e,sizeof(RomEntry));
@@ -507,6 +506,7 @@ void romfs_setup()
 	strcpy(mountpoint+1,p->label);
 	esp_vfs_t vfs;
 	bzero(&vfs,sizeof(vfs));
+	vfs.flags = ESP_VFS_FLAG_DEFAULT;
 	vfs.open = romfs_vfs_open;
 	vfs.read = romfs_vfs_read;
 	vfs.lseek = romfs_vfs_lseek;
@@ -520,10 +520,15 @@ void romfs_setup()
 #ifndef CONFIG_IDF_TARGET_ESP8266
 	vfs.pread = romfs_vfs_pread;
 #endif
-	if (esp_err_t e = esp_vfs_register(mountpoint,&vfs,0))
+	if (esp_err_t e = esp_vfs_register(mountpoint,&vfs,0)) {
 		log_warn(TAG,"VFS register for patitions %s: %s",p->label,esp_err_to_name(e));
-	else
+		return 0;
+	} else {
 		log_info(TAG,"romfs partition %s mounted on %s",p->label,mountpoint);
+		return strdup(mountpoint+1);
+	}
+#else
+	return 0;
 #endif
 }
 

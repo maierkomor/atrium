@@ -122,22 +122,21 @@ int udpc_stats(Terminal &term, int argc, const char *args[])
 
 
 
-int udpctrl_setup(void)
+void udpctrl_setup(void)
 {
 	uint16_t p = Config.udp_ctrl_port();
-	if (p == 0) {
+	if (p != 0) {
+		Ctx = new UdpCtrl;
+		LWIP_LOCK();
+		Ctx->PCB = udp_new();
+		Ctx->Port = p;
+		udp_recv(Ctx->PCB,recv_callback,0);
+		udp_bind(Ctx->PCB,IP_ANY_TYPE,p);
+		ip_set_option(Ctx->PCB,SO_BROADCAST);
+		LWIP_UNLOCK();
+	} else {
 		log_info(TAG,"disabled");
-		return 0;
 	}
-	Ctx = new UdpCtrl;
-	LWIP_LOCK();
-	Ctx->PCB = udp_new();
-	Ctx->Port = p;
-	udp_recv(Ctx->PCB,recv_callback,0);
-	udp_bind(Ctx->PCB,IP_ANY_TYPE,p);
-	ip_set_option(Ctx->PCB,SO_BROADCAST);
-	LWIP_UNLOCK();
-	return 0;
 }
 
 

@@ -60,11 +60,11 @@ static int ow_scan()
 }
 
 
-int ow_setup()
+void ow_setup()
 {
 	if (!HWConf.has_onewire()) {
 		log_dbug(TAG,"not configured");
-		return 0;
+		return;
 	}
 	const OneWireConfig &cfg = HWConf.onewire();
 	OneWire::create(cfg.gpio(),cfg.pullup(),cfg.power());
@@ -82,7 +82,6 @@ int ow_setup()
 		}
 	}
 	log_dbug(TAG,"setup done");
-	return 0;
 }
 
 

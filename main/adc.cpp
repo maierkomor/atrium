@@ -145,19 +145,17 @@ static void hall_sample(void *)
 }
 
 
-int hall_setup()
+void hall_setup()
 {
 	if (!HWConf.has_adc() || HWConf.adc().hall_name().empty())
-		return 0;
+		return;
 	if (esp_err_t e = adc1_config_width(DEFAULT_ADC_WIDTH)) {
 		log_error(TAG,"set hall sensor to 12bits: %s",esp_err_to_name(e));
-		return 1;
 	} else {
 		Hall = new EnvNumber(HWConf.adc().hall_name().c_str());
 		RTData->add(Hall);
 		action_add("hall!sample",hall_sample,Hall,"take an hall-sensor sample");
 	}
-	return 0;
 }
 
 
@@ -297,12 +295,12 @@ static const char *adc_sample(Terminal &t, const char *arg)
 }
 
 
-int adc_setup()
+void adc_setup()
 {
 	temp_sensor_setup();
 	assert(Adcs == 0);
 	if (!HWConf.has_adc())
-		return 0;
+		return;
 	const auto &conf = HWConf.adc();
 #ifndef CONFIG_IDF_TARGET_ESP32C3
 	if (conf.adc1_bits()) {
@@ -384,7 +382,6 @@ int adc_setup()
 	if (esp_err_t e = adc_set_data_inv(ADC_UNIT_1,true))
 		log_warn(TAG,"set non-inverting mode on ADC1: %s",esp_err_to_name(e));
 #endif
-	return 0;
 }
 
 
@@ -405,7 +402,8 @@ const char *adc(Terminal &term, int argc, const char *args[])
 		if (term.getPrivLevel() == 0) {
 			return "Access denied.";
 		}
-		return adc_setup() ? "Failed." : 0;
+		adc_setup();
+		return 0;
 	}
 	if (!strcmp(args[1],"print"))
 		return adc_print(term,(argc > 2) ? args[2] : 0);

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2022, Thomas Maier-Komor
+ *  Copyright (C) 2018-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -27,8 +27,11 @@
 #include "settings.h"
 #include "swcfg.h"
 
+#include <dirent.h>
+#include <errno.h>
 #include <stdlib.h>
 
+#include <esp_vfs.h>
 #ifdef CONFIG_USB_HOST_FS
 #include <esp_vfs_semihost.h>
 #endif
@@ -37,6 +40,117 @@
 #define DATA_PARTITION "storage"
 
 #define TAG MODULE_FS
+
+#define CONFIG_ROOTFS_NUMENTR 4
+
+
+#ifdef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
+#define rootfs_add(x)
+#else
+static const char *RootEntr[CONFIG_ROOTFS_NUMENTR] = { 0 };
+
+
+void rootfs_add(const char *entr)
+{
+	log_dbug(TAG,"rootfs add: %s",entr);
+	if (entr[0] == '/')
+		++entr;
+	for (auto &r : RootEntr) {
+		if (r == 0) {
+			r = entr;
+			return;
+		}
+	}
+	log_error(TAG,"rootfs out of entries");
+}
+
+static int rootfs_vfs_closedir(DIR *d)
+{
+	if (d) {
+		free(d);
+		return 0;
+	}
+	errno = EBADF;
+	return -1;
+}
+
+
+
+static DIR *rootfs_vfs_opendir(const char *path)
+{
+	log_dbug(TAG,"rootfs_vfs_opendir('%s')",path);
+	if (strcmp(path,"/"))
+		return 0;
+	DIR *d = (DIR *) malloc(sizeof(DIR));
+	bzero(d,sizeof(DIR));
+	return d;
+}
+
+
+static int rootfs_vfs_readdir_r(DIR *d, struct dirent *e, struct dirent **r)
+{
+	log_dbug(TAG,"rootfs_vfs_readdir_r(%d,...)",d ? d->dd_rsv : -1);
+	if ((d == 0) || (e == 0))
+		return EINVAL;
+	if ((sizeof(RootEntr)/sizeof(RootEntr[0]) <= d->dd_rsv) || (RootEntr[d->dd_rsv] == 0)) {
+		if (r)
+			*r = 0;
+		e->d_name[0] = 0;
+		return 0;
+	}
+	if (r)
+		*r = e;
+	strcpy(e->d_name,RootEntr[d->dd_rsv]);
+	++d->dd_rsv;
+	e->d_ino = d->dd_rsv;
+	e->d_type = DT_DIR;
+	log_dbug(TAG,"entry %s",e->d_name);
+	return 0;
+}
+
+
+static struct dirent *rootfs_vfs_readdir(DIR *d)
+{
+	static struct dirent e;
+	struct dirent *r = 0;
+	if (0 == rootfs_vfs_readdir_r(d,&e,&r))
+		return r;
+	return 0;
+}
+
+
+#if 0 // not needed, as stat is directed to child filesystem
+static int rootfs_vfs_stat(const char *p, struct stat *st)
+{
+	log_dbug(TAG,"rootfs_vfs_stat(%s,...)",p);
+	for (auto e : RootEntr) {
+		if (0 == strcmp(p,e)) {
+			st->st_size = 0;
+			st->st_mode = S_IFDIR;
+			return 0;
+		}
+	}
+	return -1;
+}
+#endif
+
+
+void rootfs_init()
+{
+	esp_vfs_t vfs;
+	bzero(&vfs,sizeof(vfs));
+	vfs.flags = ESP_VFS_FLAG_DEFAULT;
+	vfs.closedir = rootfs_vfs_closedir;
+	vfs.opendir = rootfs_vfs_opendir;
+	vfs.readdir = rootfs_vfs_readdir;
+	vfs.readdir_r = rootfs_vfs_readdir_r;
+	if (esp_err_t e = esp_vfs_register("/",&vfs,0))
+		log_warn(TAG,"VFS register rootfs: %s",esp_err_to_name(e));
+	else
+		log_info(TAG,"rootfs mounted");
+}
+#endif
+
 
 #if CONFIG_SPIFFS
 #if defined ESP8266 && IDF_VERSION < 32
@@ -49,7 +163,7 @@
 #endif
 
 
-static void init_spiffs()
+static void spiffs_init()
 {
 	esp_vfs_spiffs_conf_t conf;
 	bzero(&conf,sizeof(conf));
@@ -59,8 +173,9 @@ static void init_spiffs()
 	conf.format_if_mount_failed = false;
 
 	if (esp_err_t e = esp_vfs_spiffs_register(&conf)) {
-		log_info(TAG, "SPIFFS mounting failed: %s",esp_err_to_name(e));
+		log_warn(TAG, "SPIFFS mounting failed: %s",esp_err_to_name(e));
 	} else {
+		rootfs_add(MOUNT_POINT+1);
 		size_t total = 0, used = 0;
 		if (esp_err_t e = esp_spiffs_info(DATA_PARTITION, &total, &used))
 			log_warn(TAG,"query SPIFFS: %s",esp_err_to_name(e));
@@ -88,7 +203,7 @@ static const char *shell_format_spiffs(Terminal &term, const char *arg)
 
 static wl_handle_t SpiFatFs = WL_INVALID_HANDLE;
 
-static void init_fatfs()
+static void fatfs_init()
 {
 	esp_vfs_fat_mount_config_t fatconf;
 	bzero(&fatconf,sizeof(fatconf));
@@ -99,8 +214,10 @@ static void init_fatfs()
 	if (esp_err_t r = esp_vfs_fat_spiflash_mount(MOUNT_POINT, DATA_PARTITION, &fatconf, &SpiFatFs)) {
 		log_error(TAG,"mount %s on %s with fatfs: %s", DATA_PARTITION, MOUNT_POINT, esp_err_to_name(r));
 		SpiFatFs = WL_INVALID_HANDLE;
-	} else 
+	} else  {
 		log_info(TAG,"mounted fatfs partition " DATA_PARTITION);
+		rootfs_add(MOUNT_POINT+1);
+	}
 }
 
 
@@ -117,8 +234,10 @@ static int shell_format_fatfs(Terminal &term, const char *arg)
 	if (esp_err_t r = esp_vfs_fat_spiflash_mount(MOUNT_POINT, arg, &fatconf, &SpiFatFs)) {
 		term.printf("unable to mount flash with fatfs: %s\n",esp_err_to_name(r));
 		SpiFatFs = WL_INVALID_HANDLE;
-	} else 
+	} else {
+		rootfs_add(MOUNT_POINT+1);
 		term.printf("mounted fatfs partition '%s'\n",arg);
+	}
 	return 0;
 }
 #endif
@@ -149,9 +268,11 @@ static void init_hwconf()
 }
 
 
-static void init_romfs()
+static void romfs_init()
 {
-	romfs_setup();
+	if (const char *r = romfs_setup()) {
+		rootfs_add(r);
+	}
 	if (HWConf.calcSize() == 0)
 		init_hwconf();
 }
@@ -191,20 +312,24 @@ const char *shell_format(Terminal &term, int argc, const char *args[])
 extern "C"
 void fs_init()
 {
+#ifndef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
+	rootfs_init();
+#endif
 #ifdef CONFIG_ROMFS
-	init_romfs();
+	romfs_init();
 #endif
 #ifdef CONFIG_SPIFFS
-	init_spiffs();
+	spiffs_init();
 #endif
 #ifdef CONFIG_FATFS
-	init_fatfs();
+	fatfs_init();
 #endif
 #ifdef CONFIG_USB_HOST_FS
 	if (esp_err_t e = esp_vfs_semihost_register("/usb")) {
 		log_warn(TAG,"USB semihost failed: %s",esp_err_to_name(e));
 	} else {
 		log_info(TAG,"mounted /usb");
+		rootfs_add("usb");
 	}
 #endif
 }

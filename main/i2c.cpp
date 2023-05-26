@@ -115,7 +115,7 @@ static inline void i2c_scan_device(uint8_t bus, uint8_t addr, i2cdrv_t drv)
 #endif
 
 
-int i2c_setup(void)
+void i2c_setup(void)
 {
 	for (const I2CConfig &c : HWConf.i2c()) {
 		if (c.has_sda() && c.has_scl()) {
@@ -145,7 +145,6 @@ int i2c_setup(void)
 			delete o;
 		d = d->getNext();
 	}
-	return 0;
 }
 
 
