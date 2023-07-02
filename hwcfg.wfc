@@ -371,9 +371,9 @@ message GpioConfig
 {
 	string name = 1;
 	sint8 gpio = 2		[ unset = -1 ];
-	// bit 1,0: gpio_mode_t: disable, input, output, output_od
+	// bit 1,0: gpio_mode_t: input, output, output_od
 	// bit 4..2: gpio_int_type_t
-	//	{0=none, 1=pos dge, 2=neg edge, 3=both edge}
+	//	{0=none, 1=pos edge, 2=neg edge, 3=both edges}
 	//	{4=lolevel, 5=hilevel}: currently unused
 	// bit 5: set initial level
 	// bit 6: init level
@@ -398,6 +398,9 @@ enum disp_t
 	// monochrom displays
 	dt_ssd1306 = 32;	// I2C
 	dt_ssd1309 = 33;	// 4-wire spi
+
+	// TFT displays
+	dt_ili9341 = 64;
 }
 
 
@@ -415,6 +418,8 @@ enum spidrv_t
 	spidrv_invalid = 0;
 	spidrv_sx1276 = 1;
 	spidrv_ssd1309 = 2;
+	spidrv_ili9341 = 3;
+	spidrv_xpt2046 = 4;
 }
 
 

@@ -31,15 +31,24 @@
 #include "log.h"
 #include "shell.h"
 #include "swcfg.h"
+#include "terminal.h"
 
 using namespace std;
 
 #define TAG MODULE_CON
 
+#ifndef CONFIG_CONSOLE_STACK_SIZE
+#define CONFIG_CONSOLE_STACK_SIZE 4096
+#endif
 
-static void console_task(void *con)
+#ifndef PRO_CPU_NUM
+#define PRO_CPU_NUM 0
+#endif
+
+void console_task(void *con)
 {
 	Terminal *term = (Terminal *)con;
+	log_info(TAG,"started console on %s",term->type());
 	for (;;) {
 		shell(*term);
 	}
@@ -48,12 +57,6 @@ static void console_task(void *con)
 
 #ifdef CONFIG_UART_CONSOLE
 #include "uart_terminal.h"
-
-#if IDF_VERSION > 32 || defined CONFIG_IDF_TARGET_ESP32
-#define DRIVER_ARG 0,0
-#else
-#define DRIVER_ARG 0
-#endif
 
 static inline void uart_console_setup(void)
 {
@@ -64,11 +67,9 @@ static inline void uart_console_setup(void)
 		con->init(rx,tx);
 		if (!Config.has_pass_hash())
 			con->setPrivLevel(1);
-		BaseType_t r = xTaskCreatePinnedToCore(console_task, "tty", 4096, con, 8, 0, PRO_CPU_NUM);
+		BaseType_t r = xTaskCreatePinnedToCore(console_task, "ttyS", CONFIG_CONSOLE_STACK_SIZE, con, 8, 0, PRO_CPU_NUM);
 		if (r != pdPASS)
-			log_error(TAG,"create task: %s",esp_err_to_name(r));
-		else
-			log_info(TAG,"console on UART %d/%d",rx,tx);
+			log_warn(TAG,"failed to create task for uart ttyS: %d",r);
 	}
 }
 #else
@@ -76,7 +77,7 @@ static inline void uart_console_setup(void)
 #endif // CONFIG_UART_CONSOLE
 
 
-#if defined CONFIG_USB_CONSOLE && defined CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+#if defined CONFIG_USB_CONSOLE && (defined CONFIG_IDF_TARGET_ESP32C3 || defined CONFIG_IDF_TARGET_ESP32S3)
 #include "jtag_terminal.h"
 
 static inline void jtag_console_setup(void)
@@ -85,11 +86,9 @@ static inline void jtag_console_setup(void)
 		if (JtagTerminal *con = new JtagTerminal(true)) {
 			if (!Config.has_pass_hash())
 				con->setPrivLevel(1);
-			BaseType_t r = xTaskCreatePinnedToCore(console_task, "jtagtty", 4096, con, 8, 0, PRO_CPU_NUM);
+			BaseType_t r = xTaskCreatePinnedToCore(console_task, "ttyJ", CONFIG_CONSOLE_STACK_SIZE, con, 8, 0, PRO_CPU_NUM);
 			if (r != pdPASS)
-				log_error(TAG,"create task: %s",esp_err_to_name(r));
-			else
-				log_info(TAG,"console on JTAG");
+				log_warn(TAG,"failed to create task for uart ttyJ: %d",r);
 		}
 	}
 }
@@ -106,11 +105,9 @@ static inline void cdc_console_setup(void)
 	if (CdcTerminal *con = CdcTerminal::create(true)) {
 		if (!Config.has_pass_hash())
 			con->setPrivLevel(1);
-		BaseType_t r = xTaskCreatePinnedToCore(console_task, "cdctty", 4096, con, 8, 0, PRO_CPU_NUM);
+		BaseType_t r = xTaskCreatePinnedToCore(console_task, "ttyU", CONFIG_CONSOLE_STACK_SIZE, con, 8, 0, PRO_CPU_NUM);
 		if (r != pdPASS)
-			log_error(TAG,"create task: %s",esp_err_to_name(r));
-		else
-			log_info(TAG,"console on CDC");
+			log_warn(TAG,"failed to create task for uart ttyU: %d",r);
 	}
 }
 #else

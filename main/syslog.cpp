@@ -222,15 +222,14 @@ void sendall(void * = 0)
 			m->flags &= ~sending_flag;
 			if (r) {
 				event_trigger_nd(Ctx->ev);
-				goto done;
-#if 0
+#if CONFIG_IDF_TARGET_ESP32S2
 				if (x) {
 					vTaskDelay(10);	// needed for UDP stack to catch up
 					lock.lock();
 					continue;
-				} else
-					break;
+				}
 #endif
+				goto done;
 			}
 			lock.lock();
 			m->flags |= sent_flag;

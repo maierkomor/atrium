@@ -210,7 +210,11 @@ static unsigned adc_cyclic_cb(void *arg)
 }
 
 
-#if defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
+// S2 support seems to be broken
+// S3 had trouble, too - what config is causing this issue?
+//#if defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
+//#if defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
+#if defined CONFIG_IDF_TARGET_ESP32C3
 static unsigned temp_cyclic(void *arg)
 {
 	float celsius;

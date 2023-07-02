@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021, Thomas Maier-Komor
+ *  Copyright (C) 2021-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -38,21 +38,21 @@ class HD44780U : public TextDisplay
 
 	bool hasChar(char c) const override;
 	int init();
-	int write(const char *, int = -1) override;
+	void write(const char *, int = -1) override;
 	int writeHex(uint8_t h, bool c) override;
-	int clear() override;
-	int clrEol();
+	void clear() override;
+	void clrEol();
 	int setBlink(bool) override;
 	int setCursor(bool blink) override;
-	int setDim(uint8_t) override;
+	int setBrightness(uint8_t) override;
 	int setOn(bool) override;
 	void setDisplay(bool on, bool cursor, bool blink);
 	int setPos(uint16_t x, uint16_t y = 0) override;
-	uint8_t maxDim() const override
+	uint8_t maxBrightness() const override
 	{ return 1; }
-	uint8_t charsPerLine() const override
+	uint16_t charsPerLine() const override
 	{ return m_maxx; }
-	uint8_t numLines() const override
+	uint16_t numLines() const override
 	{ return m_maxy; }
 
 	private:
@@ -64,7 +64,6 @@ class HD44780U : public TextDisplay
 	uint32_t m_lcmd = 0;	// time-stamp of last command
 	uint8_t m_disp = 0;
 	bool m_posinv = false;
-	uint8_t m_posx = 0, m_posy = 0;
 	uint8_t m_maxx, m_maxy;
 	char m_data[80];
 };

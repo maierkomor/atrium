@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2022, Thomas Maier-Komor
+ *  Copyright (C) 2022-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -69,12 +69,6 @@ SSD1309::SSD1309(spi_host_t host, int8_t cs, uint8_t dc, int8_t reset, struct sp
 }
 
 
-SSD1309::~SSD1309()
-{
-	free(m_disp);
-}
-
-
 inline void SSD1309::setC()
 {
 	gpio_set_level(m_dc,0);
@@ -137,12 +131,12 @@ int SSD1309::init(uint16_t maxx, uint16_t maxy, uint8_t hwcfg)
 		gpio_set_level(m_reset,1);
 		ets_delay_us(100);
 	}
-	m_maxx = maxx;
-	m_maxy = maxy;
+	m_width = maxx;
+	m_height = maxy;
 	uint32_t dsize = maxx * maxy;
 	m_disp = (uint8_t *) malloc(dsize); // two dimensional array of n pages each of n columns.
 	if (m_disp == 0) {
-		log_error(TAG,"out of memory");
+		log_error(TAG,"Out of memory.");
 		return 1;
 	}
 	/* works, but column 127 is at offset 0. Related to a1 command?
@@ -150,7 +144,7 @@ int SSD1309::init(uint16_t maxx, uint16_t maxy, uint8_t hwcfg)
 	uint8_t setup[] = {
 		0xae,					// display off
 		0xd5, 0x80,				// oszi freq (default), clock div=1 (optional)
-		0xa8, (uint8_t)(m_maxy-1),		// MUX
+		0xa8, (uint8_t)(m_height-1),		// MUX
 		0xd3, 0x00,				// display offset (optional)
 		0x40,					// display start line	(optional)
 		0x8d, 0x14,				// enable charge pump
@@ -174,7 +168,7 @@ int SSD1309::init(uint16_t maxx, uint16_t maxy, uint8_t hwcfg)
 	uint8_t setup[] = {
 		0xae,					// display off
 		0xd5, 0x80,				// oszi freq (default), clock div=1 (optional)
-		0xa8, (uint8_t)(m_maxy-1),		// MUX
+		0xa8, (uint8_t)(m_height-1),		// MUX
 		0xd3, 0x00,				// display offset (optional)
 		0x40,					// display start line	(optional)
 		0x8d, 0x14,				// enable charge pump
@@ -200,7 +194,7 @@ int SSD1309::init(uint16_t maxx, uint16_t maxy, uint8_t hwcfg)
 		// display off
 		0xae,
 		// MUX
-		0xa8, (uint8_t)(m_maxy-1),
+		0xa8, (uint8_t)(m_height-1),
 		// display offset (optional)
 		0xd3, 0x00,
 		// display start line	(optional)
@@ -240,7 +234,7 @@ int SSD1309::init(uint16_t maxx, uint16_t maxy, uint8_t hwcfg)
 		return 1;
 	}
 	clear();
-	sync();
+	flush();
 	setOn(true);
 	initOK();
 	log_info(TAG,"ready");
@@ -260,19 +254,20 @@ int SSD1309::setInvert(bool inv)
 }
 
 
-int SSD1309::setContrast(uint8_t contrast)
+int SSD1309::setBrightness(uint8_t contrast)
 {
 	return writeWord(0x81,contrast);
 }
 
 
-int SSD1309::clear()
+/*
+void SSD1309::clear()
 {
-	uint8_t numpg = m_maxy >> 3;
+	uint8_t numpg = m_height >> 3;
 	uint8_t pg = 0;
 	do { 
-		uint8_t *at = m_disp + m_maxx * pg;
-		uint8_t *pge = at + m_maxx;
+		uint8_t *at = m_disp + m_width * pg;
+		uint8_t *pge = at + m_width;
 		do {
 			if (*at)
 				break;
@@ -286,8 +281,8 @@ int SSD1309::clear()
 	m_posx = 0;
 	m_posy = 0;
 	log_dbug(TAG,"clear: dirty %x",m_dirty);
-	return 0;
 }
+*/
 
 
 uint8_t SSD1309::fontHeight() const
@@ -301,9 +296,10 @@ uint8_t SSD1309::fontHeight() const
 }
 
 
+/*
 int SSD1309::clrEol()
 {
-	clearRect(m_posx,m_posy,m_maxx-m_posx,fontHeight());
+	clearRect(m_posx,m_posy,m_width-m_posx,fontHeight());
 	return 0;
 }
 
@@ -311,14 +307,14 @@ int SSD1309::clrEol()
 uint8_t SSD1309::charsPerLine() const
 {
 	if (m_font == font_nativedbl)
-		return m_maxx/CHAR_WIDTH<<1;
-	return m_maxx/CHAR_WIDTH;
+		return m_width/CHAR_WIDTH<<1;
+	return m_width/CHAR_WIDTH;
 }
 
 
 uint8_t SSD1309::numLines() const
 {
-	return m_maxy/fontHeight();
+	return m_height/fontHeight();
 }
 
 
@@ -340,32 +336,33 @@ int SSD1309::setFont(const char *fn)
 	}
 	return -1;
 }
+*/
 
 
-int SSD1309::sync()
+void SSD1309::flush()
 {
 	if (m_dirty == 0)
-		return 0;
+		return;
 	PROFILE_FUNCTION();
 	//writeByte(0xb0);
-//	uint8_t cmd[] = { 0x22, 0x00, (uint8_t)(m_maxx-1) };
+//	uint8_t cmd[] = { 0x22, 0x00, (uint8_t)(m_width-1) };
 	uint8_t cmd[] = { 0x00, 0x01, 0xb0 };
-	uint8_t numpg = m_maxy / 8 + ((m_maxy & 7) != 0);
-	unsigned pgs = m_maxx;
+	uint8_t numpg = m_height / 8 + ((m_height & 7) != 0);
+	unsigned pgs = m_width;
 	if (pgs == 128) {
 		if (m_dirty == 0xff) {
 			writeBytes(cmd,sizeof(cmd));
 			setD();
 			writeBytes(m_disp,128*8);
 			setC();
-//			log_dbug(TAG,"sync 0-7");
+//			log_dbug(TAG,"flush 0-7");
 			m_dirty = 0;
 		} else if (m_dirty == 0xf) {
 			writeBytes(cmd,sizeof(cmd));
 			setD();
 			writeBytes(m_disp,128*4);
 			setC();
-//			log_dbug(TAG,"sync 0-3");
+//			log_dbug(TAG,"flush 0-3");
 			m_dirty = 0;
 		}
 	}
@@ -377,15 +374,15 @@ int SSD1309::sync()
 				setD();
 				writeBytes(m_disp+p*pgs,pgs);
 				setC();
-//				log_dbug(TAG,"sync %u",p);
+//				log_dbug(TAG,"flush %u",p);
 			}
 		}
 		m_dirty = 0;
 	}
-	return 0;
 }
 
 
+/*
 static uint16_t scaleDouble(uint8_t byte)
 {
       uint16_t r = 0;
@@ -402,6 +399,7 @@ static uint16_t scaleDouble(uint8_t byte)
       }
       return r;
 }
+*/
 
 
 /*
@@ -429,12 +427,12 @@ int SSD1309::drawBits(uint16_t x, uint16_t y, uint8_t b, uint8_t n)
 	b &= masks[n];
 //	log_dbug(TAG,"drawBits(%u,%u,%x,%u)",x,y,b,n);
 	uint8_t pg = y >> 3;
-	unsigned off = pg * m_maxx + x;
+	unsigned off = pg * m_width + x;
 	uint8_t shl = y & 7;
 	uint16_t b0 = (uint16_t)b << shl;
 	uint8_t b1 = (uint8_t)(b0 >> 8);
 	if (b1)
-		m_disp[off+m_maxx] |= b1;
+		m_disp[off+m_width] |= b1;
 	m_disp[off] |= (uint8_t)(b0&0xff);
 //	log_dbug(TAG,"drawBits %x at %u",b0,off);
 	return 0;
@@ -444,15 +442,15 @@ int SSD1309::drawBits(uint16_t x, uint16_t y, uint8_t b, uint8_t n)
 int SSD1309::drawByte(uint16_t x, uint16_t y, uint8_t b)
 {
 	uint8_t pg = y >> 3;
-	uint16_t idx = pg * m_maxx + x;
-	if ((x >= m_maxx) || (y >= m_maxy)) {
+	uint16_t idx = pg * m_width + x;
+	if ((x >= m_width) || (y >= m_height)) {
 		log_dbug(TAG,"off display %u,%u=%u pg=%u",(unsigned)x,(unsigned)y,(unsigned)idx,(unsigned)pg);
 		return 1;
 	}
 	uint8_t shift = y & 7;
 	if (shift != 0) {
-		uint16_t idx2 = idx + m_maxx;
-		if (idx2 >= (m_maxx*m_maxy))
+		uint16_t idx2 = idx + m_width;
+		if (idx2 >= (m_width*m_height))
 			return 1;
 		m_dirty |= 1<<(pg+1);
 		uint16_t w = (uint16_t) b << shift;
@@ -474,6 +472,7 @@ int SSD1309::drawByte(uint16_t x, uint16_t y, uint8_t b)
 }
 
 
+/*
 int SSD1309::drawChar(char c)
 {
 	PROFILE_FUNCTION();
@@ -559,14 +558,14 @@ int SSD1309::drawChar(char c)
 //	log_info(TAG,"%d/%d %+d/%+d, adv %u len %u",(int)w,(int)h,(int)dx,(int)dy,a,l);
 //	clearRect(m_posx,m_posy,dx+w,a);
 //	drawBitmap(m_posx+dx,m_posy+dy+font->yAdvance,w,h,off);
-	drawBitmap_ssd1309(m_posx+dx,m_posy+dy+font->yAdvance-1,w,h,off);
+	drawBitmapNative(m_posx+dx,m_posy+dy+font->yAdvance-1,w,h,off);
 	m_posx += a;
 
 	return 0;
 }
 
 
-int SSD1309::drawBitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t *data)
+int SSD1309::drawBitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t *data, int32_t fg, int32_t bg)
 {
 	unsigned len = w*h;
 	log_dbug(TAG,"drawBitmap(%u,%u,%u,%u) %u/%u",x,y,w,h,len,len/8);
@@ -575,15 +574,13 @@ int SSD1309::drawBitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const ui
 	while (idx != len) {
 		if ((idx & 7) == 0)
 			b = data[idx>>3];
-		if (b&0x80)
-			setPixel(x+idx%w,y+idx/w);
-		else
-			clrPixel(x+idx%w,y+idx/w);
+		setPixel(x+idx%w,y+idx/w,b&0x80?fg:bg);
 		b<<=1;
 		++idx;
 	}
 	return 0;
 }
+*/
 
 
 static uint8_t getBits(const uint8_t *data, unsigned off, uint8_t numb)
@@ -624,13 +621,13 @@ int SSD1309::drawBitmap_ssd1309(uint16_t x, uint16_t y, uint16_t w, uint16_t h, 
 				if (byte) {
 //					drawBits(x0,yoff,byte,numb);
 					uint8_t pg = yoff >> 3;
-					unsigned off = pg * m_maxx + x0;
+					unsigned off = pg * m_width + x0;
 					uint8_t shl = yoff & 7;
 					uint16_t b0 = (uint16_t)byte << shl;
 					m_disp[off] |= (uint8_t)(b0&0xff);
 					uint8_t b1 = (uint8_t)(b0 >> 8);
 					if (b1)
-						m_disp[off+m_maxx] |= b1;
+						m_disp[off+m_width] |= b1;
 				}
 				bitoff += numb;
 				break;
@@ -641,12 +638,13 @@ int SSD1309::drawBitmap_ssd1309(uint16_t x, uint16_t y, uint16_t w, uint16_t h, 
 }
 
 
+/*
 int SSD1309::clrPixel(uint16_t x, uint16_t y)
 {
 //	log_dbug(TAG,"setPixel(%u,%u)",(unsigned)x,(unsigned)y);
-	if ((x < m_maxx) && (y < m_maxy)) {
+	if ((x < m_width) && (y < m_height)) {
 		uint8_t pg = y >> 3;
-		uint8_t *p = m_disp + pg * m_maxx + x;
+		uint8_t *p = m_disp + pg * m_width + x;
 		uint8_t bit = 1 << (y & 7);
 		uint8_t b = *p;
 		if ((b & bit) != 0) {
@@ -662,9 +660,9 @@ int SSD1309::clrPixel(uint16_t x, uint16_t y)
 int SSD1309::setPixel(uint16_t x, uint16_t y)
 {
 //	log_dbug(TAG,"setPixel(%u,%u)",(unsigned)x,(unsigned)y);
-	if ((x < m_maxx) && (y < m_maxy)) {
+	if ((x < m_width) && (y < m_height)) {
 		uint8_t pg = y >> 3;
-		uint8_t *p = m_disp + pg * m_maxx + x;
+		uint8_t *p = m_disp + pg * m_width + x;
 		uint8_t bit = 1 << (y & 7);
 		uint8_t b = *p;
 		if ((b & bit) == 0) {
@@ -679,10 +677,10 @@ int SSD1309::setPixel(uint16_t x, uint16_t y)
 
 void SSD1309::drawHLine(uint16_t x, uint16_t y, uint16_t n)
 {
-	if ((x + n > m_maxx) || (y >= m_maxy))
+	if ((x + n > m_width) || (y >= m_height))
 		return;
 	uint8_t pg = y >> 3;
-	uint16_t off = x + pg * m_maxx;
+	uint16_t off = x + pg * m_width;
 	uint8_t m = 1 << (y & 7);
 	uint8_t *p = m_disp+off;
 	do {
@@ -700,7 +698,7 @@ void SSD1309::drawVLine(uint16_t x, uint16_t y, uint16_t n)
 {
 	while (n) {
 		uint8_t pg = y >> 3;
-		uint16_t off = x + pg * m_maxx;
+		uint16_t off = x + pg * m_width;
 		uint8_t shift = y & 7;
 		uint8_t m = 0;
 		if ((shift == 0) && (n >= 8)) {
@@ -729,7 +727,7 @@ void SSD1309::drawVLine(uint16_t x, uint16_t y, uint16_t n)
 int SSD1309::clearRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h)
 {
 	log_dbug(TAG,"clearRect(%u,%u,%u,%u)",x,y,w,h);
-	if ((x > m_maxx) || (y >= m_maxy))
+	if ((x > m_width) || (y >= m_height))
 		return 1;
 	for (int i = x; i < x+w; ++i) {
 		uint16_t y0 = y;
@@ -760,7 +758,7 @@ int SSD1309::drawRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h)
 	// x=0 is visible at x=1
 	drawVLine(x,y,h);
 	drawVLine(x+w-1,y,h);
-//	log_hex(TAG,m_disp,m_maxx*m_maxy/8,"frame");
+//	log_hex(TAG,m_disp,m_width*m_height/8,"frame");
 	return 0;
 }
 
@@ -788,7 +786,7 @@ int SSD1309::setPos(uint16_t x, uint16_t y)
 	log_dbug(TAG,"setPos(%u/%u)",x,y);
 	x *= CHAR_WIDTH;
 	y *= fontHeight();
-	if ((x >= m_maxx-(CHAR_WIDTH)) || (y > m_maxy-fontHeight())) {
+	if ((x >= m_width-(CHAR_WIDTH)) || (y > m_height-fontHeight())) {
 		log_dbug(TAG,"invalid pos %u/%u",x,y);
 		return 1;
 	}
@@ -813,6 +811,7 @@ int SSD1309::write(const char *text, int len)
 	}
 	return n;
 }
+*/
 
 
 IRAM_ATTR void SSD1309::postCallback(spi_transaction_t *t)
@@ -836,7 +835,7 @@ int SSD1309::writeBytes(uint8_t *data, unsigned len)
 		return -1;
 	}
 	if (pdTRUE != xSemaphoreTake(m_sem,MUTEX_ABORT_TIMEOUT))
-		abort_on_mutex(m_sem,"sx1276");
+		abort_on_mutex(m_sem,"ssd1309");
 //	log_hex(TAG,data,len,"writeBytes");
 	return 0;
 //	spi_transaction_t *r = &t;
@@ -863,7 +862,7 @@ int SSD1309::writeByte(uint8_t v)
 		return -1;
 	}
 	if (pdTRUE != xSemaphoreTake(m_sem,MUTEX_ABORT_TIMEOUT))
-		abort_on_mutex(m_sem,"sx1276");
+		abort_on_mutex(m_sem,"ssd1309");
 	log_dbug(TAG,"writeB 0x%02x",v);
 	return 0;
 #endif
@@ -884,7 +883,7 @@ int SSD1309::writeWord(uint8_t b0, uint8_t b1)
 		return -1;
 	}
 	if (pdTRUE != xSemaphoreTake(m_sem,MUTEX_ABORT_TIMEOUT))
-		abort_on_mutex(m_sem,"sx1276");
+		abort_on_mutex(m_sem,"ssd1309");
 	log_dbug(TAG,"writeW 0x%02x, 0x%02x",b0,b1);
 	return 0;
 }

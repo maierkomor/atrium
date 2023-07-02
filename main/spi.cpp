@@ -23,11 +23,13 @@
 #include "env.h"
 #include "hwcfg.h"
 #include "globals.h"
+#include "ili9341.h"
 #include "log.h"
 #include "spidrv.h"
 #include "ssd1309.h"
 #include "sx1276.h"
 #include "terminal.h"
+#include "xpt2046.h"
 
 
 #ifdef CONFIG_IDF_TARGET_ESP8266
@@ -72,6 +74,16 @@ static void spi_init_device(spi_host_device_t host, spidrv_t drv, int8_t cs, int
 		SSD1309::create(host,cfg,cd,reset);
 		break;
 #endif
+#ifdef CONFIG_ILI9341
+	case spidrv_ili9341:
+		ILI9341::create(host,cfg,cd,reset);
+		break;
+#endif
+#ifdef CONFIG_XPT2046
+	case spidrv_xpt2046:
+		XPT2046::create(host,cfg,intr);
+		break;
+#endif
 	default:
 		log_warn(TAG,"unknown device SPI device type %d",drv);
 	}
@@ -84,7 +96,7 @@ const char *spicmd(Terminal &term, int argc, const char *args[])
 	if (argc == 1) {
 		term.println("bus name");
 		while (s) {
-			term.printf("%3d   %s\n",s->getCS(),s->getName());
+			term.printf("%3d  %s\n",s->getCS(),s->getName());
 			s = s->getNext();
 		}
 		return 0;
@@ -105,7 +117,7 @@ void spi_setup()
 		spi_bus_config_t cfg;
 		bzero(&cfg,sizeof(cfg));
 //		cfg.max_transfer_sz = 0;		// use defaults
-		cfg.max_transfer_sz = 512;
+		cfg.max_transfer_sz = 4096;
 		cfg.flags = SPICOMMON_BUSFLAG_MASTER;
 //		cfg.intr_flags = ESP_INTR_FLAG_IRAM;
 		if (c.has_miso()) {	

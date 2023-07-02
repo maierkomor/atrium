@@ -1,3 +1,13 @@
+R2306:
+======
+- fix: enable/disable at-jobs not working as expected
+- create static tasks with static memory
+- removed obsolete socket-based inetd
+- fix: default S2(uart)/S3(jtag) console config
+- fix: S2/S3 GPIO ranges
+- added ILI9341 driver
+- added XPT2046 driver
+
 R2305:
 ======
 - support to list root directory

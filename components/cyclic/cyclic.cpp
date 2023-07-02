@@ -37,10 +37,20 @@
 
 #include <vector>
 
+#if!defined APP_CPU_NUM || defined CONFIG_FREERTOS_UNICORE
+#define CYCLIC_CPU_NUM 0
+#else
+#define CYCLIC_CPU_NUM APP_CPU_NUM
+#endif
+
+#ifndef CONFIG_CYCLIC_STACK_SIZE
+#define CONFIG_CYCLIC_STACK_SIZE 4096
+#endif
 
 using namespace std;
 
 #define TAG MODULE_CYCLIC
+#define STATIC_TASK
 
 struct SubTask
 {
@@ -71,6 +81,10 @@ struct SubTaskCmp
 	{ return l.nextrun < r.nextrun; }
 };
 
+#ifdef STATIC_TASK
+static StackType_t CyclicStack[CONFIG_CYCLIC_STACK_SIZE];
+static StaticTask_t CyclicTask;
+#endif
 
 static SubTask *SubTasks = 0;
 static SemaphoreHandle_t Mtx = 0;
@@ -182,9 +196,13 @@ void cyclic_setup()
 {
 	Mtx = xSemaphoreCreateMutex();
 #ifdef ESP32
+#ifdef STATIC_TASK
+	xTaskCreateStaticPinnedToCore(cyclic_task, "cyclic", sizeof(CyclicStack), (void*)0, 20, CyclicStack, &CyclicTask, CYCLIC_CPU_NUM);
+#else
 	BaseType_t r = xTaskCreatePinnedToCore(cyclic_task, "cyclic", 8192, (void*)0, 20, NULL, 1);
 	if (r != pdPASS)
 		log_error(TAG,"create task: %d",r);
+#endif // STATIC_TASK
 #else
 	// cyclic_execute is called from the event task
 #endif

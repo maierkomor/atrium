@@ -56,8 +56,8 @@ typedef enum logmod_e {
 	logmod_ht16k33,
 	logmod_http,
 	logmod_i2c,
+	logmod_ili9341,
 	logmod_ina219,
-	logmod_inetd,
 	logmod_influx,
 	logmod_init,
 	logmod_led,
@@ -102,6 +102,7 @@ typedef enum logmod_e {
 	logmod_ws2812,
 	logmod_www,
 	logmod_xio,
+	logmod_xpt2046,
 } logmod_t;
 
 // module defines
@@ -132,8 +133,8 @@ typedef enum logmod_e {
 #define MODULE_HT16K33         logmod_ht16k33
 #define MODULE_HTTP            logmod_http
 #define MODULE_I2C             logmod_i2c
+#define MODULE_ILI9341         logmod_ili9341
 #define MODULE_INA219          logmod_ina219
-#define MODULE_INETD           logmod_inetd
 #define MODULE_INFLUX          logmod_influx
 #define MODULE_INIT            logmod_init
 #define MODULE_LED             logmod_led
@@ -178,8 +179,9 @@ typedef enum logmod_e {
 #define MODULE_WS2812          logmod_ws2812
 #define MODULE_WWW             logmod_www
 #define MODULE_XIO             logmod_xio
-#define MAX_MODULE_ID           73
-#define NUM_MODULES             74
+#define MODULE_XPT2046         logmod_xpt2046
+#define MAX_MODULE_ID           74
+#define NUM_MODULES             75
 
 #ifdef USE_MODULE
 #define TAG USE_MODULE

@@ -231,7 +231,7 @@ config USB_DIAGLOG
 		output diagnostic log to USB serial connections
 
 config USB_CONSOLE
-	depends on ESP_CONSOLE_USB_SERIAL_JTAG || TINYUSB_CDC_ENABLED
+	depends on ESP_CONSOLE_USB_SERIAL_JTAG || ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG || TINYUSB_CDC_ENABLED
 	bool "diag output to USB serial"
 	default true
 	help
@@ -470,6 +470,20 @@ config SSD1309
 	depends on SPI
 	help
 		dirver for 4-wire SPI attached SSD1309 display
+
+config ILI9341
+	bool "ILI9341"
+	default false
+	depends on SPI && (IDF_TARGET_ESP32 || IDF_TARGET_ESP32S3 || IDF_TARGET_ESP32C3)
+	help
+		dirver for 4-wire SPI attached ILI9341 display
+
+config XPT2046
+	bool "XPT2046"
+	default true
+	depends on SPI
+	help
+		driver fot XPT2046 touch controller, often found on TFT displays
 
 config HCSR04
 	bool "HC-SR04"

@@ -21,50 +21,6 @@
 
 #include <sdkconfig.h>
 
-#ifdef CONFIG_SOCKET_API
-
-#include <lwip/ip_addr.h>
-#include <lwip/err.h>
-
-class LwTcp
-{
-	public:
-	LwTcp()
-	{ }
-
-	~LwTcp()
-	{ close(); }
-	
-	explicit LwTcp(int con);
-	
-	int connect(const char *hn, uint16_t port, bool block = true);
-	int connect(ip_addr_t *a, uint16_t port, bool block = true);
-	bool isConnected() const
-	{ return m_con != -1; }
-	int write(const char *data, size_t l, bool = true);
-	int read(char *data, size_t l, unsigned timeout = portMAX_DELAY);
-	void sync(bool = true)
-	{ }
-	int close();
-
-	const char *error() const;
-
-	void setSync(bool s)
-	{ }
-
-	private:
-	LwTcp(const LwTcp &);
-	LwTcp &operator = (const LwTcp &);
-
-	int m_con = -1, m_flags = 0;
-
-	friend class LwTcpListener;
-};
-
-
-#else ////////////////////// ESP8266
-
-
 #include <lwip/tcp.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
@@ -170,7 +126,5 @@ class LwTcpListener
 	SemaphoreHandle_t m_lwip;
 #endif
 };
-
-#endif
 
 #endif

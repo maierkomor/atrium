@@ -93,6 +93,33 @@ void SpiDevice::updateName()
 	}
 }
 
+#ifdef ESP32
+IRAM_ATTR void spidrv_post_cb_relsem(spi_transaction_t *t)
+{
+	SemaphoreHandle_t sem = (SemaphoreHandle_t) t->user;
+	if (sem)	// not every transaction wants to release the semaphore
+		xSemaphoreGive(sem);
+}
 
+
+int spidrv_read_regs(spi_device_handle_t hdl, uint8_t reg, uint8_t num, uint8_t *data, SemaphoreHandle_t sem)
+{
+	spi_transaction_t t;
+	bzero(&t,sizeof(t));
+	t.user = sem;
+	t.addr = reg;
+	t.length = num<<3;
+	t.rxlength = num<<3;
+	t.rx_buffer = data;
+	if (esp_err_t e = spi_device_queue_trans(hdl,&t,1)) {
+		log_warn(TAG,"error queuing read: %s",esp_err_to_name(e));
+		return -1;
+	}
+	if (pdTRUE != xSemaphoreTake(sem,MUTEX_ABORT_TIMEOUT))
+		abort_on_mutex(sem,"ili9341");
+	log_hex(TAG,data,num,"read regs %u@%u:",num,reg);
+	return 0;
+}
+#endif //ESP32
 
 #endif

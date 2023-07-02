@@ -40,7 +40,7 @@ class Terminal : public stream
 	~Terminal() override;
 
 	virtual const char *type() const
-	{ return 0; }
+	{ return "unnamed"; }
 
 	// bare metal read minimum 1 character
 	virtual int read(char *, size_t, bool block = true)

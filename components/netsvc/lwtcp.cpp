@@ -20,152 +20,23 @@
 #include "lwtcp.h"
 #include "netsvc.h"
 #include "profiling.h"
-
-#ifndef APP_CPU_NUM
-#define APP_CPU_NUM 0
-#endif
-
-#define TAG MODULE_LWTCP
-
-
-#ifdef CONFIG_SOCKET_API
-#include <lwip/sockets.h>
-
-LwTcp::LwTcp(int con)
-: m_con(con)
-{
-	m_flags = lwip_fcntl(con,F_GETFL,0);
-}
-
-int LwTcp::close()
-{
-	if (m_con == -1)
-		return -1;
-	int r = ::close(m_con);
-	m_con = -1;
-	return r;
-}
-
-
-int LwTcp::connect(const char *hn, uint16_t port, bool block)
-{
-	log_local(TAG,"connect %s:%d",hn,(int)port);
-	ip_addr_t ip;
-	if (err_t e = resolve_fqhn(hn,&ip)) {
-		m_err = e;
-		return e;
-	}
-	return connect(&ip,port,block);
-}
-
-
-int LwTcp::connect(ip_addr_t *ip, uint16_t port, bool block)
-{
-	if (m_con != -1) {
-		log_warn(TAG,"already connected");
-		return ERR_USE;
-	}
-	int s = socket(AF_INET,SOCK_STREAM,0);
-	if (-1 == s) {
-		log_warn(TAG,"unable to create socket: %s",strerror(errno));
-		return -1;
-	}
-	struct sockaddr_in in;
-	struct sockaddr_in6 in6;
-	struct sockaddr *a;
-	size_t as;
-	if (IP_IS_V6(ip)) {
-		in6.sin6_family = AF_INET6;
-		in6.sin6_port = htons(port);
-		a = (struct sockaddr *) &in6;
-		as = sizeof(struct sockaddr_in6);
-		memcpy(&in6.sin6_addr,ip_2_ip6(ip),sizeof(in6.sin6_addr));
-	} else {
-		in.sin_family = AF_INET;
-		in.sin_port = htons(port);
-		a = (struct sockaddr *) &in;
-		as = sizeof(struct sockaddr_in);
-		memcpy(&in.sin_addr,ip_2_ip4(ip),sizeof(in.sin_addr));
-	}
-	if (-1 == lwip_connect(s,a,as)) {
-		log_warn(TAG,"connect to %s failed: %s\n",inet_ntoa(ip),strerror(errno));
-		::close(s);
-		return -1;
-	}
-	m_con = s;
-	log_dbugx(TAG,"connected to %s",inet_ntoa(ip));
-	return 0;
-}
-
-
-const char *LwTcp::error() const
-{ return strerror(errno); }
-
-
-int LwTcp::read(char *data, size_t l, unsigned timeout)
-{
-	if (m_con == -1)
-		return -1;
-	log_dbug(TAG,"read(%d,%u)",l,timeout);
-	if (timeout) {
-		if ((m_flags & O_NONBLOCK) != 0) {
-			m_flags &= !O_NONBLOCK;
-			int r = lwip_fcntl(m_con,F_SETFL,m_flags);
-			log_dbug(TAG,"setfl block %d",r);
-		}
-		/*
-		if (timeout != portMAX_DELAY) {
-			int r;
-			struct timeval tv;
-			tv.tv_sec = timeout/1000;
-			tv.tv_usec = (timeout - tv.tv_sec*1000)*1000;
-			do {
-				fd_set s;
-				FD_SET(m_con,&s);
-				r = select(1,&s,0,0,&tv);
-				log_dbug(TAG,"select = %d",r);
-			} while ((r == -1) && (errno == EINTR));
-			if (r <= 0)
-				return r;
-		}
-		*/
-	} else {
-		if ((m_flags & O_NONBLOCK) == 0) {
-			m_flags |= O_NONBLOCK;
-			int r = lwip_fcntl(m_con,F_SETFL,m_flags);
-			log_dbug(TAG,"setfl non-block %d",r);
-		}
-	}
-	int r = ::read(m_con,data,l);
-	log_dbug(TAG,"read(%d,%u)=%d %d",l,timeout,r,errno);
-	if ((r == -1) && (errno == EWOULDBLOCK))
-		return 0;
-	return r;
-}
-
-int LwTcp::write(const char *data, size_t l, bool copy_ignored)
-{
-	if (m_con == -1)
-		return -1;
-	return ::write(m_con,data,l);
-}
-
-
-///////////////////////////////////////////////////////////////////////////////
-#else // !CONFIG_SOCKET_API
-///////////////////////////////////////////////////////////////////////////////
-
-#include "lwip/inet.h"
 #include "udns.h"
 #include "tcpio.h"
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
+#include <lwip/inet.h>
 #include <lwip/tcpip.h>
 #include <lwip/priv/tcpip_priv.h>
 
 #include <string.h>
+
+#define TAG MODULE_LWTCP
+
+#ifndef PRO_CPU_NUM
+#define PRO_CPU_NUM 0
+#endif
 
 #define TCP_BLOCK_SIZE 1460
 #ifdef ESP32
@@ -191,7 +62,7 @@ LwTcp::LwTcp(struct tcp_pcb *pcb)
 	m_mtx = xSemaphoreCreateRecursiveMutex();
 	m_sem = xSemaphoreCreateBinary();
 	m_send = xSemaphoreCreateBinary();
-#ifndef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 0
 	m_lwip = xSemaphoreCreateBinary();
 #endif
 	// no LWIP_LOCK(); -- called from lwip context
@@ -209,7 +80,7 @@ LwTcp::LwTcp()
 	m_mtx = xSemaphoreCreateRecursiveMutex();
 	m_sem = xSemaphoreCreateBinary();
 	m_send = xSemaphoreCreateBinary();
-#ifndef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 0
 	m_lwip = xSemaphoreCreateBinary();
 #endif
 }
@@ -221,7 +92,7 @@ LwTcp::~LwTcp()
 	if (m_pcb) 
 		close();
 	if (m_pbuf) {
-#ifdef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 1
 		LWIP_LOCK();
 		pbuf_free(m_pbuf);
 		LWIP_UNLOCK();
@@ -235,14 +106,14 @@ LwTcp::~LwTcp()
 	vSemaphoreDelete(m_mtx);
 	vSemaphoreDelete(m_sem);
 	vSemaphoreDelete(m_send);
-#ifndef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 0
 	vSemaphoreDelete(m_lwip);
 #endif
 	log_devel(TAG,"~%u: %u done",m_port,m_total);
 }
 
 
-#ifndef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 0
 void LwTcp::close_fn(void *arg)
 {
 	LwTcp *a = (LwTcp *)arg;
@@ -262,7 +133,7 @@ int LwTcp::close()
 {
 	if (m_pcb == 0)
 		return -1;
-#ifdef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 1
 	LWIP_LOCK();
 	tcp_err(m_pcb,0);
 	tcp_recv(m_pcb,0);
@@ -296,7 +167,7 @@ int LwTcp::connect(const char *hn, uint16_t port, bool block)
 }
 
 
-#ifndef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 0
 void LwTcp::connect_fn(void *arg)
 {
 	LwTcp *a = (LwTcp *)arg;
@@ -320,7 +191,7 @@ int LwTcp::connect(ip_addr_t *a, uint16_t port, bool block)
 		inet_ntoa_r(a,ipstr,sizeof(ipstr));
 		log_direct(ll_local,TAG,"connect ip %s:%d",ipstr,(int)port);
 	}
-#ifdef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING != 0
 	LWIP_LOCK();
 	m_pcb = tcp_new();
 	tcp_arg(m_pcb,this);
@@ -550,7 +421,7 @@ int LwTcp::read(char *buf, size_t l, unsigned timeout)
 	}
 	xSemaphoreGiveRecursive(m_mtx);
 	if (tofree) {
-#if LWIP_TCPIP_CORE_LOCKING == 1
+#if LWIP_TCPIP_CORE_LOCKING != 0
 		LWIP_LOCK();
 		pbuf_free(tofree);
 		LWIP_UNLOCK();
@@ -758,7 +629,7 @@ void LwTcpListener::abort_fn(void *arg)
 
 LwTcpListener::~LwTcpListener()
 {
-#ifdef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING != 0
 	if (m_pcb) {
 		LWIP_LOCK();
 		tcp_abort(m_pcb);
@@ -784,7 +655,7 @@ err_t LwTcpListener::handle_accept(void *arg, struct tcp_pcb *pcb, err_t x)
 		LwTcp *N = new LwTcp(pcb);
 		char name[24];
 		sprintf(name,"%s%u",P->m_name,(unsigned)++P->m_id);
-		BaseType_t r = xTaskCreatePinnedToCore((void (*)(void*))P->m_session,name,P->m_stack,(void*) N,P->m_prio,NULL,APP_CPU_NUM);
+		BaseType_t r = xTaskCreatePinnedToCore((void (*)(void*))P->m_session,name,P->m_stack,(void*) N,P->m_prio,NULL,PRO_CPU_NUM);
 		if (r != pdTRUE) {
 			log_warn(TAG,"cannot create session %s",name);
 			return 1;
@@ -803,4 +674,3 @@ int listen_port(int port, int mode, void (*session)(LwTcp*), const char *basenam
 	return (server == 0);
 }
 
-#endif

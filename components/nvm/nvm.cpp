@@ -136,19 +136,26 @@ void nvm_store_float(const char *id, float v)
 
 int nvm_read_blob(const char *name, uint8_t **buf, size_t *len)
 {
-	size_t s = 0;
-	if (esp_err_t e = nvs_get_blob(NVS,name,0,&s)) {
+	bool m = false;
+	if (*buf == 0) {
+		size_t s = 0;
+		if (esp_err_t e = nvs_get_blob(NVS,name,0,&s)) {
+			return e;
+		}
+		uint8_t *b = (uint8_t*)malloc(s);
+		if (b == 0)
+			return ENOMEM;
+		m = true;
+		*buf = b;
+		*len = s;
+	}
+	if (esp_err_t e = nvs_get_blob(NVS,name,*buf,len)) {
+		if (m) {
+			free(*buf);
+			*buf = 0;
+		}
 		return e;
 	}
-	uint8_t *b = (uint8_t*)malloc(s);
-	if (b == 0)
-		return ENOMEM;
-	if (esp_err_t e = nvs_get_blob(NVS,name,b,&s)) {
-		free(buf);
-		return e;
-	}
-	*buf = b;
-	*len = s;
 	return 0;
 }
 

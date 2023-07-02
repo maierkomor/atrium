@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021, Thomas Maier-Komor
+ *  Copyright (C) 2021-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -18,6 +18,9 @@
 
 #include "display.h"
 #include "log.h"
+#include "profiling.h"
+
+#include <math.h>
 
 
 #define TAG MODULE_DISP
@@ -128,27 +131,57 @@ static const uint8_t Circle14[] = {
 };
 
 
+static struct { const char *name; color_t color; } Colors[] = {
+	{ "black",	BLACK },
+	{ "white",	WHITE },
+	{ "blue",	BLUE },
+	{ "red",	RED },
+	{ "green",	GREEN },
+	{ "cyan",	CYAN },
+	{ "magenta",	MAGENTA },
+	{ "yellow",	YELLOW },
+};
+
+
 TextDisplay *TextDisplay::Instance = 0;
+
+
+color_t color_get(const char *n)
+{
+	for (const auto &c : Colors) {
+		if (0 == strcasecmp(n,c.name))
+			return c.color;
+	}
+	return BLACK;
+}
 
 
 void TextDisplay::initOK()
 {
 	if (Instance) {
-		TextDisplay *i = Instance;
-		while (i->m_next)
-			i = i->m_next;
-		i->m_next = this;
+		log_error(TAG,"only one display is supported");
 	} else {
 		Instance = this;
 	}
 }
 
 
+int TextDisplay::setPos(uint16_t x, uint16_t y)
+{
+	log_dbug(TAG,"setPos(%u,%u)",x,y);
+	if ((x < m_width) && (y < m_height)) {
+		m_posx = x;
+		m_posy = y;
+		return 0;
+	}
+	return -1;
+}
+
+
 SegmentDisplay::SegmentDisplay(LedCluster *l, addrmode_t m, uint8_t maxx, uint8_t maxy)
-: m_drv(l)
+: TextDisplay(maxx,maxy)
+, m_drv(l)
 , m_addrmode(m)
-, m_maxx(maxx)
-, m_maxy(maxy)
 {
 	l->setNumDigits((maxx+1)*(maxy+1));
 	initOK();
@@ -301,6 +334,7 @@ int SegmentDisplay::writeBin(uint8_t v)
 }
 
 
+/*
 int SegmentDisplay::writeHex(uint8_t v, bool comma)
 {
 	log_dbug(TAG,"writeHex(%x,%d)",v,comma);
@@ -325,30 +359,32 @@ int SegmentDisplay::writeHex(uint8_t v, bool comma)
 	}
 	return -1;
 }
+*/
 
 
 int SegmentDisplay::writeChar(char c, bool comma)
 {
-	log_dbug(TAG,"writeChar(%c,%d)",c,comma);
+	log_dbug(TAG,"writeChar('%c',%d) at %d/%d",c,comma,m_posx,m_posy);
 	if (m_addrmode == e_raw)
 		return -1;
 	if (c == '\n') {
-		uint16_t y = m_pos / m_maxy;
-		++y;
-		if (y > m_maxy)
-			y = 0;
-		return setPos(0,y);
+		uint16_t y = m_posy + 1;
+		if (y >= m_height)
+			y = m_height - 1;
+		m_posy = y;
+		return 0;
 	}
 	if (c == '\r') {
-		uint16_t y = m_pos / m_maxy;
-		return setPos(0,y);
+		m_drv->write(c);
+		m_posx = 0;
+		return 0;
 	}
 	if (m_addrmode == e_seg14) {
 		uint16_t d = char2seg14(c);
 		if (d == 0) {
 			if (c == ' ') {
 				writeBin(0);
-				return writeBin(comma?0x80:0);
+				writeBin(comma?0x80:0);
 			}
 			return 0;	// no error to print rest of string
 		}
@@ -381,17 +417,529 @@ int SegmentDisplay::writeChar(char c, bool comma)
 	return 1;
 }
 
-int SegmentDisplay::write(const char *s, int n)
+
+void SegmentDisplay::write(const char *s, int n)
 {
-	log_dbug(TAG,"write('%s')",s);
+	log_dbug(TAG,"write('%s',%d)",s,n);
 	while (*s && (n != 0)) {
-		bool comma = s[1] == '.';
-		if (writeChar(*s,comma))
-			return 1;
+		log_dbug(TAG,"write('%s',%d) ::",s,n);
+		bool comma = (s[1] == '.') || ((s[1] == ':') && !hasChar(':'));
+		writeChar(*s,comma);
 		if (comma)
 			++s;
 		++s;
 		--n;
 	}
-	return 0;
 }
+
+
+uint16_t MatrixDisplay::fontHeight() const
+{
+	const Font *font = Fonts+(int)m_font;
+	return font->yAdvance;
+}
+
+
+void MatrixDisplay::clrEol()
+{
+	fillRect(m_posx,m_posy,m_width-m_posx,fontHeight(),m_colbg);
+}
+
+
+void MatrixDisplay::drawBitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t *data, int32_t fg, int32_t bg)
+{
+	log_dbug(TAG,"drawBitmap(%u,%u,%u,%u,%d,%d)",x,y,w,h,fg,bg);
+	if (fg == -1)
+		fg = m_colfg;
+	if (bg == -1)
+		bg = m_colbg;
+	const uint8_t *e = data + w*h;
+	if (fg != -2) {
+		unsigned idx = 0;
+		uint8_t b = 0;
+		const uint8_t *d = data;
+		while (d != e) {
+			if ((idx & 7) == 0) {
+				b = *d++;
+				if (b == 0) {
+					idx += 8;
+					continue;
+				}
+			}
+			if (b&0x80)
+				setPixel(x+idx%w,y+idx/w,fg);
+			b<<=1;
+			++idx;
+		}
+	}
+	if (bg != -2) {
+		unsigned idx = 0;
+		uint8_t b = 0;
+		const uint8_t *d = data;
+		while (d != e) {
+			if ((idx & 7) == 0) {
+				b = *d++;
+				if (b == 0xff) {
+					idx += 8;
+					continue;
+				}
+			}
+			if ((b&0x80) == 0)
+				setPixel(x+idx%w,y+idx/w,bg);
+			b<<=1;
+			++idx;
+		}
+	}
+}
+
+
+static uint8_t charToGlyph(char c)
+{
+	switch ((unsigned char) c) {
+	case '\r':
+		return 0;
+	case '\n':
+		return 0;
+	case 176:	// '°'
+		return 133;
+	case 196:	// 'Ä'
+		return 130;
+	case 220:	// 'Ü'
+		return 128;
+	case 214:	// 'Ö'
+		return 132;
+	case 223:	// 'ß'
+		return 134;
+	case 228:	// 'ä'
+		return 129;
+	case 246:	// 'ö'
+		return 131;
+	case 252:	// 'ü'
+		return 127;
+	default:
+		return c;
+	}
+}
+
+
+uint16_t MatrixDisplay::charWidth(char c) const
+{
+	c = charToGlyph(c);
+	if (c == 0)
+		return 0;
+	const Font *font = Fonts+(int)m_font;
+	if ((c < font->first) || (c > font->last))
+		return 0;
+	uint8_t ch = c - font->first;
+	return font->glyph[ch].xAdvance;
+}
+
+
+void MatrixDisplay::clear()
+{
+	log_dbug(TAG,"clear");
+	m_posx = 0;
+	m_posy = 0;
+	fillRect(0,0,m_width,m_height,m_colbg);
+}
+
+
+unsigned MatrixDisplay::drawChar(uint16_t x, uint16_t y, char c, int32_t fg, int32_t bg)
+{
+	PROFILE_FUNCTION();
+	c = charToGlyph(c);
+	const Font *font = Fonts+(int)m_font;
+	if ((c < font->first) || (c > font->last))
+		return 0;
+	if (fg == -1)
+		fg = m_colfg;
+	if (bg == -1)
+		bg = m_colbg;
+	uint8_t ch = c - font->first;
+	const uint8_t *data = font->bitmap + font->glyph[ch].bitmapOffset;
+	uint8_t w = font->glyph[ch].width;
+	uint8_t h = font->glyph[ch].height;
+	int8_t dx = font->glyph[ch].xOffset;
+	int8_t dy = font->glyph[ch].yOffset;
+	uint8_t a = font->glyph[ch].xAdvance;
+	log_dbug(TAG,"drawChar(%d,%d,'%c') = %u",x,y,c,a);
+//	log_info(TAG,"%d/%d %+d/%+d, adv %u len %u",(int)w,(int)h,(int)dx,(int)dy,a,l);
+	if (bg != -1)
+		fillRect(x,y,dx,a,bg);
+	drawBitmap(x+dx,y+dy+font->yAdvance-1,w,h,data,fg,bg);
+	return a;
+}
+
+
+unsigned MatrixDisplay::drawText(uint16_t x, uint16_t y, const char *txt, int n, int32_t fg, int32_t bg)
+{
+	log_dbug(TAG,"drawText(%d,%d,'%s')",x,y,txt);
+	if (n < 0)
+		n = strlen(txt);
+	const Font *font = Fonts+(int)m_font;
+	uint16_t a = 0, amax = 0;
+	const char *e = txt + n;
+	while (txt != e) {
+		char c = *txt++;
+		if (c == 0)
+			break;
+		if (c == '\n') {
+			x = 0;
+			y += font->yAdvance;
+			if (y+font->yAdvance > m_height)
+				break;
+			if (a > amax)
+				amax = a;
+			a = 0;
+		} else if (c == '\r') {
+			if (a > amax)
+				amax = a;
+			a = 0;
+			x = 0;
+		} else {
+			uint16_t cw = charWidth(c);
+			if (m_posx + cw > m_width)
+				break;
+			drawChar(x,y,c,fg,bg);
+			a += cw;
+			x += cw;
+		}
+	}
+	return a > amax ? a : amax;
+}
+
+
+void MatrixDisplay::drawPicture16(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint16_t *data)
+{
+	for (uint16_t i = x, xe = x+w; i < xe; ++i) {
+		for (uint16_t j = y, ye = x+w; j < ye; ++j)
+			setPixel(i,j,*data++);
+	}
+}
+
+
+void MatrixDisplay::drawPicture32(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const int32_t *data)
+{
+	for (uint16_t i = x, xe = x+w; i < xe; ++i) {
+		for (uint16_t j = y, ye = x+w; j < ye; ++j) {
+			if (*data != -1)
+				setPixel(i,j,*data);
+			++data;
+		}
+	}
+}
+
+
+void MatrixDisplay::drawLine(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1, int32_t col)
+{
+	if (col == -1)
+		col = m_colfg;
+	uint16_t x = x0;
+	uint16_t y = y0;
+	uint16_t dx = x1 - x0;
+	uint16_t dy = y1 - y0;
+	float d = 2 * dy - dx; // discriminator
+    
+	// Euclidean distance of point (x,y) from line (signed)
+	float D = 0; 
+    
+	// Euclidean distance between points (x1, y1) and (x2, y2)
+	float length = sqrtf((float)(dx * dx + dy * dy)); 
+    
+	float sin = dx / length;
+	float cos = dy / length;
+	while (x <= x1) {
+//		IntensifyPixels(x, y - 1, D + cos);
+//		IntensifyPixels(x, y, D);
+//		IntensifyPixels(x, y + 1, D - cos);
+		setPixel(x,y,col);
+		++x;
+		if (d <= 0) {
+			D = D + sin;
+			d = d + 2 * dy;
+		} else {
+			D = D + sin - cos;
+			d = d + 2 * (dy - dx);
+			++y;
+		}
+	}
+}
+
+
+void MatrixDisplay::drawHLine(uint16_t x, uint16_t y, uint16_t len, int32_t col)
+{
+	if (col == -1)
+		col = m_colfg;
+	if ((x >= m_width) || (y >= m_height))
+		return;
+	if ((x+len) > m_width)
+	       len = m_width - x;	
+	while (len) {
+		setPixel(x,y,col);
+		++x;
+		--len;
+	}
+}
+
+
+void MatrixDisplay::drawVLine(uint16_t x, uint16_t y, uint16_t len, int32_t col)
+{
+	if (col == -1)
+		col = m_colfg;
+	if ((x >= m_width) || (y >= m_height))
+		return;
+	if ((y+len) > m_height)
+	       len = m_height - y;	
+	while (len) {
+		setPixel(x,y,col);
+		++y;
+		--len;
+	}
+}
+
+
+void MatrixDisplay::drawRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, int32_t col)
+{
+	log_dbug(TAG,"drawRect(%u,%u,%u,%u,%x)",x,y,w,h,col);
+	if (col == -1)
+		col = m_colfg;
+	drawHLine(x,y,w,col);
+	drawHLine(x,y+h-1,w,col);
+	drawVLine(x,y,h,col);
+	drawVLine(x+w-1,y,h,col);
+//	log_hex(TAG,m_disp,m_width*m_height/8,"frame");
+}
+
+
+void MatrixDisplay::fillRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, int32_t col)
+{
+	if (col == -1)
+		col = m_colfg;
+	if ((x >= m_width) || (y >= m_height))
+		return;
+	if ((x+w) > m_width)
+		w = m_width - x;
+	if ((y+h) > m_height)
+		h = m_height - y;
+	while (h) {
+		drawHLine(x,y,w,col);
+		++y;
+		--h;
+	}
+}
+
+
+static int32_t getColor16BGR(color_t c)
+{
+	switch (c) {
+	case WHITE:	return 0xffff;
+	case BLACK:	return 0x0000;
+	case BLUE:	return 0xf800;
+	case RED:	return 0x001f;
+	case GREEN:	return 0x07e0;
+	case YELLOW:	return 0xffe0;
+	case CYAN:	return 0x07ff;
+	case MAGENTA:	return 0xf81f;
+	default:	return -1;
+	}
+}
+
+
+static int32_t getColor18BGR(color_t c)
+{
+	switch (c) {
+	case WHITE:	return 0xfcfcfc;
+	case BLACK:	return 0x000000;
+	case BLUE:	return 0xfc0000;
+	case RED:	return 0x0000cf;
+	case GREEN:	return 0x00fc00;
+	case YELLOW:	return 0xfcfc00;
+	case CYAN:	return 0x00fcfc;
+	case MAGENTA:	return 0xfc00fc;
+	default:	return -1;
+	}
+}
+
+
+static int32_t getColor16RGB(color_t c)
+{
+	switch (c) {
+	case WHITE:	return 0xffff;
+	case BLACK:	return 0x0000;
+	case BLUE:	return 0x001f;
+	case RED:	return 0xf800;
+	case GREEN:	return 0x07e0;
+	case YELLOW:	return 0xffe0;
+	case CYAN:	return 0x07ff;
+	case MAGENTA:	return 0xf81f;
+	default:	return -1;
+	}
+}
+
+
+static int32_t getColor18RGB(color_t c)
+{
+	switch (c) {
+	case WHITE:	return 0xfcfcfc;
+	case BLACK:	return 0x000000;
+	case BLUE:	return 0x0000fc;
+	case RED:	return 0xfc0000;
+	case GREEN:	return 0x00fc00;
+	case YELLOW:	return 0xfcfc00;
+	case CYAN:	return 0x00fcfc;
+	case MAGENTA:	return 0xfc00fc;
+	default:	return -1;
+	}
+}
+
+
+int32_t MatrixDisplay::getColor(color_t c) const
+{
+	switch (m_colorspace) {
+	case cs_mono:
+		switch (c) {
+		case WHITE:	return 0x1;
+		case BLACK:	return 0x0;
+		default:	return -1;
+		}
+	case cs_rgb16:
+		return getColor16RGB(c);
+	case cs_rgb18:
+		return getColor18RGB(c);
+	case cs_bgr16:
+		return getColor16BGR(c);
+	case cs_bgr18:
+		return getColor18BGR(c);
+	default:
+		return -1;
+	}
+}
+
+
+int32_t MatrixDisplay::setFgColor(color_t c)
+{
+	int32_t col = getColor(c);
+	if (col != -1)
+		m_colfg = col;
+	return col;
+}
+
+
+int32_t MatrixDisplay::setBgColor(color_t c)
+{
+	int32_t col = getColor16RGB(c);
+	if (col != -1)
+		m_colfg = col;
+	return col;
+}
+
+
+int MatrixDisplay::setFont(unsigned f)
+{
+	if (f < font_numfonts) {
+		m_font = (fontid_t)f;
+		return 0;
+	}
+	return -1;
+}
+
+
+int MatrixDisplay::setFont(const char *fn)
+{
+	if (0 == strcasecmp(fn,"native")) {
+		m_font = (fontid_t)-1;
+		return 0;
+	}
+	if (0 == strcasecmp(fn,"nativedbl")) {
+		m_font = (fontid_t)-2;
+		return 0;
+	}
+	for (int i = 0; i < font_numfonts; ++i) {
+		if (0 == strcasecmp(Fonts[i].name,fn)) {
+			m_font = (fontid_t)i;
+			return 0;
+		}
+	}
+	return -1;
+}
+
+
+void MatrixDisplay::write(const char *txt, int n)
+{
+	log_dbug(TAG,"write '%s' at %u/%u",txt,m_posx,m_posy);
+	if (n < 0)
+		n = strlen(txt);
+	const char *e = txt + n;
+	while (txt != e) {
+		const char *at = txt;
+		char c = *at;
+		while (c && (c != '\n') && (c != '\r') && n) {
+			++at;
+			c = *at;
+			--n;
+		}
+		if (at != txt) {
+			m_posx += drawText(m_posx,m_posy,txt,at-txt,-1,-1);
+			txt = at;
+			if (m_posx >= m_width) {
+				m_posx = m_width - 1;
+				return;
+			}
+		}
+		if (c == '\n') {
+			const Font *font = Fonts+(int)m_font;
+			uint16_t fh = font->yAdvance;
+			m_posx = 0;
+			if (m_posy + fh >= m_height) {
+				m_posy = m_height -1;
+				return;
+			}
+			m_posy += fh;
+			++txt;
+		} else if (c == '\r') {
+			m_posx = 0;
+			++txt;
+		/*
+		} else {
+			unsigned w = drawChar(m_posx,m_posy,c,m_colfg,m_colbg);
+			m_posx += w;
+			if (m_posx >= m_width) {
+				m_posx = m_width - 1;
+				return;
+			}
+		*/
+		}
+	}
+#if 0
+	if (n < 0)
+		n = strlen(txt);
+	unsigned width = 0;
+	for (unsigned x = 0; x < n; ++x) {
+		width += charWidth(txt[x]);
+	}
+	if (m_posx + width > m_width)
+		return -1;
+	const Font *font = Fonts+(int)m_font;
+	uint16_t height = font->yAdvance;
+	uint16_t widht = 0;
+	uint16_t x = m_posx;
+	const char *e = txt + n;
+	const char *at = txt;
+	while (at != e) {
+		char c = *at++;
+		if ((c < font->first) || (c > font->last))
+			continue;
+		uint8_t ch = c - font->first;
+		if (x + font->glyph[ch].xAdvance > m_width)
+			break;
+		width += font->glyph[ch].xAdvance;
+	}
+	e = at;
+	at = txt;
+	while (at != e) {
+		// TODO
+		const uint8_t *data = font->bitmap + font->glyph[ch].bitmapOffset;
+	}
+#endif
+}
+

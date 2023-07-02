@@ -18,9 +18,7 @@
 
 #include <sdkconfig.h>
 
-#ifdef CONFIG_SSD1306
-
-#include "ssd1306.h"
+#include "ssd130x.h"
 #include "log.h"
 #include "profiling.h"
 
@@ -45,92 +43,13 @@
 
 
 
-SSD1306 *SSD1306::Instance = 0;
-
-
-SSD1306::SSD1306(uint8_t bus, uint8_t addr)
-: I2CDevice(bus,addr,drvName())
-{
-	Instance = this;
-}
-
-
-/*
 SSD130X::~SSD130X()
 {
 	free(m_disp);
 }
-*/
 
 
-int SSD1306::init(uint8_t maxx, uint8_t maxy, uint8_t hwcfg)
-{
-	log_info(TAG,"init(%u,%u)",maxx,maxy);
-	m_width = maxx;
-	m_height = maxy;
-	uint32_t dsize = maxx * maxy;
-	m_disp = (uint8_t *) malloc(dsize); // two dimensional array of n pages each of n columns.
-	if (m_disp == 0) {
-		log_error(TAG,"out of memory");
-		return 1;
-	}
-	uint8_t setup[] = {
-		m_addr,
-		0x00,				// command
-		0xae,				// display off
-		0xd5, 0x80,			// oszi freq (default), clock div=1 (optional)
-		0xa8, (uint8_t)(m_height-1),	// MUX
-		0xd3, 0x00,			// display offset (optional)
-		0x40,				// display start line	(optional)
-		0x8d, 0x14,			// enable charge pump
-		0x20, 0x00,			// address mode: horizontal
-		0xa0,				// map address 0 to seg0
-		(uint8_t) (0xc0 | (hwcfg&hwc_iscan)),	// scan 0..n
-		0xda,				// COM hardware config
-		(uint8_t) (hwcfg&(hwc_rlmap|hwc_altm)),	
-		0x81, 0x80,			// medium contrast
-		0xd9, 0x22,			// default pre-charge (optional)
-		0xa4,				// output RAM
-		0xa6,				// normal mode, a7=inverse
-		0x2e,				// no scrolling
-	};
-	if (i2c_write(m_bus,setup,sizeof(setup),1,1))
-		return 1;
-	clear();
-	flush();
-	setOn(true);
-	initOK();
-	log_info(TAG,"ready");
-	return 0;
-}
-
-int SSD1306::setOn(bool on)
-{
-	log_dbug(TAG,"setOn(%d)",on);
-	uint8_t cmd_on[] = { m_addr, 0x00, 0x8d, 0x1f, 0xaf };
-	uint8_t cmd_off[] = { m_addr, 0x00, 0xae, 0x8d, 0x10 };
-	return i2c_write(m_bus,on ? cmd_on : cmd_off,sizeof(cmd_on),1,1);
-}
-
-int SSD1306::setInvert(bool inv)
-{
-	log_dbug(TAG,"invert(%d)",inv);
-	uint8_t cmd[3] = { m_addr, 0x00, 0xa6 };
-	if (inv)
-		cmd[2] |= 1;
-	return i2c_write(m_bus,cmd,sizeof(cmd),1,1);
-}
-
-
-int SSD1306::setBrightness(uint8_t contrast)
-{
-	uint8_t cmd[] = { m_addr, 0x00, 0x81, contrast };
-	return i2c_write(m_bus,cmd,sizeof(cmd),1,1);
-}
-
-
-/*
-void SSD1306::clear()
+void SSD130X::clear()
 {
 	uint8_t numpg = m_height >> 3;
 	uint8_t pg = 0;
@@ -151,10 +70,36 @@ void SSD1306::clear()
 	m_posy = 0;
 	log_dbug(TAG,"clear: dirty %x",m_dirty);
 }
-*/
 
 
-uint8_t SSD1306::fontHeight() const
+void SSD130X::fillRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, int32_t col)
+{
+	log_dbug(TAG,"fillRect(%u,%u,%u,%u)",x,y,w,h);
+	if ((x > m_width) || (y >= m_height))
+		return;
+	if ((x+w) > m_width)
+		w = m_width - x;
+	if ((y+h) > m_height)
+		h = m_height - y;
+	for (int i = x; i < x+w; ++i) {
+		uint16_t y0 = y;
+		uint16_t h0 = h;
+		do {
+			if (((y & 7) == 0) && (h0 >= 8)) {
+				drawByte(i,y0,0xff);
+				y0 += 8;
+				h0 -= 8;
+			} else {
+				setPixel(i,y0);
+				++y0;
+				--h0;
+			}
+		} while (h0 > 0);
+	}
+}
+
+
+uint16_t SSD130X::fontHeight() const
 {
 	switch (m_font) {
 	case -1: return 8;
@@ -166,13 +111,14 @@ uint8_t SSD1306::fontHeight() const
 
 
 /*
-int SSD1306::clrEol()
+void SSD130X::clrEol()
 {
-	return fillRect(m_posx,m_posy,m_width-m_posx,fontHeight(),m_colbg);
+	clearRect(m_posx,m_posy,m_width-m_posx,fontHeight());
 }
+*/
 
 
-uint16_t SSD1306::charsPerLine() const
+uint16_t SSD130X::charsPerLine() const
 {
 	if (m_font == font_nativedbl)
 		return m_width/CHAR_WIDTH<<1;
@@ -180,14 +126,14 @@ uint16_t SSD1306::charsPerLine() const
 }
 
 
-uint16_t SSD1306::numLines() const
+uint16_t SSD130X::numLines() const
 {
 	return m_height/fontHeight();
 }
-*/
 
 
-int SSD1306::setFont(const char *fn)
+/*
+int SSD130X::setFont(const char *fn)
 {
 	if (0 == strcasecmp(fn,"native")) {
 		m_font = (fontid_t)-1;
@@ -205,48 +151,10 @@ int SSD1306::setFont(const char *fn)
 	}
 	return -1;
 }
+*/
 
 
-void SSD1306::flush()
-{
-	if (m_dirty == 0)
-		return;
-	PROFILE_FUNCTION();
-	uint8_t cmd[] = { m_addr, 0x00, 0xb0, 0x21, 0x00, (uint8_t)(m_width-1) };
-	uint8_t pfx[] = { m_addr, 0x40 };
-	uint8_t numpg = m_height / 8 + ((m_height & 7) != 0);
-	unsigned pgs = m_width;
-	if (pgs == 128) {
-		if (m_dirty == 0xff) {
-			i2c_write(m_bus,cmd,sizeof(cmd),1,1);
-			i2c_write(m_bus,pfx,sizeof(pfx),0,1);
-			i2c_write(m_bus,m_disp,128*8,1,0);
-			log_dbug(TAG,"sync 0-7");
-			m_dirty = 0;
-		} else if (m_dirty == 0xf) {
-			i2c_write(m_bus,cmd,sizeof(cmd),1,1);
-			i2c_write(m_bus,pfx,sizeof(pfx),0,1);
-			i2c_write(m_bus,m_disp,128*4,1,0);
-			log_dbug(TAG,"sync 0-3");
-			m_dirty = 0;
-		}
-	}
-	if (m_dirty) {
-		for (uint8_t p = 0; p < numpg; p++) {
-			if (m_dirty & (1<<p)) {
-				i2c_write(m_bus,cmd,sizeof(cmd),1,1);
-				i2c_write(m_bus,pfx,sizeof(pfx),0,1);
-				i2c_write(m_bus,m_disp+p*pgs,pgs,1,0);
-				log_dbug(TAG,"sync %u",p);
-			}
-			++cmd[2];
-		}
-		m_dirty = 0;
-	}
-}
-
-
-int SSD1306::readByte(uint8_t x, uint8_t y, uint8_t *b)
+int SSD130X::readByte(uint8_t x, uint8_t y, uint8_t *b)
 {
 	if ((x >= m_width) || (y >= m_height)) {
 		log_dbug(TAG,"off display %u,%u",x,y);
@@ -270,7 +178,7 @@ int SSD1306::readByte(uint8_t x, uint8_t y, uint8_t *b)
 }
 
 
-int SSD1306::drawMasked(uint8_t x, uint8_t y, uint8_t b, uint8_t m)
+int SSD130X::drawMasked(uint8_t x, uint8_t y, uint8_t b, uint8_t m)
 {
 	uint8_t o;
 	if (readByte(x,y,&o))
@@ -281,7 +189,6 @@ int SSD1306::drawMasked(uint8_t x, uint8_t y, uint8_t b, uint8_t m)
 }
 
 
-/*
 static uint16_t scaleDouble(uint8_t byte)
 {
       uint16_t r = 0;
@@ -298,7 +205,6 @@ static uint16_t scaleDouble(uint8_t byte)
       }
       return r;
 }
-*/
 
 
 /*
@@ -320,7 +226,7 @@ static uint16_t scaleDouble(uint8_t byte)
  *  byte1    byte0
  */
 
-int SSD1306::drawBits(uint8_t x, uint8_t y, uint8_t b, uint8_t n)
+int SSD130X::drawBits(uint8_t x, uint8_t y, uint8_t b, uint8_t n)
 {
 	static const uint8_t masks[] = {0x1,0x3,0x7,0xf,0x1f,0x3f,0x7f};
 	b &= masks[n-1];
@@ -338,7 +244,7 @@ int SSD1306::drawBits(uint8_t x, uint8_t y, uint8_t b, uint8_t n)
 }
 
 
-int SSD1306::drawByte(uint8_t x, uint8_t y, uint8_t b)
+int SSD130X::drawByte(uint8_t x, uint8_t y, uint8_t b)
 {
 	uint8_t pg = y >> 3;
 	uint16_t idx = pg * m_width + x;
@@ -371,8 +277,7 @@ int SSD1306::drawByte(uint8_t x, uint8_t y, uint8_t b)
 }
 
 
-/*
-int SSD1306::drawChar(char c)
+int SSD130X::drawChar(char c)
 {
 	PROFILE_FUNCTION();
 	switch ((unsigned char) c) {
@@ -457,14 +362,14 @@ int SSD1306::drawChar(char c)
 //	log_info(TAG,"%d/%d %+d/%+d, adv %u len %u",(int)w,(int)h,(int)dx,(int)dy,a,l);
 //	clearRect(m_posx,m_posy,dx+w,a);
 //	drawBitmap(m_posx+dx,m_posy+dy+font->yAdvance,w,h,off);
-	drawBitmap_ssd1306(m_posx+dx,m_posy+dy+font->yAdvance-1,w,h,off);
+	drawBitmapNative(m_posx+dx,m_posy+dy+font->yAdvance-1,w,h,off);
 	m_posx += a;
 
 	return 0;
 }
 
 
-void SSD1306::drawBitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t *data, int32_t fg, int32_t bg)
+void SSD130X::drawBitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t *data, int32_t fg, int32_t bg)
 {
 	unsigned len = w*h;
 	log_dbug(TAG,"drawBitmap(%u,%u,%u,%u,%d,%d)",x,y,w,h,fg,bg);
@@ -474,7 +379,7 @@ void SSD1306::drawBitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const u
 		if ((idx & 7) == 0)
 			b = data[idx>>3];
 		int32_t col = b & 0x80 ? fg : bg;
-		if (col != -1)
+		if (col != -2)
 			setPixel(x+idx%w,y+idx/w,col);
 		b<<=1;
 		++idx;
@@ -482,7 +387,62 @@ void SSD1306::drawBitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const u
 }
 
 
-static uint8_t getBits(const uint8_t *data, unsigned off, uint8_t numb)
+void SSD130X::drawHLine(uint16_t x, uint16_t y, uint16_t n, int32_t col)
+{
+	if ((x + n > m_width) || (y >= m_height) || (col != 1))
+		return;
+	if ((x + n) > m_width)
+		n = m_width - x;
+	uint8_t pg = y >> 3;
+	uint16_t off = x + pg * m_width;
+	uint8_t m = 1 << (y & 7);
+	uint8_t *p = m_disp+off;
+	do {
+		m |= *p;
+		if (*p != m) {
+			*p = m;
+			m_dirty |= (1 << pg);
+		}
+		++p;
+	} while (--n);
+}
+
+
+void SSD130X::drawVLine(uint16_t x, uint16_t y, uint16_t n, int32_t col)
+{
+	if ((x >= m_width) || (y >= m_height) || (col != 1))
+		return;
+	if ((y + n) > m_height)
+		n = m_height - y;
+	while (n) {
+		uint8_t pg = y >> 3;
+		uint16_t off = x + pg * m_width;
+		uint8_t shift = y & 7;
+		uint8_t m = 0;
+		if ((shift == 0) && (n >= 8)) {
+			m = 0xff;
+			n -= 8;
+			y += 8;
+		} else {
+			m = 0;
+			do {
+				m |= (1 << shift);
+				--n;
+				++y;
+				++shift;
+			} while ((shift < 8) && (n != 0));
+		}
+		uint8_t *p = m_disp + off;
+		uint8_t v = *p | m;
+		if (v != *p) {
+			*p = v;
+			m_dirty |= (1<<pg);
+		}
+	}
+}
+
+
+static inline uint8_t getBits(const uint8_t *data, unsigned off, uint8_t numb)
 {
 	unsigned b = off >> 3;
 	uint8_t byte = data[b];
@@ -496,12 +456,12 @@ static uint8_t getBits(const uint8_t *data, unsigned off, uint8_t numb)
 }
 
 
-int SSD1306::drawBitmap_ssd1306(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t *data)
+void SSD130X::drawBitmapNative(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t *data)
 {
 	static const uint8_t masks[] = {0x1,0x3,0x7,0xf,0x1f,0x3f,0x7f};
 	unsigned len = w*h;
 	uint16_t bitoff = 0;
-	log_dbug(TAG,"drawBitmap_fast(%u,%u,%u,%u) %u/%u",x,y,w,h,len,len/8);
+	log_dbug(TAG,"drawBitmapNative(%u,%u,%u,%u) %u/%u",x,y,w,h,len,len/8);
 	for (uint8_t x0 = x; x0 < x+w; ++x0) {
 		uint8_t yoff = y;
 		uint8_t numb = h;
@@ -533,11 +493,10 @@ int SSD1306::drawBitmap_ssd1306(uint16_t x, uint16_t y, uint16_t w, uint16_t h, 
 			}
 		}
 	}
-	return 0;
 }
 
 
-int SSD1306::pClrPixel(uint16_t x, uint16_t y)
+void SSD130X::pClrPixel(uint16_t x, uint16_t y)
 {
 //	log_dbug(TAG,"clrPixel(%u,%u)",(unsigned)x,(unsigned)y);
 	if ((x < m_width) && (y < m_height)) {
@@ -549,13 +508,11 @@ int SSD1306::pClrPixel(uint16_t x, uint16_t y)
 			*p = b & ~bit;
 			m_dirty |= (1 << pg);
 		}
-		return 0;
 	}
-	return -1;
 }
 
 
-int SSD1306::pSetPixel(uint16_t x, uint16_t y)
+void SSD130X::pSetPixel(uint16_t x, uint16_t y)
 {
 //	log_dbug(TAG,"setPixel(%u,%u)",(unsigned)x,(unsigned)y);
 	if ((x < m_width) && (y < m_height)) {
@@ -567,13 +524,11 @@ int SSD1306::pSetPixel(uint16_t x, uint16_t y)
 			*p = b | bit;
 			m_dirty |= (1 << pg);
 		}
-		return 0;
 	}
-	return -1;
 }
 
 
-int SSD1306::setPixel(uint16_t x, uint16_t y, int32_t col)
+void SSD130X::setPixel(uint16_t x, uint16_t y, int32_t col)
 {
 //	log_dbug(TAG,"setPixel(%u,%u)",(unsigned)x,(unsigned)y);
 	if ((x < m_width) && (y < m_height)) {
@@ -581,75 +536,21 @@ int SSD1306::setPixel(uint16_t x, uint16_t y, int32_t col)
 		uint8_t *p = m_disp + pg * m_width + x;
 		uint8_t bit = 1 << (y & 7);
 		uint8_t b = *p;
-		if (col) {
-			if ((b & bit) == 0) {
+		if ((b & bit) == 0) {
+			if (col == 1) {
 				*p = b | bit;
 				m_dirty |= (1 << pg);
 			}
 		} else {
-			if ((b & bit) != 0) {
-				*p = b & ~bit;
-				m_dirty |= (1 << pg);
+			if (col == 0) {
+				m_dirty &= ~(1 << pg);
 			}
 		}
-		return 0;
-	}
-	return -1;
-}
-
-
-void SSD1306::drawHLine(uint8_t x, uint8_t y, uint8_t n, int32_t col)
-{
-	if ((x + n > m_width) || (y >= m_height) || (col != 1))
-		return;
-	uint8_t pg = y >> 3;
-	uint16_t off = x + pg * m_width;
-	uint8_t m = 1 << (y & 7);
-	uint8_t *p = m_disp+off;
-	do {
-		m |= *p;
-		if (*p != m) {
-			*p = m;
-			m_dirty |= (1 << pg);
-		}
-		++p;
-	} while (--n);
-}
-
-
-void SSD1306::drawVLine(uint8_t x, uint8_t y, uint8_t n, int32_t col)
-{
-	if ((x >= m_width) || (y >= m_height) || (col != 1))
-		return;
-	while (n) {
-		uint8_t pg = y >> 3;
-		uint16_t off = x + pg * m_width;
-		uint8_t shift = y & 7;
-		uint8_t m = 0;
-		if ((shift == 0) && (n >= 8)) {
-			m = 0xff;
-			n -= 8;
-			y += 8;
-		} else {
-			m = 0;
-			do {
-				m |= (1 << shift);
-				--n;
-				++y;
-				++shift;
-			} while ((shift < 8) && (n != 0));
-		}
-		uint8_t *p = m_disp + off;
-		uint8_t v = *p | m;
-		if (v != *p) {
-			*p = v;
-			m_dirty |= (1<<pg);
-		}
 	}
 }
 
 
-int SSD1306::clearRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h)
+int SSD130X::clearRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h)
 {
 	log_dbug(TAG,"clearRect(%u,%u,%u,%u)",x,y,w,h);
 	if ((x > m_width) || (y >= m_height))
@@ -663,7 +564,7 @@ int SSD1306::clearRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h)
 				y0 += 8;
 				h0 -= 8;
 			} else {
-				clrPixel(i,y0);
+				pClrPixel(i,y0);
 				++y0;
 				--h0;
 			}
@@ -671,11 +572,10 @@ int SSD1306::clearRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h)
 	}
 	return 0;
 }
-*/
 
 
 /*
-int SSD1306::drawRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, int32_t col)
+int SSD130X::drawRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, int32_t col)
 {
 	log_dbug(TAG,"drawRect(%u,%u,%u,%u)",x,y,w,h);
 	drawHLine(x,y,w,col);
@@ -684,9 +584,10 @@ int SSD1306::drawRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, int32_t co
 	drawVLine(x+w-1,y,h,col);
 	return 0;
 }
+*/
 
 
-int SSD1306::writeHex(uint8_t h, bool comma)
+int SSD130X::writeHex(uint8_t h, bool comma)
 {
 	log_dbug(TAG,"writeHex %x",h);
 	char c = h;
@@ -704,7 +605,8 @@ int SSD1306::writeHex(uint8_t h, bool comma)
 }
 
 
-int SSD1306::setPos(uint16_t x, uint16_t y)
+/*
+int SSD130X::setPos(uint16_t x, uint16_t y)
 {
 	log_dbug(TAG,"setPos(%u/%u)",x,y);
 	x *= CHAR_WIDTH;
@@ -718,9 +620,11 @@ int SSD1306::setPos(uint16_t x, uint16_t y)
 	m_posy = y;
 	return 0;
 }
+*/
 
 
-int SSD1306::write(const char *text, int len)
+/*
+void SSD130X::write(const char *text, int len)
 {
 	log_dbug(TAG,"write %s",text);
 	size_t n = 0;
@@ -735,32 +639,3 @@ int SSD1306::write(const char *text, int len)
 	return n;
 }
 */
-
-
-SSD1306 *SSD1306::create(uint8_t bus, uint8_t addr)
-{
-	addr <<= 1;
-	uint8_t cmd[] = { (uint8_t)addr, CMD_NOP };
-	if (0 == i2c_write(bus,cmd,sizeof(cmd),1,1)) {
-		return new SSD1306(bus,addr);
-	}
-	return 0;
-}
-
-
-unsigned ssd1306_scan(uint8_t bus)
-{
-	uint8_t cmd[] = { (0x3c << 1), CMD_NOP };
-	if (0 == i2c_write(bus,cmd,sizeof(cmd),1,1)) {
-		new SSD1306(bus,cmd[0]);
-		return 1;
-	}
-	cmd[0] += 2;
-	if (0 == i2c_write(bus,cmd,sizeof(cmd),1,1)) {
-		new SSD1306(bus,cmd[0]);
-		return 1;
-	}
-	return 0;
-}
-
-#endif

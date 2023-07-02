@@ -66,6 +66,15 @@ struct CoreIO1 : public XioCluster
 	int set_lvl(uint8_t io, xio_lvl_t v) override;
 	const char *getName() const override;
 	unsigned numIOs() const override;
+#if defined CONFIG_IDF_TARGET_ESP32
+	#define COREIO1_NUMIO 8
+#elif defined CONFIG_IDF_TARGET_ESP32S2
+	#define COREIO1_NUMIO 15
+#elif defined CONFIG_IDF_TARGET_ESP32S3
+	#define COREIO1_NUMIO 17
+#else
+#error unknown device
+#endif
 };
 
 
@@ -93,7 +102,7 @@ unsigned CoreIO0::numIOs() const
 
 unsigned CoreIO1::numIOs() const
 {
-	return 8;
+	return COREIO1_NUMIO;
 }
 
 
@@ -336,7 +345,7 @@ int CoreIO0::get_dir(uint8_t num) const
 
 int CoreIO1::get_dir(uint8_t num) const
 {
-	if (num >= 8)
+	if (num >= COREIO1_NUMIO)
 		return -1;
 	if (GPIO.pin[num+32].pad_driver)
 		return xio_cfg_io_od;
@@ -464,7 +473,7 @@ int CoreIO0::setm(uint32_t v, uint32_t m)
 
 int CoreIO1::setm(uint32_t v, uint32_t m)
 {
-	if (m >> 8)
+	if (m >> COREIO1_NUMIO)
 		return -EINVAL;
 	if ((v ^ m) & v)
 		return -EINVAL;
@@ -491,7 +500,7 @@ int CoreIO0::set_intr(uint8_t gpio, xio_intrhdlr_t hdlr, void *arg)
 
 int CoreIO1::set_intr(uint8_t gpio, xio_intrhdlr_t hdlr, void *arg)
 {
-	if (gpio >= 8) {
+	if (gpio >= COREIO1_NUMIO) {
 		log_warn(TAG,"set intr: invalid gpio%u",gpio+32);
 		return -EINVAL;
 	}
@@ -523,7 +532,7 @@ int CoreIO0::intr_enable(uint8_t gpio)
 
 int CoreIO1::intr_enable(uint8_t gpio)
 {
-	if (gpio >= 8) {
+	if (gpio >= COREIO1_NUMIO) {
 		log_warn(TAG,"enable intr: invalid gpio%u",gpio);
 		return -EINVAL;
 	}
@@ -554,7 +563,7 @@ int CoreIO0::intr_disable(uint8_t gpio)
 
 int CoreIO1::intr_disable(uint8_t gpio)
 {
-	if (gpio >= 8) {
+	if (gpio >= COREIO1_NUMIO) {
 		log_warn(TAG,"disable intr: invalid gpio%u",gpio);
 		return -EINVAL;
 	}
@@ -574,7 +583,7 @@ int coreio_config(uint8_t num, xio_cfg_t cfg)
 	if (num < 32)
 		return GpioCluster0.config(num,cfg);
 	num -= 32;
-	if (num < 8)
+	if (num < COREIO1_NUMIO)
 		return GpioCluster1.config(num,cfg);
 	return -1;
 }
@@ -585,7 +594,7 @@ int coreio_lvl_get(uint8_t num)
 	if (num < 32)
 		return GpioCluster0.get_lvl(num);
 	num -= 32;
-	if (num < 8)
+	if (num < COREIO1_NUMIO)
 		return GpioCluster1.get_lvl(num);
 	return -1;
 }
@@ -596,7 +605,7 @@ int coreio_lvl_hi(uint8_t num)
 	if (num < 32)
 		return GpioCluster0.set_hi(num);
 	num -= 32;
-	if (num < 8)
+	if (num < COREIO1_NUMIO)
 		return GpioCluster1.set_hi(num);
 	return -1;
 }
@@ -607,7 +616,7 @@ int coreio_lvl_lo(uint8_t num)
 	if (num < 32)
 		return GpioCluster0.set_lo(num);
 	num -=32;
-	if (num < 8)
+	if (num < COREIO1_NUMIO)
 		return GpioCluster1.set_lo(num);
 	return -1;
 }
@@ -618,7 +627,7 @@ int coreio_lvl_set(uint8_t num, xio_lvl_t l)
 	if (num < 32)
 		return GpioCluster0.set_lvl(num,l);
 	num -= 32;
-	if (num < 8)
+	if (num < COREIO1_NUMIO)
 		return GpioCluster1.set_lvl(num,l);
 	return -1;
 }

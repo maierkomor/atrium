@@ -10,7 +10,7 @@
  * Copyright: 2018-2023
  * Author   : Thomas Maier-Komor
  * 
- * Code generated on 2023-04-23, 11:07:00 (CET).
+ * Code generated on 2023-07-01, 22:37:39 (CET).
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -188,6 +188,7 @@ typedef enum {
 	dt_pcf8574_hd44780u = 16,
 	dt_ssd1306 = 32,
 	dt_ssd1309 = 33,
+	dt_ili9341 = 64,
 } disp_t;
 //! Function to get an ASCII string from a value of a disp_t.
 const char *disp_t_str(disp_t e);
@@ -198,6 +199,8 @@ typedef enum {
 	spidrv_invalid = 0,
 	spidrv_sx1276 = 1,
 	spidrv_ssd1309 = 2,
+	spidrv_ili9341 = 3,
+	spidrv_xpt2046 = 4,
 } spidrv_t;
 //! Function to get an ASCII string from a value of a spidrv_t.
 const char *spidrv_t_str(spidrv_t e);

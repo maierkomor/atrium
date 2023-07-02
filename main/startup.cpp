@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2022, Thomas Maier-Komor
+ *  Copyright (C) 2018-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -16,11 +16,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <string.h>
-
-#include <freertos/FreeRTOS.h>
-#include <freertos/task.h>
-#include <freertos/event_groups.h>
+#include <sdkconfig.h>
 
 #ifdef ESP8266
 #ifdef ESP32
@@ -47,26 +43,6 @@ extern "C" {
 #include <esp_core_dump.h>
 #endif
 
-#include <driver/uart.h>
-#include <driver/gpio.h>
-
-#ifdef CONFIG_IDF_TARGET_ESP8266
-#include <spi_flash.h>
-#include <driver/rtc.h>
-#elif defined CONFIG_IDF_TARGET_ESP32
-#include <soc/rtc.h>
-#elif defined CONFIG_IDF_TARGET_ESP32S3
-#include <driver/usb_serial_jtag.h>
-#endif
-
-#ifdef CONFIG_VERIFY_HEAP
-#define verify_heap() if (!heap_caps_check_integrity_all(true)){printf("corrupt heap\n");heap_caps_dump_all();abort();}
-#else
-#define verify_heap()
-#endif
-
-#include <sdkconfig.h>
-
 #include "cyclic.h"
 #include "event.h"
 #include "fs.h"
@@ -86,29 +62,30 @@ extern "C" {
 #include "env.h"
 #include "wifi.h"
 
-#include <set>
-
-#ifndef CHIP_FEATURE_EMB_FLASH
-#define CHIP_FEATURE_EMB_FLASH 0
+#ifdef CONFIG_IDF_TARGET_ESP8266
+#include <spi_flash.h>
+#include <driver/rtc.h>
+#elif defined CONFIG_IDF_TARGET_ESP32
+#include <soc/rtc.h>
+#elif defined CONFIG_IDF_TARGET_ESP32S3
+#include <driver/usb_serial_jtag.h>
 #endif
 
-#ifndef CHIP_FEATURE_BLE
-#define CHIP_FEATURE_BLE 0
-#endif
-
-#ifndef CHIP_FEATURE_BT
-#define CHIP_FEATURE_BT 0
-#endif
-
-#if IDF_VERSION > 32
-#define DRIVER_ARG 0,0
+#ifdef CONFIG_VERIFY_HEAP
+#define verify_heap() if (!heap_caps_check_integrity_all(true)){printf("corrupt heap\n");heap_caps_dump_all();abort();}
 #else
-#define DRIVER_ARG 0
+#define verify_heap()
+#endif
+
+#define TAG MODULE_INIT
+
+#ifdef CONFIG_FREERTOS_UNICORE
+#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S3
+//#error multi-core supported required on multi-core micro-controllers
+#endif
 #endif
 
 using namespace std;
-
-#define TAG MODULE_INIT
 
 void action_setup();
 void adc_setup();
@@ -180,16 +157,31 @@ static void system_info()
 	}
 	esp_chip_info_t ci;
 	esp_chip_info(&ci);
-	log_info(TAG,"ESP%u (rev %d) with %d core%s @ %uMHz%s%s%s%s"
+	log_info(TAG,"ESP%u (rev %d) with %d core%s @ %uMHz%s"
+#ifdef CHIP_FEATURE_BT
+			"%s"
+#endif
+#ifdef CHIP_FEATURE_BLE
+			"%s"
+#endif
+#ifdef CHIP_FEATURE_EMB_FLASH
+			"%s"
+#endif
 		, ci.model ? 32 : 8266
 		, ci.revision
 		, ci.cores
 		, ci.cores > 1 ? "s" : ""
 		, mhz
 		, ci.features & CHIP_FEATURE_WIFI_BGN ? ", WiFi" : ""
+#ifdef CHIP_FEATURE_BT
 		, ci.features & CHIP_FEATURE_BT ?  ", BT" : ""
+#endif
+#ifdef CHIP_FEATURE_BLE
 		, ci.features & CHIP_FEATURE_BLE ?  ", BT/LE" : ""
+#endif
+#ifdef CHIP_FEATURE_EMB_FLASH
 		, ci.features & CHIP_FEATURE_EMB_FLASH ?  ", flash" : ""
+#endif
 		);
 	if (uint32_t spiram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM))
 		log_info(TAG,"%ukB SPI RAM",spiram>>10);
@@ -267,7 +259,6 @@ unsigned cyclic_check_heap(void *)
 	return 5000;
 }
 #endif
-
 
 extern "C"
 void app_main()

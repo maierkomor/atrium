@@ -19,11 +19,11 @@
 #ifndef SSD1306_H
 #define SSD1306_H
 
-#include "display.h"
+#include "ssd130x.h"
 #include "fonts_ssd1306.h"
 #include "i2cdrv.h"
 
-class SSD1306 : public DotMatrix, public I2CDevice
+class SSD1306 : public SSD130X, public I2CDevice
 {
 	public:
 	enum hwcfg_t : uint8_t {
@@ -33,19 +33,17 @@ class SSD1306 : public DotMatrix, public I2CDevice
 	};
 
 	SSD1306(uint8_t bus, uint8_t addr);
-	~SSD1306();
 
 	static SSD1306 *create(uint8_t bus, uint8_t addr);
 	int init(uint8_t maxx, uint8_t maxy, uint8_t options);
-	int drawBitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t *data) override;
-	int drawRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h) override;
-	int clearRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h) override;
+//	int drawBitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t *data, int32_t fg, int32_t bg) override;
+//	int drawRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, int32_t col) override;
 
+	/*
 	int write(const char *t, int n) override;
 	int writeHex(uint8_t, bool) override;
 	int clear() override;
 	int clrEol() override;
-	int sync() override;
 
 	uint16_t maxX() const override
 	{ return m_maxx; }
@@ -64,53 +62,48 @@ class SSD1306 : public DotMatrix, public I2CDevice
 		return 0;
 	}
 
-	int setFont(int f) override
+	int setFont(unsigned f) override
 	{
 		m_font = (fontid_t) f;
 		return 0;
 	}
+	*/
 
+	void flush() override;
 	int setFont(const char *) override;
-	int setContrast(uint8_t contrast) override;
-	int setPos(uint16_t x, uint16_t y) override;
+	int setBrightness(uint8_t contrast) override;
+//	int setPos(uint16_t x, uint16_t y) override;
 	int setInvert(bool inv) override;
 	int setOn(bool on) override;
+//	uint16_t numLines() const override;
+//	uint16_t charsPerLine() const override;
+
+//	void setPixel(uint16_t x, uint16_t y, int32_t col) override;
+
 	const char *drvName() const
 	{ return "ssd1306"; }
-
-	bool hasAlpha() const override
-	{ return true; }
-
-	bool hasChar(char) const override
-	{ return true; }
-
-	uint8_t numLines() const override;
-	uint8_t charsPerLine() const override;
 
 	static SSD1306 *getInstance()
 	{ return Instance; }
 
-	int setPixel(uint16_t x, uint16_t y) override;
-	int clrPixel(uint16_t x, uint16_t y) override;
-	int setDim(uint8_t c) override
-	{ return setContrast(c); }
-	uint8_t maxDim() const override
+	uint8_t maxBrightness() const override
 	{ return 255; }
 
 	private:
-	int drawBitmap_ssd1306(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t *data);
+//	int drawBitmap_ssd1306(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t *data);
 	int drawByte(uint8_t x, uint8_t y, uint8_t b);
 	int drawBits(uint8_t x, uint8_t y, uint8_t b, uint8_t n);
-	void drawHLine(uint8_t x, uint8_t y, uint8_t n);
-	void drawVLine(uint8_t x, uint8_t y, uint8_t n);
+//	void drawHLine(uint16_t x, uint16_t y, uint16_t n);
+//	void drawVLine(uint8_t x, uint8_t y, uint8_t n);
 	int drawChar(char c);
 	int readByte(uint8_t x, uint8_t y, uint8_t *b);
 	int drawMasked(uint8_t x, uint8_t y, uint8_t b, uint8_t m);
 	uint8_t fontHeight() const;
 
 	static SSD1306 *Instance;
-	uint8_t *m_disp = 0;
-	uint8_t m_maxx = 0, m_maxy = 0, m_posx = 0, m_posy = 0, m_dirty = 0xff;
+//	uint8_t m_maxx = 0, m_maxy = 0, m_posx = 0, m_posy = 0;
+//	uint8_t *m_disp = 0;
+//	uint8_t m_dirty = 0xff;
 	fontid_t m_font = font_native;
 };
 

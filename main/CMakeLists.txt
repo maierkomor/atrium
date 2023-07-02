@@ -19,7 +19,6 @@ idf_component_register(
 	HttpResp.cpp
 	HttpServer.cpp
 	i2c.cpp
-	inetd.cpp
 	influx.cpp
 	leds.cpp
 	ledstrip.cpp

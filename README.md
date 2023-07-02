@@ -2,9 +2,9 @@ About Atrium Firmware:
 ======================
 Atrium Firmware is software stack for the ESP family of controllers from
 Espressif. It provides ready to build configuration (e.g. for S20
-socket) and supports ESP8285, ESP8266, ESP32, ESP32-C3, and ESP32-S3 in
-one source code package, providing infrastructure to build, configure,
-and use the devices in a consistent manner.
+socket) and supports ESP8285, ESP8266, ESP32, ESP32-C3, ESP32-S2, and
+ESP32-S3 in one source code package, providing infrastructure to build,
+configure, and use the devices in a consistent manner.
 
 The intended audience of this distribution are enthusiasts and hobbyists
 that want a home-automation without cloud access. For remote operation

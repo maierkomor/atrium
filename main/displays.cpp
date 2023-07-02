@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021, Thomas Maier-Komor
+ *  Copyright (C) 2021-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -24,6 +24,7 @@
 #include "globals.h"
 #include "hwcfg.h"
 #include "log.h"
+#include "ili9341.h"
 #include "MAX7219.h"
 #include "pcf8574.h"
 #include "hd44780u.h"
@@ -33,7 +34,7 @@
 #define TAG MODULE_DISP
 
 
-int display_setup()
+void display_setup()
 {
 	if (HWConf.has_max7219()) {
 		// 5V level adjustment necessary
@@ -48,46 +49,50 @@ int display_setup()
 		const DisplayConfig &c = HWConf.display();
 		if (!c.has_type() || !c.has_maxx()) {
 			log_warn(TAG,"incomplete config");
-			return 1;
+			return;
 		}
 		disp_t t = c.type();
-		uint8_t maxx = c.maxx();
-		uint8_t maxy = c.maxy();
+		uint16_t maxx = c.maxx();
+		uint16_t maxy = c.maxy();
 		if (LedCluster *l = LedCluster::getInstance()) {
 			new SegmentDisplay(l,(SegmentDisplay::addrmode_t)t,maxx,maxy);
 #ifdef CONFIG_PCF8574
 		} else if (t == dt_pcf8574_hd44780u) {
-			PCF8574 *dev = PCF8574::getInstance();
-			if (dev == 0) {
-				log_warn(TAG,"no pcf8574 found");
-				return 1;
+			bool ok = false;
+			if (PCF8574 *dev = PCF8574::getInstance()) {
+				if (HD44780U *hd = new HD44780U(dev,maxx,maxy)) {
+					hd->init();
+					ok = true;
+				}
 			}
-			HD44780U *hd = new HD44780U(dev,maxx,maxy);
-			hd->init();
+			if (!ok)
+				log_warn(TAG,"no pcf8574/hd44780u found");
 #endif
 #ifdef CONFIG_SSD1306
 		} else if (t == dt_ssd1306) {
-			SSD1306 *dev = SSD1306::getInstance();
-			if (dev == 0) {
+			if (SSD1306 *dev = SSD1306::getInstance())
+				dev->init(maxx,maxy,c.options());
+			else
 				log_warn(TAG,"no ssd1306 found");
-				return 1;
-			}
-			dev->init(maxx,maxy,c.options());
 #endif
 #ifdef CONFIG_SSD1309
 		} else if (t == dt_ssd1309) {
-			SSD1309 *dev = SSD1309::getInstance();
-			if (dev == 0) {
-				log_warn(TAG,"no ssd1306 found");
-				return 1;
-			}
-			dev->init(maxx,maxy,c.options());
+			if (SSD1309 *dev = SSD1309::getInstance())
+				dev->init(maxx,maxy,c.options());
+			else
+				log_warn(TAG,"no ssd1309 found");
+#endif
+#ifdef CONFIG_ILI9341
+		} else if (t == dt_ili9341) {
+			if (ILI9341 *dev = ILI9341::getInstance())
+				dev->init(maxx,maxy,c.options());
+			else
+				log_warn(TAG,"no ili9341 found");
 #endif
 		} else {
 			log_warn(TAG,"display configured, but no LED cluster available");
 		}
 	}
-	return 0;
 }
 
 #endif

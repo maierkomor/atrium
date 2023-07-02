@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021, Thomas Maier-Komor
+ *  Copyright (C) 2021-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -20,21 +20,39 @@
 #define DISPLAY_H
 
 #include "ledcluster.h"
+#include "fonts_generic.h"
 
-class DotMatrix;
+class MatrixDisplay;
 class SegmentDisplay;
+
+typedef enum color_e {
+	BLACK = 1, WHITE, BLUE, RED, GREEN, CYAN, YELLOW, MAGENTA	//, PURPLE
+} color_t;
+
+typedef enum colorspace_e
+	{ cs_mono, cs_map8
+	, cs_rgb15, cs_rgb16, cs_rgb18, cs_rgb24
+	, cs_bgr15, cs_bgr16, cs_bgr18, cs_bgr24
+} colorspace_t;
+
+#define COLOR_DEFAULT -1
+#define COLOR_NONE -2
+
+
+color_t color_get(const char *);
 
 struct TextDisplay
 {
-	virtual DotMatrix *toDotMatrix()
+	virtual MatrixDisplay *toMatrixDisplay()
 	{ return 0; }
 
 	virtual SegmentDisplay *toSegmentDisplay()
 	{ return 0; }
 
-	virtual int clear()
-	{ return -1; }
+	virtual void clear()
+	{ }
 
+	// can display specific char?
 	virtual bool hasChar(char c) const
 	{ return false; }
 
@@ -44,13 +62,17 @@ struct TextDisplay
 	virtual int setCursor(bool)
 	{ return -1; }
 
-	virtual int setPos(uint16_t x, uint16_t y = 0)
-	{ return -1; }
+	virtual int setPos(uint16_t x, uint16_t y = 0);
 
-	virtual uint8_t charsPerLine() const
+	// may change after changing the font
+	virtual uint16_t charsPerLine() const
 	{ return 0; }
 
-	virtual uint8_t numLines() const
+	virtual uint16_t charWidth(char c) const
+	{ return 1; }
+
+	// may change after changing the font
+	virtual uint16_t numLines() const
 	{ return 0; }
 
 	virtual int setOn(bool on)
@@ -59,43 +81,41 @@ struct TextDisplay
 	static TextDisplay *getFirst()
 	{ return Instance; }
 
-	TextDisplay *getNext() const
-	{ return m_next; }
+	uint16_t maxX() const
+	{ return m_width; }
 
-	virtual int writeBin(uint8_t)
-	{ return -1; }
+	uint16_t maxY() const
+	{ return m_height; }
+
+//	virtual int writeBin(uint8_t)
+//	{ return -1; }
 
 	virtual int writeHex(uint8_t h, bool comma = false)
 	{ return -1; }
 
-	virtual int write(const char *txt, int n = -1)
-	{ return -1; }
+	virtual void write(const char *txt, int n = -1)
+	{ }
 
+	// support for displaying a-z, A-Z?
 	virtual bool hasAlpha() const
 	{ return false; }
 
-	virtual uint8_t maxDim() const
+	virtual uint8_t maxBrightness() const
 	{ return 1; }
 
-	virtual int getDim() const
+	virtual int getBrightness() const
 	{ return -1; }
 
-	virtual int setDim(uint8_t)
+	virtual int setBrightness(uint8_t)
 	{ return -1; }
 
-	virtual int sync()
-	{ return -1; }
+	virtual void flush()
+	{ }
 
-	virtual int clrEol()
-	{ return -1; }
+	virtual void clrEol()
+	{ }
 
-	virtual int setPixel(uint16_t x, uint16_t y)
-	{ return -1; }
-
-	virtual int clrPixel(uint16_t x, uint16_t y)
-	{ return -1; }
-
-	virtual int setFont(int)
+	virtual int setFont(unsigned)
 	{ return -1; }
 
 	virtual int setFont(const char *)
@@ -103,54 +123,120 @@ struct TextDisplay
 
 	void initOK();
 
+	protected:
+	TextDisplay(uint16_t w, uint16_t h)
+	: m_width(w)
+	, m_height(h)
+	{ }
+
+	TextDisplay()
+	{ }
+
+	uint16_t m_width = 0, m_height = 0;
+	uint16_t m_posx = 0, m_posy = 0;	// cursor position
+
 	private:
 	static TextDisplay *Instance;
-	TextDisplay *m_next = 0;
 };
 
 
-struct DotMatrix : public TextDisplay
+struct MatrixDisplay : public TextDisplay
 {
-	DotMatrix *toDotMatrix() override
+	explicit MatrixDisplay(colorspace_t cs)
+	: m_colorspace(cs)
+	, m_colfg(getColor(WHITE))
+	, m_colbg(getColor(BLACK))
+	{
+	}
+
+	MatrixDisplay *toMatrixDisplay() override
 	{ return this; }
 
-	virtual uint16_t maxX() const
-	{ return 0; }
+	/*
+	int setXY(uint16_t x, uint16_t y)
+	{
+		if (x >= m_width)
+			return -1;
+		if (y >= m_height)
+			return -1;
+		m_posx = x;
+		m_posy = y;
+		return 0;
+	}
+	*/
 
-	virtual uint16_t maxY() const
-	{ return 0; }
+	virtual int setFont(unsigned);
+	virtual int setFont(const char *);
 
-	virtual int setXY(uint16_t x, uint16_t y)
-	{ return -1; }
+	uint16_t charWidth(char c) const override;
+	uint16_t fontHeight() const;
+	void clrEol() override;
+	uint16_t charsPerLine() const override
+	{ return m_width/8; }
+	uint16_t numLines() const override
+	{ return m_height/fontHeight(); }
 
-	virtual int clearRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h)
-	{ return -1; }
+	virtual void setPixel(uint16_t x, uint16_t y, int32_t color)
+	{ }
 
-	virtual int drawRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h)
-	{ return -1; }
-
-	virtual int drawBitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t *data)
-	{ return -1; }
-
-	virtual int drawLine(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1)
-	{ return -1; }
+	// col = -1: use default color (m_colfg/m_colbg)
+	// col = -2 for bg: do not fill
+	virtual void fillRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, int32_t col = -1);
+	virtual void drawRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, int32_t col = -1);
+	virtual void drawBitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t *data, int32_t fg = -1, int32_t bg = -1);
+	// without transparency
+	virtual void drawPicture16(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint16_t *data);
+	// with transparency (*data == -1) and 24bit color depth
+	virtual void drawPicture32(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const int32_t *data);
+	virtual void drawLine(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1, int32_t col = -1);
+	virtual void drawHLine(uint16_t x0, uint16_t y0, uint16_t len, int32_t col = -1);
+	virtual void drawVLine(uint16_t x0, uint16_t y0, uint16_t len, int32_t col = -1);
+	virtual unsigned drawText(uint16_t x, uint16_t y, const char *txt, int n = -1, int32_t fg = -1, int32_t bg = -1);
+	virtual unsigned drawChar(uint16_t x, uint16_t y, char c, int32_t fg, int32_t bg);
 
 	virtual int setInvert(bool)
 	{ return -1; }
 
-	virtual int setContrast(uint8_t contrast)
-	{ return -1; }
+	virtual int32_t getColor(color_t) const;
+	virtual int32_t setFgColor(color_t);
+	virtual int32_t setBgColor(color_t);
 
-	virtual int sync()
-	{ return -1; }
-};
+	void setFgColorVal(int32_t v)
+	{
+		if ((v >= 0) && (v <= UINT16_MAX))
+			m_colfg = v;
+	}
 
+	void setBgColorVal(int32_t v)
+	{
+		if ((v >= 0) && (v <= UINT16_MAX))
+			m_colbg = v;
+	}
 
-struct TftDisplay : public DotMatrix
-{
-	virtual int setColor(uint32_t)
-	{ return -1; }
+//	virtual int setContrast(uint8_t contrast)
+//	{ return -1; }
 
+	void flush() override
+	{ }
+
+	void clear() override;
+	void write(const char *txt, int n = -1) override;
+
+#if 0	// TODO
+	void setClipping(uint16_t xl, uint16_t xh, uint16_t yl, uint16_t yh)
+	{ m_clxl = xl; m_clxh = xh; m_clyl = yl; m_clyh = yh; }
+#endif
+
+	protected:
+//	int writeChar(uint16_t x, uint16_t y, char c);
+
+#if 0	// TODO
+	// clip x/y-low/high
+	uint16_t m_clxl = 0, m_clxh = 0xffff, m_clyl = 0, m_clyh = 0xffff;
+#endif
+	fontid_t m_font = font_native;
+	colorspace_t m_colorspace;
+	int32_t m_colfg, m_colbg;
 };
 
 
@@ -163,35 +249,36 @@ struct SegmentDisplay : public TextDisplay
 	SegmentDisplay *toSegmentDisplay() override
 	{ return this; }
 
-	int writeHex(uint8_t d, bool comma = false);
+	//int writeHex(uint8_t d, bool comma = false);
 	int writeChar(char, bool = false);
-	int writeBin(uint8_t);
-	int write(const char *txt, int n = -1) override;
-	int clear() override
-	{ return m_drv->clear(); }
+	void write(const char *txt, int n = -1) override;
+	void clear() override
+	{ m_drv->clear(); }
 
 	int setOn(bool on) override
 	{ return m_drv->setOn(on); }
 
-	int getDim() const override
+	int getBrightness() const override
 	{ return m_drv->getDim(); }
 
-	int setDim(uint8_t d) override
+	int setBrightness(uint8_t d) override
 	{ return m_drv->setDim(d); }
 
 	// X=0,Y=0: upper left
 	int setPos(uint16_t x, uint16_t y = 0) override;
 
+	/*
 	// characters per line
-	uint8_t charsPerLine() const override
-	{ return m_maxx; }
+	uint16_t charsPerLine() const override
+	{ return m_width; }
 
 	// number of lines
-	uint8_t numLines() const override
-	{ return m_maxy; }
+	uint16_t numLines() const override
+	{ return m_height; }
+	*/
 
 	// maximum brightness
-	uint8_t maxDim() const override
+	uint8_t maxBrightness() const override
 	{ return m_drv->maxDim(); }
 
 	bool hasAlpha() const override
@@ -202,11 +289,10 @@ struct SegmentDisplay : public TextDisplay
 	protected:
 	static uint16_t char2seg7(char c);
 	static uint16_t char2seg14(char c);
+	int writeBin(uint8_t);
 
 	LedCluster *m_drv;
 	addrmode_t m_addrmode;
-	uint8_t m_maxx, m_maxy;
-	uint16_t m_pos = 0;
 };
 
 

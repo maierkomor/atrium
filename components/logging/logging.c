@@ -118,9 +118,11 @@ const char UartPrefix[][8] = {
 
 void con_print(const char *str)
 {
+	if (str == 0)
+		return;
+	size_t s = strlen(str);
 #if CONFIG_CONSOLE_UART_NONE != 1
-	if ((LogUart != -1) && (str != 0)) {
-		size_t s = strlen(str);
+	if ((LogUart != -1) && (s != 0)) {
 		if (pdFALSE == xSemaphoreTake(UartLock,MUTEX_ABORT_TIMEOUT))
 			abort_on_mutex(UartLock,__FUNCTION__);
 		uart_write_bytes(LogUart,str,s);
@@ -129,10 +131,10 @@ void con_print(const char *str)
 		xSemaphoreGive(UartLock);
 	}
 #endif
-#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+#if defined CONFIG_USB_DIAGLOG && (defined CONFIG_IDF_TARGET_ESP32C3 || defined CONFIG_IDF_TARGET_ESP32S3)
 	// will block until a jtag connection is present
 	// therefore, max delay: 10ms
-	usb_serial_jtag_write_bytes(str,strlen(str),10);
+	usb_serial_jtag_write_bytes(str,s,10);
 	usb_serial_jtag_write_bytes("\r\n",2,10);
 #endif
 }
@@ -140,42 +142,34 @@ void con_print(const char *str)
 
 void con_printf(const char *f, ...)
 {
-#if CONFIG_CONSOLE_UART_NONE != 1
-	if (LogUart == -1)
-		return;
-	char buf[256];
 	va_list val;
 	va_start(val,f);
-	int n = vsnprintf(buf,sizeof(buf),f,val);
+	con_printv(f,val);
 	va_end(val);
-	if (n > 0) {
-		if (n > sizeof(buf))
-			n = sizeof(buf);
-		con_write(buf,n);
-		//uart_wait_tx_done((uart_port_t)LogUart,portMAX_DELAY);
-	}
-#endif
 }
 
 
 void con_printv(const char *f, va_list val) 
 {
-#if CONFIG_CONSOLE_UART_NONE != 1
-	if (LogUart == -1)
-		return;
 	char buf[256];
 	int n = vsnprintf(buf,sizeof(buf),f,val);
 	if (n > 0) {
 		if (n > sizeof(buf))
 			n = sizeof(buf);
-		if (pdFALSE == xSemaphoreTake(UartLock,MUTEX_ABORT_TIMEOUT))
-			abort_on_mutex(UartLock,__FUNCTION__);
-		uart_write_bytes(LogUart,buf,n);
-		uart_write_bytes(LogUart,"\r\n",2);
-		uart_wait_tx_done((uart_port_t)LogUart,portMAX_DELAY);
-		xSemaphoreGive(UartLock);
-	}
+#if CONFIG_CONSOLE_UART_NONE != 1
+		if (LogUart != -1) {
+			if (pdFALSE == xSemaphoreTake(UartLock,MUTEX_ABORT_TIMEOUT))
+				abort_on_mutex(UartLock,__FUNCTION__);
+			uart_write_bytes(LogUart,buf,n);
+			uart_write_bytes(LogUart,"\r\n",2);
+			uart_wait_tx_done((uart_port_t)LogUart,portMAX_DELAY);
+			xSemaphoreGive(UartLock);
+		}
 #endif
+#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+		usb_serial_jtag_write_bytes(buf,n,portMAX_DELAY);
+#endif
+	}
 }
 
 
@@ -187,6 +181,9 @@ void con_write(const char *str, ssize_t s)
 		uart_write_bytes(LogUart,str,s);
 		xSemaphoreGive(UartLock);
 	}
+#endif
+#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+	usb_serial_jtag_write_bytes(str,s,portMAX_DELAY);
 #endif
 }
 
@@ -304,7 +301,7 @@ void log_common(log_level_t l, logmod_t m, const char *f, va_list val)
 		if (pdTRUE != xSemaphoreTake(UartLock,MUTEX_ABORT_TIMEOUT))
 			abort_on_mutex(UartLock,__BASE_FILE__);
 		uart_write_bytes((uart_port_t)LogUart,buf,s);
-		if (l <= ll_warn)
+//		if (l <= ll_warn)
 			uart_wait_tx_done((uart_port_t)LogUart,portMAX_DELAY);
 		xSemaphoreGive(UartLock);
 	}

@@ -60,14 +60,14 @@ using namespace std;
 
 struct LuaFns {
 	LuaFns(const char *m, const LuaFn *f)
-	: module(m)
+	: cluster(m)
 	, fns(f)
 	, next(List)
 	{
 		List = this;
 	}
 
-	const char *module;
+	const char *cluster;
 	const LuaFn *fns;
 	LuaFns *next;
 	static LuaFns *List;
@@ -322,7 +322,7 @@ static int f_getvar(lua_State *L)
 	} else {
 		estring str;
 		strstream ss(str);
-		e->toStream(ss);
+		e->writeValue(ss);
 		lua_pushstring(L,str.c_str());
 	}
 	return 1;
@@ -494,9 +494,9 @@ static const LuaFn CoreFunctions[] = {
 
 int xlua_add_funcs(const char *name, const LuaFn *f)
 {
-	new LuaFns(name,f);
 	if (LS == 0)
-		return 0;
+		xlua_init();
+	new LuaFns(name,f);
 	while (f->name) {
 		lua_pushcfunction(LS,f->func);
 		lua_setglobal(LS,f->name);
@@ -600,7 +600,7 @@ const char *xluac(Terminal &t, int argc, const char *args[])
 	if (0 == strcmp(args[1],"-i")) {
 		LuaFns *fn = LuaFns::List;
 		while (fn) {
-			t.printf("%s functions:\n",fn->module);
+			t.printf("%s functions:\n",fn->cluster);
 			const LuaFn *f = fn->fns;
 			while (f->name) {
 				t.printf("%-16s: %s\n",f->name,f->descr);

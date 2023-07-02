@@ -74,6 +74,7 @@ UartTerminal::UartTerminal(bool crnl)
 , m_uart_rx(UART_NUM_MAX)
 , m_uart_tx(UART_NUM_MAX)
 {
+	memcpy(m_name,"uart",5);
 }
 
 
@@ -81,8 +82,11 @@ void UartTerminal::init(uint8_t uart)
 {
 	m_uart_rx = uart;
 	m_uart_tx = uart;
-	uart_driver_install((uart_port_t)uart,UART_FIFO_LEN*2,UART_FIFO_LEN*2,0,DRIVER_ARG);
-//	uart_set_baudrate((uart_port_t)uart,115200);
+#if CONFIG_UART_CONSOLE_NONE != 1
+	if ((int)uart != CONFIG_CONSOLE_UART_NUM)
+#endif
+		uart_driver_install((uart_port_t)uart,UART_FIFO_LEN*2,UART_FIFO_LEN*2,0,DRIVER_ARG);
+	sprintf(m_name,"uart@%d",uart);
 }
 
 
@@ -90,11 +94,13 @@ void UartTerminal::init(uint8_t rx, uint8_t tx)
 {
 	m_uart_rx = rx;
 	m_uart_tx = tx;
-	uart_driver_install((uart_port_t)rx,UART_FIFO_LEN*2,UART_FIFO_LEN*2,0,DRIVER_ARG);
-//	uart_set_baudrate((uart_port_t)m_uart_rx,115200);
+	sprintf(m_name,"uart@%d,%d",rx,tx);
+#if CONFIG_UART_CONSOLE_NONE != 1
+	if ((int)rx != CONFIG_CONSOLE_UART_NUM)
+#endif
+		uart_driver_install((uart_port_t)rx,UART_FIFO_LEN*2,UART_FIFO_LEN*2,0,DRIVER_ARG);
 	if (rx != tx)
 		uart_driver_install((uart_port_t)tx,UART_FIFO_LEN*2,UART_FIFO_LEN*2,0,DRIVER_ARG);
-//	uart_set_baudrate((uart_port_t)m_uart_tx,115200);
 }
 
 
@@ -145,5 +151,5 @@ int UartTerminal::write(const char *str, size_t l)
 
 void UartTerminal::sync(bool block)
 {
-//	uart_wait_tx_done((uart_port_t)m_uart_tx,block ? portMAX_DELAY : 0);
+	uart_wait_tx_done((uart_port_t)m_uart_tx,block ? portMAX_DELAY : 0);
 }

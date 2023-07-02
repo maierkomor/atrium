@@ -99,7 +99,7 @@ int HD44780U::init()
 }
 
 
-int HD44780U::clear()
+void HD44780U::clear()
 {
 	log_dbug(TAG,"clear");
 	m_posx = 0;
@@ -107,8 +107,8 @@ int HD44780U::clear()
 	m_posinv = false;
 	bzero(m_data,sizeof(m_data));
 	int r = writeCmd(CMD_CLR_DISP);
+	log_dbug(TAG,"clear %d",r);
 	vTaskDelay(2);	// not good but needed...
-	return r;
 }
 
 
@@ -188,11 +188,9 @@ int HD44780U::setBlink(bool blink)
 }
 
 
-int HD44780U::setDim(uint8_t d)
+int HD44780U::setBrightness(uint8_t d)
 {
-	if (d > 1)
-		return -1;
-	return setOn(d);
+	return setOn(d != 0);
 }
 
 
@@ -214,7 +212,7 @@ void HD44780U::setDisplay(bool on, bool cursor, bool blink)
 }
 
 
-int HD44780U::write(const char *t, int n)
+void HD44780U::write(const char *t, int n)
 {
 	log_dbug(TAG,"write('%s',%d) at %u/%u",t,n,m_posx,m_posy);
 	while (*t && (n != 0)) {
@@ -230,13 +228,12 @@ int HD44780U::write(const char *t, int n)
 			if (c == 0260)
 				c = 0xdf;
 			if (writeData(c))
-				return 1;
+				return;
 		}
 		--n;
 		++t;
 	}
 	log_dbug(TAG,"pos %u/%u",m_posx,m_posy);
-	return 0;
 }
 
 
@@ -395,7 +392,7 @@ uint8_t HD44780U::readBusy()
 }
 
 
-int HD44780U::clrEol()
+void HD44780U::clrEol()
 {
 	uint8_t x = m_posx;
 	log_dbug(TAG,"clrEol() y=%u",(unsigned)m_posy);
@@ -404,7 +401,6 @@ int HD44780U::clrEol()
 	while (m_posx < m_maxx);
 	m_posx = x;
 	log_dbug(TAG,"clrEol(): done");
-	return 0;
 }
 
 #endif

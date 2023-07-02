@@ -10,7 +10,7 @@
  * Copyright: 2018-2023
  * Author   : Thomas Maier-Komor
  * 
- * Code generated on 2023-04-23, 11:07:00 (CET).
+ * Code generated on 2023-07-01, 22:37:39 (CET).
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -411,6 +411,7 @@ const char *i2cdrv_t_str(i2cdrv_t e)
 
 #ifdef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 static const char *disp_t_names[] = {
+	"dt_ili9341",
 	"dt_none",
 	"dt_pcf8574_hd44780u",
 	"dt_sd_14seg",
@@ -420,6 +421,7 @@ static const char *disp_t_names[] = {
 };
 
 static disp_t disp_t_values[] = {
+	dt_ili9341,
 	dt_none,
 	dt_pcf8574_hd44780u,
 	dt_sd_14seg,
@@ -433,6 +435,7 @@ size_t parse_ascii_disp_t(disp_t *v, const char *s)
 {
 	#ifndef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 	static std::map<const char *,disp_t, cstr_less> namesmap = {
+		{ "dt_ili9341", dt_ili9341},
 		{ "dt_none", dt_none},
 		{ "dt_pcf8574_hd44780u", dt_pcf8574_hd44780u},
 		{ "dt_sd_14seg", dt_sd_14seg},
@@ -482,6 +485,8 @@ const char *disp_t_str(disp_t e)
 		return "dt_ssd1306";
 	case dt_ssd1309:
 		return "dt_ssd1309";
+	case dt_ili9341:
+		return "dt_ili9341";
 	}
 	#endif // !CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 	#ifdef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
@@ -495,15 +500,19 @@ const char *disp_t_str(disp_t e)
 
 #ifdef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 static const char *spidrv_t_names[] = {
+	"spidrv_ili9341",
 	"spidrv_invalid",
 	"spidrv_ssd1309",
 	"spidrv_sx1276",
+	"spidrv_xpt2046",
 };
 
 static spidrv_t spidrv_t_values[] = {
+	spidrv_ili9341,
 	spidrv_invalid,
 	spidrv_ssd1309,
 	spidrv_sx1276,
+	spidrv_xpt2046,
 };
 #endif // !CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 
@@ -511,9 +520,11 @@ size_t parse_ascii_spidrv_t(spidrv_t *v, const char *s)
 {
 	#ifndef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 	static std::map<const char *,spidrv_t, cstr_less> namesmap = {
+		{ "spidrv_ili9341", spidrv_ili9341},
 		{ "spidrv_invalid", spidrv_invalid},
 		{ "spidrv_ssd1309", spidrv_ssd1309},
 		{ "spidrv_sx1276", spidrv_sx1276},
+		{ "spidrv_xpt2046", spidrv_xpt2046},
 	};
 	#endif // !CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 	char *e;
@@ -551,6 +562,10 @@ const char *spidrv_t_str(spidrv_t e)
 		return "spidrv_sx1276";
 	case spidrv_ssd1309:
 		return "spidrv_ssd1309";
+	case spidrv_ili9341:
+		return "spidrv_ili9341";
+	case spidrv_xpt2046:
+		return "spidrv_xpt2046";
 	}
 	#endif // !CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 	#ifdef CONFIG_ESPTOOLPY_FLASHSIZE_1MB

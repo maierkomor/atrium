@@ -1144,7 +1144,7 @@ static const char *hwconf(Terminal &term, int argc, const char *args[])
 		HWConf.set_magic(0xAE54EDCB);
 #endif
 	} else if (!strcmp("nvxxd",args[1])) {
-		size_t s;
+		size_t s = 0;
 		uint8_t *buf = 0;
 		if (int e = nvm_read_blob("hw.cfg",&buf,&s)) {
 			return esp_err_to_name(e);
@@ -1945,7 +1945,7 @@ static const char *config(Terminal &term, int argc, const char *args[])
 	} else if (!strcmp(args[1],"xxd")) {
 		return xxdSettings(term);
 	} else if (!strcmp(args[1],"nvxxd")) {
-		size_t s;
+		size_t s = 0;
 		uint8_t *buf = 0;
 		if (int e = nvm_read_blob("node.cfg",&buf,&s))
 			return e ? "Failed." : 0;

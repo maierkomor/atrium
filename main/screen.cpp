@@ -114,6 +114,8 @@ static void switch_mode(void *arg)
 		Ctx->mode = cm_date;
 	} else if (0 == strcmp("stopwatch",m)) {
 		Ctx->mode = cm_stopwatch;
+	} else if (0 == strcmp("lua",m)) {
+		Ctx->mode = cm_lua;
 	} else {
 		int idx = RTData->getIndex((const char *) arg);
 		if (idx == -1) {
@@ -133,9 +135,9 @@ static void bright_set(void *arg)
 {
 	if (arg) {
 		long l = strtol((const char *)arg, 0, 0);
-		int m = Ctx->disp->maxDim();
+		int m = Ctx->disp->maxBrightness();
 		if ((l >= 0) && (l <= m))
-			Ctx->disp->setDim(l);
+			Ctx->disp->setBrightness(l);
 		else
 			log_warn(TAG,"maximum brightness %u",l);
 	}
@@ -157,14 +159,14 @@ void Screen::display_time()
 {
 	uint8_t h=0,m=0,s=0;
 	unsigned y=0;
-	bool colon = disp->hasChar(':');
 	if (get_time_of_day(&h,&m,&s,0,0,0,&y)) {
-		if (colon)
-			disp->write("--:--:--");
-		else
-			disp->write("--.--.--");
-		return;
+		disp->write("--:--:--");
+	} else {
+		char str[12];
+		sprintf(str,"%02u:%02u:%02u",h,m,s);
+		disp->write(str);
 	}
+	/*
 	disp->writeHex(h/10);
 	disp->writeHex(h%10,!colon);
 	if (colon)
@@ -177,6 +179,7 @@ void Screen::display_time()
 		disp->writeHex(s/10);
 		disp->writeHex(s%10);
 	}
+	*/
 }
 
 
@@ -188,6 +191,10 @@ void Screen::display_date()
 		disp->write("--.--.----");
 		return;
 	}
+	char str[12];
+	sprintf(str,"%u.%u.%u",day,mon,year);
+	disp->write(str);
+	/*
 	disp->writeHex(day/10);
 	disp->writeHex(day%10,true);
 	disp->writeHex(mon/10);
@@ -201,22 +208,24 @@ void Screen::display_date()
 		disp->writeHex(year/10);
 		disp->writeHex(year%10);
 	}
+	*/
 }
 
 
 void Screen::display_version()
 {
-	if (DotMatrix *dm = disp->toDotMatrix()) {
-		dm->drawRect(1,0,dm->maxX()-2,dm->maxY());
-		dm->setXY(10,1);
+	if (MatrixDisplay *dm = disp->toMatrixDisplay()) {
+		assert(dm->maxX());
+		dm->drawRect(1,1,dm->maxX()-2,dm->maxY()-2);
 		dm->setFont(font_sanslight16);
+		dm->setPos(10,2);
 		dm->write("Atrium");
 		dm->setFont(font_sanslight12);
-		dm->setXY(10,23);
+		dm->setPos(10,24);
 		const char *sp = strchr(Version,' ');
 		dm->write(Version,sp-Version);
 		if (dm->maxY() >= 48) {
-			dm->setXY(10,48);
+			dm->setPos(10,48);
 			dm->setFont(font_tomthumb);
 			dm->write("(C) 2021-2023, T.Maier-Komor");
 		}
@@ -235,7 +244,7 @@ void Screen::display_version()
 			return;
 		disp->setPos(0,1);
 		if (cpl >= 20)
-			disp->write("(C) 2021 Maier-Komor");
+			disp->write("(C) 2023 Maier-Komor");
 		else
 			disp->write("(C) Maier-Komor");
 		if (nl > 2)
@@ -250,7 +259,7 @@ void Screen::display_version()
 void Screen::display_sw()
 {
 	PROFILE_FUNCTION();
-	bool colon = disp->hasChar(':');
+//	bool colon = disp->hasChar(':');
 	uint32_t dt;
 	if (sw_pause) {
 		dt = sw_pause;
@@ -270,51 +279,24 @@ void Screen::display_sw()
 	uint8_t m = dt / 60;
 	dt -= m * 60;
 	uint8_t s = dt;
+	char str[16];
 	if (digits >= 8) {
-		disp->writeHex(h/10);
-		disp->writeHex(h%10,!colon);
-		if (colon)
-			disp->write(":");
-		disp->writeHex(m/10);
-		disp->writeHex(m%10,!colon);
-		if (colon)
-			disp->write(":");
-		disp->writeHex(s/10);
-		disp->writeHex(s%10,true);
-		disp->writeHex(dsec);
-		disp->writeHex(hsec);
+		sprintf(str,"%02u:%02u:%02u.%u%u",h,m,s,dsec,hsec);
 	} else if (digits == 6) {
 		if (h) {
-			disp->writeHex(h/10);
-			disp->writeHex(h%10,true);
-			disp->writeHex(m/10);
-			disp->writeHex(m%10,true);
-			disp->writeHex(s/10);
-			disp->writeHex(s%10);
+			sprintf(str,"%02u:%02u:%02u",h,m,s);
 		} else {
-			disp->writeHex(m/10);
-			disp->writeHex(m%10,true);
-			disp->writeHex(s/10);
-			disp->writeHex(s%10,true);
-			disp->writeHex(dsec);
-			disp->writeHex(hsec);
+			sprintf(str,"%02u:%02u.%u%u",m,s,dsec,hsec);
 		}
 	} else if (h != 0) {
-		disp->writeHex(h/10);
-		disp->writeHex(h%10,true);
-		disp->writeHex(m/10);
-		disp->writeHex(m%10);
+		sprintf(str,"%02u:%02u",h,m);
 	} else if (m != 0) {
-		disp->writeHex(m/10);
-		disp->writeHex(m%10,true);
-		disp->writeHex(s/10);
-		disp->writeHex(s%10);
+		sprintf(str,"%02u:%02u",m,s);
 	} else {
-		disp->writeHex(s/10);
-		disp->writeHex(s%10,true);
-		disp->writeHex(dsec);
-		disp->writeHex(hsec);
+		sprintf(str,"%02u.%u%u",s,dsec,hsec);
 	}
+	disp->write(str);
+	disp->clrEol();
 }
 
 
@@ -331,6 +313,7 @@ static unsigned clock_iter(void *arg)
 {
 	bool alpha = Ctx->disp->hasAlpha();
 	Screen *Ctx = (Screen *)arg;
+	MatrixDisplay *dm = Ctx->disp->toMatrixDisplay();
 	if (Ctx->modech) {
 		Ctx->disp->clear();
 		Ctx->modech = false;
@@ -369,24 +352,22 @@ static unsigned clock_iter(void *arg)
 			}
 			if (text) {
 				log_dbug(TAG,"mode %s",text);
-				DotMatrix *dm = Ctx->disp->toDotMatrix();
 				if (dm) {
 					dm->setFont(font_sanslight10);
-					dm->setXY(3,4);
+					dm->setPos(3,4);
 				} else {
 					Ctx->disp->setPos(0,0);
 				}
 				Ctx->disp->write(text);
 				if (dm) {
 					dm->setFont(nextFont);
-					dm->setXY(3,12);
 				}
 			}
 			if (Ctx->disp->numLines() > 1) {
 				Ctx->disp->setPos(0,1);
 				Ctx->modestart -= 1000;
 			}
-			Ctx->disp->sync();
+			Ctx->disp->flush();
 			return 50;
 		}
 	}
@@ -395,8 +376,12 @@ static unsigned clock_iter(void *arg)
 		return 50;
 	unsigned d = 100;
 //	Ctx->disp->setPos(0,Ctx->disp->numLines() > 1 ? 1 : 0);
-	Ctx->disp->write("\r");
-	Ctx->disp->clrEol();
+	if (dm) {
+		dm->setPos(10,20);
+	} else {
+		Ctx->disp->write("\r");
+		Ctx->disp->clrEol();
+	}
 	double v = 0;
 	const char *fmt = 0, *dim = 0;
 	switch (Ctx->mode) {
@@ -419,12 +404,11 @@ static unsigned clock_iter(void *arg)
 			uint32_t ut = uptime();
 			time_t now;
 			time(&now);
-			if ((now > 3600*24*365*30) && (ut - Ctx->modestart > 1000)) {
+			if ((now > 3600*24*365*30) && (ut - Ctx->modestart > 3000)) {
 				Ctx->mode = cm_time;
 				Ctx->modech = true;
-				return 20;
 			}
-			return 500;
+			return 200;
 		}
 		break;
 	case cm_stopwatch:
@@ -475,7 +459,7 @@ static unsigned clock_iter(void *arg)
 			}
 		}
 	}
-	Ctx->disp->sync();
+	Ctx->disp->flush();
 	return d;
 }
 
@@ -485,7 +469,7 @@ int luax_disp_max_x(lua_State *L)
 {
 	
 	if (TextDisplay *disp = TextDisplay::getFirst()) {
-		if (DotMatrix *dm = disp->toDotMatrix()) {
+		if (MatrixDisplay *dm = disp->toMatrixDisplay()) {
 			lua_pushinteger(L, dm->maxX());
 			return 1;
 		}
@@ -499,7 +483,7 @@ int luax_disp_max_x(lua_State *L)
 int luax_disp_max_y(lua_State *L)
 {
 	if (TextDisplay *disp = TextDisplay::getFirst()) {
-		if (DotMatrix *dm = disp->toDotMatrix()) {
+		if (MatrixDisplay *dm = disp->toMatrixDisplay()) {
 			lua_pushinteger(L, dm->maxY());
 			return 1;
 		}
@@ -530,10 +514,12 @@ int luax_disp_draw_rect(lua_State *L)
 	int y = luaL_checkinteger(L,2);
 	int w = luaL_checkinteger(L,3);
 	int h = luaL_checkinteger(L,4);
-	if (TextDisplay *disp = TextDisplay::getFirst())
-		if (DotMatrix *dm = disp->toDotMatrix())
-			if (-1 != dm->drawRect(x,y,w,h))
-				return 0;
+	if (TextDisplay *disp = TextDisplay::getFirst()) {
+		if (MatrixDisplay *dm = disp->toMatrixDisplay()) {
+			dm->drawRect(x,y,w,h);
+			return 0;
+		}
+	}
 	lua_pushstring(L,"no dot-matrix");
 	lua_error(L);
 	return 0;
@@ -544,8 +530,9 @@ int luax_disp_set_font(lua_State *L)
 {
 	const char *fn = luaL_checkstring(L,1);
 	if (TextDisplay *disp = TextDisplay::getFirst())
-		if (-1 != disp->setFont(fn))
-			return 0;
+		if (MatrixDisplay *md = disp->toMatrixDisplay())
+			if (-1 != md->setFont(fn))
+				return 0;
 	lua_pushstring(L,"invalid font");
 	lua_error(L);
 	return 0;
@@ -556,11 +543,11 @@ int luax_disp_write(lua_State *L)
 {
 	const char *txt = luaL_checkstring(L,1);
 	if (TextDisplay *disp = TextDisplay::getFirst()) {
-		if (-1 != disp->write(txt))
-			return 0;
+		disp->write(txt);
+	} else {
+		lua_pushstring(L,"Invalid argument.");
+		lua_error(L);
 	}
-	lua_pushstring(L,"Invalid argument.");
-	lua_error(L);
 	return 0;
 
 }
@@ -586,21 +573,147 @@ static const LuaFn Functions[] = {
 	{ 0, 0, 0 }
 };
 
+static int luax_fb_setbgcol(lua_State *L)
+{
+	if (MatrixDisplay *md = Ctx->disp->toMatrixDisplay()) {
+		if (lua_isinteger(L,1))
+			md->setBgColorVal(lua_tointeger(L,1));
+		else if (lua_isstring(L,1))
+			md->setBgColor(color_get(lua_tostring(L,1)));
+		return 0;
+	}
+	lua_pushliteral(L,"fb_setbgcol: no display.");
+	lua_error(L);
+	return 0;
+}
+
+
+static int luax_fb_setfgcol(lua_State *L)
+{
+	if (MatrixDisplay *md = Ctx->disp->toMatrixDisplay()) {
+		if (lua_isinteger(L,1))
+			md->setFgColorVal(lua_tointeger(L,1));
+		else if (lua_isstring(L,1))
+			md->setFgColor(color_get(lua_tostring(L,1)));
+		return 0;
+	}
+	lua_pushliteral(L,"fb_setfgcol: no display.");
+	lua_error(L);
+	return 0;
+}
+
+
+static int luax_fb_setfont(lua_State *L)
+{
+	if (MatrixDisplay *md = Ctx->disp->toMatrixDisplay()) {
+		if (const char *fn = lua_tostring(L,1)) {
+			md->setFont(fn);
+		} else {
+			md->setFont(lua_tointeger(L,1));
+		}
+		return 0;
+	}
+	lua_pushliteral(L,"fb_setfgcol: no display.");
+	lua_error(L);
+	return 0;
+}
+
+
+static int luax_fb_drawrect(lua_State *L)
+{
+	if (MatrixDisplay *md = Ctx->disp->toMatrixDisplay()) {
+		int x = luaL_checkinteger(L,1);
+		int y = luaL_checkinteger(L,2);
+		int w = luaL_checkinteger(L,3);
+		int h = luaL_checkinteger(L,4);
+		int32_t fgc = -1;
+		if (lua_isinteger(L,5))
+			fgc = lua_tointeger(L,5);
+		else if (lua_isstring(L,5))
+			fgc = md->getColor(color_get(lua_tostring(L,5)));
+		md->drawRect(x,y,w,h,fgc);
+		return 0;
+	}
+	lua_pushliteral(L,"fb_drawrect: no display.");
+	lua_error(L);
+	return 0;
+}
+
+
+static int luax_fb_drawtext(lua_State *L)
+{
+	if (MatrixDisplay *md = Ctx->disp->toMatrixDisplay()) {
+		int x = luaL_checkinteger(L,1);
+		int y = luaL_checkinteger(L,2);
+		const char *text = luaL_checkstring(L,3);
+		int32_t fgc = -1;
+		// int before string! 0xff is recognized as string otherwise
+		if (lua_isinteger(L,4))
+			fgc = lua_tointeger(L,4);
+		else if (lua_isstring(L,4))
+			fgc = md->getColor(color_get(lua_tostring(L,4)));
+		int32_t bgc = -1;
+		if (lua_isinteger(L,5))
+			bgc = lua_tointeger(L,5);
+		else if (lua_isstring(L,5))
+			bgc = md->getColor(color_get(lua_tostring(L,5)));
+		md->drawText(x,y,text,-1,fgc,bgc);
+		return 0;
+	}
+	lua_pushliteral(L,"fb_drawtext: no display.");
+	lua_error(L);
+	return 0;
+}
+
+
+static int luax_fb_fillrect(lua_State *L)
+{
+	if (MatrixDisplay *md = Ctx->disp->toMatrixDisplay()) {
+		int x = luaL_checkinteger(L,1);
+		int y = luaL_checkinteger(L,2);
+		int w = luaL_checkinteger(L,3);
+		int h = luaL_checkinteger(L,4);
+		int32_t col = -1;
+		if (lua_isinteger(L,5))
+			col = lua_tointeger(L,5);
+		else if (lua_isstring(L,5))
+			col = md->getColor(color_get(lua_tostring(L,5)));
+		md->fillRect(x,y,w,h,col);
+		return 0;
+	}
+	lua_pushliteral(L,"fb_drawrect: no display.");
+	lua_error(L);
+	return 0;
+}
+
+
+static const LuaFn FbFunctions[] = {
+	{ "fb_drawrect", luax_fb_drawrect, "draw rectangle" },
+	{ "fb_drawtext", luax_fb_drawtext, "draw text string" },
+	{ "fb_fillrect", luax_fb_fillrect, "fill rectangle" },
+	{ "fb_setbgcol", luax_fb_setbgcol, "set background color" },
+	{ "fb_setfgcol", luax_fb_setfgcol, "set foreground color" },
+	{ "fb_setfont", luax_fb_setfont, "set font" },
+	{ 0, 0, 0 },
+};
+
+
 #endif
 
 
-int screen_setup()
+void screen_setup()
 {
 	TextDisplay *d = TextDisplay::getFirst();
 	if (d == 0)
-		return 0;
+		return;
 	Ctx = new Screen;
 	Ctx->disp = d;
 	Ctx->digits = d->charsPerLine();
+	Ctx->modestart = uptime();
 	d->setCursor(false);
 	d->setBlink(false);
 	action_add("display!set_mode",switch_mode,0,"switch to next or specified display mode");
-	if (d->maxDim() > 1) {
+	if (d->maxBrightness() > 1) {
 		action_add("display!set_bright",bright_set,0,"set brightness to argument value");
 	}
 	action_add("display!off",shutdown,Ctx,"clock: turn off");
@@ -610,16 +723,17 @@ int screen_setup()
 	action_add("sw!pause",sw_pause,Ctx,"stopwatch pause/resume");
 	shutdown(Ctx);
 	poweron(Ctx);
-	d->setDim(d->maxDim());
+	d->setBrightness(d->maxBrightness());
 	Ctx->mode = cm_version;
 	Ctx->modech = true;
 	d->clear();
 	cyclic_add_task("display", clock_iter, Ctx);
 #ifdef CONFIG_LUA
 	xlua_add_funcs("screen",Functions);	// TODO display mode Lua is missing
+	if (Ctx->disp->toMatrixDisplay())
+		xlua_add_funcs("fb",FbFunctions);	// TODO display mode Lua is missing
 #endif
 	log_info(TAG,"ready");
-	return 0;
 }
 
 #endif

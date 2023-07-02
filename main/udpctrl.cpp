@@ -106,7 +106,7 @@ static void recv_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p, const 
 	char name[12];
 	++Ctx->Cmds;
 	snprintf(name,sizeof(name),"udpctrl%u",Ctx->Cmds);
-	BaseType_t r = xTaskCreatePinnedToCore(udpctrl_session,"udpctrl",stacksize,(void*)c,8,NULL,APP_CPU_NUM);
+	BaseType_t r = xTaskCreatePinnedToCore(udpctrl_session,name,stacksize,(void*)c,8,NULL,APP_CPU_NUM);
 	if (r != pdPASS)  {
 		log_warn(TAG,"create task %s: %d",name,r);
 		pbuf_free(p);

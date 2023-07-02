@@ -219,8 +219,9 @@ static int sample_cfg(long l)
 		return 14;
 	case 128:
 		return 15;
+	default:
+		return -1;
 	}
-	return -1;
 }
 
 

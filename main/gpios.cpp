@@ -330,7 +330,7 @@ const char *gpio(Terminal &term, int argc, const char *args[])
 			const char *n = c->getName();
 			unsigned num = c->numIOs();
 			assert(n);
-			term.printf("cluster %s: %u IOs\n",n,c->numIOs());
+			term.printf("cluster %s: %u IOs\n",n,num);
 			for (int i = 0; i < num; ++i) {
 				int d = c->get_dir(i);
 				int o = d == 2 ? c->get_out(i) : -1;

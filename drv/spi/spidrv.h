@@ -22,6 +22,9 @@
 #include <sdkconfig.h>
 #include <stdint.h>
 
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
+
 #ifdef CONFIG_IDF_TARGET_ESP8266
 #include <driver/spi.h>
 #else
@@ -82,6 +85,15 @@ class SpiDevice
 };
 
 
+extern "C" {
 #endif // __cplusplus
 
+#ifdef ESP32
+void spidrv_post_cb_relsem(spi_transaction_t *t);
+int spidrv_read_regs(spi_device_handle_t hdl, uint8_t reg, uint8_t num, uint8_t *data, SemaphoreHandle_t);
+#endif
+
+#ifdef __cplusplus
+}	// extern "C"
+#endif // __cplusplus
 #endif

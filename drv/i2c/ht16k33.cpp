@@ -117,7 +117,11 @@ int HT16K33::setPos(uint8_t x, uint8_t y)
 
 int HT16K33::write(uint8_t v)
 {
-	log_dbug(TAG,"write(%x)",v);
+	log_dbug(TAG,"write(0x%x) @%u",v,m_pos);
+	if ((v == '\r') || (v == '\n')) {
+		m_pos = 0;
+		return 0;
+	}
 	if (m_pos >= m_digits)
 		return 1;
 	uint8_t off = m_pos;
@@ -135,7 +139,7 @@ int HT16K33::write(uint8_t v)
 
 int HT16K33::write(uint8_t *v, unsigned n)
 {
-	log_dbug(TAG,"write(%x...)",*v);
+	log_dbug(TAG,"write(%x,%u)",*v,n);
 	if (m_pos >= m_digits)
 		return 1;
 	uint8_t off = m_pos;

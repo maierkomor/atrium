@@ -85,11 +85,11 @@ static unsigned alarms_loop(void *)
 	static uint8_t last_m = 0xf0;
 	uint8_t h,m,s,d,md,mon;
 	unsigned y;
-	if ((0 != get_time_of_day(&h,&m,&s,&d,&md,&mon,&y)) || (m == last_m))
+	if (!Enabled->get())
+		return 1000;
+	if ((0 != get_time_of_day(&h,&m,&s,&d,&md,&mon,&y)) || (s != 0) || (m == last_m))
 		return 300;
 	last_m = m;
-	if (!Config.actions_enable())
-		return 2000;
 	//dbug("alarmclock() check %s %u:%02u",WeekDay_str((WeekDay)d),h,m);
 	const vector<AtAction> &atactions = Config.at_actions();
 	for (size_t i = 0; i < atactions.size(); ++i) {

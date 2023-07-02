@@ -95,7 +95,7 @@ static int mqtt_pub_int(const char *t, const char *v, int len, int retain, int q
 #define TAG MODULE_MQTT
 static struct MqttClient *Client = 0;
 static void mqtt_pub_rtdata(void *);
-#ifndef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 0
 static sys_sem_t LwipSem = 0;
 #endif
 
@@ -415,7 +415,7 @@ static err_t send_sub(const char *t, bool commit, bool lock)
 	assert(request+sizeof(request)==b);
 	log_dbug(TAG,"subscribe '%s', pkgid=%u",t,pkgid);
 	Client->subs.insert(make_pair(pkgid,t));
-#ifdef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 1
 	if (lock)
 		LWIP_LOCK();
 	uint8_t flags = TCP_WRITE_FLAG_COPY;
@@ -703,7 +703,10 @@ static err_t handle_connect(void *arg, struct tcp_pcb *pcb, err_t x)
 	assert(b-tmp == sizeof(tmp));
 	if (Client->pcb == 0)
 		Client->pcb = pcb;
-	assert(pcb == Client->pcb);
+	if (pcb != Client->pcb) {
+		tcp_close(pcb);
+		return 0;
+	}
 	log_devel(TAG,"connect write %d",sizeof(tmp));
 	err_t e = tcp_write(pcb,tmp,sizeof(tmp),TCP_WRITE_FLAG_COPY);
 	if (e) {
@@ -716,7 +719,7 @@ static err_t handle_connect(void *arg, struct tcp_pcb *pcb, err_t x)
 }
 
 
-#ifndef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 0
 // executed in LwIP context
 void mqtt_ping_fn(void *arg)
 {
@@ -739,7 +742,7 @@ static void mqtt_ping()
 		return;
 	log_dbug(TAG,"ping");
 	Lock lock(Client->mtx,__FUNCTION__);
-#ifdef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 1
 	uint8_t request[] = { PINGREQ, 0 };
 	LWIP_LOCK();
 	err_t e = tcp_write(Client->pcb,request,sizeof(request),TCP_WRITE_FLAG_COPY);
@@ -813,7 +816,7 @@ static int mqtt_pub_int(const char *t, const char *v, int len, int retain, int q
 	}
 	memcpy(b,v,len);
 	log_devel(TAG,"publish %s %.*s",t,len,v);
-#ifdef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 1
 	uint8_t flags = TCP_WRITE_FLAG_COPY;
 	if (more)
 		flags |= TCP_WRITE_FLAG_MORE;
@@ -933,7 +936,7 @@ static void mqtt_pub_uptime(void * = 0)
 	}
 }
 
-#ifndef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 0
 static void mqtt_tcpout_fn(void *)
 {
 	tcp_output(Client->pcb);
@@ -949,6 +952,8 @@ static void mqtt_pub_rtdata(void *)
 			mqtt_start();
 		return;
 	}
+	if (Client->pcb == 0)
+		return;
 	mqtt_pub_uptime();
 	rtd_lock();
 	for (EnvElement *e : RTData->getChilds()) {
@@ -965,7 +970,7 @@ static void mqtt_pub_rtdata(void *)
 		}
 	}
 	rtd_unlock();
-#ifdef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 1
 	LWIP_LOCK();
 	tcp_output(Client->pcb);
 	LWIP_UNLOCK();
@@ -1002,7 +1007,7 @@ int MqttClient::subscribe(const char *topic, void (*callback)(const char *,const
 	return 0;
 }
 
-#ifndef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 0
 // executed in LwIP context
 void mqtt_stop_fn(void *arg)
 {
@@ -1013,6 +1018,7 @@ void mqtt_stop_fn(void *arg)
 		log_warn(TAG,"write DISCONNECT %d",e);
 	else
 		tcp_output(Client->pcb);
+	Client->state = stopped;
 	Client->pcb = 0;
 	e = tcp_close(pcb);
 	xSemaphoreGive(LwipSem);
@@ -1026,7 +1032,7 @@ void mqtt_stop(void *arg)
 	log_dbug(TAG,"stop");
 	Lock lock(Client->mtx,__FUNCTION__);
 	if (Client->pcb != 0) {
-#ifdef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 1
 		uint8_t request[] { DISCONNECT, 0 };
 		LWIP_LOCK();
 		err_t e = tcp_write(Client->pcb,request,sizeof(request),TCP_WRITE_FLAG_COPY);
@@ -1035,6 +1041,7 @@ void mqtt_stop(void *arg)
 		else
 			tcp_output(Client->pcb);
 		struct tcp_pcb *pcb = Client->pcb;
+		Client->state = stopped;
 		Client->pcb = 0;
 		e = tcp_close(pcb);
 		LWIP_UNLOCK();
@@ -1047,7 +1054,6 @@ void mqtt_stop(void *arg)
 #ifdef FEATURE_KEEPALIVE
 	Client->recv_ts = 0;
 #endif
-	Client->state = stopped;
 }
 
 
@@ -1164,7 +1170,7 @@ void mqtt_setup(void)
 	Client->keepalive = Config.mqtt().keepalive();
 	cyclic_add_task("mqtt",mqtt_cyclic,0,0);
 #endif
-#ifndef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 0
 	LwipSem = xSemaphoreCreateBinary();
 #endif
 

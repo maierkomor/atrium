@@ -308,16 +308,16 @@ static void telnet_session(LwTcp *con)
 }
 
 
-#ifdef CONFIG_IDF_TARGET_ESP32
-#define stack_size 4096
-#else
+#ifdef CONFIG_IDF_TARGET_ESP8266
 #define stack_size 2560
+#else
+#define stack_size 4096
 #endif
 
 
 void telnet_setup()
 {
-	listen_port(TELNET_PORT,m_tcp,telnet_session,"telnet","telnet",5,4096);
+	listen_port(TELNET_PORT,m_tcp,telnet_session,"telnet","telnet",5,stack_size);
 }
 
 
