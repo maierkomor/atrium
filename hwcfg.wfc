@@ -250,16 +250,17 @@ bitset i2cdev_t
 	// result in misdetections.
 	uint8 addr : 0..6;
 	i2cdrv_t drv : 8..15;
+	uint8 intr : 16..21;	// 0 = no interrupt, >0: (intr-1)=gpio
 }
 
 
 message I2CConfig
 {
-	uint8 port = 1		[ default = 0 ];
-	sint8 sda = 2		[ unset = -1 ];
-	sint8 scl = 3		[ unset = -1 ];
-	unsigned freq = 4	[ default = 100000 ];
-	bool xpullup = 5	[ unset = false ];	// have external pull-ups
+	uint8 port = 1			[ default = 0 ];
+	sint8 sda = 2			[ unset = -1 ];
+	sint8 scl = 3			[ unset = -1 ];
+	unsigned freq = 4		[ default = 100000 ];
+	bool xpullup = 5		[ unset = false ];	// have external pull-ups
 	repeated i2cdev_t devices = 6	[ packed = true, ifdef=CONFIG_I2C_XDEV ];
 }
 
@@ -420,6 +421,7 @@ enum spidrv_t
 	spidrv_ssd1309 = 2;
 	spidrv_ili9341 = 3;
 	spidrv_xpt2046 = 4;
+	spidrv_sdcard = 5;
 }
 
 

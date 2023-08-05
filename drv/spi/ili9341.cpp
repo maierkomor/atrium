@@ -37,7 +37,7 @@
 #define ets_delay_us esp_rom_delay_us
 #endif
 
-#if 1
+#if 0
 #define log_devel log_dbug
 #else
 #define log_devel(...)
@@ -135,6 +135,7 @@ struct CmdName {
 	const char *name;
 };
 
+
 CmdName CmdNames[] = {
 	{ CMD_NOP, "NOP" },
 	{ CMD_RESET, "RESET" },
@@ -205,6 +206,26 @@ CmdName CmdNames[] = {
 ILI9341 *ILI9341::Instance = 0;
 
 
+static IRAM_ATTR void ili9341_pre_cb(spi_transaction_t *t)
+{
+	if (ili_trans_t *i = (ili_trans_t *) t->user) {
+		if (i->setc)
+			gpio_set_level(i->gpio,0);
+		else if (i->setd)
+			gpio_set_level(i->gpio,1);
+	}
+}
+
+
+static IRAM_ATTR void ili9341_post_cb(spi_transaction_t *t)
+{
+	if (ili_trans_t *i = (ili_trans_t *) t->user) {
+		if (i->sem)
+			xSemaphoreGive(i->sem);
+	}
+}
+
+
 ILI9341::ILI9341(uint8_t cs, uint8_t dc, int8_t reset, SemaphoreHandle_t sem, spi_device_handle_t hdl)
 : MatrixDisplay(cs_bgr16)
 , SpiDevice(drvName(), cs)
@@ -263,18 +284,6 @@ void ILI9341::checkPowerMode()
 }
 
 
-inline void ILI9341::setC()
-{
-	gpio_set_level(m_dc,0);
-}
-
-
-inline void ILI9341::setD()
-{
-	gpio_set_level(m_dc,1);
-}
-
-
 #ifdef CONFIG_IDF_TARGET_ESP8266
 ILI9341 *ILI9341::create(spi_host_device_t host, int8_t cs, int8_t dc, int8_t reset)
 #else
@@ -313,9 +322,11 @@ ILI9341 *ILI9341::create(spi_host_device_t host, spi_device_interface_config_t &
 	cfg.command_bits = 0;
 	cfg.address_bits = 0;
 	cfg.cs_ena_pretrans = 0;
-	cfg.clock_speed_hz = SPI_MASTER_FREQ_8M;	// maximum: 10MHz
+//	cfg.clock_speed_hz = SPI_MASTER_FREQ_8M;	// maximum: 10MHz
+	cfg.clock_speed_hz = SPI_MASTER_FREQ_10M;	// maximum: 10MHz
 	cfg.queue_size = 8;
-	cfg.post_cb = spidrv_post_cb_relsem;
+	cfg.pre_cb = ili9341_pre_cb;
+	cfg.post_cb = ili9341_post_cb;
 	spi_device_handle_t hdl;
 	if (esp_err_t e = spi_bus_add_device(host,&cfg,&hdl)) {
 		log_warn(TAG,"device add failed: %s",esp_err_to_name(e));
@@ -424,16 +435,6 @@ int ILI9341::setBrightness(uint8_t v)
 }
 
 
-uint8_t ILI9341::fontHeight() const
-{
-	switch (m_font) {
-	case -1: return 8;
-	case -2: return 16;
-	default:
-		return Fonts[m_font].yAdvance;
-	}
-}
-
 void ILI9341::flush()
 {
 	log_dbug(TAG,"flush %ux%u",m_width,m_height);
@@ -487,14 +488,14 @@ void ILI9341::commitOffScreen()
 	// TODO: full-off-screen is in non-DMA - i.e. could be one transaction
 	uint32_t n = m_osw*m_osh<<1;
 	uint32_t t = n > SPI_MAX_TX ? SPI_MAX_TX : n;
-	writeData((uint8_t*)m_os,t);
+	writeBytes((uint8_t*)m_os,t,pre_d);
 	uint32_t off = 0;
 	n -= t;
 	while (n) {
 		off += t;
 		t = n > SPI_MAX_TX ? SPI_MAX_TX : n;
 		writeCmd(CMD_WRMEMC);
-		writeData((uint8_t*)m_os+off,t);
+		writeBytes((uint8_t*)m_os+off,t,pre_d);
 		n -= t;
 	}
 }
@@ -639,10 +640,12 @@ void ILI9341::fillRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, int32_t c
 		unsigned b = (n*2 > SPI_MAX_TX) ? (SPI_MAX_TX>>1) : n;
 		log_dbug(TAG,"n=%u, b=%u",n,b);
 		wmemset((wchar_t*)m_temp,col,b);
-		setD();
+//		setD();
+		preop_t pre = pre_d;
 		do {
 			unsigned s = ((n<<1) > SPI_MAX_TX) ? SPI_MAX_TX : n<<1;
-			writeBytes((uint8_t*)m_temp,s);
+			writeBytes((uint8_t*)m_temp,s,pre);
+			pre = pre_none;
 			n -= (s >> 1);
 		} while (n);
 	}
@@ -663,10 +666,8 @@ int ILI9341::readRegs(uint8_t reg, uint8_t *data, uint8_t num)
 	}
 	assert(num > 1);
 	bzero(data,num);
-	setC();
-	spi_transaction_t *t = getTransaction();
-	bzero(t,sizeof(*t));
-	t->user = m_sem;
+	spi_transaction_t *t = getTransaction(pre_c);
+	((ili_trans_t *)t->user)->sem = m_sem;
 	if (num <= 4) {
 		t->tx_data[0] = reg;
 		t->flags = SPI_TRANS_USE_RXDATA|SPI_TRANS_USE_TXDATA;
@@ -712,8 +713,7 @@ unsigned ILI9341::drawText(uint16_t x, uint16_t y, const char *txt, int n, int32
 	log_dbug(TAG,"drawText(%d,%d,'%s')",x,y,txt);
 	if (n < 0)
 		n = strlen(txt);
-	const Font *font = Fonts+(int)m_font;
-	uint16_t h= font->yAdvance;
+	uint16_t h= m_font->yAdvance;
 	uint16_t a = 0;
 	const char *at = txt, *e = txt + n;
 	while (at != e) {
@@ -766,32 +766,6 @@ unsigned ILI9341::drawText(uint16_t x, uint16_t y, const char *txt, int n, int32
 		++at;
 	}
 	return a;
-#if 0
-	uint16_t width = 0;
-	const char *e = txt + n;
-	const char *at = txt;
-	while (at != e) {
-		char c = *at++;
-		if ((c < font->first) || (c > font->last))
-			continue;
-		if (c == '\n') {
-			height += font->yAdvance;
-		} else {
-			uint8_t ch = c - font->first;
-			if (x + font->glyph[ch].xAdvance > m_width)
-				break;
-			width += font->glyph[ch].xAdvance;
-		}
-	}
-	e = at;
-	at = txt;
-	while (at != e) {
-		// TODO
-		uint8_t c = *at++;
-		const uint8_t *data = font->bitmap + font->glyph[c].bitmapOffset;
-	}
-	return a;
-#endif
 }
 
 
@@ -805,24 +779,9 @@ int ILI9341::writeCmd(uint8_t v)
 				break;
 			}
 		}
-		log_devel(TAG,"writeCmd 0x%02x/CMD_%s",v,cmd);
+		log_dbug(TAG,"writeCmd 0x%02x/CMD_%s",v,cmd);
 	}
-#if 0
-	setC();
-	spi_transaction_t t;
-	bzero(&t,sizeof(t));
-	t.user = m_sem;
-	t.cmd = v;
-	if (esp_err_t e = spi_device_queue_trans(m_hdl,&t,1)) {
-		log_warn(TAG,"error queuing writeCmd: %s",esp_err_to_name(e));
-		return -1;
-	}
-	if (pdTRUE != xSemaphoreTake(m_sem,MUTEX_ABORT_TIMEOUT))
-		abort_on_mutex(m_sem,"ili9341");
-#else
-	setC();
-	writeByte(v);
-#endif
+	writeByte(v,pre_c);
 	return 0;
 }
 
@@ -839,27 +798,8 @@ int ILI9341::writeCmdArg(uint8_t v, uint8_t a)
 		}
 		log_dbug(TAG,"writeCmdArg 0x%02x/CMD_%s 0x%02x",v,cmd,a);
 	}
-#if 0
-	setC();
-	spi_transaction_t t;
-	bzero(&t,sizeof(t));
-	t.user = m_sem;
-	t.cmd = v;
-	t.length = 8;
-	t.tx_data[0] = v;
-	t.flags = SPI_TRANS_USE_TXDATA;
-	if (esp_err_t e = spi_device_queue_trans(m_hdl,&t,1)) {
-		log_warn(TAG,"error queuing writeCmdArg: %s",esp_err_to_name(e));
-		return -1;
-	}
-	if (pdTRUE != xSemaphoreTake(m_sem,MUTEX_ABORT_TIMEOUT))
-		abort_on_mutex(m_sem,"ili9341");
-#else
-	setC();
-	writeByte(v);
-	setD();
-	writeByte(a);
-#endif
+	writeByte(v,pre_c);
+	writeByte(a,pre_d);
 	return 0;
 }
 
@@ -876,80 +816,51 @@ int ILI9341::writeCmdArg(uint8_t v, uint8_t *a, size_t n)
 		}
 		log_hex(TAG,a,n,"writeCmdArg 0x%02x/CMD_%s",v,cmd);
 	}
-#if 0
-	setC();
-	spi_transaction_t t;
-	bzero(&t,sizeof(t));
-	t.user = m_sem;
-	t.cmd = v;
-	t.length = n << 3;
-	if (n <= 4) {
-		t.flags = SPI_TRANS_USE_TXDATA;
-		memcpy(t.tx_data,a,n);
-	} else {
-		t.tx_buffer = a;
-	}
-	if (esp_err_t e = spi_device_queue_trans(m_hdl,&t,1)) {
-		log_warn(TAG,"error queuing writeCmdArg: %s",esp_err_to_name(e));
-		return -1;
-	}
-	if (pdTRUE != xSemaphoreTake(m_sem,MUTEX_ABORT_TIMEOUT))
-		abort_on_mutex(m_sem,"ili9341");
-#else
-	setC();
-	writeByte(v);
-	setD();
-	writeBytes(a,n);
-#endif
+	writeByte(v,pre_c);
+	writeBytes(a,n,pre_d);
 	return 0;
 }
 
 
 int ILI9341::writeData(uint8_t v)
 {
-	setD();
-	return writeByte(v);
+	return writeByte(v,pre_d);
 }
 
 
 int ILI9341::writeData(uint8_t *v, unsigned len)
 {
-	setD();
-	return writeBytes(v,len);
+	return writeBytes(v,len,pre_d);
 }
 
 
 int ILI9341::readData(uint8_t *v, unsigned len)
 {
-	setD();
-	return readBytes(v,len);
+	return readBytes(v,len,pre_d);
 }
 
 
-int ILI9341::readBytes(uint8_t *data, unsigned len)
+int ILI9341::readBytes(uint8_t *data, unsigned len, preop_t pre)
 {
-	// TODO test
 	log_devel(TAG,"readBytes %p: %u",data,len);
 	assert(data);
 	esp_err_t e = 0;
-	size_t off = 0;
 	spi_device_acquire_bus(m_hdl,portMAX_DELAY);
 	while (len) {
-		spi_transaction_t *t = getTransaction();
-		bzero(t,sizeof(*t));
-		t->tx_buffer = data + off;
-		t->rx_buffer = data + off;
+		spi_transaction_t *t = getTransaction(pre);
+		t->tx_buffer = data;
+		t->rx_buffer = data;
 		if (len > SPI_MAX_TX) {
 			t->length = SPI_MAX_TX<<3;
 			t->rxlength = SPI_MAX_TX<<3;
 			t->flags = SPI_TRANS_CS_KEEP_ACTIVE;
 			len -= SPI_MAX_TX;
-			off += SPI_MAX_TX;
+			data += SPI_MAX_TX;
 		} else {
 			t->length = len<<3;
 			t->rxlength = len<<3;
 			len = 0;
-			t->user = m_sem;
+			((ili_trans_t *)t->user)->sem = m_sem;
 		}
 		log_devel(TAG,"readBytes %d@%p",t->length>>3,t->tx_buffer);
 		e = spi_device_queue_trans(m_hdl,t,portMAX_DELAY);
@@ -965,11 +876,9 @@ int ILI9341::readBytes(uint8_t *data, unsigned len)
 }
 
 
-int ILI9341::writeByte(uint8_t v)
+int ILI9341::writeByte(uint8_t v, preop_t pre)
 {
-	spi_transaction_t *t = getTransaction();
-	bzero(t,sizeof(*t));
-//	t->user = m_sem;
+	spi_transaction_t *t = getTransaction(pre);
 	t->cmd = v;
 	t->length = 8;
 	t->flags = SPI_TRANS_USE_TXDATA;
@@ -978,34 +887,43 @@ int ILI9341::writeByte(uint8_t v)
 		log_warn(TAG,"error queuing writeByte: %s",esp_err_to_name(e));
 		return -1;
 	}
-//	if (pdTRUE != xSemaphoreTake(m_sem,MUTEX_ABORT_TIMEOUT))
-//		abort_on_mutex(m_sem,"ili9341");
 //	log_dbug(TAG,"writeB 0x%02x",v);
 	return 0;
 }
 
 
-spi_transaction_t *ILI9341::getTransaction()
+spi_transaction_t *ILI9341::getTransaction(preop_t pre)
 {
+	ili_trans_t *i = 0;
 	while (m_xtrans == 0xff) {
 		spi_transaction_t *r;
-		esp_err_t x = spi_device_get_trans_result(m_hdl,&r,portMAX_DELAY);
-		if (x == 0) {
-			int id = r - m_trans;
-			if ((id >= 0) && (id < 8))
-				m_xtrans &= ~(1<<id);
+		if (0 == spi_device_get_trans_result(m_hdl,&r,portMAX_DELAY)) {
+			i = (ili_trans_t *)r;
+			int id = i - m_trans;
+			assert((id >= 0) && (id < sizeof(m_trans)/sizeof(m_trans[0])));
+			break;
 		}
 	}
-	unsigned x = 0;
-	while (m_xtrans & (1 << x))
-		++x;
-	m_xtrans |= (1<<x);
-	assert(x < 8);
-	return m_trans+x;
+	if (i == 0) {
+		unsigned x = 0;
+		while (m_xtrans & (1 << x))
+			++x;
+		m_xtrans |= (1<<x);
+		assert(x < sizeof(m_trans)/sizeof(m_trans[0]));
+		i = m_trans+x;
+	}
+	bzero(i,sizeof(ili_trans_t));
+	i->trans.user = i;
+	i->gpio = m_dc;
+	if (pre == pre_c)
+		i->setc = true;
+	else if (pre == pre_d)
+		i->setd = true;
+	return &i->trans;
 }
 
 
-int ILI9341::writeBytes(uint8_t *data, unsigned len)
+int ILI9341::writeBytes(uint8_t *data, unsigned len, preop_t pre)
 {
 	PROFILE_FUNCTION();
 	log_devel(TAG,"writeBytes %u@%p",len,data);
@@ -1013,18 +931,18 @@ int ILI9341::writeBytes(uint8_t *data, unsigned len)
 	esp_err_t e = 0;
 	uint8_t *end = data + len;
 	while (data != end) {
-		spi_transaction_t *t = getTransaction();
-		bzero(t,sizeof(spi_transaction_t));
+		spi_transaction_t *t = getTransaction(pre);
+		pre = pre_none;
 		t->rxlength = 8;
 		t->flags = SPI_TRANS_USE_RXDATA;
 		t->tx_buffer = data;
+		pre = pre_none;
 		if (end-data > SPI_MAX_TX) {
 			t->length = SPI_MAX_TX<<3;
 			data += SPI_MAX_TX;
 		} else {
-			t->length = len<<3;
-			t->user = m_sem;
-			len = 0;
+			t->length = (end-data)<<3;
+			((ili_trans_t *)t->user)->sem = m_sem;
 			data = end;
 		}
 //		log_devel(TAG,"writeBytes %d@%p",t.length>>3,t.tx_buffer);

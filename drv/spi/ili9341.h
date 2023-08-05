@@ -29,6 +29,14 @@
 #include <driver/gpio.h>
 
 
+struct ili_trans_t {
+	spi_transaction_t trans;
+	SemaphoreHandle_t sem;
+	gpio_num_t gpio;
+	bool setc, setd;
+};
+
+
 class ILI9341 : public MatrixDisplay, public SpiDevice
 {
 	public:
@@ -44,12 +52,6 @@ class ILI9341 : public MatrixDisplay, public SpiDevice
 	const char *exeCmd(struct Terminal &, int argc, const char **argv) override;
 	void flush() override;
 	int32_t getColor(color_t) const override;
-
-	int setFont(unsigned f) override
-	{
-		m_font = (fontid_t) f;
-		return 0;
-	}
 
 	int setBrightness(uint8_t contrast) override;
 	int setInvert(bool inv) override;
@@ -73,17 +75,17 @@ class ILI9341 : public MatrixDisplay, public SpiDevice
 
 	private:
 	ILI9341(uint8_t cs, uint8_t cd, int8_t r, SemaphoreHandle_t sem, spi_device_handle_t hdl);
-	uint8_t fontHeight() const;
+
+	typedef enum { pre_none, pre_c, pre_d } preop_t;
+
 	static void postCallback(spi_transaction_t *t);
-	void setC();
-	void setD();
 	void sleepIn();
 	void sleepOut();
 	void reset();
 	int readRegs(uint8_t reg, uint8_t *data, uint8_t num);
-	int readBytes(uint8_t *data, unsigned len);
-	int writeByte(uint8_t);
-	int writeBytes(uint8_t *data, unsigned len);
+	int readBytes(uint8_t *data, unsigned len, preop_t = pre_none);
+	int writeByte(uint8_t, preop_t = pre_none);
+	int writeBytes(uint8_t *data, unsigned len, preop_t = pre_none);
 	int readData(uint8_t *data, unsigned len);
 	int writeData(uint8_t data);
 	int writeData(uint8_t *data, unsigned len);
@@ -97,7 +99,7 @@ class ILI9341 : public MatrixDisplay, public SpiDevice
 	void commitOffScreen();
 
 	static int readRegs(spi_device_handle_t hdl, uint8_t reg, uint8_t num, uint8_t *data, SemaphoreHandle_t);
-	spi_transaction_t *getTransaction();
+	spi_transaction_t *getTransaction(preop_t);
 
 	static ILI9341 *Instance;
 	uint32_t m_oss = 0;
@@ -106,7 +108,7 @@ class ILI9341 : public MatrixDisplay, public SpiDevice
 	uint16_t m_osx = 0xffff, m_osy = 0xffff, m_osw, m_osh;
 	spi_device_handle_t m_hdl;
 	SemaphoreHandle_t m_sem;
-	spi_transaction_t m_trans[8];
+	ili_trans_t m_trans[8];
 	uint8_t m_xtrans = 0;
 	bool m_fos = false;	// full off-screen memory
 	gpio_num_t m_dc, m_reset;

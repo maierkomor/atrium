@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021, Thomas Maier-Komor
+ *  Copyright (C) 2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -16,46 +16,30 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TCPIO_H
-#define TCPIO_H
+#ifndef OPT3001_H
+#define OPT3001_H
 
-#include <stddef.h>
-#include <freertos/FreeRTOS.h>
-#include <lwip/err.h>
+#include <sdkconfig.h>
+#include "env.h"
+#include "i2cdrv.h"
 
+struct OPT3001 : public I2CDevice
+{
+	static unsigned scan(unsigned bus);
 
-typedef struct tcpout_arg {
-	struct tcp_pcb *pcb;
-	const char *name;
-	err_t err;
-	SemaphoreHandle_t sem;
-} tcpout_arg_t;
-
-typedef struct tcpwrite_arg {
-	struct tcp_pcb *pcb;
-	const char *name;
-	const char *data;
-	size_t size;
-	err_t err;
-	SemaphoreHandle_t sem;
-} tcpwrite_arg_t;
-
-typedef struct tcp_pbuf_arg {
-	struct pbuf *pbuf;
-	SemaphoreHandle_t sem;
-} tcp_pbuf_arg_t;
-
-#ifdef __cplusplus
-extern "C" {
+	void attach(EnvObject *root) override;
+	void addIntr(uint8_t intr) override;
+	unsigned cyclic(void *arg);
+#ifdef CONFIG_I2C_XCMD
+	const char *exeCmd(Terminal &term, int argc, const char **args) override;
 #endif
+	int read();
 
-void tcpout_fn(void *arg);
-void tcpwrite_fn(void *arg);
-void tcpwriteout_fn(void *arg);
-void tcp_pbuf_free_fn(void *);
+	private:
+	OPT3001(unsigned bus, unsigned addr);
+	void sample(void *arg);
 
-#ifdef __cplusplus
-}
-#endif
+	EnvNumber m_lux;
+};
 
 #endif

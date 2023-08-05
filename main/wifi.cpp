@@ -29,16 +29,22 @@
 #include "wifi.h"
 
 #include <esp_err.h>
-#include <esp_wifi.h>
-#include <esp_smartconfig.h>
-#include <smartconfig_ack.h>
 #include <esp_wps.h>
-#if IDF_VERSION < 40
+#include <esp_wifi.h>
+
+#if IDF_VERSION >= 50
+typedef esp_etm_event_t system_event_t;
+#elif IDF_VERSION >= 44
+#include <esp_event_legacy.h>
+#elif IDF_VERSION < 40
 #include <esp_event_loop.h>
 #endif
-#if IDF_VERSION >= 44
-#include <esp_event_legacy.h>
+
+#ifdef CONFIG_SMARTCONFIG
+#include <esp_smartconfig.h>
+#include <smartconfig_ack.h>
 #endif
+
 
 #include <lwip/ip_addr.h>
 
@@ -71,6 +77,21 @@ esp_err_t system_event_sta_connected_handle_default(system_event_t *);	// IDF
 esp_err_t system_event_sta_disconnected_handle_default(system_event_t *);	// IDF
 }
 
+
+#if IDF_VERSION >= 50
+esp_netif_t *netif_get_station()
+{
+	esp_netif_t *itf = esp_netif_next(0);
+	while (itf) {
+		const char *desc = esp_netif_get_desc(itf);
+		if (0 == strcmp(desc,"sta"))
+			return itf;
+		itf = esp_netif_next(itf);
+	}
+	return 0;
+}
+#endif
+
 #if IDF_VERSION >= 40
 static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
 {
@@ -82,9 +103,16 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
 			WifiRetry = 0;
 			StationMode = station_starting;
 		} else if (event_id == WIFI_EVENT_STA_CONNECTED) {
-#if defined CONFIG_LWIP_IPV6 || defined ESP32
+#if defined CONFIG_LWIP_IPV6 //|| defined ESP32
+#if IDF_VERSION >= 50
+			if (esp_netif_t *itf = netif_get_station()) {
+				if (esp_err_t e = esp_netif_create_ip6_linklocal(itf))
+					log_warn(TAG,"create IPv6 linklocal on station: %s",esp_err_to_name(e));
+			}
+#else
 			if (esp_err_t e = tcpip_adapter_create_ip6_linklocal(TCPIP_ADAPTER_IF_STA))
 				log_warn(TAG,"create IPv6 linklocal on station: %s",esp_err_to_name(e));
+#endif
 #endif
 		} else if (event_id == WIFI_EVENT_STA_STOP) {
 			if (0 == StationDownTS)
@@ -125,6 +153,7 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
 			Status |= STATUS_WIFI_UP | STATUS_STATION_UP;
 			StationMode = station_connected;
 			event_trigger(StationUpEv);
+#if defined CONFIG_LWIP_IPV6
 		} else if (event_id == IP_EVENT_GOT_IP6) {
 			ip_event_got_ip6_t* event = (ip_event_got_ip6_t*) event_data;
 			ip6_addr_t ip;
@@ -138,6 +167,7 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
 			Status |= STATUS_WIFI_UP | STATUS_STATION_UP;
 			StationMode = station_connected;
 			event_trigger(StationUpEv);
+#endif
 		} else if (event_id == IP_EVENT_STA_LOST_IP) {
 			log_info(TAG, "lost IP");
 			if (0 == StationDownTS)
@@ -188,7 +218,12 @@ static esp_err_t wifi_event_handler(system_event_t *event)
 	case SYSTEM_EVENT_STA_CONNECTED:
 		log_info(TAG,"station " MACSTR " connected",MAC2STR(event->event_info.sta_connected.mac));
 		system_event_sta_connected_handle_default(event);	// IDF
-#if defined CONFIG_LWIP_IPV6 || defined ESP32
+#if IDF_VERSION >= 50
+		if (esp_netif_t *itf = netif_get_station()) {
+			if (esp_err_t e = esp_netif_create_ip6_linklocal(itf))
+				log_warn(TAG,"create IPv6 linklocal on station: %s",esp_err_to_name(e));
+		}
+#elif defined CONFIG_LWIP_IPV6 || defined ESP32
 		if (esp_err_t e = tcpip_adapter_create_ip6_linklocal(TCPIP_ADAPTER_IF_STA))
 			log_warn(TAG,"create IPv6 linklocal on station: %s",esp_err_to_name(e));
 #endif
@@ -212,7 +247,7 @@ static esp_err_t wifi_event_handler(system_event_t *event)
 			ip6_addr_t ip;
 			assert(sizeof(ip) == sizeof(event->event_info.got_ip6.ip6_info.ip));
 			memcpy(&ip,event->event_info.got_ip6.ip6_info.ip.addr,sizeof(ip));
-			log_info(TAG,"station got IP %s",ip6addr_ntoa(&ip));
+			log_info(TAG,"station got IPv6 %s",ip6addr_ntoa(&ip));
 			if (ip6_addr_islinklocal(&ip))
 				memcpy(&IP6LL,&event->event_info.got_ip6.ip6_info.ip,sizeof(IP6LL));
 			else
@@ -527,21 +562,35 @@ bool wifi_start_station(const char *ssid, const char *pass)
 		return false;
 	}
 	if (station.has_addr4() && station.has_netmask4()) {
-		tcpip_adapter_dhcpc_stop(TCPIP_ADAPTER_IF_STA);
-		tcpip_adapter_ip_info_t ipi;
-		bzero(&ipi,sizeof(ipi));
-		ipi.ip.addr = station.addr4();
 		uint32_t nm = 0;
 		uint8_t nmb = station.netmask4();
 		while (nmb--) {
 			nm <<= 1;
 			nm |= 1;
 		}
+#if IDF_VERSION >= 50
+		esp_netif_t *sta = netif_get_station();
+		assert(sta);
+		if (esp_err_t e = esp_netif_dhcpc_stop(sta))
+			log_warn(TAG,"stop DHCP client on station failed: %s",esp_err_to_name(e));
+		esp_netif_ip_info_t ipi;
+		ipi.ip.addr = station.addr4();
+		ipi.netmask.addr = (uint32_t)nm;
+		if (station.has_gateway4())
+			ipi.gw.addr = station.gateway4();
+		if (esp_err_t e = esp_netif_set_ip_info(sta,&ipi))
+			log_warn(TAG,"set static IP on station failed: %s",esp_err_to_name(e));
+#else
+		tcpip_adapter_dhcpc_stop(TCPIP_ADAPTER_IF_STA);
+		tcpip_adapter_ip_info_t ipi;
+		bzero(&ipi,sizeof(ipi));
+		ipi.ip.addr = station.addr4();
 		ipi.netmask.addr = (uint32_t)nm;
 		if (station.has_gateway4())
 			ipi.gw.addr = station.gateway4();
 		tcpip_adapter_dhcpc_stop(TCPIP_ADAPTER_IF_STA);
 		tcpip_adapter_set_ip_info(TCPIP_ADAPTER_IF_STA,&ipi);
+#endif
 		initDns();
 	} else if (station.has_addr4() || station.has_netmask4()) {
 		log_warn(TAG,"incomplete static IP");
@@ -743,6 +792,11 @@ int wifi_setup()
 	esp_netif_init();
 	esp_event_loop_create_default();
 	esp_netif_create_default_wifi_sta();
+#if IDF_VERSION >= 50
+	wifi_init_config_t wcfg = WIFI_INIT_CONFIG_DEFAULT();
+	if (esp_err_t e = esp_wifi_init(&wcfg))
+		log_warn(TAG,"wifi init: %s",esp_err_to_name(e));
+#endif
 	esp_wifi_set_default_wifi_sta_handlers();
 	if (esp_err_t e = esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, 0))
 		log_warn(TAG,"set wifi handler: %s",esp_err_to_name(e));

@@ -20,7 +20,6 @@
 #define SSD130X_H
 
 #include "display.h"
-#include "fonts_ssd1306.h"
 
 class SSD130X : public MatrixDisplay
 {
@@ -35,9 +34,9 @@ class SSD130X : public MatrixDisplay
 //	int clrEol();
 	uint16_t charsPerLine() const;
 	uint16_t numLines() const;
-//	int setFont(unsigned);
-//	int setFont(const char *fn);
-	void drawBitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t *data, int32_t fg, int32_t bg);
+	int setFont(unsigned) override;
+	int setFont(const char *fn) override;
+//	void drawBitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t *data, int32_t fg, int32_t bg) override;
 	void drawHLine(uint16_t x, uint16_t y, uint16_t n, int32_t col = -1) override;
 	void drawVLine(uint16_t x, uint16_t y, uint16_t n, int32_t col = -1) override;
 //	void drawRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, int32_t col = -1) override;
@@ -61,11 +60,13 @@ class SSD130X : public MatrixDisplay
 	int drawMasked(uint8_t x, uint8_t y, uint8_t b, uint8_t m);
 	int drawBits(uint8_t x, uint8_t y, uint8_t b, uint8_t n);
 	int drawByte(uint8_t x, uint8_t y, uint8_t b);
-	int drawChar(char c);
+	void drawChar(char c);
+	unsigned drawChar(uint16_t x, uint16_t y, char c, int32_t fg, int32_t bg) override;
 	void drawBitmapNative(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t *data);
 
 	uint8_t *m_disp = 0;
 	uint8_t m_dirty = 0xff;
+//	fontid_t m_font = font_native;
 };
 
 

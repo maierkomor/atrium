@@ -45,6 +45,9 @@
 #define REG_Z1		(BIT_START|BIT_A1|BIT_A0)
 #define REG_Z2		(BIT_START|BIT_A2)
 
+#if IDF_VERSION >= 50
+#define gpio_pad_select_gpio(...)
+#endif
 
 XPT2046 *XPT2046::Instance = 0;
 

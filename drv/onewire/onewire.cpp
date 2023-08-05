@@ -35,7 +35,7 @@
 #define ets_delay_us esp_rom_delay_us
 #endif
 
-#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
+#ifdef ESP32
 #include <rom/crc.h>
 #define ENTER_CRITICAL() portDISABLE_INTERRUPTS()
 #define EXIT_CRITICAL() portENABLE_INTERRUPTS()

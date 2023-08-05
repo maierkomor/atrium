@@ -35,6 +35,8 @@
 #include <driver/gpio.h>
 #ifdef CONFIG_IDF_TARGET_ESP8266
 #include <esp8266/gpio_struct.h>
+#else
+#include <hal/gpio_ll.h>
 #endif
 
 #ifdef CONFIG_LUA

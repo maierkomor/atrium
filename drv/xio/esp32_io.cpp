@@ -66,12 +66,15 @@ struct CoreIO1 : public XioCluster
 	int set_lvl(uint8_t io, xio_lvl_t v) override;
 	const char *getName() const override;
 	unsigned numIOs() const override;
+#define COREIO0_NUMIO 32
 #if defined CONFIG_IDF_TARGET_ESP32
 	#define COREIO1_NUMIO 8
 #elif defined CONFIG_IDF_TARGET_ESP32S2
 	#define COREIO1_NUMIO 15
 #elif defined CONFIG_IDF_TARGET_ESP32S3
 	#define COREIO1_NUMIO 17
+//#elif defined CONFIG_IDF_TARGET_ESP32C6
+//	#define COREIO1_NUMIO 17
 #else
 #error unknown device
 #endif
@@ -96,7 +99,7 @@ const char *CoreIO1::getName() const
 
 unsigned CoreIO0::numIOs() const
 {
-	return 32;
+	return COREIO0_NUMIO;
 }
 
 
@@ -109,7 +112,7 @@ unsigned CoreIO1::numIOs() const
 int CoreIO0::config(uint8_t num, xio_cfg_t cfg)
 {
 	log_dbug(TAG,"config0 %u,0x%x",num,cfg);
-	if (num >= 32) {
+	if (num >= COREIO0_NUMIO) {
 		log_warn(TAG,"invalid gpio%u",num);
 		return -EINVAL;
 	}
@@ -184,6 +187,7 @@ int CoreIO0::config(uint8_t num, xio_cfg_t cfg)
 	}
 
 	if (cfg.cfg_pull == xio_cfg_pull_keep) {
+		log_dbug(TAG,"keep pull %u",num);
 	} else if (cfg.cfg_pull == xio_cfg_pull_none) {
 		REG_CLR_BIT(GPIO_PIN_MUX_REG[num], FUN_PU);
 		REG_CLR_BIT(GPIO_PIN_MUX_REG[num], FUN_PD);
@@ -245,18 +249,20 @@ int CoreIO0::config(uint8_t num, xio_cfg_t cfg)
 int CoreIO1::config(uint8_t num, xio_cfg_t cfg)
 {
 	log_dbug(TAG,"config1 %u,0x%x",num,cfg);
-	if (num >= 8) {
-		log_warn(TAG,"invalid gpio%u",num);
+	if (num >= COREIO1_NUMIO) {
+		log_warn(TAG,"invalid gpio%u",num+32);
 		return -EINVAL;
 	}
+	int r = 0;
 	uint8_t xnum = num+32;
 	if (cfg.cfg_io == xio_cfg_io_keep) {
+		log_dbug(TAG,"keep io %u",xnum);
 	} else if (cfg.cfg_io == xio_cfg_io_in) {
 		gpio_pad_select_gpio(xnum);
 		PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[xnum]);
 		GPIO.enable1_w1tc.data = (1 << num);
 		GPIO.pin[xnum].pad_driver = 0;
-		REG_WRITE(GPIO_FUNC0_OUT_SEL_CFG_REG + (num * 4), SIG_GPIO_OUT_IDX);
+		REG_WRITE(GPIO_FUNC0_OUT_SEL_CFG_REG + (xnum * 4), SIG_GPIO_OUT_IDX);
 	} else if (cfg.cfg_io == xio_cfg_io_out) {
 		gpio_pad_select_gpio(xnum);
 		PIN_INPUT_DISABLE(GPIO_PIN_MUX_REG[xnum]);
@@ -274,14 +280,25 @@ int CoreIO1::config(uint8_t num, xio_cfg_t cfg)
 	}
 
 	if (cfg.cfg_pull == xio_cfg_pull_keep) {
+		log_dbug(TAG,"keep pull %u",xnum);
+		if (REG_GET_BIT(GPIO_PIN_MUX_REG[xnum],FUN_PU))
+			r |= xio_cap_pullup;
+		if (REG_GET_BIT(GPIO_PIN_MUX_REG[xnum],FUN_PD))
+			r |= xio_cap_pulldown;
 	} else if (cfg.cfg_pull == xio_cfg_pull_none) {
+		log_dbug(TAG,"pull none %u",xnum);
 		REG_CLR_BIT(GPIO_PIN_MUX_REG[xnum], FUN_PU);
 		REG_CLR_BIT(GPIO_PIN_MUX_REG[xnum], FUN_PD);
 	} else if (cfg.cfg_pull == xio_cfg_pull_up) {
+		log_dbug(TAG,"pull up %u",xnum);
+		REG_CLR_BIT(GPIO_PIN_MUX_REG[xnum], FUN_PD);
 		REG_SET_BIT(GPIO_PIN_MUX_REG[xnum], FUN_PU);
 	} else if (cfg.cfg_pull == xio_cfg_pull_down) {
+		log_dbug(TAG,"pull down %u",xnum);
+		REG_CLR_BIT(GPIO_PIN_MUX_REG[xnum], FUN_PU);
 		REG_SET_BIT(GPIO_PIN_MUX_REG[xnum], FUN_PD);
 	} else if (cfg.cfg_pull == xio_cfg_pull_updown) {
+		log_dbug(TAG,"pull updown %u",num);
 		REG_SET_BIT(GPIO_PIN_MUX_REG[xnum], FUN_PU);
 		REG_SET_BIT(GPIO_PIN_MUX_REG[xnum], FUN_PD);
 	} else {
@@ -289,6 +306,7 @@ int CoreIO1::config(uint8_t num, xio_cfg_t cfg)
 	}
 	
 	if (cfg.cfg_intr == xio_cfg_intr_keep) {
+		log_dbug(TAG,"keep intr %u",xnum);
 	} else if (cfg.cfg_intr == xio_cfg_intr_disable) {
 		GPIO.pin[xnum].int_type = cfg.cfg_intr;
 		GPIO.pin[xnum].int_ena = 0;
@@ -309,6 +327,9 @@ int CoreIO1::config(uint8_t num, xio_cfg_t cfg)
 	}
 
 	if (cfg.cfg_wakeup == xio_cfg_wakeup_keep) {
+		log_dbug(TAG,"keep wakeup %u",xnum);
+		if (REG_GET_BIT(GPIO_PIN_MUX_REG[xnum],SLP_SEL))
+			r |= xio_cap_wakeup;
 	} else if (cfg.cfg_wakeup == xio_cfg_wakeup_disable) {
 		GPIO.pin[xnum].wakeup_enable = 0;
 	} else if (GPIO.pin[xnum].int_type == 4) {
@@ -319,7 +340,7 @@ int CoreIO1::config(uint8_t num, xio_cfg_t cfg)
 		return -EINVAL;
 	}
 
-	return 0x1ff;
+	return r;
 }
 
 
@@ -333,7 +354,7 @@ xio_cfg_t CoreIO0::get_config() const
 
 int CoreIO0::get_dir(uint8_t num) const
 {
-	if (num >= 32)
+	if (num >= COREIO0_NUMIO)
 		return -1;
 	if (GPIO.pin[num].pad_driver)
 		return xio_cfg_io_od;
@@ -357,7 +378,7 @@ int CoreIO1::get_dir(uint8_t num) const
 
 int CoreIO0::get_lvl(uint8_t num)
 {
-	if (num < 32) {
+	if (num < COREIO0_NUMIO) {
 		if (GPIO.enable & (1 << num))
 			return (GPIO.out >> num) & 0x1;
 		else
@@ -369,7 +390,7 @@ int CoreIO0::get_lvl(uint8_t num)
 
 int CoreIO1::get_lvl(uint8_t num)
 {
-	if (num < 32) {
+	if (num < COREIO0_NUMIO) {
 		if (GPIO.enable1.data & (1 << num))
 			return (GPIO.out >> num) & 0x1;
 		else
@@ -485,7 +506,7 @@ int CoreIO1::setm(uint32_t v, uint32_t m)
 
 int CoreIO0::set_intr(uint8_t gpio, xio_intrhdlr_t hdlr, void *arg)
 {
-	if (gpio >= 32) {
+	if (gpio >= COREIO0_NUMIO) {
 		log_warn(TAG,"set intr: invalid gpio%u",gpio);
 		return -EINVAL;
 	}
@@ -636,7 +657,7 @@ int coreio_lvl_set(uint8_t num, xio_lvl_t l)
 void coreio_register()
 {
 	if (esp_err_t e = gpio_install_isr_service(ESP_INTR_FLAG_LEVEL1 | ESP_INTR_FLAG_IRAM))
-		log_error(TAG,"isr service %d",e);
+		log_warn(TAG,"install isr service: %s",esp_err_to_name(e));
 	GpioCluster0.attach(0);
 	GpioCluster1.attach(32);
 }

@@ -152,7 +152,7 @@ struct DnsEntry
 {
 	DnsEntry *next;
 	ip_addr_t ip;
-	portTickType ttl;
+	TickType_t ttl;
 	uint8_t len;
 	char host[];
 };
@@ -161,7 +161,7 @@ struct DnsEntry
 struct Query
 {
 	Query *next;
-	portTickType ts;
+	TickType_t ts;
 	uint8_t *buf;
 	void *arg;
 	void (*cb)(const char *, const ip_addr_t *, void *);
@@ -463,7 +463,7 @@ static int parseAnswer(struct pbuf *p, size_t off, const ip_addr_t *sender)
 			return -off;
 		}
 		log_devel(TAG,"IPv4 %s",ip2str_r(&ip,ipstr,sizeof(ipstr)));
-#if defined CONFIG_LWIP_IPV6 || defined ESP32
+#if defined CONFIG_LWIP_IPV6 //|| defined ESP32
 	// why mask bit 15?
 //	} else if (((a.rr_class & 0x7fff) == TYPE_ADDR) && (a.rdlen == 16)) {
 	} else if ((a.rr_class == TYPE_ADDR) && (a.rdlen == 16)) {
@@ -1087,7 +1087,7 @@ static void udns_cyclic_fn(void *arg)
 	if (Queries) {
 		Lock lock(Mtx,__FUNCTION__);
 		log_dbug(TAG,"locked");
-		portTickType ts = xTaskGetTickCount();
+		TickType_t ts = xTaskGetTickCount();
 		Query *q = Queries;
 		while (q) {
 			log_dbug(TAG,"%s: q->ts=%u, ts=%u",q->hostname,q->ts,ts);
@@ -1139,7 +1139,7 @@ static unsigned udns_cyclic(void *arg)
 		abort();
 	}
 	Lock lock(Mtx,__FUNCTION__);
-	portTickType ts = xTaskGetTickCount();
+	TickType_t ts = xTaskGetTickCount();
 	Query *q = Queries;
 	while (q) {
 		if ((q->ts + configTICK_RATE_HZ < ts) && (!q->local)) {
@@ -1165,12 +1165,14 @@ static void wifi_down(void *)
 
 static inline void mdns_init_fn(void *)
 {
+#if 0
 	tcpip_adapter_ip_info_t ipconfig;
 	assert(Mtx);
 	if (ESP_OK == tcpip_adapter_get_ip_info(TCPIP_ADAPTER_IF_STA, &ipconfig)) {
 		if (0 != ipconfig.ip.addr)
 			IP4 = ipconfig.ip;
 	}
+#endif
 #if LWIP_IPV6
 	if (MPCB6 == 0) {
 		ip_addr_t mdns_ip6;
@@ -1195,10 +1197,12 @@ static inline void mdns_init_fn(void *)
 		IP_ADDR4(&mdns,224,0,0,251);
 		if (err_t e = udp_connect(MPCB,&mdns,MDNS_PORT))
 			log_warn(TAG,"connect 224.0.0.251: %s",strlwiperr(e));
+#if 0
 		if (err_t e = igmp_joingroup(&ipconfig.ip,ip_2_ip4(&mdns)))
 			log_warn(TAG,"unable to join MDNS group: %d",e);
 		else
 			log_dbug(TAG,"initialized MDNS");
+#endif
 	}
 #endif
 	State = mdns_wifiup;

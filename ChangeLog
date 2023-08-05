@@ -1,3 +1,11 @@
+R2307:
+======
+- added/enhanced support for HDC1000 and HDC1080
+- update to IDF version 5.1 for S3 dual-core support
+- ILI9341 update
+- added support for ESP32-C6
+- fixes
+
 R2306:
 ======
 - fix: enable/disable at-jobs not working as expected

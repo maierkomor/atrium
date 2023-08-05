@@ -20,7 +20,7 @@
 #define SSD1306_H
 
 #include "ssd130x.h"
-#include "fonts_ssd1306.h"
+//#include "fonts.h"
 #include "i2cdrv.h"
 
 class SSD1306 : public SSD130X, public I2CDevice
@@ -36,7 +36,7 @@ class SSD1306 : public SSD130X, public I2CDevice
 
 	static SSD1306 *create(uint8_t bus, uint8_t addr);
 	int init(uint8_t maxx, uint8_t maxy, uint8_t options);
-//	int drawBitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t *data, int32_t fg, int32_t bg) override;
+	void drawBitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t *data, int32_t fg, int32_t bg) override;
 //	int drawRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, int32_t col) override;
 
 	/*
@@ -70,7 +70,7 @@ class SSD1306 : public SSD130X, public I2CDevice
 	*/
 
 	void flush() override;
-	int setFont(const char *) override;
+//	int setFont(const char *) override;
 	int setBrightness(uint8_t contrast) override;
 //	int setPos(uint16_t x, uint16_t y) override;
 	int setInvert(bool inv) override;
@@ -98,15 +98,16 @@ class SSD1306 : public SSD130X, public I2CDevice
 	int drawChar(char c);
 	int readByte(uint8_t x, uint8_t y, uint8_t *b);
 	int drawMasked(uint8_t x, uint8_t y, uint8_t b, uint8_t m);
-	uint8_t fontHeight() const;
+//	uint8_t fontHeight() const;
 
 	static SSD1306 *Instance;
 //	uint8_t m_maxx = 0, m_maxy = 0, m_posx = 0, m_posy = 0;
 //	uint8_t *m_disp = 0;
 //	uint8_t m_dirty = 0xff;
-	fontid_t m_font = font_native;
+//	fontid_t m_font = font_native;
 };
 
+unsigned ssd1306_scan(uint8_t bus);
 
 #endif
 

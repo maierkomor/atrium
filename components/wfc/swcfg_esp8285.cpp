@@ -10,7 +10,7 @@
  * Copyright: 2018-2023
  * Author   : Thomas Maier-Komor
  * 
- * Code generated on 2023-07-01, 22:37:39 (CET).
+ * Code generated on 2023-07-31, 21:35:41 (CET).
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -2059,8 +2059,8 @@ UartSettings::UartSettings()
 
 void UartSettings::clear()
 {
-	m_port = 0;
-	m_baudrate = 0;
+	m_port = -1;
+	m_baudrate = 115200;
 	m_config = 5;
 	m_rx_thresh = 0;
 	m_tx_bufsize = 0;
@@ -2072,7 +2072,7 @@ void UartSettings::toASCII(stream &o, size_t indent) const
 {
 	o << "UartSettings {";
 	++indent;
-	ascii_numeric(o, indent, "port", (unsigned) m_port);
+	ascii_numeric(o, indent, "port", (signed) m_port);
 	ascii_numeric(o, indent, "baudrate", m_baudrate);
 	ascii_numeric(o, indent, "config", m_config);
 	++indent;
@@ -2118,8 +2118,8 @@ ssize_t UartSettings::fromMemory(const void *b, ssize_t s)
 			return -77;
 		a += x;
 		switch (fid) {
-		case 0x8:	// port id 1, type uint8_t, coding varint
-			set_port((uint8_t)ud.u32);
+		case 0x8:	// port id 1, type int8_t, coding signed varint
+			set_port(varint_sint(ud.u8));
 			break;
 		case 0x10:	// baudrate id 2, type uint32_t, coding varint
 			set_baudrate((uint32_t)ud.u32);
@@ -2157,18 +2157,18 @@ ssize_t UartSettings::toMemory(uint8_t *b, ssize_t s) const
 	uint8_t *a = b, *e = b + s;
 	signed n;
 	// has port?
-	if (0 != (p_validbits & ((uint8_t)1U << 0))) {
+	if (m_port != -1) {
 		// 'port': id=1, encoding=varint, tag=0x8
 		if (a >= e)
 			return -80;
 		*a++ = 0x8;
-		n = write_varint(a,e-a,m_port);
+		n = write_varint(a,e-a,sint_varint(m_port));
 		if (n <= 0)
 			return -81;
 		a += n;
 	}
 	// has baudrate?
-	if (0 != (p_validbits & ((uint8_t)1U << 1))) {
+	if (0 != (p_validbits & ((uint8_t)1U << 0))) {
 		// 'baudrate': id=2, encoding=varint, tag=0x10
 		if (a >= e)
 			return -82;
@@ -2179,7 +2179,7 @@ ssize_t UartSettings::toMemory(uint8_t *b, ssize_t s) const
 		a += n;
 	}
 	// has config?
-	if (0 != (p_validbits & ((uint8_t)1U << 2))) {
+	if (0 != (p_validbits & ((uint8_t)1U << 1))) {
 		// 'config': id=3, encoding=16bit, tag=0x1c
 		if (a >= e)
 			return -84;
@@ -2196,7 +2196,7 @@ ssize_t UartSettings::toMemory(uint8_t *b, ssize_t s) const
 		*a++ = m_rx_thresh;
 	}
 	// has tx_bufsize?
-	if (0 != (p_validbits & ((uint8_t)1U << 3))) {
+	if (0 != (p_validbits & ((uint8_t)1U << 2))) {
 		// 'tx_bufsize': id=6, encoding=varint, tag=0x30
 		if (a >= e)
 			return -86;
@@ -2207,7 +2207,7 @@ ssize_t UartSettings::toMemory(uint8_t *b, ssize_t s) const
 		a += n;
 	}
 	// has rx_bufsize?
-	if (0 != (p_validbits & ((uint8_t)1U << 4))) {
+	if (0 != (p_validbits & ((uint8_t)1U << 3))) {
 		// 'rx_bufsize': id=7, encoding=varint, tag=0x38
 		if (a >= e)
 			return -88;
@@ -2227,7 +2227,7 @@ void UartSettings::toJSON(stream &json, unsigned indLvl) const
 	++indLvl;
 	if (has_port()) {
 		fsep = json_indent(json,indLvl,fsep,"port");
-		to_decstr(json,(unsigned) m_port);
+		to_decstr(json,(int) m_port);
 	}
 	if (has_baudrate()) {
 		fsep = json_indent(json,indLvl,fsep,"baudrate");
@@ -2262,9 +2262,9 @@ void UartSettings::toJSON(stream &json, unsigned indLvl) const
 size_t UartSettings::calcSize() const
 {
 	size_t r = 0;	// required size, default is fixed length
-	// optional uint8 port, id 1
+	// optional sint8 port, id 1
 	if (has_port()) {
-		r += wiresize((varint_t)m_port) + 1 /* tag(port) 0x8 */;
+		r += wiresize_s((varint_t)m_port) + 1 /* tag(port) 0x8 */;
 	}
 	// optional unsigned baudrate, id 2
 	if (has_baudrate()) {
@@ -2323,9 +2323,7 @@ int UartSettings::setByName(const char *name, const char *value)
 			clear_port();
 			return 0;
 		}
-		int r = parse_ascii_u8(&m_port,value);
-		if (r > 0)
-			p_validbits |= ((uint8_t)1U << 0);
+		int r = parse_ascii_s8(&m_port,value);
 		return r;
 	}
 	if (0 == strcmp(name,"baudrate")) {
@@ -2335,7 +2333,7 @@ int UartSettings::setByName(const char *name, const char *value)
 		}
 		int r = parse_ascii_u32(&m_baudrate,value);
 		if (r > 0)
-			p_validbits |= ((uint8_t)1U << 1);
+			p_validbits |= ((uint8_t)1U << 0);
 		return r;
 	}
 	if ((0 == memcmp(name,"config",6)) && ((name[6] == 0) || name[6] == '.')) {
@@ -2416,7 +2414,7 @@ int UartSettings::setByName(const char *name, const char *value)
 		}
 		int r = parse_ascii_u32(&m_tx_bufsize,value);
 		if (r > 0)
-			p_validbits |= ((uint8_t)1U << 3);
+			p_validbits |= ((uint8_t)1U << 2);
 		return r;
 	}
 	if (0 == strcmp(name,"rx_bufsize")) {
@@ -2426,7 +2424,7 @@ int UartSettings::setByName(const char *name, const char *value)
 		}
 		int r = parse_ascii_u32(&m_rx_bufsize,value);
 		if (r > 0)
-			p_validbits |= ((uint8_t)1U << 4);
+			p_validbits |= ((uint8_t)1U << 3);
 		return r;
 	}
 	return -91;

@@ -620,7 +620,13 @@ static const char *to_part(Terminal &t, void *arg, char *buf, size_t s)
 	//t.printf("to_part %u@%x\n",s,*addr);
 	if (s > p->size)
 		return "End of partition.";
+#if IDF_VERSION >= 50
+	// TODO FIXME moving partiton address in to_part might not be a
+	// good idea
+	esp_err_t e = esp_partition_write_raw(p,0,buf,s);
+#else
 	esp_err_t e = spi_flash_write(p->address,buf,s);
+#endif
 	if (e) {
 		t.printf("flash error %s\n",esp_err_to_name(e));
 		return "";
@@ -668,10 +674,13 @@ const char *update_part(Terminal &t, char *source, const char *dest)
 	uint32_t s = p->size;
 	t.printf("erasing %d@%x\n",p->size,p->address);
 	t.sync();
-	if (esp_err_t e = spi_flash_erase_range(p->address,p->size)) {
-		t.println("error erasing");
+#if IDF_VERSION >= 50
+	if (esp_err_t e = esp_partition_erase_range(p,0,p->size))
 		return esp_err_to_name(e);
-	}
+#else
+	if (esp_err_t e = spi_flash_erase_range(p->address,p->size))
+		return esp_err_to_name(e);
+#endif
 	const char *r;
 	switch (uri.prot) {
 	case prot_http:

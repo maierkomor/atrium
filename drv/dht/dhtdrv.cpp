@@ -34,12 +34,11 @@
 #include <rom/gpio.h>
 #include <esp8266/timer_register.h>
 #include <rom/ets_sys.h>
-#elif defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32C3
+#elif defined ESP32
 #if IDF_VERSION >= 40
-#include <esp32/rom/ets_sys.h>
+//#include <esp32/rom/ets_sys.h>
 #include <esp32/rom/gpio.h>
 #else
-//| defined CONFIG_IDF_TARGET_ESP32S3 |
 #include <rom/ets_sys.h>
 #endif
 #endif
@@ -53,7 +52,7 @@
 #define ets_delay_us esp_rom_delay_us
 #endif
 
-#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
+#if defined ESP32
 #define ENTER_CRITICAL() portDISABLE_INTERRUPTS()
 #define EXIT_CRITICAL() portENABLE_INTERRUPTS()
 #elif defined CONFIG_IDF_TARGET_ESP8266
@@ -62,7 +61,7 @@
 #endif
 
 
-#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
+#ifdef ESP32
 #define gettime() esp_timer_get_time()
 #elif defined ESP8266
 static inline uint64_t gettime()

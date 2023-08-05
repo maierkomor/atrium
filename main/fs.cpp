@@ -144,7 +144,7 @@ void rootfs_init()
 	vfs.opendir = rootfs_vfs_opendir;
 	vfs.readdir = rootfs_vfs_readdir;
 	vfs.readdir_r = rootfs_vfs_readdir_r;
-	if (esp_err_t e = esp_vfs_register("/",&vfs,0))
+	if (esp_err_t e = esp_vfs_register("",&vfs,0))
 		log_warn(TAG,"VFS register rootfs: %s",esp_err_to_name(e));
 	else
 		log_info(TAG,"rootfs mounted");
@@ -211,7 +211,11 @@ static void fatfs_init()
 	fatconf.max_files = 4;
 	fatconf.allocation_unit_size = CONFIG_WL_SECTOR_SIZE;
 	SpiFatFs = WL_INVALID_HANDLE;
+#if IDF_VERSION >= 50
+	if (esp_err_t r = esp_vfs_fat_spiflash_mount_rw_wl(MOUNT_POINT, DATA_PARTITION, &fatconf, &SpiFatFs)) {
+#else
 	if (esp_err_t r = esp_vfs_fat_spiflash_mount(MOUNT_POINT, DATA_PARTITION, &fatconf, &SpiFatFs)) {
+#endif
 		log_error(TAG,"mount %s on %s with fatfs: %s", DATA_PARTITION, MOUNT_POINT, esp_err_to_name(r));
 		SpiFatFs = WL_INVALID_HANDLE;
 	} else  {
@@ -223,15 +227,24 @@ static void fatfs_init()
 
 static int shell_format_fatfs(Terminal &term, const char *arg)
 {
-	if (SpiFatFs != WL_INVALID_HANDLE)
+	if (SpiFatFs != WL_INVALID_HANDLE) {
+#if IDF_VERSION >= 50
+		esp_vfs_fat_spiflash_unmount_rw_wl(MOUNT_POINT, SpiFatFs);
+#else
 		esp_vfs_fat_spiflash_unmount(MOUNT_POINT, SpiFatFs);
+#endif
+	}
 	esp_vfs_fat_mount_config_t fatconf;
 	bzero(&fatconf,sizeof(fatconf));
 	fatconf.format_if_mount_failed = true;
 	fatconf.max_files = 4;
 	fatconf.allocation_unit_size = CONFIG_WL_SECTOR_SIZE;
 	SpiFatFs = WL_INVALID_HANDLE;
+#if IDF_VERSION >= 50
+	if (esp_err_t r = esp_vfs_fat_spiflash_mount_rw_wl(MOUNT_POINT, arg, &fatconf, &SpiFatFs)) {
+#else
 	if (esp_err_t r = esp_vfs_fat_spiflash_mount(MOUNT_POINT, arg, &fatconf, &SpiFatFs)) {
+#endif
 		term.printf("unable to mount flash with fatfs: %s\n",esp_err_to_name(r));
 		SpiFatFs = WL_INVALID_HANDLE;
 	} else {
@@ -270,9 +283,11 @@ static void init_hwconf()
 
 static void romfs_init()
 {
+#ifndef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 	if (const char *r = romfs_setup()) {
 		rootfs_add(r);
 	}
+#endif
 	if (HWConf.calcSize() == 0)
 		init_hwconf();
 }

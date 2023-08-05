@@ -1,4 +1,4 @@
-#include "fonts_ssd1306.h"
+#include <stdint.h>
 
 const unsigned char Font6x8[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // ' '

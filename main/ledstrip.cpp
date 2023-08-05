@@ -357,7 +357,7 @@ void rgbleds_setup()
 		unsigned nleds = c.nleds();
 		WS2812BDrv *drv = new WS2812BDrv(name);
 #if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
-		if (drv->init((gpio_num_t)c.gpio(),nleds,(rmt_channel_t)c.ch()))
+		if (drv->init((gpio_num_t)c.gpio(),nleds,c.ch()))
 			continue;
 #else
 		if (drv->init((gpio_num_t)c.gpio(),nleds))

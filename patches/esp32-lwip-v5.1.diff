@@ -1,0 +1,93 @@
+diff --git a/src/core/dns.c b/src/core/dns.c
+index e7b52d24..9945d9e5 100644
+--- a/src/core/dns.c
++++ b/src/core/dns.c
+@@ -292,7 +292,9 @@ static err_t dns_lookup_local(const char *hostname, ip_addr_t *addr LWIP_DNS_ADD
+ 
+ /* forward declarations */
+ static void dns_recv(void *s, struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *addr, u16_t port);
++#if 0
+ static void dns_check_entries(void);
++#endif
+ static void dns_call_found(u8_t idx, ip_addr_t *addr);
+ 
+ /*-----------------------------------------------------------------------------
+@@ -320,6 +322,7 @@ const ip_addr_t dns_mquery_v6group = DNS_MQUERY_IPV6_GROUP_INIT;
+  * Initialize the resolver: set up the UDP pcb and configure the default server
+  * (if DNS_SERVER_ADDRESS is set).
+  */
++#if 0
+ void
+ dns_init(void)
+ {
+@@ -371,6 +374,7 @@ dns_init(void)
+   dns_init_local();
+ #endif
+ }
++#endif
+ 
+ /**
+  * @ingroup dns
+@@ -379,6 +383,7 @@ dns_init(void)
+  * @param numdns the index of the DNS server to set must be < DNS_MAX_SERVERS
+  * @param dnsserver IP address of the DNS server to set
+  */
++#if 0
+ void
+ dns_setserver(u8_t numdns, const ip_addr_t *dnsserver)
+ {
+@@ -390,6 +395,7 @@ dns_setserver(u8_t numdns, const ip_addr_t *dnsserver)
+     }
+   }
+ }
++#endif
+ 
+ /**
+  * Clears the DNS cache
+@@ -433,6 +439,7 @@ static void dns_timeout_cb(void *arg)
+  * The DNS resolver client timer - handle retries and timeouts and should
+  * be called every DNS_TMR_INTERVAL milliseconds (every second by default).
+  */
++#if 0
+ void
+ dns_tmr(void)
+ {
+@@ -487,6 +494,7 @@ dns_init_local(void)
+   }
+ #endif /* DNS_LOCAL_HOSTLIST_IS_DYNAMIC && defined(DNS_LOCAL_HOSTLIST_INIT) */
+ }
++#endif
+ 
+ /**
+  * @ingroup dns
+@@ -1190,6 +1198,7 @@ dns_check_entry(u8_t i)
+ /**
+  * Call dns_check_entry for each entry in dns_table - check all entries.
+  */
++#if 0
+ static void
+ dns_check_entries(void)
+ {
+@@ -1199,6 +1208,7 @@ dns_check_entries(void)
+     dns_check_entry(i);
+   }
+ }
++#endif
+ 
+ /**
+  * Save TTL and call dns_call_found for correct response.
+@@ -1598,12 +1608,14 @@ dns_enqueue(const char *name, size_t hostnamelen, dns_found_callback found,
+  * @param callback_arg argument to pass to the callback function
+  * @return a err_t return code.
+  */
++#if 0
+ err_t
+ dns_gethostbyname(const char *hostname, ip_addr_t *addr, dns_found_callback found,
+                   void *callback_arg)
+ {
+   return dns_gethostbyname_addrtype(hostname, addr, found, callback_arg, LWIP_DNS_ADDRTYPE_DEFAULT);
+ }
++#endif
+ 
+ #if ESP_DNS
+ static bool dns_server_is_set (void)

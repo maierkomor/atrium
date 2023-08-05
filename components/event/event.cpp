@@ -330,6 +330,7 @@ void event_trigger(event_t id)
 		++Invalid;
 	} else if (EventHandlers[id].callbacks.empty()) {
 		++Discarded;
+		++EventHandlers[id].occur;
 	} else {
 		Event e(id);
 		BaseType_t r = xQueueSend(EventsQ,&e,1000);
@@ -356,13 +357,15 @@ void event_trigger_arg(event_t id, void *arg)
 	if ((id != 0) && (id < EventHandlers.size())) {
 		if (!EventHandlers[id].callbacks.empty()) {
 			Event e(id,arg);
-			log_dbug(TAG,"trigger %d %p",id,arg);
 			BaseType_t r = xQueueSend(EventsQ,&e,1000);
 			if (r != pdTRUE)
 				++Lost;
+			else
+				log_dbug(TAG,"trigger %d %p",id,arg);
 			return;
 		}
 		++Discarded;
+		++EventHandlers[id].occur;
 	} else {
 		++Invalid;
 	}

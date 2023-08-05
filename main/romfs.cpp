@@ -32,8 +32,12 @@
 #include "log.h"
 #include <esp_vfs.h>
 #include <esp_partition.h>
-#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
+#ifdef ESP32
+#if IDF_VERSION >= 50
+#include <spi_flash_mmap.h>
+#else
 #include <esp_spi_flash.h>
+#endif
 #else
 #include <spi_flash.h>
 #endif
@@ -65,7 +69,7 @@ typedef struct RomEntry32
 #elif defined CONFIG_IDF_TARGET_ESP8266
 #define RomEntry RomEntry16
 #define ROMFS_MAGIC "ROMFS16"
-#elif defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
+#elif defined ESP32
 #define RomEntry RomEntry32
 #define ROMFS_MAGIC "ROMFS32"
 #else
@@ -130,7 +134,7 @@ const char *romfs_name(int i)
 }
 
 
-#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3
+#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32C3 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3
 void *romfs_mmap(int i)
 {
 	if ((i < 0) || (i >= NumEntries))
@@ -171,7 +175,7 @@ int romfs_read_at(int i, char *buf, size_t n, size_t o)
 	assert(((uint32_t)buf & 3) == 0);
 	if (o+n > s)
 		n = s-o;
-#if defined CONFIG_IDF_TARGET_ESP32 ||  defined CONFIG_IDF_TARGET_ESP32S2
+#ifdef ESP32
 	memcpy(buf,(void*)(RomfsBaseAddr+off+o),n);
 #else
 	if (auto e = spi_flash_read(RomfsBaseAddr+off+o,buf,n)) {
@@ -408,7 +412,11 @@ const char *romfs_setup()
 	while (pi != 0) {
 		p = esp_partition_get(pi);
 		uint8_t magic[8];
+#if IDF_VERSION >= 50
+		esp_partition_read_raw(p,0,(char *)magic,sizeof(magic));
+#else
 		spi_flash_read(p->address,magic,sizeof(magic));
+#endif
 		log_hex(TAG,magic,sizeof(magic),"partition %s",p->label);
 		if (0 == memcmp(magic,ROMFS_MAGIC,sizeof(magic))) {
 			log_info(TAG,"%s has ROMFS",p->label);
@@ -445,7 +453,7 @@ const char *romfs_setup()
 
 	RomfsBaseAddr = p->address;
 	RomfsSpace = p->size;
-#if defined CONFIG_IDF_TARGET_ESP32 ||  defined CONFIG_IDF_TARGET_ESP32S2
+#ifdef ESP32
 	spi_flash_mmap_handle_t handle;
 	if (esp_err_t e = spi_flash_mmap(p->address,p->size,SPI_FLASH_MMAP_DATA,(const void**)&RomfsBaseAddr,&handle)) {
 		log_error(TAG,"mmap failed: %s",esp_err_to_name(e));

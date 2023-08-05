@@ -11,6 +11,7 @@ idf_component_register(
 	ina2xx.cpp
 	mcp2300x.cpp
 	mcp2301x.cpp
+	opt3001.cpp
 	pca9685.cpp
 	pcf8574.cpp
 	sgp30.cpp

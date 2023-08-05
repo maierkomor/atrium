@@ -78,7 +78,11 @@ void HttpServer::addDirectory(const char *d)
 
 void HttpServer::addFunction(const char *name, www_fun_t f)
 {
-	m_functions.insert(make_pair(name,f));
+#if IDF_VERSION >= 50
+	m_functions[name] = f;
+#else
+	m_functions.insert(pair<const char *,www_fun_t>(name,f));
+#endif
 }
 
 
@@ -276,6 +280,8 @@ void HttpServer::performPUT(HttpRequest *req)
 	log_devel(TAG,"put request %s",uri);
 	const char *sl = strrchr(uri,'/');
 	char fn[strlen(m_wwwroot)+strlen(sl)];
+	strcpy(fn,m_wwwroot);
+	strcat(fn,sl);
 	int fd = open(fn,O_CREAT|O_WRONLY,0666);
 	LwTcp *con = req->getConnection();
 	HttpResponse ans;

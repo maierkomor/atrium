@@ -200,8 +200,8 @@ bitset uartcfg_t
 
 message UartSettings
 {
-	uint8 port = 1;
-	unsigned baudrate = 2;
+	sint8 port = 1			[ unset = -1 ];
+	unsigned baudrate = 2		[ default = 115200 ];
 	uartcfg_t config = 3		[ default = 5, encoding = fixed16 ];
 	fixed8 rx_thresh = 4		[ unset = 0 ];
 	unsigned tx_bufsize = 6;

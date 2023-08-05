@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2022, Thomas Maier-Komor
+ *  Copyright (C) 2018-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -158,7 +158,7 @@ static int sendmsg(LogMsg *m)
 		n = snprintf(header,sizeof(header),"<%d>1 %4u-%02u-%02uT%02u:%02u:%02u.%03uZ %.*s %s - - - "
 			, 16 << 3 | lvl	// facility local use = 16, pri = (facility)<<3|serverity
 			, tm.tm_year+1900, tm.tm_mon+1, tm.tm_mday
-			, tm.tm_hour, tm.tm_min, tm.tm_sec, m->ts%1000
+			, tm.tm_hour, tm.tm_min, tm.tm_sec, (unsigned)(m->ts%1000)
 			, HostnameLen
 			, Hostname
 			, mod

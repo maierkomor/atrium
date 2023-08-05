@@ -188,7 +188,7 @@ config SPIFFS
 	help
 		SPI Flash File-System
 config FATFS
-	depends on IDF_TARGET_ESP32 || IDF_TARGET_ESP32S2 || IDF_TARGET_ESP32S3 || IDF_TARGET_ESP32C3
+	depends on IDF_TARGET_ESP32 || IDF_TARGET_ESP32S2 || IDF_TARGET_ESP32S3 || IDF_TARGET_ESP32C3 || IDF_TARGET_ESP32C6
 	bool "fatfs"
 	default false
 	help
@@ -216,7 +216,7 @@ config ROMFS_VFS_NUMFDS
 config USB_HOST_FS
 	bool "USB host filesystem via openocd"
 	default false
-	depends on IDF_TARGET_ESP32S2 || IDF_TARGET_ESP32S3 || IDF_TARGET_ESP32C3
+	depends on IDF_TARGET_ESP32S2 || IDF_TARGET_ESP32S3 || IDF_TARGET_ESP32C3 || IDF_TARGET_ESP32C6
 	help
 		"mount openocd host filesystem to /usb"
 endmenu # filesystem
@@ -244,6 +244,14 @@ config GPIOS
 	default true
 	help
 		Named GPIO support
+
+config CORETEMP
+	bool "core temperature sensor"
+	default false
+	depends on DEVEL
+	help
+		Core temperature sensor support is buggy in the IDF. 
+		Workarounds are applied, but may cause build failures.
 
 config IOEXTENDERS
 	bool "I/O extenders"
@@ -386,6 +394,13 @@ config MCP2301X
 	help
 		I2C driver for MCP2301x devices (16-port GPIO expander)
 
+config OPT3001
+	depends on I2C && DEVEL
+	bool "opt3001"
+	default true
+	help
+		I2C driver for OPT3001 (light intensity sensor)
+
 config INA2XX
 	bool "ina219"
 	depends on I2C_XDEV
@@ -474,9 +489,16 @@ config SSD1309
 config ILI9341
 	bool "ILI9341"
 	default false
-	depends on SPI && (IDF_TARGET_ESP32 || IDF_TARGET_ESP32S3 || IDF_TARGET_ESP32C3)
+	depends on SPI && (IDF_TARGET_ESP32 || IDF_TARGET_ESP32S3 || IDF_TARGET_ESP32C3 || IDF_TARGET_ESP32C6)
 	help
 		dirver for 4-wire SPI attached ILI9341 display
+
+config SDCARD
+	bool "SD-Card"
+	default true
+	depends on SPI
+	help
+		SD-card/TF-card support
 
 config XPT2046
 	bool "XPT2046"
@@ -526,7 +548,7 @@ config DEVEL
 
 config VERIFY_HEAP
 	bool "verify heap"
-	depends on IDF_TARGET_ESP32 || IDF_TARGET_ESP32S2 || IDF_TARGET_ESP32S3 || IDF_TARGET_ESP32C3
+	depends on IDF_TARGET_ESP32 || IDF_TARGET_ESP32S2 || IDF_TARGET_ESP32S3 || IDF_TARGET_ESP32C3 || IDF_TARGET_ESP32C6
 	default false
 
 config FUNCTION_TIMING

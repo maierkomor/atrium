@@ -75,7 +75,7 @@ class Relay
 
 	private:
 	Relay(const char *, xio_t gpio, uint32_t minitv, bool onlvl);
-	static void timerCallback(void *);
+	static void timerCallback(TimerHandle_t h);
 	void sync();
 
 	static Relay *Relays;

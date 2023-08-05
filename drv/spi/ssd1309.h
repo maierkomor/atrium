@@ -20,7 +20,7 @@
 #define SSD1309_H
 
 #include "ssd130x.h"
-#include "fonts_ssd1306.h"
+//#include "fonts.h"
 #include "spidrv.h"
 
 #include <freertos/FreeRTOS.h>
@@ -113,7 +113,7 @@ class SSD1309 : public SSD130X, public SpiDevice
 	void drawHLine(uint16_t x, uint16_t y, uint16_t n);
 	void drawVLine(uint16_t x, uint16_t y, uint16_t n);
 	int drawChar(char c);
-	uint8_t fontHeight() const;
+//	uint8_t fontHeight() const;
 #ifndef CONFIG_IDF_TARGET_ESP8266
 	static void postCallback(spi_transaction_t *t);
 #endif
@@ -129,7 +129,7 @@ class SSD1309 : public SSD130X, public SpiDevice
 	gpio_num_t m_dc, m_reset;
 //	uint8_t m_maxx = 0, m_maxy = 0, m_posx = 0, m_posy = 0, m_dirty = 0xff;
 //	uint8_t m_dirty = 0xff;
-	fontid_t m_font = font_native;
+//	fontid_t m_font = font_native;
 };
 
 

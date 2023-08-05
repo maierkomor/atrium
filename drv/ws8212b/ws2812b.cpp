@@ -20,9 +20,6 @@
 
 
 #ifdef CONFIG_RGBLEDS
-// CONFIG_IDF_TARGET_ESP32 rmt does not work before IDF release v3.2!!!
-// CONFIG_IDF_TARGET_ESP8266 for some reason doesn't achieve the necessary performance!!!
-// Placing the critical section in IRAM didn't give any benfit.
 
 #include "log.h"
 #include "ws2812b.h"
@@ -171,9 +168,9 @@ IRAM_ATTR void ws2812b_reset(unsigned gpio, uint16_t tr)
 #endif	// CONFIG_IDF_TARGET_ESP8266
 
 
-int WS2812BDrv::init(gpio_num_t gpio, size_t nleds, rmt_channel_t ch)
+int WS2812BDrv::init(gpio_num_t gpio, size_t nleds, int ch)
 {
-	log_dbug(TAG,"init(%u,%u,%u)",gpio,nleds,ch);
+	log_dbug(TAG,"init(%u,%u,%d)",gpio,nleds,ch);
 #if defined CONFIG_IDF_TARGET_ESP8266
 	int f = esp_clk_cpu_freq();
 	if (f == 160000000) {
@@ -195,14 +192,69 @@ int WS2812BDrv::init(gpio_num_t gpio, size_t nleds, rmt_channel_t ch)
 #endif
 	m_num = 0;
 	m_gpio = gpio;
-	m_set = (uint8_t*) calloc(1,nleds*3*2);
+	m_set = (uint8_t*) malloc(nleds*3*2);
 	if (m_set == 0) {
 		log_error(TAG,"Out of memory.");
 		return 1;
 	}
+	bzero(m_set,nleds*3*2);
 	m_cur = m_set+nleds*3;
 #if defined SOC_RMT_GROUPS && SOC_RMT_GROUPS > 0
-	if (ch == (rmt_channel_t)-1) {
+#if IDF_VERSION >= 50
+	rmt_tx_channel_config_t txccfg;
+	bzero(&txccfg,sizeof(txccfg));
+	txccfg.clk_src = RMT_CLK_SRC_DEFAULT;
+	txccfg.gpio_num = gpio;
+//	txccfg.mem_block_symbols = nleds*3;
+	txccfg.mem_block_symbols = SOC_RMT_MEM_WORDS_PER_CHANNEL;
+	txccfg.resolution_hz = 80000000;
+	txccfg.trans_queue_depth = 1;
+//	txccfg.flags.with_dma = 1;
+	if (esp_err_t e = rmt_new_tx_channel(&txccfg,&m_ch))
+		log_warn(TAG,"create tx channel: %s",esp_err_to_name(e));
+	rmt_enable(m_ch);
+	/*
+	rmt_bytes_encoder_config_t benccfg = {
+		.bit0 = {
+			.level0 = 1,
+			.duration0 = T0H,
+			.level1 = 0,
+			.duration1 = T0L,
+		},
+		.bit1 = {
+			.level0 = 1,
+			.duration0 = T1H,
+			.level1 = 0,
+			.duration1 = T1L,
+		},
+		.flags = {
+			.msb_first = 1,
+		},
+	};
+	*/
+	rmt_bytes_encoder_config_t benccfg;
+	bzero(&benccfg,sizeof(benccfg));
+	benccfg.bit0.level0 = 1;
+	benccfg.bit0.duration0 = T0H;
+	benccfg.bit0.level1 = 0;
+	benccfg.bit0.duration1 = T0L;
+	benccfg.bit1.level0 = 1;
+	benccfg.bit1.duration0 = T1H;
+	benccfg.bit1.level1 = 0;
+	benccfg.bit1.duration1 = T1L;
+	benccfg.flags.msb_first = 1;
+	if (esp_err_t e = rmt_new_bytes_encoder(&benccfg, &m_benc))
+		log_warn(TAG,"create byte encoder: %s",esp_err_to_name(e));
+	rmt_copy_encoder_config_t cenccfg = {};
+	if (esp_err_t e = rmt_new_copy_encoder(&cenccfg, &m_cenc))
+		log_warn(TAG,"create copy encoder: %s",esp_err_to_name(e));
+	bzero(&m_rstsym,sizeof(m_rstsym));
+//	m_rstsym.level0 = 0;
+	m_rstsym.duration0 = TR;
+//	m_rstsym.level1 = 0;
+//	m_rstsym.duration1 = 0;
+#else
+	if (ch == -1) {
 		log_warn(TAG,"channel not set");
 		return 1;
 	}
@@ -211,7 +263,7 @@ int WS2812BDrv::init(gpio_num_t gpio, size_t nleds, rmt_channel_t ch)
 		log_error(TAG,"Out of memory.");
 		return 1;
 	}
-	m_ch = ch;
+	m_ch = (rmt_channel_t)ch;
 	rmt_config_t rmt_tx;
 	memset(&rmt_tx,0,sizeof(rmt_tx));
 	rmt_tx.channel = m_ch;
@@ -232,7 +284,8 @@ int WS2812BDrv::init(gpio_num_t gpio, size_t nleds, rmt_channel_t ch)
 		return 1;
 	}
 	log_dbug(TAG,"rmt driver installed on channel %u",m_ch);
-#else
+#endif
+#else	// no SOC_RMT_GROUPS
 	gpio_pad_select_gpio(m_gpio);
 	if (esp_err_t e = gpio_set_direction(m_gpio, GPIO_MODE_OUTPUT)) {
 		log_warn(TAG,"cannot set %u to output: %s",m_gpio,esp_err_to_name(e));
@@ -323,7 +376,7 @@ void WS2812BDrv::set_leds(uint32_t rgb)
 }
 
 
-void WS2812BDrv::timerCallback(void *h)
+void WS2812BDrv::timerCallback(TimerHandle_t h)
 {
 	WS2812BDrv *d = (WS2812BDrv *)pvTimerGetTimerID(h);
 	bool remain = false;
@@ -363,8 +416,17 @@ void WS2812BDrv::commit()
 		return;
 	//log_info(TAG,"update0");
 	assert(m_set);
-	uint8_t *v = m_cur, *e = m_cur+m_num*3;
 #if defined SOC_RMT_GROUPS && SOC_RMT_GROUPS > 0
+#if IDF_VERSION >= 50
+//	rmt_encode_state_t st;
+//	m_benc->encode(m_benc,m_ch,v,m_num*3,&st);
+	rmt_transmit_config_t txcfg;
+	bzero(&txcfg,sizeof(txcfg));
+	txcfg.loop_count = 0;
+	if (esp_err_t e = rmt_transmit(m_ch,m_benc,m_cur,m_num*3,&txcfg))
+		log_warn(TAG,"error transmitting: %s",esp_err_to_name(e));
+#else
+	uint8_t *v = m_cur, *e = m_cur+m_num*3;
 	assert(m_items);
 	rmt_item32_t *r = m_items;
 	while (v != e) {
@@ -392,7 +454,9 @@ void WS2812BDrv::commit()
 	assert(r-m_items <= 24*m_num+1);
 	//log_info(TAG,"writing %u items",r-m_items);
 	rmt_write_items(m_ch, m_items, m_num*24+1, false);
+#endif
 #else
+	uint8_t *v = m_cur, *e = m_cur+m_num*3;
 	uint8_t tmp[e-v];		// move data to IRAM!
 	memcpy(tmp,v,sizeof(tmp));
 	ws2812b_write(1 << m_gpio,tmp,tmp+sizeof(tmp),m_t0l,m_t0h,m_t1l,m_t1h);
@@ -405,12 +469,20 @@ void WS2812BDrv::reset()
 {
 	//log_info(TAG,"reset0");
 #if defined SOC_RMT_GROUPS && SOC_RMT_GROUPS > 0
+#if IDF_VERSION >= 50
+#else
 	rmt_item32_t rst;
 	rst.level0 = 0;
 	rst.level1 = 0;
 	rst.duration0 = TR;
 	rst.duration1 = 0;
 	rmt_write_items(m_ch, &rst, 1, true);
+#endif
+	rmt_transmit_config_t txcfg;
+	bzero(&txcfg,sizeof(txcfg));
+	txcfg.loop_count = 0;
+	if (esp_err_t e = rmt_transmit(m_ch,m_cenc,&m_rstsym,1,&txcfg))
+		log_warn(TAG,"error transmitting: %s",esp_err_to_name(e));
 #else
 	ws2812b_reset(1 << m_gpio,m_tr);
 #endif

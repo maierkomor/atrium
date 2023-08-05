@@ -274,7 +274,7 @@ void log_common(log_level_t l, logmod_t m, const char *f, va_list val)
 #else
 		struct timespec ts;
 		clock_gettime(CLOCK_REALTIME,&ts);
-		p += sprintf(at," (%lu.%03u) %s: ",ts.tv_sec,(unsigned)(ts.tv_nsec/1E6),a);
+		p += sprintf(at," (%llu.%03u) %s: ",ts.tv_sec,(unsigned)(ts.tv_nsec/1E6),a);
 #endif
 	} else {
 		struct tm tm;
@@ -405,10 +405,10 @@ void abort_on_mutex(SemaphoreHandle_t mtx, const char *usage)
 	uart_print(__FUNCTION__);
 	TaskHandle_t h = xSemaphoreGetMutexHolder(mtx);
 #if defined ESP32
-	const char *n = pcTaskGetTaskName(0);
+	const char *n = pcTaskGetName(0);
 	if (n)
 		uart_print(n);
-	n = pcTaskGetTaskName(h);
+	n = pcTaskGetName(h);
 	if (n)
 		uart_print(n);
 #else

@@ -29,4 +29,6 @@ extern "C"
 #endif
 void fs_init();
 
+void rootfs_add(const char *);
+
 #endif

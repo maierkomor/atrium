@@ -48,6 +48,11 @@
 
 #ifdef ESP32
 #include <esp_core_dump.h>
+#if IDF_VERSION < 50
+#include <esp_spi_flash.h>
+#else
+#include <spi_flash_mmap.h>
+#endif
 #endif
 #include <esp_ota_ops.h>
 
@@ -423,25 +428,37 @@ static void updateFirmware(HttpRequest *r)
 		free(tmp);
 		return;
 	} else {
-		auto p = esp_partition_find_first(ESP_PARTITION_TYPE_DATA,ESP_PARTITION_SUBTYPE_ANY,part);
-		addr = p->address;
+		updatep = esp_partition_find_first(ESP_PARTITION_TYPE_DATA,ESP_PARTITION_SUBTYPE_ANY,part);
+		addr = updatep->address;
 		const char *err = 0;
-		if (p == 0) {
+		if (updatep == 0) {
 			sprintf(st,"no ROMFS partition '%s'",part);
 			err = st;
-		} else if (s > p->size) {
+		} else if (s > updatep->size) {
 			// ROMFS/DATA partition
 			err = "image too big";
-		} else if (esp_err_t e = spi_flash_erase_range(addr,p->size)) {
-			sprintf(st,"erase failed %s",esp_err_to_name(e));
+#if IDF_VERSION >= 50
+		} else if (esp_err_t e = esp_partition_erase_range(updatep,0,updatep->size)) {
+			sprintf(st,"erase partition: %s",esp_err_to_name(e));
+			err = st;
+		} else if (s0 <= 0) {
+		} else if (esp_err_t e = esp_partition_write_raw(updatep,0,r->getContent(),s0)) {
+			sprintf(st,"write partition: %s",esp_err_to_name(e));
+			err = st;
+			addr = s0;
+			s -= s0;
+#else
+		} else if (esp_err_t e = spi_flash_erase_range(addr,updatep->size)) {
+			sprintf(st,"erase failed: %s",esp_err_to_name(e));
 			err = st;
 		} else if (s0 > 0) {
-			if (esp_err_t e = spi_flash_write(p->address,r->getContent(),s0)) {
+			if (esp_err_t e = spi_flash_write(addr,r->getContent(),s0)) {
 				sprintf(st,"SPI write: %s",esp_err_to_name(e));
 				err = st;
 			}
 			addr += s0;
 			s -= s0;
+#endif
 		}
 		if (err) {
 			UpdateState->set(err);
@@ -455,7 +472,7 @@ static void updateFirmware(HttpRequest *r)
 		return;
 	}
 	while (s > 0) {
-		sprintf(st,"updating at 0x%x, %d to go",addr,s);
+		sprintf(st,"updating at 0x%x, %d to go",(unsigned)addr,s);
 		UpdateState->set(st);
 		log_dbug(TAG,st);
 		int n = c->read(buf,s > FLASHBUFSIZE ? FLASHBUFSIZE : s);
@@ -469,10 +486,16 @@ static void updateFirmware(HttpRequest *r)
 			return;
 		}
 		esp_err_t e;
-		if (app)
+		if (app) {
 			e = esp_ota_write(ota,buf,n);
-		else
+		} else {
+#if IDF_VERSION >= 50
+			e = esp_partition_write_raw(updatep,addr,buf,n);
+
+#else
 			e = spi_flash_write(addr,buf,n);
+#endif
+		}
 		if (e) {
 			snprintf(st,sizeof(st),"write error: %d",e);
 			UpdateState->set(st);

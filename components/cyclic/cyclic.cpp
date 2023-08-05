@@ -88,7 +88,7 @@ static StaticTask_t CyclicTask;
 
 static SubTask *SubTasks = 0;
 static SemaphoreHandle_t Mtx = 0;
-static volatile uint64_t TimeSpent = 0;
+static uint64_t TimeSpent = 0;
 
 #ifdef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 #define busy_set(...)
@@ -144,6 +144,7 @@ int cyclic_rm_task(const char *name)
 }
 
 
+// called from event task, if no dedicated cyclic task is created
 unsigned cyclic_execute()
 {
 	MLock lock(Mtx,__FUNCTION__);

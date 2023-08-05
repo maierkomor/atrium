@@ -31,8 +31,6 @@
 #include <freertos/semphr.h>
 
 #if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
-#include <driver/periph_ctrl.h>
-
 extern "C" esp_err_t i2c_hw_fsm_reset(i2c_port_t);
 #endif
 
@@ -66,10 +64,28 @@ I2CDevice::I2CDevice(uint8_t bus, uint8_t addr, const char *name)
 }
 
 
+void I2CDevice::addIntr(uint8_t intr)
+{
+	log_warn(TAG,"%s does not support interrupts",m_name);
+}
+
+
 void I2CDevice::setName(const char *n)
 {
 	strncpy(m_name,n,sizeof(m_name)-1);
 	m_name[sizeof(m_name)-1] = 0;
+}
+
+
+I2CDevice *I2CDevice ::getByAddr(uint8_t addr)
+{
+	I2CDevice *dev = m_first;
+	while (dev) {
+		if (dev->getAddr() == addr)
+			return dev;
+		dev = dev->m_next;
+	}
+	return 0;
 }
 
 
@@ -151,7 +167,7 @@ int i2c_read(uint8_t port, uint8_t addr, uint8_t *d, uint8_t n)
 		p = 'p';
 		goto done;
 	}
-	r = i2c_master_cmd_begin((i2c_port_t)port, cmd, 1000 / portTICK_RATE_MS);
+	r = i2c_master_cmd_begin((i2c_port_t)port, cmd, 1000 / portTICK_PERIOD_MS);
 	if (r) {
 		p = 'x';
 		goto done;
@@ -204,7 +220,7 @@ int i2c_w1rd(uint8_t port, uint8_t addr, uint8_t w, uint8_t *d, uint8_t n)
 		p = 't';
 		goto done;
 	}
-	r = i2c_master_cmd_begin((i2c_port_t)port, cmd, 1000 / portTICK_RATE_MS);
+	r = i2c_master_cmd_begin((i2c_port_t)port, cmd, 1000 / portTICK_PERIOD_MS);
 done:
 	i2c_cmd_link_delete(cmd);
 	log_hex(TAG,d,n,"i2c_w1rd(%u,0x%02x,0x%02x,...,%u)=%s %c",port,addr>>1,w,n,esp_err_to_name(r),p);
@@ -220,7 +236,7 @@ int i2c_write0(uint8_t port, uint8_t addr)
 	addr |= I2C_MASTER_WRITE;
 	i2c_master_write_byte(cmd, addr, true);
 	i2c_master_stop(cmd);
-	int ret = i2c_master_cmd_begin((i2c_port_t) port, cmd, 1000 / portTICK_RATE_MS);
+	int ret = i2c_master_cmd_begin((i2c_port_t) port, cmd, 1000 / portTICK_PERIOD_MS);
 	i2c_cmd_link_delete(cmd);
 	log_dbug(TAG,"i2c_write0(%u,0x%x)=%s",port,addr>>1,esp_err_to_name(ret));
 	return ret;
@@ -239,7 +255,7 @@ int i2c_write1(uint8_t port, uint8_t addr, uint8_t r)
 	assert(e == 0);
 	e = i2c_master_stop(cmd);
 	assert(e == 0);
-	int ret = i2c_master_cmd_begin((i2c_port_t) port, cmd, 1000 / portTICK_RATE_MS);
+	int ret = i2c_master_cmd_begin((i2c_port_t) port, cmd, 1000 / portTICK_PERIOD_MS);
 	i2c_cmd_link_delete(cmd);
 	log_dbug(TAG,"i2c_write1(%u,0x%x,0x%x)=%s",port,addr>>1,r,esp_err_to_name(ret));
 	return ret;
@@ -254,7 +270,7 @@ int i2c_write2(uint8_t port, uint8_t addr, uint8_t r, uint8_t v)
 	uint8_t data[] = { (uint8_t)(addr|I2C_MASTER_WRITE), r, v };
 	i2c_master_write(cmd, data, sizeof(data), true);
 	i2c_master_stop(cmd);
-	int ret = i2c_master_cmd_begin((i2c_port_t) port, cmd, 1000 / portTICK_RATE_MS);
+	int ret = i2c_master_cmd_begin((i2c_port_t) port, cmd, 1000 / portTICK_PERIOD_MS);
 	i2c_cmd_link_delete(cmd);
 	log_dbug(TAG,"i2c_write2(%u,0x%x,0x%x,0x%x)=%s",port,addr>>1,r,v,esp_err_to_name(ret));
 	return ret;
@@ -287,7 +303,7 @@ int i2c_write4(uint8_t port, uint8_t addr, uint8_t r0, uint8_t v0, uint8_t r1, u
 		};
 	i2c_master_write(cmd, data, sizeof(data), I2C_MASTER_NACK);
 	i2c_master_stop(cmd);
-	int ret = i2c_master_cmd_begin((i2c_port_t) port, cmd, 1000 / portTICK_RATE_MS);
+	int ret = i2c_master_cmd_begin((i2c_port_t) port, cmd, 1000 / portTICK_PERIOD_MS);
 	i2c_cmd_link_delete(cmd);
 	log_dbug(TAG,"i2c_write4(%u,0x%x,0x%x,0x%x,0x%x,0x%x)=%d",port,addr,r0,v0,r1,v1,ret);
 	return ret;
@@ -301,7 +317,7 @@ int i2c_writen(uint8_t port, uint8_t addr, uint8_t *d, unsigned n)
 	i2c_master_write_byte(cmd, addr | I2C_MASTER_WRITE, I2C_MASTER_NACK);
 	i2c_master_write(cmd, d, n, I2C_MASTER_NACK);
 	i2c_master_stop(cmd);
-	int ret = i2c_master_cmd_begin((i2c_port_t) port, cmd, 1000 / portTICK_RATE_MS);
+	int ret = i2c_master_cmd_begin((i2c_port_t) port, cmd, 1000 / portTICK_PERIOD_MS);
 	i2c_cmd_link_delete(cmd);
 	if (log_module_enabled(TAG)) {
 		log_dbug(TAG,"i2c_writen(%u,0x%x,0x%p,%u)=%d",port,addr,d,n,ret);
@@ -317,7 +333,7 @@ int i2c_write1(uint8_t port, uint8_t d, bool stop)
 	i2c_master_write_byte(cmd, d, I2C_MASTER_NACK);
 	if (stop)
 		i2c_master_stop(cmd);
-	int ret = i2c_master_cmd_begin((i2c_port_t) port, cmd, 1000 / portTICK_RATE_MS);
+	int ret = i2c_master_cmd_begin((i2c_port_t) port, cmd, 1000 / portTICK_PERIOD_MS);
 	i2c_cmd_link_delete(cmd);
 	if (log_module_enabled(TAG)) {
 		log_dbug(TAG,"i2c_write(%u,0x%p,%u)=%d",port,d,n,ret);
@@ -337,7 +353,7 @@ int i2c_write(uint8_t port, uint8_t *d, unsigned n, uint8_t stop, uint8_t start)
 	i2c_master_write(cmd, d, n, true);
 	if (stop)
 		i2c_master_stop(cmd);
-	int ret = i2c_master_cmd_begin((i2c_port_t) port, cmd, 1000 / portTICK_RATE_MS);
+	int ret = i2c_master_cmd_begin((i2c_port_t) port, cmd, 1000 / portTICK_PERIOD_MS);
 	i2c_cmd_link_delete(cmd);
 	log_hex(TAG,d,n,"i2c_write(%u,0x%p,%u,%d,%d)=%s",port,d,n,stop,start,esp_err_to_name(ret));
 	return ret;
@@ -353,7 +369,7 @@ int i2c_write_nack(uint8_t port, uint8_t *d, unsigned n, uint8_t stop, uint8_t s
 	i2c_master_write(cmd, d, n, false);
 	if (stop)
 		i2c_master_stop(cmd);
-	int ret = i2c_master_cmd_begin((i2c_port_t) port, cmd, 1000 / portTICK_RATE_MS);
+	int ret = i2c_master_cmd_begin((i2c_port_t) port, cmd, 1000 / portTICK_PERIOD_MS);
 	i2c_cmd_link_delete(cmd);
 	log_hex(TAG,d,n,"i2c_write_nack(%u,0x%p,%u,%d,%d)=%s",port,d,n,stop,start,esp_err_to_name(ret));
 	return ret;
@@ -383,7 +399,7 @@ int i2c_init(uint8_t port, uint8_t sda, uint8_t scl, unsigned freq, uint8_t xpul
 		conf.sda_pullup_en = GPIO_PULLUP_ENABLE;
 		conf.scl_pullup_en = GPIO_PULLUP_ENABLE;
 	}
-#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
+#ifdef ESP32
 	conf.master.clk_speed = freq;
 	// IRAM ISR placements seems to be unsupported on IDF v4.4.x
 //	esp_err_t e = i2c_driver_install((i2c_port_t) port, conf.mode, 0, 0, ESP_INTR_FLAG_IRAM);
@@ -420,8 +436,10 @@ int i2c_init(uint8_t port, uint8_t sda, uint8_t scl, unsigned freq, uint8_t xpul
 	// bus-timeout. The BH1750 drivers deals with that situation, so
 	// keep it the first in the scan!
 #if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
+#if IDF_VERSION < 50
 	esp_err_t r = i2c_hw_fsm_reset((i2c_port_t)port);
 	assert(r == 0);
+#endif
 #endif
 #ifdef CONFIG_BH1750
 	// autoscan conflicts with TCA9555

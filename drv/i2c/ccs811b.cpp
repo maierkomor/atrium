@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021, Thomas Maier-Komor
+ *  Copyright (C) 2021-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -23,9 +23,10 @@
 #include "actions.h"
 #include "ccs811b.h"
 #include "cyclic.h"
+#include "env.h"
 #include "i2cdrv.h"
 #include "log.h"
-#include "env.h"
+#include "terminal.h"
 
 
 #define DEV_ADDR_MIN	(0x5a << 1)
@@ -52,6 +53,11 @@
 #define STATUS_DATA_READY	0x08
 
 #define TAG MODULE_CCS811B
+
+
+static const char *States[] = {
+	"idle", "sample", "measure", "update", "read",
+};
 
 
 CCS811B::CCS811B(uint8_t bus, uint8_t addr)
@@ -187,8 +193,10 @@ done:
 unsigned CCS811B::read()
 {
 	uint8_t data[6];
-	if (i2c_w1rd(m_bus,m_addr,REG_DATA,data,sizeof(data)))
+	if (i2c_w1rd(m_bus,m_addr,REG_DATA,data,sizeof(data))) {
+		log_warn(TAG,"I2C error");
 		return 0;
+	}
 	if ((data[4] & STATUS_FLAG_ERROR) != 0) {
 		log_dbug(TAG,"error 0x%x",data[5]);
 		return 0;
@@ -232,10 +240,23 @@ uint8_t CCS811B::error()
 }
 
 
-//uint8_t CCS811B::getError()
-//{
-//
-//}
+#ifdef CONFIG_I2C_XCMD
+const char *CCS811B::exeCmd(struct Terminal &t, int argc, const char **args)
+{
+	if (argc == 0) {
+		t.printf("%s is %s\n",m_name,States[m_state]);
+		return 0;
+	}
+	if (0 == strcmp(args[0],"stop")) {
+		m_state = st_idle;
+	} else if (0 == strcmp(args[0],"start")) {
+		m_state = st_measure;
+	} else {
+		return "Invalid argument #1.";
+	}
+	return 0;
+}
+#endif
 
 
 unsigned ccs811b_scan(uint8_t bus)

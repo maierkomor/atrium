@@ -24,6 +24,7 @@
 #elif defined CONFIG_IDF_TARGET_ESP32S2
 #elif defined CONFIG_IDF_TARGET_ESP32S3
 #elif defined CONFIG_IDF_TARGET_ESP32C3
+#elif defined CONFIG_IDF_TARGET_ESP32C6
 #else
 #error include sdkconfig.h before xio.h
 #endif

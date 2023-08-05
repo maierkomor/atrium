@@ -30,7 +30,7 @@ class stream;
 
 struct CStrLess
 {
-	bool operator () (const char *l, const char *r)
+	bool operator () (const char *l, const char *r) const
 	{
 		return strcmp(l,r) < 0;
 	}
@@ -38,7 +38,7 @@ struct CStrLess
 
 struct SubstrLess
 {
-	bool operator () (const char *l, const char *r)
+	bool operator () (const char *l, const char *r) const
 	{
 		size_t ll = strlen(l);
 		size_t rl = strlen(r);

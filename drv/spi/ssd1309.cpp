@@ -24,7 +24,7 @@
 #include "log.h"
 #include "profiling.h"
 
-#include "fonts_ssd1306.h"
+//#include "fonts.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -282,7 +282,6 @@ void SSD1309::clear()
 	m_posy = 0;
 	log_dbug(TAG,"clear: dirty %x",m_dirty);
 }
-*/
 
 
 uint8_t SSD1309::fontHeight() const
@@ -291,12 +290,11 @@ uint8_t SSD1309::fontHeight() const
 	case -1: return 8;
 	case -2: return 16;
 	default:
-		return Fonts[m_font].yAdvance;
+		return FontsCM[m_font].yAdvance;
 	}
 }
 
 
-/*
 int SSD1309::clrEol()
 {
 	clearRect(m_posx,m_posy,m_width-m_posx,fontHeight());

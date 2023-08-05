@@ -57,7 +57,7 @@ esp32_4m | esp32-s2_4m)
 	esptool.py --chip $chip erase_flash
 	esptool.py --baud 1000000 --chip $chip write_flash 0x1000 $1/boot@0x1000.bin 0x8000 $1/ptable@0x8000.bin 0x100000 $1/atrium.bin
 ;;
-esp32-c3_4m | esp32-s3_4m )
+esp32-c3_4m | esp32-c6_4m | esp32-s3_4m )
 	esptool.py --chip $chip erase_flash
 	esptool.py --baud 1000000 --chip $chip write_flash 0x0000 $1/boot@0x0000.bin 0x8000 $1/ptable@0x8000.bin 0x100000 $1/atrium.bin
 ;;

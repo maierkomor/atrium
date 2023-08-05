@@ -28,9 +28,7 @@
 #endif
 
 extern "C" {
-#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
-#include <esp32/clk.h>
-#else
+#ifndef ESP32
 #include <esp_clk.h>
 #endif
 }
@@ -61,6 +59,11 @@ extern "C" {
 #include "udns.h"
 #include "env.h"
 #include "wifi.h"
+
+#if IDF_VERSION >= 50
+#include <rom/ets_sys.h>
+#include <esp_chip_info.h>
+#endif
 
 #ifdef CONFIG_IDF_TARGET_ESP8266
 #include <spi_flash.h>
@@ -127,6 +130,9 @@ void settings_setup();
 
 static void system_info()
 {
+#if IDF_VERSION >= 50
+	uint32_t mhz = ets_get_cpu_frequency();
+#else
 	int f = esp_clk_cpu_freq();
 	unsigned mhz;
 	switch (f) {
@@ -155,6 +161,7 @@ static void system_info()
 	default:
 		mhz = f/1000000;
 	}
+#endif
 	esp_chip_info_t ci;
 	esp_chip_info(&ci);
 	log_info(TAG,"ESP%u (rev %d) with %d core%s @ %uMHz%s"

@@ -10,7 +10,7 @@
  * Copyright: 2018-2023
  * Author   : Thomas Maier-Komor
  * 
- * Code generated on 2023-07-01, 22:37:39 (CET).
+ * Code generated on 2023-07-31, 21:35:41 (CET).
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -202,6 +202,7 @@ typedef enum {
 	spidrv_ssd1309 = 2,
 	spidrv_ili9341 = 3,
 	spidrv_xpt2046 = 4,
+	spidrv_sdcard = 5,
 } spidrv_t;
 //! Function to get an ASCII string from a value of a spidrv_t.
 const char *spidrv_t_str(spidrv_t e);
@@ -210,7 +211,7 @@ size_t parse_ascii_spidrv_t(spidrv_t *, const char *);
 
 typedef uint8_t pull_mode_t;
 typedef uint8_t relay_cfg_t;
-typedef uint16_t i2cdev_t;
+typedef uint32_t i2cdev_t;
 typedef uint8_t ledcfg_t;
 typedef uint16_t gpiocfg_t;
 typedef uint8_t spiopt_t;
@@ -2044,6 +2045,10 @@ class I2CConfig : public Message
 	i2cdrv_t devices_drv(unsigned x) const;
 	//! Function to set the drv part of bitset devices.
 	void set_devices_drv(unsigned x, i2cdrv_t);
+	//! Function to get the intr part of bitset devices.
+	uint8_t devices_intr(unsigned x) const;
+	//! Function to set the intr part of bitset devices.
+	void set_devices_intr(unsigned x, uint8_t);
 	//! Set devices using a constant reference
 	void set_devices(unsigned x, i2cdev_t v);
 	/*!
@@ -6811,6 +6816,11 @@ inline i2cdrv_t I2CConfig::devices_drv(unsigned x) const
 	return (i2cdrv_t)((m_devices[x] >> 8) & 0xff);
 }
 
+inline uint8_t I2CConfig::devices_intr(unsigned x) const
+{
+	return (uint8_t)((m_devices[x] >> 16) & 0x3f);
+}
+
 /*!
  * Function for clearing the associated member variable.
  * It will reset the value to the default value.
@@ -6835,13 +6845,19 @@ inline std::vector<i2cdev_t> *I2CConfig::mutable_devices()
 inline void I2CConfig::set_devices_addr(unsigned x, uint8_t v)
 {
 	m_devices[x] &= ~(0x7fULL << 0);
-	m_devices[x] |= ((uint16_t) v << 0);
+	m_devices[x] |= ((uint32_t) v << 0);
 }
 
 inline void I2CConfig::set_devices_drv(unsigned x, i2cdrv_t v)
 {
 	m_devices[x] &= ~(0xffULL << 8);
-	m_devices[x] |= ((uint16_t) v << 8);
+	m_devices[x] |= ((uint32_t) v << 8);
+}
+
+inline void I2CConfig::set_devices_intr(unsigned x, uint8_t v)
+{
+	m_devices[x] &= ~(0x3fULL << 16);
+	m_devices[x] |= ((uint32_t) v << 16);
 }
 
 inline void I2CConfig::add_devices(i2cdev_t v)

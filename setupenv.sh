@@ -258,17 +258,17 @@ if [ "$IDF_ESP32" == "" ]; then
 fi
 pushd $IDF_ESP32
 git pull --recurse-submodule
-git reset --hard v4.4.4
+git reset --hard v5.1
 git submodule deinit -f --all
 #git switch -c v4.4.4
 git submodule update --init
 IDF_PATH="$IDF_ESP32" bash install.sh
 IDF_PATH="$IDF_ESP32" python3 tools/idf_tools.py install
 echo patching IDF for ESP32
-patch -t -p1 < $patchdir/idf-esp32-v4.4.diff || echo PATCHING FAILED!
+patch -t -p1 < $patchdir/idf-esp32-v5.1.diff || echo PATCHING FAILED!
 echo patching lwip of ESP32
 cd components/lwip/lwip
-patch -t -p1 < $patchdir/esp32-lwip-v4.4.4.diff || echo PATCHING FAILED!
+patch -t -p1 < $patchdir/esp32-lwip-v5.1.diff || echo PATCHING FAILED!
 popd > /dev/null
 
 echo ===================

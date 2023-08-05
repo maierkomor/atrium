@@ -27,7 +27,11 @@
 #if IDF_VERSION >= 44
 #include <soc/soc_caps.h>
 #if defined SOC_RMT_GROUPS && SOC_RMT_GROUPS > 0
+#if IDF_VERSION >= 50
+#include <driver/rmt_tx.h>
+#else
 #include <driver/rmt.h>
+#endif
 #endif
 #endif
 
@@ -66,7 +70,7 @@ class WS2812BDrv
 		free(m_name);
 	}
 
-	int init(gpio_num_t gpio, size_t nleds, rmt_channel_t ch = (rmt_channel_t)-1);
+	int init(gpio_num_t gpio, size_t nleds, int ch = -1);
 	void set_led(size_t l, uint8_t r, uint8_t g, uint8_t b);
 	void set_led(size_t l, uint32_t rgb);
 	void set_leds(uint32_t rgb);
@@ -85,7 +89,7 @@ class WS2812BDrv
 	WS2812BDrv(const WS2812BDrv &);
 	WS2812BDrv& operator = (const WS2812BDrv &);
 
-	static void timerCallback(void *);
+	static void timerCallback(TimerHandle_t h);
 	void commit();
 
 	static WS2812BDrv *First;
@@ -93,13 +97,21 @@ class WS2812BDrv
 	WS2812BDrv *m_next = 0;
 	uint8_t *m_set, *m_cur;
 #if defined SOC_RMT_GROUPS && SOC_RMT_GROUPS > 0
+#if IDF_VERSION >= 50
+	rmt_encoder_t *m_benc = 0, *m_cenc = 0;
+	rmt_symbol_word_t m_rstsym;
+	rmt_channel_handle_t m_ch;
+#else
 	rmt_item32_t *m_items = 0;
+#endif
 #endif
 	size_t m_num;
 	TimerHandle_t m_tmr;
 	gpio_num_t m_gpio;
 #if defined SOC_RMT_GROUPS && SOC_RMT_GROUPS > 0
+#if IDF_VERSION < 50
 	rmt_channel_t m_ch;
+#endif
 #else
 	uint8_t m_t0l,m_t0h,m_t1l,m_t1h;
 	uint16_t m_tr;

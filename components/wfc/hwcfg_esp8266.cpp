@@ -10,7 +10,7 @@
  * Copyright: 2018-2023
  * Author   : Thomas Maier-Komor
  * 
- * Code generated on 2023-07-01, 22:37:39 (CET).
+ * Code generated on 2023-07-31, 21:35:41 (CET).
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -500,6 +500,7 @@ const char *disp_t_str(disp_t e)
 static const char *spidrv_t_names[] = {
 	"spidrv_ili9341",
 	"spidrv_invalid",
+	"spidrv_sdcard",
 	"spidrv_ssd1309",
 	"spidrv_sx1276",
 	"spidrv_xpt2046",
@@ -508,6 +509,7 @@ static const char *spidrv_t_names[] = {
 static spidrv_t spidrv_t_values[] = {
 	spidrv_ili9341,
 	spidrv_invalid,
+	spidrv_sdcard,
 	spidrv_ssd1309,
 	spidrv_sx1276,
 	spidrv_xpt2046,
@@ -520,6 +522,7 @@ size_t parse_ascii_spidrv_t(spidrv_t *v, const char *s)
 	static std::map<const char *,spidrv_t, cstr_less> namesmap = {
 		{ "spidrv_ili9341", spidrv_ili9341},
 		{ "spidrv_invalid", spidrv_invalid},
+		{ "spidrv_sdcard", spidrv_sdcard},
 		{ "spidrv_ssd1309", spidrv_ssd1309},
 		{ "spidrv_sx1276", spidrv_sx1276},
 		{ "spidrv_xpt2046", spidrv_xpt2046},
@@ -564,6 +567,8 @@ const char *spidrv_t_str(spidrv_t e)
 		return "spidrv_ili9341";
 	case spidrv_xpt2046:
 		return "spidrv_xpt2046";
+	case spidrv_sdcard:
+		return "spidrv_sdcard";
 	}
 	#endif // !CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 	#ifdef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
@@ -3239,6 +3244,10 @@ void I2CConfig::toASCII(stream &o, size_t indent) const
 		o << ".drv = " ;
 		o << i2cdrv_t_str(devices_drv(i));
 		o << ';';
+		ascii_indent(o,indent);
+		o << ".intr = " ;
+		o << (unsigned) devices_intr(i);
+		o << ';';
 		--indent;
 	}
 	--indent;
@@ -3569,6 +3578,12 @@ int I2CConfig::setByName(const char *name, const char *value)
 						set_devices_drv(x,ev);
 						return r;
 					}
+				}
+			}
+			if (!strcmp("intr",idxe)) {
+				if (eptr != value) {
+					set_devices_intr(x,(uint8_t)ull);
+					return 0;
 				}
 			}
 			return -151;

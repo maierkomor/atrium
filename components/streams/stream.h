@@ -60,13 +60,18 @@ class stream
 	stream &operator << (uint32_t v)
 	{ return operator << ((uint64_t) v); }
 
-#if defined CONFIG_IDF_TARGET_ESP32C3
+#if defined ESP32 && IDF_VERSION < 50
+	stream &operator << (size_t v)
+	{ return operator << ((uint64_t) v); }
+#endif
+
+#if IDF_VERSION >= 50
 	stream &operator << (int v)
 	{ return operator << ((int64_t) v); }
 
 	stream &operator << (unsigned v)
 	{ return operator << ((uint64_t) v); }
-#endif 
+#endif
 
 	stream &operator << (double);
 

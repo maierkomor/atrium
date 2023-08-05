@@ -61,6 +61,10 @@ elif  [ "$CONFIG_IDF_TARGET_ESP32C3" == "y" ]; then
 	export IDF_PATH=$IDF_ESP32
 	export ESP_FAM=32
 	export IDF_TARGET=esp32c3
+elif  [ "$CONFIG_IDF_TARGET_ESP32C6" == "y" ]; then
+	export IDF_PATH=$IDF_ESP32
+	export ESP_FAM=32
+	export IDF_TARGET=esp32c6
 elif  [ "$CONFIG_IDF_TARGET_ESP8266" == "y" ]; then
 	make PROJECT=$1 $2
 	exit

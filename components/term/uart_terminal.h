@@ -40,7 +40,11 @@ class UartTerminal : public Terminal
 
 	private:
 	int8_t m_uart_rx, m_uart_tx;
+#if IDF_VERSION >= 50
+	char m_name[14];
+#else
 	char m_name[10];
+#endif
 };
 
 extern "C"

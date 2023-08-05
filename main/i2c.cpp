@@ -45,7 +45,7 @@
 
 
 #ifdef CONFIG_I2C_XDEV 
-static inline void i2c_scan_device(uint8_t bus, uint8_t addr, i2cdrv_t drv)
+static inline void i2c_scan_device(uint8_t bus, uint8_t addr, i2cdrv_t drv, int8_t intr)
 {
 	switch (drv) {
 #ifdef CONFIG_PCF8574
@@ -105,7 +105,10 @@ static inline void i2c_scan_device(uint8_t bus, uint8_t addr, i2cdrv_t drv)
 #endif
 #ifdef CONFIG_SSD1306
 	case i2cdrv_ssd1306:
-		SSD1306::create(bus,addr);
+		if (addr)
+			SSD1306::create(bus,addr);
+		else
+			ssd1306_scan(bus);
 		break;
 #endif
 	default:
@@ -130,7 +133,15 @@ void i2c_setup(void)
 				log_warn(TAG,"error %d",r);
 #ifdef CONFIG_I2C_XDEV 
 			for (i2cdev_t d : c.devices()) {
-				i2c_scan_device(bus,d & 0xff,(i2cdrv_t)((d >> 8) & 0xff));
+				uint8_t addr = d & 0xff;
+				uint8_t intr = (d >> 16) & 0x3f;
+				if (i2cdrv_t drv = (i2cdrv_t)((d >> 8) & 0xff))
+					i2c_scan_device(bus,addr,drv,intr-1);
+				if (intr && addr) {
+					I2CDevice *dev = I2CDevice::getByAddr(addr);
+					if (dev)
+						dev->addIntr(intr-1);
+				}
 			}
 #endif
 		}

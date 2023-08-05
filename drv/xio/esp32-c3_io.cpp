@@ -18,7 +18,7 @@
 
 #include <sdkconfig.h>
 
-#if defined CONFIG_IDF_TARGET_ESP32C3 && defined CONFIG_IOEXTENDERS
+#if (defined CONFIG_IDF_TARGET_ESP32C3 || defined CONFIG_IDF_TARGET_ESP32C6) && defined CONFIG_IOEXTENDERS
 
 #include "coreio.h"
 #include "log.h"
@@ -26,7 +26,7 @@
 #include "soc/gpio_periph.h"
 #include <errno.h>
 #include <driver/gpio.h>
-
+#include <rom/gpio.h>
 
 #define TAG MODULE_GPIO
 

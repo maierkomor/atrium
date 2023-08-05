@@ -38,6 +38,9 @@
 #elif defined CONFIG_IDF_TARGET_ESP32C3
 #include <driver/ledc.h>
 #define SPEED_MODE LEDC_LOW_SPEED_MODE
+#elif defined CONFIG_IDF_TARGET_ESP32C6
+#include <driver/ledc.h>
+#define SPEED_MODE LEDC_LOW_SPEED_MODE
 #else
 #error missing implementation
 #endif
@@ -242,7 +245,7 @@ unsigned dimmer_fade(void *)
 			log_warn(TAG,"set duty %d",e);
 		if (esp_err_t e = pwm_start())
 			log_warn(TAG,"pwm start %d",e);
-#elif defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
+#elif defined ESP32
 		ledc_set_duty(SPEED_MODE,d->channel,v);
 		ledc_update_duty(SPEED_MODE,d->channel);
 #else
@@ -458,7 +461,7 @@ void dimmer_setup()
 		duties[nch] = (conf.config() & 1) ? DIM_MAX : 0;
 		dim->duty = duties[nch];
 		++nch;
-#elif defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
+#elif defined ESP32
 		dim->channel = (ledc_channel_t) conf.pwm_ch();
 		gpio_set_direction(dim->gpio,GPIO_MODE_OUTPUT);
 		ledc_channel_config_t ch;

@@ -20,7 +20,7 @@
 #define DISPLAY_H
 
 #include "ledcluster.h"
-#include "fonts_generic.h"
+#include "fonts.h"
 
 class MatrixDisplay;
 class SegmentDisplay;
@@ -234,7 +234,7 @@ struct MatrixDisplay : public TextDisplay
 	// clip x/y-low/high
 	uint16_t m_clxl = 0, m_clxh = 0xffff, m_clyl = 0, m_clyh = 0xffff;
 #endif
-	fontid_t m_font = font_native;
+	const Font *m_font = 0;
 	colorspace_t m_colorspace;
 	int32_t m_colfg, m_colbg;
 };

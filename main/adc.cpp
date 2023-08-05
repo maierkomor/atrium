@@ -25,10 +25,22 @@
 #include "globals.h"
 #include "hwcfg.h"
 #include "log.h"
+#include "profiling.h"
 #include "ringbuf.h"
 #include "terminal.h"
 
+#if IDF_VERSION > 50
+#include <esp_adc/adc_oneshot.h>
+#include <esp_adc/adc_cali_scheme.h>
+#ifdef CONFIG_CORETEMP
+#include <driver/temperature_sensor.h>
+#include <hal/adc_ll.h>
+//#include <hal/temperature_sensor_ll.h>
+#include <soc/temperature_sensor_periph.h>
+#endif
+#else
 #include <driver/adc.h>
+#endif
 
 #ifdef CONFIG_LUA
 #include "luaext.h"
@@ -42,8 +54,11 @@ extern "C" {
 #define TAG MODULE_ADC
 
 
-#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
+#ifdef ESP32
 #include <driver/rtc_io.h>
+#if IDF_VERSION >= 50
+#define DEFAULT_ADC_WIDTH ((adc_bitwidth_t)(SOC_ADC_DIGI_MAX_BITWIDTH))
+#else
 #define DEFAULT_ADC_WIDTH ((adc_bits_width_t)((int)ADC_WIDTH_MAX-1))
 #if defined CONFIG_IDF_TARGET_ESP32
 #include <soc/sens_reg.h>
@@ -56,58 +71,95 @@ extern "C" {
 #elif defined CONFIG_IDF_TARGET_ESP32C3
 #include <driver/temp_sensor.h>
 #endif
+#endif
 
 
 struct AdcSignal : public EnvObject
 {
-	AdcSignal(const char *name, adc_unit_t u, adc_channel_t ch)
-	: EnvObject(name)
-	, unit(u)
-	, channel(ch)
-	, raw("raw")
-	, volt("voltage","mV")
-	, phys("physical","","%4.0f")
-	{
-		add(&raw);
-		add(&volt);
-		add(&phys);
-	}
-
+#if IDF_VERSION >= 50
+	AdcSignal(const char *name, adc_oneshot_unit_handle_t h, adc_unit_t u, adc_channel_t ch, adc_atten_t a, unsigned w)
+#else
 	AdcSignal(const char *name, adc_unit_t u, adc_channel_t ch, unsigned w)
+#endif
 	: EnvObject(name)
+#if IDF_VERSION >= 50
+	, hdl(h)
+#endif
 	, unit(u)
 	, channel(ch)
-	, ringbuf(new SlidingWindow<uint16_t>(w))
+	, atten(a)
+	, ringbuf(w > 1 ? new SlidingWindow<uint16_t>(w) : 0)
 	, raw("raw")
 	, volt("voltage","mV")
 	, phys("physical")
 	{
 		add(&raw);
 		add(&volt);
+
+#if IDF_VERSION >= 50
+		cali = 0;
+#if ADC_CALI_SCHEME_CURVE_FITTING_SUPPORTED
+		log_dbug(TAG, "calibration scheme is curve fitting");
+		adc_cali_curve_fitting_config_t cali_config = {
+			.unit_id = unit,
+			.atten = atten,
+			.bitwidth = ADC_BITWIDTH_DEFAULT,
+		};
+		if (esp_err_t ret = adc_cali_create_scheme_curve_fitting(&cali_config, &cali))
+			log_warn(TAG,"calibration failure: %s",esp_err_to_name(ret));
+#elif ADC_CALI_SCHEME_LINE_FITTING_SUPPORTED
+		log_dbug(TAG, "calibration scheme is line fitting");
+		adc_cali_line_fitting_config_t cali_config = {
+			.unit_id = unit,
+			.atten = atten,
+			.bitwidth = ADC_BITWIDTH_DEFAULT,
+#if CONFIG_IDF_TARGET_ESP32
+			.default_vref = ADC_CALI_LINE_FITTING_EFUSE_VAL_DEFAULT_VREF,
+#endif
+		};
+		if (esp_err_t ret = adc_cali_create_scheme_line_fitting(&cali_config, &cali))
+			log_warn(TAG,"calibration failure: %s",esp_err_to_name(ret));
+#endif
+#endif
 	}
 
 	void set(float x)
 	{
-		raw.set(x);
 		float v = 0;
+		raw.set(x);
+#if IDF_VERSION >= 50
+		if (cali) {
+			int voltage;
+			if (esp_err_t e = adc_cali_raw_to_voltage(cali, (int)x, &voltage))
+				log_warn(TAG,"converting ADC%u,%u: %s",unit,channel,esp_err_to_name(e));
+			else
+				v = voltage;
+		}
+		volt.set(v);
+#else
 		switch (atten) {
 		case ADC_ATTEN_DB_0:
-			v = x * 950.0 / 4095.0;
+//			v = x * 950.0 / 4095.0;
+			v = x * 750.0 / 4095.0;
 			break;
 		case ADC_ATTEN_DB_2_5:
-			v = x * 1250.0 / 4095.0;
+//			v = x * 1250.0 / 4095.0;
+			v = x * 1050.0 / 4095.0;
 			break;
 		case ADC_ATTEN_DB_6:
-			v = x * 1750.0 / 4095.0;
+//			v = x * 1750.0 / 4095.0;
+			v = x * 1300.0 / 4095.0;
 			break;
 		case ADC_ATTEN_DB_11:
-			v = x * 2450.0 / 4095.0;
+//			v = x * 2450.0 / 4095.0;
+			v = x * 2500.0 / 4095.0;
 			break;
 		default:
 			break;
 		}
 		volt.set(v);
-		phys.set(x*scale+offset);
+#endif
+		phys.set(v*scale+offset);
 	}
 
 	void addPhysical(float s, float o, const char *dim)
@@ -118,6 +170,10 @@ struct AdcSignal : public EnvObject
 		add(&phys);
 	}
 
+#if IDF_VERSION >= 50
+	adc_oneshot_unit_handle_t hdl;
+	adc_cali_handle_t cali;
+#endif
 	adc_unit_t unit;
 	adc_channel_t channel;
 	adc_atten_t atten;
@@ -130,16 +186,28 @@ struct AdcSignal : public EnvObject
 
 static unsigned NumAdc = 0;
 static AdcSignal **Adcs = 0;
+#if IDF_VERSION >= 50
+typedef adc_bitwidth_t adc_bits_width_t;
+#else
 static adc_bits_width_t U2Width = DEFAULT_ADC_WIDTH;
+#endif
 
+//#if IDF_VERSION < 50 && defined CONFIG_IDF_TARGET_ESP32
 #if defined CONFIG_IDF_TARGET_ESP32
+
 static EnvNumber *Hall = 0;
 
 
 static void hall_sample(void *)
 {
 	if (Hall) {
+#if IDF_VERSION >= 50
+		// TODO not implemented
+		abort();
+		int32_t v = 0;
+#else
 		int32_t v = hall_sensor_read();
+#endif
 		Hall->set(v);
 	}
 }
@@ -149,13 +217,18 @@ void hall_setup()
 {
 	if (!HWConf.has_adc() || HWConf.adc().hall_name().empty())
 		return;
+#if IDF_VERSION >= 50
+//	adc_ll_hall_enable();
+	// TODO implement
+#else
 	if (esp_err_t e = adc1_config_width(DEFAULT_ADC_WIDTH)) {
 		log_error(TAG,"set hall sensor to 12bits: %s",esp_err_to_name(e));
-	} else {
-		Hall = new EnvNumber(HWConf.adc().hall_name().c_str());
-		RTData->add(Hall);
-		action_add("hall!sample",hall_sample,Hall,"take an hall-sensor sample");
+		return;
 	}
+#endif
+	Hall = new EnvNumber(HWConf.adc().hall_name().c_str());
+	RTData->add(Hall);
+	action_add("hall!sample",hall_sample,Hall,"take an hall-sensor sample");
 }
 
 
@@ -182,6 +255,14 @@ static void adc_sample_cb(void *arg)
 	AdcSignal *s = (AdcSignal*)arg;
 	int sample = 0;
 	assert(s);
+#if IDF_VERSION >= 50
+	int raw;
+	if (esp_err_t e = adc_oneshot_read(s->hdl, s->channel, &raw)) {
+		log_warn(TAG,"reading ADC%u,%u: %s",s->unit,s->channel,esp_err_to_name(e));
+		return;
+	}
+	sample = raw;
+#else
 	if (s->unit == 1) {
 		sample = adc1_get_raw((adc1_channel_t)s->channel);
 	} else if (s->unit == 2) {
@@ -190,6 +271,7 @@ static void adc_sample_cb(void *arg)
 			return;
 		}
 	}
+#endif
 	if (s->ringbuf) {
 		s->ringbuf->put(sample);
 		float a = s->ringbuf->avg();
@@ -210,11 +292,94 @@ static unsigned adc_cyclic_cb(void *arg)
 }
 
 
+#ifdef CONFIG_CORETEMP
+
+#if IDF_VERSION >= 50
+static temperature_sensor_handle_t TSensHdl = 0;
+
+// BEGIN import from IDF private header for BUG workaround
+typedef enum { TEMP_SENSOR_FSM_INIT, TEMP_SENSOR_FSM_ENABLE, } temp_sensor_fsm_t;
+struct temperature_sensor_obj_t {
+	const temperature_sensor_attribute_t *tsens_attribute;
+	temp_sensor_fsm_t  fsm;
+	temperature_sensor_clk_src_t clk_src;
+#if SOC_TEMPERATURE_SENSOR_INTR_SUPPORT
+	intr_handle_t temp_sensor_isr_handle;
+	temperature_thres_cb_t threshold_cbs;
+	void *cb_user_arg;
+#endif // SOC_TEMPERATURE_SENSOR_INTR_SUPPORT
+};
+
+static int8_t s_temperature_regval_2_celsius(temperature_sensor_handle_t tsens, uint8_t regval)
+{
+	return TEMPERATURE_SENSOR_LL_ADC_FACTOR * regval - TEMPERATURE_SENSOR_LL_DAC_FACTOR * tsens->tsens_attribute->offset - TEMPERATURE_SENSOR_LL_OFFSET_FACTOR;
+}
+// END of import from IDF private header for BUG workaround
+
+// IDF BUG workaround by NoNullptr from github
+static inline uint32_t temperature_sensor_ll_get_raw_value_bugfix(void)
+{
+	if (!SENS.sar_peri_clk_gate_conf.tsens_clk_en ||
+			!SENS.sar_tctrl2.tsens_xpd_force ||
+			!SENS.sar_tctrl.tsens_power_up_force ||
+			!SENS.sar_tctrl.tsens_power_up ||
+			!SENS.sar_tctrl.tsens_dump_out
+	   ) {
+s:              SENS.sar_peri_clk_gate_conf.tsens_clk_en = true;
+		SENS.sar_tctrl2.tsens_xpd_force = true;
+		SENS.sar_tctrl.tsens_power_up_force = true;
+		SENS.sar_tctrl.tsens_power_up = true;
+		vTaskDelay(pdMS_TO_TICKS(10));
+	}
+	SENS.sar_tctrl.tsens_dump_out = 1;
+	while (!SENS.sar_tctrl.tsens_ready) {
+		if (!SENS.sar_peri_clk_gate_conf.tsens_clk_en ||
+				!SENS.sar_tctrl2.tsens_xpd_force ||
+				!SENS.sar_tctrl.tsens_power_up_force ||
+				!SENS.sar_tctrl.tsens_power_up ||
+				!SENS.sar_tctrl.tsens_dump_out
+		   ) {
+			goto s;
+		}
+	}
+	SENS.sar_tctrl.tsens_dump_out = 0;
+	return SENS.sar_tctrl.tsens_out;
+}
+
+static unsigned temp_cyclic(void *arg)
+{
+	PROFILE_FUNCTION();
+#if 1	// IDF still buggy?
+	uint32_t raw = temperature_sensor_ll_get_raw_value_bugfix();
+	EnvNumber *t = (EnvNumber *) arg;
+	t->set(s_temperature_regval_2_celsius(TSensHdl,raw));
+#else
+	float celsius;
+	if (0 == temperature_sensor_get_celsius(TSensHdl,&celsius)) {
+		EnvNumber *t = (EnvNumber *) arg;
+		t->set(celsius);
+	}
+#endif
+	return 200;
+}
+
+
+void temp_sensor_setup()
+{
+	log_info(TAG,"temperature sensor setup");
+	temperature_sensor_config_t cfg = TEMPERATURE_SENSOR_CONFIG_DEFAULT(10,60);
+	temperature_sensor_install(&cfg,&TSensHdl);
+	EnvNumber *t = RTData->add("core-temperature",NAN,"\u00b0C","%4.1f");
+	temperature_sensor_enable(TSensHdl);
+	cyclic_add_task("coretemp",temp_cyclic,t,0);
+}
+
+
+#elif defined CONFIG_IDF_TARGET_ESP32C3
 // S2 support seems to be broken
 // S3 had trouble, too - what config is causing this issue?
 //#if defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
 //#if defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
-#if defined CONFIG_IDF_TARGET_ESP32C3
 static unsigned temp_cyclic(void *arg)
 {
 	float celsius;
@@ -238,9 +403,8 @@ void temp_sensor_setup()
 		log_warn(TAG,"temperature sensor init failed");
 	}
 }
-#else
-#define temp_sensor_setup()
 #endif
+#endif // CONFIG_CORETEMP
 
 
 static AdcSignal *getAdc(const char *arg)
@@ -301,16 +465,26 @@ static const char *adc_sample(Terminal &t, const char *arg)
 
 void adc_setup()
 {
+#ifdef CONFIG_CORETEMP
 	temp_sensor_setup();
+#endif
 	assert(Adcs == 0);
 	if (!HWConf.has_adc())
 		return;
 	const auto &conf = HWConf.adc();
-#ifndef CONFIG_IDF_TARGET_ESP32C3
+	adc_bitwidth_t w1 = ADC_BITWIDTH_DEFAULT;
+	adc_bitwidth_t w2 = ADC_BITWIDTH_DEFAULT;
+#if IDF_VERSION >= 50
+	if (conf.has_adc1_bits())
+		w1 = (adc_bitwidth_t) conf.adc1_bits();
+	if (conf.has_adc2_bits())
+		w2 = (adc_bitwidth_t) conf.adc2_bits();
+#else
 	if (conf.adc1_bits()) {
 		if (esp_err_t e = adc_set_data_width(ADC_UNIT_1,(adc_bits_width_t)conf.adc1_bits()))
 			log_warn(TAG,"set adc1 data width %dbits: %s",conf.adc1_bits()+9,esp_err_to_name(e));
 	}
+#ifndef CONFIG_IDF_TARGET_ESP32C3
 	if (conf.has_adc2_bits()) {
 		if (esp_err_t e = adc_set_data_width(ADC_UNIT_2,(adc_bits_width_t)conf.adc2_bits()))
 			log_warn(TAG,"set adc2 data width %dbits: %s",conf.adc2_bits()+9,esp_err_to_name(e));
@@ -320,19 +494,26 @@ void adc_setup()
 		U2Width = DEFAULT_ADC_WIDTH;
 	}
 #endif
+#endif
 	unsigned num = 0;
 	NumAdc = conf.channels_size();
 	log_info(TAG,"%u channels",NumAdc);
 	Adcs = (AdcSignal **) malloc(sizeof(AdcSignal*)*NumAdc);
 	bzero(Adcs,sizeof(AdcSignal*)*NumAdc);
+	adc_oneshot_unit_handle_t hdl1 = 0, hdl2 = 0;
 	for (const AdcChannel &c : conf.channels()) {
 		unsigned u = c.unit();
 		if ((u < 1) || (u > 2)) {
 			log_warn(TAG,"invalid unit %u",u);
 			continue;
 		}
+		adc_unit_t unit = u == 1 ? ADC_UNIT_1 : ADC_UNIT_2;
 		int ch = c.ch();
+#if IDF_VERSION >= 50
+		if (ch >= SOC_ADC_CHANNEL_NUM(unit)) {
+#else
 		if (((u == 1) && (ch >= ADC1_CHANNEL_MAX)) || ((u == 2) && (ch >= ADC2_CHANNEL_MAX))) {
+#endif
 			log_warn(TAG,"invalid channel %u",ch);
 			continue;
 		}
@@ -344,7 +525,41 @@ void adc_setup()
 			log_dbug(TAG,"created name %s",name);
 		}
 		adc_atten_t atten = (adc_atten_t)c.atten();
-		log_dbug(TAG,"init %s on ADC%u.%u, atten %u",n,u,ch,atten);
+		int gpio = -1;
+		adc_oneshot_channel_to_io(unit,(adc_channel_t)ch,&gpio);
+		log_info(TAG,"init %s on ADC%u.%u at GPIO%u, atten %u",n,u,ch,gpio,atten);
+#if IDF_VERSION >= 50
+		adc_oneshot_unit_handle_t hdl = 0;
+		adc_oneshot_unit_init_cfg_t ucfg;
+		ucfg.unit_id = unit;
+//		ucfg.clk_src = ADC_DEFAULT_CLOCK;
+		ucfg.clk_src = (adc_oneshot_clk_src_t)0;
+		ucfg.ulp_mode = ADC_ULP_MODE_DISABLE;
+		if (u == 1) {
+			if (hdl1 == 0) {
+				if (esp_err_t e = adc_oneshot_new_unit(&ucfg,&hdl1)) {
+					log_warn(TAG,"ADC unit %d: %s",u,esp_err_to_name(e));
+					continue;
+				}
+			}
+			hdl = hdl1;
+		} else if (u == 2) {
+			if (hdl2 == 0) {
+				if (esp_err_t e = adc_oneshot_new_unit(&ucfg,&hdl2)) {
+					log_warn(TAG,"ADC unit %d: %s",u,esp_err_to_name(e));
+					continue;
+				}
+			}
+			hdl = hdl2;
+		} else {
+			abort();
+		}
+		adc_oneshot_chan_cfg_t cc;
+		cc.atten = atten;
+		cc.bitwidth = u == 1 ? w1 : w2;
+		adc_oneshot_config_channel(hdl,(adc_channel_t)ch,&cc);
+		Adcs[num] = new AdcSignal(n,hdl,(adc_unit_t)u,(adc_channel_t)ch,atten,c.window());
+#else
 		if (u == 1) {
 			if (esp_err_t e = adc1_config_channel_atten((adc1_channel_t)ch,atten)) {
 				log_warn(TAG,"set ADC1.%u atten: %s",ch,esp_err_to_name(e));
@@ -360,11 +575,8 @@ void adc_setup()
 				continue;
 			}
 		}
-		if (auto w = c.window()) {
-			Adcs[num] = new AdcSignal(n,(adc_unit_t)u,(adc_channel_t)ch,w);
-		} else {
-			Adcs[num] = new AdcSignal(n,(adc_unit_t)u,(adc_channel_t)ch);
-		}
+		Adcs[num] = new AdcSignal(n,(adc_unit_t)u,(adc_channel_t)ch,c.window());
+#endif
 		Adcs[num]->atten = atten;
 		if (c.has_scale() || c.has_offset() || c.has_dim()) {
 			Adcs[num]->addPhysical(c.scale(),c.offset(),c.dim().c_str());
@@ -377,24 +589,23 @@ void adc_setup()
 			action_add(concat(n,"!sample"),adc_sample_cb,Adcs[num],"take an ADC sample");
 		}
 		++num;
-		log_info(TAG,"%s on ADC%u.%u",n,u,ch);
 	}
 	NumAdc = num;
+#if IDF_VERSION < 50
 	if (num)
 		adc_power_acquire();
 #ifndef CONFIG_IDF_TARGET_ESP32C3
 	if (esp_err_t e = adc_set_data_inv(ADC_UNIT_1,true))
 		log_warn(TAG,"set non-inverting mode on ADC1: %s",esp_err_to_name(e));
 #endif
+#endif
 }
 
 
 const char *adc(Terminal &term, int argc, const char *args[])
 {
-	if (argc == 1) {
-		term.printf("adc is %sinitialized\n",Adcs ? "" : "not ");
-		return 0;
-	}
+	if (argc == 1)
+		return adc_print(term,0);;
 #if 0 // for debugging purposes
 	term.printf("read ctrl 0x%lx\n",REG_READ(SENS_SAR_READ_CTRL_REG));
 	term.printf("sar start 0x%lx\n",REG_READ(SENS_SAR_START_FORCE_REG));

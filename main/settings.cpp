@@ -37,8 +37,11 @@
 
 #include <esp_ota_ops.h>
 #include <esp_system.h>
+#include <esp_netif.h>
 #include <esp_wifi.h>
-#include <sstream>
+#if IDF_VERSION >= 50
+#include <rom/ets_sys.h>
+#endif
 
 #include <lwip/err.h>
 #include <lwip/dns.h>
@@ -57,11 +60,9 @@ void esp_yield(void);
 #endif
 
 
-//#include <nvs.h>
-//#include <nvs_flash.h>
-#include <esp_netif.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sstream>
 
 #include "settings.h"
 #include "dht.h"
@@ -474,9 +475,16 @@ static void set_cfg_err(uint8_t v)
 static void initNodename()
 {
 	uint8_t mac[6];
-	esp_err_t e = esp_wifi_get_mac(WIFI_IF_STA,mac);
+	esp_err_t e;
+#if IDF_VERSION >= 50
+	e = ESP_ERR_NOT_FOUND;
+	if (esp_netif_t *nif = esp_netif_next(0))
+		e = esp_netif_get_mac(nif,mac);
+#else
+	e = esp_wifi_get_mac(WIFI_IF_STA,mac);
 	if (ESP_OK != e)
 		e = esp_wifi_get_mac(WIFI_IF_AP,mac);
+#endif
 	if (ESP_OK != e) {
 		log_warn(TAG,"no MAC address: %s",esp_err_to_name(e));
 		uint32_t r = esp_random();
@@ -514,7 +522,9 @@ void cfg_clear_nodecfg()
 void cfg_factory_reset(void *)
 {
 	nvm_erase_all();
+#if IDF_VERSION < 50
 	esp_wifi_restore();
+#endif
 	esp_restart();
 }
 

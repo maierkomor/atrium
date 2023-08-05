@@ -33,6 +33,7 @@
 #include <driver/gpio.h>
 #include <driver/spi_master.h>
 #include <esp_timer.h>
+#include <rom/ets_sys.h>
 
 
 #define REG_FIFO			0x00

@@ -56,8 +56,14 @@
 #include <esp_system.h>
 #include <esp_ota_ops.h>
 #include <esp_partition.h>
-#include <esp_wifi.h>
 #include <esp_netif.h>
+#include <esp_wifi.h>
+
+#if IDF_VERSION >= 50
+#include <spi_flash_mmap.h>
+#include <esp_chip_info.h>
+#include <rom/ets_sys.h>
+#endif
 
 #define TAG MODULE_SHELL
 
@@ -74,15 +80,6 @@
 #ifdef CONFIG_FATFS
 #include <ff.h>
 #endif
-
-#ifndef CONFIG_ROMFS
-#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
-#include <esp_spi_flash.h>
-#else
-#include <spi_flash.h>
-#endif
-#endif
-
 #if defined CONFIG_FATFS || defined CONFIG_SPIFFS
 #define HAVE_FS
 #endif
@@ -111,7 +108,7 @@ extern "C" {
 #if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
 #if IDF_VERSION >= 40
 extern "C" {
-#include <esp32/clk.h>
+//#include <esp32/clk.h>
 }
 #include <soc/rtc.h>
 #else
@@ -799,14 +796,20 @@ static const char *shell_xxd(Terminal &term, int argc, const char *args[])
 
 static const char *shell_reboot(Terminal &term, int argc, const char *args[])
 {
+#if CONFIG_MQTT
 	mqtt_stop();
+#endif
+#if CONFIG_SYSLOG
 	syslog_stop();
+#endif
 	term.println("rebooting...");
 	term.sync();
 	term.disconnect();
 	vTaskDelay(400);
+#if IDF_VERSION < 50
 #ifndef CONFIG_IDF_TARGET_ESP8266
 	esp_unregister_shutdown_handler((shutdown_handler_t)esp_wifi_stop);
+#endif
 #endif
 	esp_restart();
 	return 0;
@@ -854,9 +857,15 @@ static const char *part(Terminal &term, int argc, const char *args[])
 			return "Invalid argument #1.";
 		if (esp_partition_iterator_t i = esp_partition_find(ESP_PARTITION_TYPE_DATA,ESP_PARTITION_SUBTYPE_ANY,args[2])) {
 			if (const esp_partition_t *p = esp_partition_get(i)) {
+#if IDF_VERSION >= 50
+				if (esp_err_t e = esp_partition_erase_range(p,0,p->size)) {
+					return esp_err_to_name(e);
+				}
+#else
 				if (esp_err_t e = spi_flash_erase_range(p->address,p->size)) {
 					return esp_err_to_name(e);
 				}
+#endif
 				return 0;
 			}
 		}
@@ -924,11 +933,26 @@ const char *mac(Terminal &term, int argc, const char *args[])
 		return "Invalid argument #1.";
 	} else if (argc == 2) {
 		if (args[1][1] == 'l') {
+#if IDF_VERSION >= 50
+
+			esp_netif_t *nif = esp_netif_next(0);
+			while (nif) {
+				char name[8];
+				name[0] = 0;
+				if (esp_netif_get_mac(nif,mac)) {
+				} else if (esp_netif_get_netif_impl_name(nif,name)) {
+				} else {
+					print_mac(term,name,mac);
+				}
+				nif = esp_netif_next(nif);
+			}
+#else
 			if (ESP_OK == esp_wifi_get_mac(WIFI_IF_AP,mac))
 				print_mac(term,"softap",mac);
 			if (ESP_OK == esp_wifi_get_mac(WIFI_IF_STA,mac))
 				print_mac(term,"station",mac);
 			return 0;
+#endif
 		}
 	}
 	if (0 == term.getPrivLevel())
@@ -2079,7 +2103,11 @@ static const char *cpu(Terminal &term, int argc, const char *args[])
 		return "Invalid number of arguments.";
 	}
 	if (argc == 1) {
-		int f = esp_clk_cpu_freq();
+#if IDF_VERSION >= 50
+		uint32_t mhz = ets_get_cpu_frequency();
+#else
+//		uint32_t f = ets_get_cpu_freq();
+		int32_t f = esp_clk_cpu_freq();
 		unsigned mhz;
 		switch (f) {
 #ifdef RTC_CPU_FREQ_80M
@@ -2110,6 +2138,7 @@ static const char *cpu(Terminal &term, int argc, const char *args[])
 		default:
 			mhz = f/1000000;
 		}
+#endif
 		esp_chip_info_t ci;
 		esp_chip_info(&ci);
 		term.printf("ESP%u (rev %d) with %d core%s @ %uMHz"
@@ -2363,6 +2392,40 @@ static int flashtest(Terminal &term, int argc, const char *args[])
 */
 
 
+#if IDF_VERSION >= 50
+static void print_ipinfo(Terminal &t, esp_netif_t *itf, esp_netif_ip_info_t *i)
+{
+	char name[8], ipstr[32],gwstr[32];
+	uint8_t mac[6];
+	uint8_t m = 0;
+	uint32_t nm = ntohl(i->netmask.addr);
+	while (nm & (1<<(31-m)))
+		++m;
+	if (esp_netif_get_netif_impl_name(itf,name))
+		return;
+	t.printf("if%d/%s (%s):\n",esp_netif_get_netif_impl_index(itf),name,esp_netif_get_desc(itf));
+	if (ESP_OK == esp_netif_get_mac(itf,mac))
+		t.printf("\tmac       : %02x:%02x:%02x:%02x:%02x:%02x\n",
+			mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
+	esp_netif_ip_info_t ipconfig;
+	if (ESP_OK == esp_netif_get_ip_info(itf,&ipconfig)) {
+		ip4addr_ntoa_r((ip4_addr_t *)&i->ip.addr,ipstr,sizeof(ipstr));
+		ip4addr_ntoa_r((ip4_addr_t *)&i->gw.addr,gwstr,sizeof(gwstr));
+		t.printf("\tipv4      : %s/%d, gw: %s, %s\n",ipstr,m,gwstr,esp_netif_is_netif_up(itf) ? "up":"down");
+	}
+#if defined CONFIG_LWIP_IPV6
+	esp_ip6_addr_t ip6;
+	if (ESP_OK == esp_netif_get_ip6_linklocal(itf,&ip6)) {
+		ip6addr_ntoa_r((ip6_addr_t*)&ip6,ipstr,sizeof(ipstr));
+		t.printf("\tlink-local: %s\n",ipstr);
+	}
+	if (ESP_OK == esp_netif_get_ip6_global(itf,&ip6)) {
+		ip6addr_ntoa_r((ip6_addr_t*)&ip6,ipstr,sizeof(ipstr));
+		t.printf("\tglobal    : %s\n",ipstr);
+	}
+#endif
+}
+#else
 static void print_ipinfo(Terminal &t, const char *itf, tcpip_adapter_ip_info_t *i, bool up)
 {
 	uint8_t m = 0;
@@ -2372,8 +2435,9 @@ static void print_ipinfo(Terminal &t, const char *itf, tcpip_adapter_ip_info_t *
 	char ipstr[32],gwstr[32];
 	ip4addr_ntoa_r((ip4_addr_t *)&i->ip.addr,ipstr,sizeof(ipstr));
 	ip4addr_ntoa_r((ip4_addr_t *)&i->gw.addr,gwstr,sizeof(gwstr));
-	t.printf("%s%s gw=%s %s\n",itf,ipstr,gwstr,up ? "up":"down");
+	t.printf("%s%s/%u gw=%s %s\n",itf,ipstr,m,gwstr,up ? "up":"down");
 }
+#endif
 
 
 static const char *ifconfig(Terminal &term, int argc, const char *args[])
@@ -2381,6 +2445,15 @@ static const char *ifconfig(Terminal &term, int argc, const char *args[])
 	if (argc != 1) {
 		return "Invalid number of arguments.";
 	}
+#if IDF_VERSION >= 50
+	esp_netif_t *nif = esp_netif_next(0);
+	while (nif) {
+		esp_netif_ip_info_t ipconfig;
+		if (ESP_OK == esp_netif_get_ip_info(nif,&ipconfig))
+			print_ipinfo(term, nif, &ipconfig);
+		nif = esp_netif_next(nif);
+	} 
+#else
 	tcpip_adapter_ip_info_t ipconfig;
 	if (ESP_OK == tcpip_adapter_get_ip_info(TCPIP_ADAPTER_IF_STA, &ipconfig))
 		print_ipinfo(term, "if0/sta ip=", &ipconfig, wifi_station_isup());
@@ -2396,6 +2469,7 @@ static const char *ifconfig(Terminal &term, int argc, const char *args[])
 	if (!ip6_addr_isany_val(IP6LL))
 		term.printf("if0/sta %s (link-local)\n", inet6_ntoa(IP6LL), wifi_station_isup());
 #endif
+#endif
 	return 0;
 }
 
@@ -2409,7 +2483,7 @@ static const char *version(Terminal &term, int argc, const char *args[])
 {
 	if (argc != 1)
 		return "Invalid number of arguments.";
-	int32_t s = (uint32_t) &LDTIMESTAMP;
+	time_t s = (uint32_t) &LDTIMESTAMP;
 	struct tm tm;
 	gmtime_r((time_t *)&s,&tm);
 	term.printf("Atrium Version %s\n"
@@ -2547,7 +2621,9 @@ ExeName ExeNames[] = {
 	{"lua",0,xluac,"run a lua script",lua_man},
 	{"luac",0,xluac,"compile lua script",luac_man},
 #endif
+#if IDF_VERSION < 50
 	{"mac",0,mac,"MAC addresses",mac_man},
+#endif
 	{"mem",0,mem,"RAM statistics",mem_man},
 #ifdef CONFIG_FATFS
 	{"mkdir",1,shell_mkdir,"make directory",0},

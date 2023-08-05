@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2021, Thomas Maier-Komor
+ *  Copyright (C) 2018-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -19,27 +19,29 @@
 #ifndef HDC1000_H
 #define HDC1000_H
 
+#include <sdkconfig.h>
+#include "env.h"
 #include "i2cdrv.h"
-
-#define HDC1000_ADDR (0x40<<1)
 
 class EnvNumber;
 
+// supports also HDC1080
 struct HDC1000 : public I2CDevice
 {
 	const char *drvName() const
-	{ return "hdc1000"; }
+	{ return m_drvname; }
 
 	int init();
 	void attach(class EnvObject *);
 	unsigned cyclic();
 
-	static HDC1000 *create(uint8_t bus);
+	static HDC1000 *create(uint8_t bus, uint8_t addr, uint16_t id);
+#ifdef CONFIG_I2C_XCMD
+	const char *exeCmd(struct Terminal &, int argc, const char **argv) override;
+#endif
 
 	protected:
-	explicit HDC1000(uint8_t port)
-	: I2CDevice(port,HDC1000_ADDR,drvName())
-	{ }
+	HDC1000(uint8_t port, uint8_t addr, const char *name);
 
 	static void trigger(void *);
 	static void trigger_humid(void *);
@@ -48,16 +50,21 @@ struct HDC1000 : public I2CDevice
 	bool sample();
 	bool read();
 	void handle_error();
-	int setSingle(bool);
+	void setHeater(bool on);
+	void setSingle(bool);
 	void setTemp(uint8_t data[]);
 	void setHumid(uint8_t data[]);
 
-	EnvNumber *m_temp = 0, *m_humid = 0;
+	const char *m_drvname;
+	EnvNumber m_temp, m_humid;
 	typedef enum { st_idle, st_readtemp, st_readhumid, st_readboth } state_t;
 	typedef enum { sm_none, sm_temp, sm_humid, sm_seq, sm_both } sample_t;
+	typedef enum { tres_14b = 0, tres_11b = (1<<10) } tres_t;
+	typedef enum { hres_14b = 0, hres_11b = 0x100, hres_8b = 0x200 } hres_t;
 	state_t m_state = st_idle;
 	sample_t m_sample = sm_none;
-	bool m_single;
+	bool m_cfgsynced = false;	// has the configuration been written to the device?
+	uint16_t m_cfg = 0x1000;	// reset value of device
 };
 
 

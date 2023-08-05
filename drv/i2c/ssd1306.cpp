@@ -24,7 +24,7 @@
 #include "log.h"
 #include "profiling.h"
 
-#include "fonts_ssd1306.h"
+//#include "fonts.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -153,7 +153,7 @@ void SSD1306::clear()
 }
 */
 
-
+/*
 uint8_t SSD1306::fontHeight() const
 {
 	switch (m_font) {
@@ -163,6 +163,7 @@ uint8_t SSD1306::fontHeight() const
 		return Fonts[m_font].yAdvance;
 	}
 }
+*/
 
 
 /*
@@ -184,7 +185,6 @@ uint16_t SSD1306::numLines() const
 {
 	return m_height/fontHeight();
 }
-*/
 
 
 int SSD1306::setFont(const char *fn)
@@ -205,6 +205,7 @@ int SSD1306::setFont(const char *fn)
 	}
 	return -1;
 }
+*/
 
 
 void SSD1306::flush()
@@ -480,6 +481,7 @@ void SSD1306::drawBitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const u
 		++idx;
 	}
 }
+*/
 
 
 static uint8_t getBits(const uint8_t *data, unsigned off, uint8_t numb)
@@ -496,12 +498,13 @@ static uint8_t getBits(const uint8_t *data, unsigned off, uint8_t numb)
 }
 
 
-int SSD1306::drawBitmap_ssd1306(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t *data)
+//int SSD1306::drawBitmap_ssd1306(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t *data)
+void SSD1306::drawBitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t *data, int32_t fg, int32_t bg)
 {
 	static const uint8_t masks[] = {0x1,0x3,0x7,0xf,0x1f,0x3f,0x7f};
 	unsigned len = w*h;
 	uint16_t bitoff = 0;
-	log_dbug(TAG,"drawBitmap_fast(%u,%u,%u,%u) %u/%u",x,y,w,h,len,len/8);
+	log_dbug(TAG,"SSD1306::drawBitmap(%u,%u,%u,%u) %u/%u",x,y,w,h,len,len/8);
 	for (uint8_t x0 = x; x0 < x+w; ++x0) {
 		uint8_t yoff = y;
 		uint8_t numb = h;
@@ -533,10 +536,10 @@ int SSD1306::drawBitmap_ssd1306(uint16_t x, uint16_t y, uint16_t w, uint16_t h, 
 			}
 		}
 	}
-	return 0;
+//	return 0;
 }
 
-
+/*
 int SSD1306::pClrPixel(uint16_t x, uint16_t y)
 {
 //	log_dbug(TAG,"clrPixel(%u,%u)",(unsigned)x,(unsigned)y);
@@ -750,6 +753,7 @@ SSD1306 *SSD1306::create(uint8_t bus, uint8_t addr)
 
 unsigned ssd1306_scan(uint8_t bus)
 {
+	log_dbug(TAG,"searching for SSD1306");
 	uint8_t cmd[] = { (0x3c << 1), CMD_NOP };
 	if (0 == i2c_write(bus,cmd,sizeof(cmd),1,1)) {
 		new SSD1306(bus,cmd[0]);

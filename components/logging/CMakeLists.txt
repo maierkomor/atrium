@@ -3,6 +3,6 @@
 #register_component()
 idf_component_register(
 	SRCS logging.c modules.c profiling.cpp xlog.cpp
-	REQUIRES netsvc streams term main esp_timer tinyusb
+	REQUIRES netsvc streams term main esp_timer #tinyusb
 	INCLUDE_DIRS .
 )

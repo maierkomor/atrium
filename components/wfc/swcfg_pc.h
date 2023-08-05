@@ -10,7 +10,7 @@
  * Copyright: 2018-2023
  * Author   : Thomas Maier-Komor
  * 
- * Code generated on 2023-07-01, 22:37:39 (CET).
+ * Code generated on 2023-07-31, 21:35:41 (CET).
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -1335,7 +1335,7 @@ class UartSettings : public Message
 	//! @return number of bytes parsed from value or negative value if an error occurs
 	int setByName(const char *param, const char *value);
 	
-	// optional uint8 port, id 1
+	// optional sint8 port, id 1
 	/*!
 	* Function for querying if port has been set.
 	* @return true if port is set.
@@ -1344,14 +1344,14 @@ class UartSettings : public Message
 	//! Function to reset port to its default/unset value.
 	void clear_port();
 	//! Get value of port.
-	uint8_t port() const;
+	int8_t port() const;
 	//! Set port using a constant reference
-	void set_port(uint8_t v);
+	void set_port(int8_t v);
 	/*!
 	* Provide mutable access to port.
 	* @return pointer to member variable of port.
 	*/
-	uint8_t *mutable_port();
+	int8_t *mutable_port();
 	
 	// optional unsigned baudrate, id 2
 	/*!
@@ -1472,15 +1472,15 @@ class UartSettings : public Message
 	Message *p_getMember(const char *s, unsigned n);
 	Message *p_getMember(const char *s, unsigned n, unsigned i);
 	//! unsigned baudrate, id 2
-	uint64_t m_baudrate = 0;
+	uint64_t m_baudrate = 115200;
 	//! unsigned tx_bufsize, id 6
 	uint64_t m_tx_bufsize = 0;
 	//! unsigned rx_bufsize, id 7
 	uint64_t m_rx_bufsize = 0;
 	//! uartcfg_t config, id 3
 	uartcfg_t m_config = 5;
-	//! uint8 port, id 1
-	uint8_t m_port = 0;
+	//! sint8 port, id 1
+	int8_t m_port = -1;
 	//! fixed8 rx_thresh, id 4
 	uint8_t m_rx_thresh = 0;
 	
@@ -5480,7 +5480,7 @@ inline void Influx::set_database(const std::string &v)
 
 inline size_t UartSettings::getMaxSize()
 {
-	// optional uint8 port, id 1 has maximum size 3
+	// optional sint8 port, id 1 has maximum size 3
 	// optional unsigned baudrate, id 2 has maximum size 11
 	// optional uartcfg_t config, id 3 has maximum size 3
 	// optional fixed8 rx_thresh, id 4 has maximum size 2
@@ -5489,14 +5489,14 @@ inline size_t UartSettings::getMaxSize()
 	return 41;
 }
 
-inline uint8_t UartSettings::port() const
+inline int8_t UartSettings::port() const
 {
 	return m_port;
 }
 
 inline bool UartSettings::has_port() const
 {
-	return 0 != (p_validbits & ((uint8_t)1U << 0));
+	return m_port != -1;
 }
 
 /*!
@@ -5505,23 +5505,17 @@ inline bool UartSettings::has_port() const
  */
 inline void UartSettings::clear_port()
 {
-	p_validbits &= ~((uint8_t)1U << 0);
-	m_port = 0;
+	m_port = -1;
 }
 
-inline uint8_t *UartSettings::mutable_port()
+inline int8_t *UartSettings::mutable_port()
 {
-	if (0 == (p_validbits & ((uint8_t)1U << 0))) {
-		p_validbits |= ((uint8_t)1U << 0);
-		m_port = 0;
-	}
 	return &m_port;
 }
 
-inline void UartSettings::set_port(uint8_t v)
+inline void UartSettings::set_port(int8_t v)
 {
 	m_port = v;
-	p_validbits |= ((uint8_t)1U << 0);
 }
 
 
@@ -5533,7 +5527,7 @@ inline uint64_t UartSettings::baudrate() const
 
 inline bool UartSettings::has_baudrate() const
 {
-	return 0 != (p_validbits & ((uint8_t)1U << 1));
+	return 0 != (p_validbits & ((uint8_t)1U << 0));
 }
 
 /*!
@@ -5542,15 +5536,15 @@ inline bool UartSettings::has_baudrate() const
  */
 inline void UartSettings::clear_baudrate()
 {
-	p_validbits &= ~((uint8_t)1U << 1);
-	m_baudrate = 0;
+	p_validbits &= ~((uint8_t)1U << 0);
+	m_baudrate = 115200;
 }
 
 inline uint64_t *UartSettings::mutable_baudrate()
 {
-	if (0 == (p_validbits & ((uint8_t)1U << 1))) {
-		p_validbits |= ((uint8_t)1U << 1);
-		m_baudrate = 0;
+	if (0 == (p_validbits & ((uint8_t)1U << 0))) {
+		p_validbits |= ((uint8_t)1U << 0);
+		m_baudrate = 115200;
 	}
 	return &m_baudrate;
 }
@@ -5558,7 +5552,7 @@ inline uint64_t *UartSettings::mutable_baudrate()
 inline void UartSettings::set_baudrate(uint64_t v)
 {
 	m_baudrate = v;
-	p_validbits |= ((uint8_t)1U << 1);
+	p_validbits |= ((uint8_t)1U << 0);
 }
 
 
@@ -5600,7 +5594,7 @@ inline bool UartSettings::config_ref_tick() const
 
 inline bool UartSettings::has_config() const
 {
-	return 0 != (p_validbits & ((uint8_t)1U << 2));
+	return 0 != (p_validbits & ((uint8_t)1U << 1));
 }
 
 /*!
@@ -5609,14 +5603,14 @@ inline bool UartSettings::has_config() const
  */
 inline void UartSettings::clear_config()
 {
-	p_validbits &= ~((uint8_t)1U << 2);
+	p_validbits &= ~((uint8_t)1U << 1);
 	m_config = 5;
 }
 
 inline uartcfg_t *UartSettings::mutable_config()
 {
-	if (0 == (p_validbits & ((uint8_t)1U << 2))) {
-		p_validbits |= ((uint8_t)1U << 2);
+	if (0 == (p_validbits & ((uint8_t)1U << 1))) {
+		p_validbits |= ((uint8_t)1U << 1);
 		m_config = 5;
 	}
 	return &m_config;
@@ -5626,48 +5620,48 @@ inline void UartSettings::set_config_wl(uart_wl_t v)
 {
 	m_config &= ~(0x3ULL << 0);
 	m_config |= ((uint16_t) v << 0);
-	p_validbits |= ((uint8_t)1U << 2);
+	p_validbits |= ((uint8_t)1U << 1);
 }
 
 inline void UartSettings::set_config_sb(uart_sb_t v)
 {
 	m_config &= ~(0x3ULL << 2);
 	m_config |= ((uint16_t) v << 2);
-	p_validbits |= ((uint8_t)1U << 2);
+	p_validbits |= ((uint8_t)1U << 1);
 }
 
 inline void UartSettings::set_config_rts(bool v)
 {
 	m_config &= ~(0x1ULL << 4);
 	m_config |= ((uint16_t) v << 4);
-	p_validbits |= ((uint8_t)1U << 2);
+	p_validbits |= ((uint8_t)1U << 1);
 }
 
 inline void UartSettings::set_config_cts(bool v)
 {
 	m_config &= ~(0x1ULL << 5);
 	m_config |= ((uint16_t) v << 5);
-	p_validbits |= ((uint8_t)1U << 2);
+	p_validbits |= ((uint8_t)1U << 1);
 }
 
 inline void UartSettings::set_config_p(uart_p_t v)
 {
 	m_config &= ~(0x3ULL << 6);
 	m_config |= ((uint16_t) v << 6);
-	p_validbits |= ((uint8_t)1U << 2);
+	p_validbits |= ((uint8_t)1U << 1);
 }
 
 inline void UartSettings::set_config_ref_tick(bool v)
 {
 	m_config &= ~(0x1ULL << 10);
 	m_config |= ((uint16_t) v << 10);
-	p_validbits |= ((uint8_t)1U << 2);
+	p_validbits |= ((uint8_t)1U << 1);
 }
 
 inline void UartSettings::set_config(uartcfg_t v)
 {
 	m_config = v;
-	p_validbits |= ((uint8_t)1U << 2);
+	p_validbits |= ((uint8_t)1U << 1);
 }
 
 
@@ -5710,7 +5704,7 @@ inline uint64_t UartSettings::tx_bufsize() const
 
 inline bool UartSettings::has_tx_bufsize() const
 {
-	return 0 != (p_validbits & ((uint8_t)1U << 3));
+	return 0 != (p_validbits & ((uint8_t)1U << 2));
 }
 
 /*!
@@ -5719,14 +5713,14 @@ inline bool UartSettings::has_tx_bufsize() const
  */
 inline void UartSettings::clear_tx_bufsize()
 {
-	p_validbits &= ~((uint8_t)1U << 3);
+	p_validbits &= ~((uint8_t)1U << 2);
 	m_tx_bufsize = 0;
 }
 
 inline uint64_t *UartSettings::mutable_tx_bufsize()
 {
-	if (0 == (p_validbits & ((uint8_t)1U << 3))) {
-		p_validbits |= ((uint8_t)1U << 3);
+	if (0 == (p_validbits & ((uint8_t)1U << 2))) {
+		p_validbits |= ((uint8_t)1U << 2);
 		m_tx_bufsize = 0;
 	}
 	return &m_tx_bufsize;
@@ -5735,7 +5729,7 @@ inline uint64_t *UartSettings::mutable_tx_bufsize()
 inline void UartSettings::set_tx_bufsize(uint64_t v)
 {
 	m_tx_bufsize = v;
-	p_validbits |= ((uint8_t)1U << 3);
+	p_validbits |= ((uint8_t)1U << 2);
 }
 
 
@@ -5747,7 +5741,7 @@ inline uint64_t UartSettings::rx_bufsize() const
 
 inline bool UartSettings::has_rx_bufsize() const
 {
-	return 0 != (p_validbits & ((uint8_t)1U << 4));
+	return 0 != (p_validbits & ((uint8_t)1U << 3));
 }
 
 /*!
@@ -5756,14 +5750,14 @@ inline bool UartSettings::has_rx_bufsize() const
  */
 inline void UartSettings::clear_rx_bufsize()
 {
-	p_validbits &= ~((uint8_t)1U << 4);
+	p_validbits &= ~((uint8_t)1U << 3);
 	m_rx_bufsize = 0;
 }
 
 inline uint64_t *UartSettings::mutable_rx_bufsize()
 {
-	if (0 == (p_validbits & ((uint8_t)1U << 4))) {
-		p_validbits |= ((uint8_t)1U << 4);
+	if (0 == (p_validbits & ((uint8_t)1U << 3))) {
+		p_validbits |= ((uint8_t)1U << 3);
 		m_rx_bufsize = 0;
 	}
 	return &m_rx_bufsize;
@@ -5772,7 +5766,7 @@ inline uint64_t *UartSettings::mutable_rx_bufsize()
 inline void UartSettings::set_rx_bufsize(uint64_t v)
 {
 	m_rx_bufsize = v;
-	p_validbits |= ((uint8_t)1U << 4);
+	p_validbits |= ((uint8_t)1U << 3);
 }
 
 

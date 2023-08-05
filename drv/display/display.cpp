@@ -435,8 +435,7 @@ void SegmentDisplay::write(const char *s, int n)
 
 uint16_t MatrixDisplay::fontHeight() const
 {
-	const Font *font = Fonts+(int)m_font;
-	return font->yAdvance;
+	return m_font->yAdvance;
 }
 
 
@@ -527,11 +526,15 @@ uint16_t MatrixDisplay::charWidth(char c) const
 	c = charToGlyph(c);
 	if (c == 0)
 		return 0;
+	/*
 	const Font *font = Fonts+(int)m_font;
 	if ((c < font->first) || (c > font->last))
 		return 0;
-	uint8_t ch = c - font->first;
-	return font->glyph[ch].xAdvance;
+	*/
+	uint8_t ch = c - m_font->first;
+	if (m_font->glyph == 0)
+		return 6;
+	return m_font->glyph[ch].xAdvance;
 }
 
 
@@ -548,25 +551,24 @@ unsigned MatrixDisplay::drawChar(uint16_t x, uint16_t y, char c, int32_t fg, int
 {
 	PROFILE_FUNCTION();
 	c = charToGlyph(c);
-	const Font *font = Fonts+(int)m_font;
-	if ((c < font->first) || (c > font->last))
+	if ((c < m_font->first) || (c > m_font->last))
 		return 0;
 	if (fg == -1)
 		fg = m_colfg;
 	if (bg == -1)
 		bg = m_colbg;
-	uint8_t ch = c - font->first;
-	const uint8_t *data = font->bitmap + font->glyph[ch].bitmapOffset;
-	uint8_t w = font->glyph[ch].width;
-	uint8_t h = font->glyph[ch].height;
-	int8_t dx = font->glyph[ch].xOffset;
-	int8_t dy = font->glyph[ch].yOffset;
-	uint8_t a = font->glyph[ch].xAdvance;
+	uint8_t ch = c - m_font->first;
+	const uint8_t *data = m_font->bitmap + m_font->glyph[ch].bitmapOffset;
+	uint8_t w = m_font->glyph[ch].width;
+	uint8_t h = m_font->glyph[ch].height;
+	int8_t dx = m_font->glyph[ch].xOffset;
+	int8_t dy = m_font->glyph[ch].yOffset;
+	uint8_t a = m_font->glyph[ch].xAdvance;
 	log_dbug(TAG,"drawChar(%d,%d,'%c') = %u",x,y,c,a);
 //	log_info(TAG,"%d/%d %+d/%+d, adv %u len %u",(int)w,(int)h,(int)dx,(int)dy,a,l);
 	if (bg != -1)
 		fillRect(x,y,dx,a,bg);
-	drawBitmap(x+dx,y+dy+font->yAdvance-1,w,h,data,fg,bg);
+	drawBitmap(x+dx,y+dy+m_font->yAdvance-1,w,h,data,fg,bg);
 	return a;
 }
 
@@ -576,7 +578,6 @@ unsigned MatrixDisplay::drawText(uint16_t x, uint16_t y, const char *txt, int n,
 	log_dbug(TAG,"drawText(%d,%d,'%s')",x,y,txt);
 	if (n < 0)
 		n = strlen(txt);
-	const Font *font = Fonts+(int)m_font;
 	uint16_t a = 0, amax = 0;
 	const char *e = txt + n;
 	while (txt != e) {
@@ -585,8 +586,8 @@ unsigned MatrixDisplay::drawText(uint16_t x, uint16_t y, const char *txt, int n,
 			break;
 		if (c == '\n') {
 			x = 0;
-			y += font->yAdvance;
-			if (y+font->yAdvance > m_height)
+			y += m_font->yAdvance;
+			if (y+m_font->yAdvance > m_height)
 				break;
 			if (a > amax)
 				amax = a;
@@ -836,8 +837,8 @@ int32_t MatrixDisplay::setBgColor(color_t c)
 
 int MatrixDisplay::setFont(unsigned f)
 {
-	if (f < font_numfonts) {
-		m_font = (fontid_t)f;
+	if (f < NumFontsRM) {
+		m_font = FontsRM+f;
 		return 0;
 	}
 	return -1;
@@ -846,6 +847,7 @@ int MatrixDisplay::setFont(unsigned f)
 
 int MatrixDisplay::setFont(const char *fn)
 {
+	/*
 	if (0 == strcasecmp(fn,"native")) {
 		m_font = (fontid_t)-1;
 		return 0;
@@ -854,9 +856,10 @@ int MatrixDisplay::setFont(const char *fn)
 		m_font = (fontid_t)-2;
 		return 0;
 	}
-	for (int i = 0; i < font_numfonts; ++i) {
-		if (0 == strcasecmp(Fonts[i].name,fn)) {
-			m_font = (fontid_t)i;
+	*/
+	for (int i = 0; i < NumFontsRM; ++i) {
+		if (0 == strcasecmp(FontsRM[i].name,fn)) {
+			m_font = FontsRM+i;
 			return 0;
 		}
 	}
@@ -887,8 +890,7 @@ void MatrixDisplay::write(const char *txt, int n)
 			}
 		}
 		if (c == '\n') {
-			const Font *font = Fonts+(int)m_font;
-			uint16_t fh = font->yAdvance;
+			uint16_t fh = m_font->yAdvance;
 			m_posx = 0;
 			if (m_posy + fh >= m_height) {
 				m_posy = m_height -1;

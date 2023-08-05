@@ -265,16 +265,25 @@ static void update_mode(LedMode *ctx, uint32_t now)
 			l = ledmode_medium;
 		else
 			l = ctx->mode;
-	} else if (StationMode == station_connected)
+	} else if (StationMode == station_connected) {
+#ifdef CONFIG_AT_ACTIONS
 		l = alarms_enabled() ? ledmode_off : ledmode_pulse_seldom;
-	else if (StationMode == station_starting)
+#else
+		l = ledmode_off;
+#endif
+	} else if (StationMode == station_starting) {
 		l = ledmode_medium;
-	else if (StationMode == station_disconnected)
+	} else if (StationMode == station_disconnected) {
 		l = ledmode_slow;
-	else if (StationMode == station_stopped)
+	} else if (StationMode == station_stopped) {
+#ifdef CONFIG_AT_ACTIONS
 		l = alarms_enabled() ? ledmode_on : ledmode_neg_seldom;
-	else
+#else
+		l = ledmode_on;
+#endif
+	} else {
 		abort();
+	}
 	if (l != ctx->mode) {
 		log_dbug(TAG,"switching to %s",ModeNames[l]);
 		ctx->mode = l;

@@ -36,6 +36,7 @@
 
 void display_setup()
 {
+#ifdef CONFIG_MAX7219
 	if (HWConf.has_max7219()) {
 		// 5V level adjustment necessary
 		// ESP8266 is not capable of driving directly
@@ -45,6 +46,7 @@ void display_setup()
 			MAX7219Drv::create((xio_t)c.clk(),(xio_t)c.dout(),(xio_t)c.cs(),c.odrain());
 		}
 	}
+#endif
 	if (HWConf.has_display()) {
 		const DisplayConfig &c = HWConf.display();
 		if (!c.has_type() || !c.has_maxx()) {

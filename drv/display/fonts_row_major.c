@@ -1,5 +1,8 @@
 #include <stdint.h>
 #include "font.h"
+#include "glyphs.h"
+
+/*
 #include "FreeSans9pt7b.h"
 #include "FreeSans12pt7b.h"
 #include "FreeMono9pt7b.h"
@@ -12,6 +15,7 @@
 #include "opensanslight-12.h"
 #include "opensanslight-14.h"
 #include "opensanslight-16.h"
+*/
 
 
 static const uint8_t FreeSans9pt7b_generic[] = {
@@ -5037,7 +5041,7 @@ static const uint8_t OpenSansLight16_generic[] = {
 };
 
 
-const Font Fonts[] =  {
+const Font FontsRM[] =  {
 	{
 		"Mono9",
 		(uint8_t *)FreeMono9pt7b_generic,
@@ -5111,3 +5115,6 @@ const Font Fonts[] =  {
 		0x20, 0x7e, 7
 	},
 };
+
+
+uint8_t NumFontsRM = sizeof(FontsRM)/sizeof(FontsRM[0]);

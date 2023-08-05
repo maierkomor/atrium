@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021, Thomas Maier-Komor
+ *  Copyright (C) 2021-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -34,6 +34,9 @@ class CCS811B : public I2CDevice
 
 	int init();
 	void attach(class EnvObject *);
+#ifdef CONFIG_I2C_XCMD
+	const char *exeCmd(struct Terminal &, int argc, const char **argv) override;
+#endif
 
 	private:
 	static unsigned cyclic(void *);

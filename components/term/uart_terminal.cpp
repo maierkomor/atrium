@@ -82,11 +82,11 @@ void UartTerminal::init(uint8_t uart)
 {
 	m_uart_rx = uart;
 	m_uart_tx = uart;
-#if CONFIG_UART_CONSOLE_NONE != 1
+#if CONFIG_UART_CONSOLE_NONE != 1 && CONFIG_CONSOLE_UART_NUM != -1
 	if ((int)uart != CONFIG_CONSOLE_UART_NUM)
 #endif
 		uart_driver_install((uart_port_t)uart,UART_FIFO_LEN*2,UART_FIFO_LEN*2,0,DRIVER_ARG);
-	sprintf(m_name,"uart@%d",uart);
+	snprintf(m_name,sizeof(m_name),"uart@%d",uart);
 }
 
 
@@ -94,8 +94,8 @@ void UartTerminal::init(uint8_t rx, uint8_t tx)
 {
 	m_uart_rx = rx;
 	m_uart_tx = tx;
-	sprintf(m_name,"uart@%d,%d",rx,tx);
-#if CONFIG_UART_CONSOLE_NONE != 1
+	snprintf(m_name,sizeof(m_name),"uart@%d,%d",rx,tx);
+#if CONFIG_UART_CONSOLE_NONE != 1 && CONFIG_CONSOLE_UART_NUM != -1
 	if ((int)rx != CONFIG_CONSOLE_UART_NUM)
 #endif
 		uart_driver_install((uart_port_t)rx,UART_FIFO_LEN*2,UART_FIFO_LEN*2,0,DRIVER_ARG);

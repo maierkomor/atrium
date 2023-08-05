@@ -59,11 +59,11 @@ BH1750 *BH1750::create(uint8_t bus, uint8_t addr)
 		return 0;
 	}
 	esp_err_t e;
-#ifdef CONFIG_IDF_TARGET_ESP32
-	int count = 0;
+#if 0 //def CONFIG_IDF_TARGET_ESP32
 	// The timeout retry-logic is for handling an esp32-idf v3.3
 	// init-bug, which has a work-around in the atrium i2c init
 	// code.
+	int count = 0;
 	do {
 		if (++count > 2)
 			return 0;

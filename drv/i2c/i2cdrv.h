@@ -52,13 +52,16 @@ class I2CDevice
 
 	uint8_t getAddr() const
 	{ return m_addr >> 1; }
-	
+
 #ifdef CONFIG_I2C_XCMD
 	virtual const char *exeCmd(struct Terminal &, int argc, const char **argv)
 	{ return "Not supported."; }
 #endif
 
+	virtual void addIntr(uint8_t gpio);
+
 	static bool hasInstance(const char *);
+	static I2CDevice *getByAddr(uint8_t addr);
 
 	protected:
 	I2CDevice(uint8_t bus, uint8_t addr, const char *name);

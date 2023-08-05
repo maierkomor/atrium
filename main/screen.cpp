@@ -24,7 +24,7 @@
 #include "cyclic.h"
 #include "display.h"
 #include "env.h"
-#include "fonts_ssd1306.h"
+#include "fonts.h"
 #include "globals.h"
 #include "hwcfg.h"
 #include "log.h"
@@ -640,6 +640,67 @@ static int luax_fb_drawrect(lua_State *L)
 }
 
 
+static int luax_fb_drawline(lua_State *L)
+{
+	if (MatrixDisplay *md = Ctx->disp->toMatrixDisplay()) {
+		int x = luaL_checkinteger(L,1);
+		int y = luaL_checkinteger(L,2);
+		int w = luaL_checkinteger(L,3);
+		int h = luaL_checkinteger(L,4);
+		int32_t fgc = -1;
+		if (lua_isinteger(L,5))
+			fgc = lua_tointeger(L,5);
+		else if (lua_isstring(L,5))
+			fgc = md->getColor(color_get(lua_tostring(L,5)));
+		md->drawLine(x,y,w,h,fgc);
+		return 0;
+	}
+	lua_pushliteral(L,"fb_drawrect: no display.");
+	lua_error(L);
+	return 0;
+}
+
+
+static int luax_fb_drawhline(lua_State *L)
+{
+	if (MatrixDisplay *md = Ctx->disp->toMatrixDisplay()) {
+		int x = luaL_checkinteger(L,1);
+		int y = luaL_checkinteger(L,2);
+		int l = luaL_checkinteger(L,3);
+		int32_t fgc = -1;
+		if (lua_isinteger(L,4))
+			fgc = lua_tointeger(L,4);
+		else if (lua_isstring(L,4))
+			fgc = md->getColor(color_get(lua_tostring(L,4)));
+		md->drawHLine(x,y,l,fgc);
+		return 0;
+	}
+	lua_pushliteral(L,"fb_drawrect: no display.");
+	lua_error(L);
+	return 0;
+}
+
+
+static int luax_fb_drawvline(lua_State *L)
+{
+	if (MatrixDisplay *md = Ctx->disp->toMatrixDisplay()) {
+		int x = luaL_checkinteger(L,1);
+		int y = luaL_checkinteger(L,2);
+		int l = luaL_checkinteger(L,3);
+		int32_t fgc = -1;
+		if (lua_isinteger(L,4))
+			fgc = lua_tointeger(L,4);
+		else if (lua_isstring(L,4))
+			fgc = md->getColor(color_get(lua_tostring(L,4)));
+		md->drawVLine(x,y,l,fgc);
+		return 0;
+	}
+	lua_pushliteral(L,"fb_drawrect: no display.");
+	lua_error(L);
+	return 0;
+}
+
+
 static int luax_fb_drawtext(lua_State *L)
 {
 	if (MatrixDisplay *md = Ctx->disp->toMatrixDisplay()) {
@@ -690,6 +751,9 @@ static int luax_fb_fillrect(lua_State *L)
 static const LuaFn FbFunctions[] = {
 	{ "fb_drawrect", luax_fb_drawrect, "draw rectangle" },
 	{ "fb_drawtext", luax_fb_drawtext, "draw text string" },
+	{ "fb_drawline", luax_fb_drawline, "draw line" },
+	{ "fb_drawhline", luax_fb_drawhline, "draw horizontal line" },
+	{ "fb_drawvline", luax_fb_drawvline, "draw vertical line" },
 	{ "fb_fillrect", luax_fb_fillrect, "fill rectangle" },
 	{ "fb_setbgcol", luax_fb_setbgcol, "set background color" },
 	{ "fb_setfgcol", luax_fb_setfgcol, "set foreground color" },
