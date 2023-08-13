@@ -43,8 +43,8 @@
 
 #define SNTP_PORT 123
 #define SNTP_INERVAL_MS 200
-#define DELTA_1970 2208988800UL
-#define DELTA_2036 2085978496UL
+#define DELTA_1970 2208988800UL		// delta from 1900 to 1970
+#define DELTA_2036 0x80000000
 #define SNTP_PKT_SIZE 48
 
 struct sntp_pckt
@@ -153,17 +153,18 @@ static void handle_recv(void *arg, struct udp_pcb *pcb, struct pbuf *pbuf, const
 				fract <<= 1;
 				usec >>= 1;
 			} while (usec > 0);
-			if (tv.tv_sec & 0x80000000)
+			if ((tv.tv_sec & 0x80000000) == 0)
 				tv.tv_sec += DELTA_2036;
-			else
-				tv.tv_sec -= -DELTA_1970;
+			tv.tv_sec -= DELTA_1970;
+			log_dbug(TAG,"set to %lu",tv.tv_sec);
 			if (int e = settimeofday(&tv,0)) {
 				log_warn(TAG,"set time %d",e);
 			} else {
 				LastUpdate = esp_timer_get_time();
 				if (Modules[0] || Modules[TAG]) {
 					char buf[32];
-					ctime_r(&tv.tv_sec,buf);
+					time_t t = tv.tv_sec;
+					ctime_r(&t,buf);
 					buf[strlen(buf)-1] = 0;
 					log_dbug(TAG,"set to %s",buf);
 				}
