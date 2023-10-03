@@ -230,15 +230,16 @@ static void influx_connect(const char *hn, const ip_addr_t *addr, void *arg)
 	}
 	char addrstr[32];
 	inet_ntoa_r(*addr,addrstr,sizeof(addrstr));
+	log_info(TAG,"connect %s:%u",addrstr,port);
 	if (influx.database().empty()) {
 		if (UPCB == 0) {
 			UPCB = udp_new();
 			if (err_t e = udp_connect(UPCB,addr,port)) {
-				log_warn(TAG,"listen %s %d",addrstr,e);
+				log_warn(TAG,"use UDP %s: %s",addrstr,strlwiperr(e));
+				State = error;
 			} else {
-				log_info(TAG,"listen %s:%d",addrstr,port);
+				State = running;
 			}
-			State = running;
 		}
 	} else {
 		if (UPCB) {
@@ -246,13 +247,12 @@ static void influx_connect(const char *hn, const ip_addr_t *addr, void *arg)
 			UPCB = 0;
 		}
 		TPCB = tcp_new();
-		State = connecting;
 		tcp_err(TPCB,handle_err);
 		if (err_t e = tcp_connect(TPCB,addr,port,handle_connect)) {
 			log_warn(TAG,"connect: %s",strlwiperr(e));
 			State = error;
 		} else {
-			log_info(TAG,"connect %s:%u",addrstr,port);
+			State = connecting;
 			astream str(128,true);
 			const auto &i = Config.influx();
 			str <<	"POST /write?db=" << i.database() << " HTTP/1.1\n"
@@ -582,6 +582,9 @@ const char *influx(Terminal &term, int argc, const char *args[])
 		} else if (0 == strcmp(args[1],"stop")) {
 			State = stopped;
 			return 0;
+		} else if (0 == strcmp(args[1],"start")) {
+			State = stopped;
+			return 0;
 		} else {
 			return "Invalid argument #1.";
 		}
@@ -607,6 +610,10 @@ const char *influx(Terminal &term, int argc, const char *args[])
 			i->set_port(l);
 			i->set_measurement(s+1);
 			return 0;
+		} else if (0 == strcmp(args[1],"db")) {
+			return i->setByName("database",args[2]) < 0 ? "Failed." : 0;
+		} else if (0 == strcmp(args[1],"mm")) {
+			return i->setByName("measurement",args[2]) < 0 ? "Failed." : 0;
 		}
 		return i->setByName(args[1],args[2]) < 0 ? "Failed." : 0;
 	}

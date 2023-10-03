@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021, Thomas Maier-Komor
+ *  Copyright (C) 2021-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -19,7 +19,7 @@
 
 #include <sdkconfig.h>
 
-#ifndef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 0
 #include "log.h"
 #include "tcpio.h"
 

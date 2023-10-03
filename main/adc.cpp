@@ -102,6 +102,7 @@ struct AdcSignal : public EnvObject
 		log_dbug(TAG, "calibration scheme is curve fitting");
 		adc_cali_curve_fitting_config_t cali_config = {
 			.unit_id = unit,
+			.chan = ch,
 			.atten = atten,
 			.bitwidth = ADC_BITWIDTH_DEFAULT,
 		};

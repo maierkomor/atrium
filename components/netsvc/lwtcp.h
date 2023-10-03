@@ -25,6 +25,10 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
+#ifndef LWIP_TCPIP_CORE_LOCKING
+#error LWIP_TCPIP_CORE_LOCKING not defined
+#endif
+
 
 extern "C" const char *strlwiperr(int e);
 
@@ -71,7 +75,7 @@ class LwTcp
 	uint16_t m_port = 0, m_bufsize = 0, m_fill = 0, m_taken = 0, m_nwrite = 0, m_nout = 0;
 	err_t m_err = 0;
 	SemaphoreHandle_t m_sem, m_send, m_mtx;
-#ifndef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 0
 	ip_addr_t *m_addr = 0;
 	SemaphoreHandle_t m_lwip;
 #endif
@@ -122,7 +126,7 @@ class LwTcpListener
 	uint16_t m_port = 0, m_id = 0, m_stack;
 	uint8_t m_prio;
 	bool m_enabled = true;
-#ifndef CONFIG_IDF_TARGET_ESP8266
+#if LWIP_TCPIP_CORE_LOCKING == 0
 	SemaphoreHandle_t m_lwip;
 #endif
 };

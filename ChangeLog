@@ -1,3 +1,11 @@
+R2309:
+======
+- fix SNTP for IDFv5.1 64bit timeval struct
+- update to IDF version 5.1.1
+- fix influx command not in line with its manpage
+- fix syslog stat race-condition
+- update for SGP30 driver
+
 R2307:
 ======
 - added/enhanced support for HDC1000 and HDC1080

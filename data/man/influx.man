@@ -4,9 +4,10 @@ Command 'init' initializes influx with current configuration.
 Command 'send' sends an arbitrary argument to the influx server.
 Command 'clear' clears the configuration or specified field.
 Command 'stop' stops the influx service.
+command 'start' to start influx service.
 Valid <arg> are:
-host  : to set the influx database server host
-port  : to set the port on which influx is listening
-db    : to set the database name (set to send data to Influx via TCP)
-mm    : to set the measurement name
+host     : to set the influx database server host
+port     : to set the port on which influx is listening
+database : to set the database name (set to send data to Influx via TCP)
+mm       : to set the measurement name
 config: to set complete config in the form <host>:<port>/<mm>

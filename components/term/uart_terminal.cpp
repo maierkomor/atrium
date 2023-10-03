@@ -94,7 +94,8 @@ void UartTerminal::init(uint8_t rx, uint8_t tx)
 {
 	m_uart_rx = rx;
 	m_uart_tx = tx;
-	snprintf(m_name,sizeof(m_name),"uart@%d,%d",rx,tx);
+	assert((rx < 10) && (tx < 10));
+	snprintf(m_name,sizeof(m_name),"uart@%1d,%1d",rx,tx);
 #if CONFIG_UART_CONSOLE_NONE != 1 && CONFIG_CONSOLE_UART_NUM != -1
 	if ((int)rx != CONFIG_CONSOLE_UART_NUM)
 #endif

@@ -140,5 +140,5 @@ end
 
 function color_manual(arg)
 	sm_set('led','manual')
-	color_set(mqtt_get('rgbcct1/set_color'))
+	color_set(mqtt_get(var_get('node')..'/set_color'))
 end

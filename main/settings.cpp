@@ -620,7 +620,11 @@ int set_cpu_freq(unsigned mhz)
 {
 #ifdef ESP32
 	if ((mhz == 80) || (mhz == 160) || (mhz == 240)) {
+#ifdef CONFIG_IDF_TARGET_ESP32
+		ets_update_cpu_frequency_rom(mhz);
+#else
 		ets_update_cpu_frequency(mhz);
+#endif
 		return 0;
 	}
 	return 1;

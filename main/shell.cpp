@@ -2106,7 +2106,6 @@ static const char *cpu(Terminal &term, int argc, const char *args[])
 #if IDF_VERSION >= 50
 		uint32_t mhz = ets_get_cpu_frequency();
 #else
-//		uint32_t f = ets_get_cpu_freq();
 		int32_t f = esp_clk_cpu_freq();
 		unsigned mhz;
 		switch (f) {
@@ -2164,7 +2163,7 @@ static const char *cpu(Terminal &term, int argc, const char *args[])
 		if (ci.features & CHIP_FEATURE_IEEE802154)
 			term.print(", IEEE 802.15.4");
 #endif
-		term << '\n';
+		term.println();
 		return 0;
 	}
 	if (0 == term.getPrivLevel())

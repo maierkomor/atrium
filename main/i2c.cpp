@@ -171,6 +171,21 @@ const char *i2c(Terminal &term, int argc, const char *args[])
 		return 0;
 	}
 #ifdef CONFIG_I2C_XCMD
+	char *e;
+	long l = strtol(args[0],&e,0);
+	if (*e == 0) {
+		if ((l < 0) || (l > UINT8_MAX))
+			return "Invalid bus id.";
+		uint8_t bus = l;
+		if (0 == strcmp(args[1],"reset")) {
+			uint8_t cmd[] = { 0x00, 0x06 };	// get serial ID
+			if (esp_err_t e = i2c_write(bus,cmd,sizeof(cmd),false,true))
+				term.printf("error: %s\n",esp_err_to_name(e));
+			return 0;
+		} else {
+			return "Invalid bus command.";
+		}
+	}
 	while (s) {
 		if (0 == strcmp(s->getName(),args[1]))
 			return s->exeCmd(term,argc-2,args+2);

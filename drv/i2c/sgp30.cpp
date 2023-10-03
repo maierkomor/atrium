@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021, Thomas Maier-Komor
+ *  Copyright (C) 2021-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -25,6 +25,7 @@
 #include "env.h"
 #include "log.h"
 #include "sgp30.h"
+#include "terminal.h"
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -36,13 +37,34 @@
 #define REG_INIT_AIRQ	0x03
 #define REG_MEAS_AIRQ	0x08
 #define REG_MEAS_TEST	0x32
+#define REG_MEAS_RAW	0x50
 #define REG_GET_BASEL	0x15
 #define REG_SET_BASEL	0x1e
 #define REG_GET_VERS	0x2f
+#define REG_GET_TVOCBL	0xb3
+#define REG_SET_TVOCBL	0x77
 #define REG_SET_HUMID	0x61
 
 
 #define TAG MODULE_SGP30
+
+
+static const char *States[] = {
+	"<none>",
+	"init",
+	"bist",
+	"get-serial",
+	"get-version",
+	"read-bist"
+	"read-data",
+	"read-serial",
+	"read-version",
+	"iaq",
+	"idle",
+	"update",
+	"measure",
+	"error",
+};
 
 
 static uint8_t crc8_0x31(uint8_t *data, unsigned len, uint8_t crc = 0xff)
@@ -62,7 +84,7 @@ static uint8_t crc8_0x31(uint8_t *data, unsigned len, uint8_t crc = 0xff)
 
 static inline float relHumid2abs(float temp, float humid)
 {
-	return 10E5 * 18.016/8314.3 * humid/100 * 6.1078 * pow10f((7.5*temp)/(237.3+temp))/(temp + 273.15);
+	return ((0.000002*temp*temp*temp*temp)+(0.0002*temp*temp*temp)+(0.0095*temp*temp)+(0.337*temp)+4.9034) * humid / 100;
 }
 
 
@@ -71,6 +93,7 @@ SGP30::SGP30(uint8_t port)
 , m_tvoc("TVOC","ppb","%4.0f")
 , m_co2("CO2","ppm")
 {
+	bzero(m_serial,sizeof(m_serial));
 }
 
 
@@ -79,13 +102,13 @@ SGP30::SGP30(uint8_t port, uint8_t addr, const char *n)
 , m_tvoc("TVOC","ppb","%4.0f")
 , m_co2("CO2","ppm")
 {
+	bzero(m_serial,sizeof(m_serial));
 }
 
 
 void SGP30::attach(EnvObject *r)
 {
 	log_dbug(TAG,"attach");
-	m_root = r;
 	r->add(&m_tvoc);
 	r->add(&m_co2);
 }
@@ -93,34 +116,8 @@ void SGP30::attach(EnvObject *r)
 
 SGP30 *SGP30::create(uint8_t bus)
 {
-	uint8_t cmd[] = { SGP30_ADDR, 0x36, 0x82 };
-	if (i2c_write(bus,cmd,sizeof(cmd),false,true))
-		return 0;
-	// 0.5ms delay before read required
-	vTaskDelay(1/portTICK_PERIOD_MS);
-	uint8_t data[6];
-	if (i2c_read(bus,SGP30_ADDR,data,sizeof(data)))
-		return 0;
-	log_info(TAG,"serial id %02x.%02x.%02x.%02x.%02x.%02x",data[0],data[1],data[2],data[3],data[4],data[5]);
-	uint8_t vercmd[] = { SGP30_ADDR, REG_BASE, REG_GET_VERS };
-	if (i2c_write(bus,vercmd,sizeof(vercmd),false,true)) {
-		log_warn(TAG,"got serial but reject ver cmd");
-		return 0;
-	}
-	vTaskDelay(2/portTICK_PERIOD_MS);
-	uint8_t version[3];
-	if (i2c_read(bus,SGP30_ADDR,version,sizeof(version)))
-		return 0;
-	uint8_t crc = crc8_0x31(version,2);
-	if (crc != version[2]) {
-		log_warn(TAG,"version CRC error: calc %02x, got %02x",crc,version[2]);
-	}
-	log_info(TAG,"version %d, type 0x%x",version[1],version[0]>>4);
 	SGP30 *d = new SGP30(bus);
-	if (d->init()) {
-		//delete d;
-		return 0;
-	}
+	d->init();
 	return d;
 }
 
@@ -134,136 +131,315 @@ const char *SGP30::drvName() const
 unsigned SGP30::cyclic(void *arg)
 {
 	SGP30 *drv = (SGP30 *)arg;
-	switch (drv->m_state) {
-	case selftest:
-		if (0 == drv->selftest_finish()) {
-			drv->m_state = idle;
-			return 1000;
+	return drv->cyclic();
+}
+
+
+unsigned SGP30::cyclic()
+{
+	esp_err_t e = 0;
+	switch (m_state) {
+	case st_none:
+		return 1000;
+	case st_init:
+		if ((m_flags & f_ver) == 0)
+			m_state = st_getv;
+		else if ((m_flags & f_ser) == 0)
+			m_state = st_gets;
+		else if ((m_flags & f_bist) == 0)
+			m_state = st_bist;
+		else if ((m_flags & f_iaq) == 0)
+			m_state = st_iaq;
+		else
+			m_state = st_measure;
+		return 20;
+	case st_bist:
+		e = selftest_start();
+		if (0 == e) {
+			m_state = st_readb;
+			return 220;
 		}
 		break;
-	case measure:
-		if (0 == drv->read()) {
-			drv->m_state = idle;
+	case st_gets:
+		e = get_serial();
+		if (0 == e) {
+			m_state = st_reads;
+			return 10;
+		}
+		break;
+	case st_getv:
+		e = get_version();
+		if (0 == e) {
+			m_state = st_readv;
+			return 10;
+		}
+		break;
+	case st_readb:
+		e = selftest_finish();
+		if (0 == e) {
+			m_state = st_iaq;
+			return 10;
+		}
+		break;
+	case st_readd:
+		e = read();
+		if (0 == e) {
+			m_state = st_update;
 			return 975;
 		}
 		break;
-	case idle:
-		drv->updateHumidity();
-		drv->m_state = update_humid;
-		return 10;
-	case update_humid:
-		if (0 == drv->sample()) {
-			drv->m_state = measure;
+	case st_reads:
+		e = read_serial();
+		if (0 == e) {
+			m_flags |= f_ser;
+			m_state = st_init;
+			return 10;
+		}
+		break;
+	case st_readv:
+		e = read_version();
+		if (0 == e) {
+			m_flags |= f_ver;
+			m_state = st_init;
+			return 10;
+		}
+		break;
+	case st_idle:
+		return 50;
+	case st_update:
+		e = updateHumidity();
+		if (0 == e) {
+			m_state = st_measure;
+			return 10;
+		}
+		break;
+	case st_iaq:
+		e = init_airq();
+		if (0 == e) {
+			m_flags |= f_iaq;
+			m_state = st_measure;
+			return 10;
+		}
+		break;
+	case st_measure:
+		e = sample();
+		if (0 == e) {
+			m_state = st_readd;
 			return 20;
 		}
 		break;
-	case error:
-		if (0 == drv->selftest_start()) {
-			drv->m_state = selftest;
-			return 220;
-		}
-		return 10000;
+	case st_error:
+		return 3000;
 	}
 	log_dbug(TAG,"had error");
-	drv->m_state = error;
+	m_err = e;
+	m_state = st_error;
 	return 5000;
 }
 
 
+#ifdef CONFIG_I2C_XCMD
+const char *SGP30::exeCmd(Terminal &term, int argc, const char **args)
+{
+	if (argc == 0) {
+		term.printf("state: %s\n",States[m_state]);
+		term.printf("error: %s\n",esp_err_to_name(m_err));
+	} else if (0 == strcmp("id",args[0])) {
+		uint8_t cmd[] = { SGP30_ADDR, 0x36, 0x82 };	// get serial ID
+		if (esp_err_t e = i2c_write(m_bus,cmd,sizeof(cmd),false,true))
+			return esp_err_to_name(e);
+		// 0.5ms delay before read required
+		vTaskDelay(1/portTICK_PERIOD_MS);
+		uint8_t data[6];
+		if (esp_err_t e = i2c_read(m_bus,SGP30_ADDR,data,sizeof(data)))
+			return esp_err_to_name(e);
+		term.printf("serial id %02x.%02x.%02x.%02x.%02x.%02x\n",data[0],data[1],data[2],data[3],data[4],data[5]);
+	} else if (0 == strcmp("reset",args[0])) {
+		m_state = st_init;
+	} else if (0 == strcmp("stop",args[0])) {
+		m_state = st_idle;
+	} else if (0 == strcmp("version",args[0])) {
+		term.printf("version %d\n",m_ver & 0xff);
+	} else {
+		return "Invalid argument #1.";
+	}
+	return 0;
+}
+#endif
+
+
 int SGP30::init()
 {
-	if (0 == selftest_start())
-		m_state = selftest;
-	else
-		m_state = error;
-	return cyclic_add_task("sgp30",SGP30::cyclic,this,220);
+	int r = cyclic_add_task("sgp30",SGP30::cyclic,this,220);
+	m_state = st_init;
+	return r;
+}
+
+
+int SGP30::init_airq()
+{
+	log_dbug(TAG,"init airq");
+	esp_err_t e = i2c_write2(m_bus,SGP30_ADDR, REG_BASE, REG_INIT_AIRQ);
+	if (e) {
+		log_dbug(TAG,"init airq failed");
+	}
+	return e;
+}
+
+
+int SGP30::get_serial()
+{
+	uint8_t cmd[] = { SGP30_ADDR, 0x36, 0x82 };	// get serial ID
+	esp_err_t e = i2c_write(m_bus,cmd,sizeof(cmd),false,true);
+	if (e) {
+		log_dbug(TAG,"get serial id: %s",esp_err_to_name(e));
+	}
+	return 0;
+}
+
+
+int SGP30::get_version()
+{
+	uint8_t vercmd[] = { SGP30_ADDR, REG_BASE, REG_GET_VERS };
+	esp_err_t e = i2c_write(m_bus,vercmd,sizeof(vercmd),false,true);
+	if (e) {
+		log_warn(TAG,"get version: %s",esp_err_to_name(e));
+	} else {
+		log_dbug(TAG,"get version");
+	}
+	return e;
+}
+
+
+int SGP30::read_serial()
+{
+	esp_err_t e = i2c_read(m_bus,SGP30_ADDR,m_serial,sizeof(m_serial));
+	if (e) {
+		log_dbug(TAG,"read serial id: %s",esp_err_to_name(e));
+	} else {
+		log_info(TAG,"serial id %02x.%02x.%02x.%02x.%02x.%02x",m_serial[0],m_serial[1],m_serial[2],m_serial[3],m_serial[4],m_serial[5]);
+	}
+	return e;
+}
+
+
+int SGP30::read_version()
+{
+	uint8_t version[3];
+	esp_err_t e = i2c_read(m_bus,SGP30_ADDR,version,sizeof(version));
+	if (e) {
+		log_warn(TAG,"read version: %s",esp_err_to_name(e));
+	} else {
+		uint8_t crc = crc8_0x31(version,2);
+		if (crc != version[2]) {
+			log_warn(TAG,"version CRC error: calc %02x, got %02x",crc,version[2]);
+			e = ESP_ERR_INVALID_CRC;
+		} else {
+			if (version[1] & 0xf0) {
+				log_warn(TAG,"unexpected product id 0x%x",version[1]>>4);
+			} else {
+				m_ver = (version[1] << 8) | version[0];
+				log_info(TAG,"version %d",m_ver);
+			}
+		}
+	}
+	return e;
 }
 
 
 int SGP30::selftest_start()
 {
 	uint8_t cmd[] = { SGP30_ADDR, REG_BASE, REG_MEAS_TEST };
-	if (i2c_write(m_bus,cmd,sizeof(cmd),false,true)) {
-		return 1;
+	esp_err_t e = i2c_write(m_bus,cmd,sizeof(cmd),false,true);
+	if (e) {
+		log_warn(TAG,"selftest failed");
+	} else {
+		log_dbug(TAG,"selftest started");
 	}
-	log_dbug(TAG,"selftest started");
-	return 0;
+	return e;
 }
 
 
 int SGP30::selftest_finish()
 {
 	uint8_t selftest[3];
-	if (i2c_read(m_bus,SGP30_ADDR,selftest,sizeof(selftest))) {
-		log_dbug(TAG,"selftest read failed");
-	} else if ((selftest[0] != 0xd4) || (selftest[1] != 0)) {
-		log_warn(TAG,"selftest failure %x",(((unsigned)selftest[1])<<8)|((unsigned)selftest[0]));
-	} else if (crc8_0x31(selftest,2) != selftest[2])
-		log_warn(TAG,"selftest CRC error");
-	else
-		log_dbug(TAG,"selftest OK");
-	if (i2c_write2(m_bus,SGP30_ADDR, REG_BASE, REG_INIT_AIRQ)) {
-		log_dbug(TAG,"init req failed");
-		return 1;
-	}
-	log_dbug(TAG,"init device");
-	if (m_root) {
-		if (EnvElement *e = m_root->find("temperature")) {
-			if (EnvNumber *n = e->toNumber()) {
-				log_dbug(TAG,"found temperature");
-				m_temp = n;
-			}
+	esp_err_t e = i2c_read(m_bus,SGP30_ADDR,selftest,sizeof(selftest));
+	if (e) {
+		log_warn(TAG,"selftest read failed: %s",esp_err_to_name(e));
+	} else {
+		if ((selftest[0] != 0xd4) || (selftest[1] != 0)) {
+			log_warn(TAG,"selftest failure %x",(((unsigned)selftest[1])<<8)|((unsigned)selftest[0]));
+			e = ESP_ERR_INVALID_RESPONSE;
+		} else if (crc8_0x31(selftest,2) != selftest[2]) {
+			log_warn(TAG,"selftest CRC error");
+			e = ESP_ERR_INVALID_CRC;
+		} else {
+			log_dbug(TAG,"selftest OK");
 		}
-		if (EnvElement *e = m_root->find("humidity")) {
-			if (EnvNumber *n = e->toNumber()) {
-				log_dbug(TAG,"found humidity");
-				m_humid = n;
-			}
-		}
-		if (m_humid == 0)
-			log_dbug(TAG,"no humidity sensor");
-		if (m_temp == 0)
-			log_dbug(TAG,"no temperature sensor");
 	}
-	return 0;
+	return e;
 }
 
 
-void SGP30::updateHumidity()
+int SGP30::updateHumidity()
 {
-	if ((m_humid == 0) || (m_temp == 0))
-		return;
-	double temp = m_temp->get();
-	double rhumid = m_humid->get();
+	if (m_temp == 0) {
+		if (EnvObject *r = m_tvoc.getParent()) {
+			if (EnvElement *e = r->find("temperature")) {
+				if (EnvNumber *n = e->toNumber()) {
+					log_dbug(TAG,"found temperature sensor");
+					m_temp = n;
+				}
+			}
+		}
+	}
+	if (m_humid == 0) {
+		if (EnvObject *r = m_tvoc.getParent()) {
+			if (EnvElement *e = r->find("humidity")) {
+				if (EnvNumber *n = e->toNumber()) {
+					log_dbug(TAG,"found humidity sensor");
+					m_humid = n;
+				}
+			}
+		}
+	}
+	float temp = m_temp ? m_temp->get() : NAN;
+	float rhumid = m_humid ? m_humid->get() : NAN;
+	uint16_t humid;
 	if (isnan(temp) || isnan(rhumid)) {
 		log_dbug(TAG,"no humidity info");
-		return;
+		humid = 0; // disables humidity compensation
+	} else {
+		float abshumid = relHumid2abs(temp,rhumid);
+		log_dbug(TAG,"temperatue %g, rel humid %g, abs humidity %g",temp,rhumid,abshumid);
+		if ((abshumid >= 256) || (abshumid <= 0)) {
+			log_dbug(TAG,"abs humidity out of range %u",(unsigned)abshumid);
+			humid = 0;
+		} else {
+			humid = (uint16_t)rintf(abshumid);
+		}
 	}
-	float abshumid = relHumid2abs(temp,rhumid);
-	if ((abshumid >= 256) || (abshumid <= 0)) {
-		log_dbug(TAG,"abs humidity out of range %u",(unsigned)abshumid);
-		return;
-	}
-	uint16_t humid = (uint16_t)rintf(abshumid * 256.0);
 	if (humid == m_ahumid)
-		return;
+		return 0;
 	m_ahumid = humid;
 	uint8_t cmd[] = { SGP30_ADDR, REG_BASE, REG_SET_HUMID, (uint8_t)(humid >> 8), (uint8_t)(humid & 0xff), 0 };
 	cmd[sizeof(cmd)-1] = crc8_0x31(cmd+3,2);
-	if (i2c_write(m_bus,cmd,sizeof(cmd),true,true))
+	if (esp_err_t e = i2c_write(m_bus,cmd,sizeof(cmd),true,true)) {
 		log_warn(TAG,"set humidity failed");
-	else
-		log_dbug(TAG,"humidity %u/256",(unsigned)humid);
+		return e;
+	}
+	log_dbug(TAG,"humidity %g",(float)humid/256.0);
+	return 0;
 }
 
 
 int SGP30::sample()
 {
-	if (i2c_write2(m_bus,SGP30_ADDR, REG_BASE, REG_MEAS_AIRQ)) {
+	if (esp_err_t e = i2c_write2(m_bus,SGP30_ADDR, REG_BASE, REG_MEAS_AIRQ)) {
 		log_dbug(TAG,"sample req failed");
-		return 1;
+		return e;
 	}
-//	log_dbug(TAG,"sample");
+	log_dbug(TAG,"sample");
 	return 0;
 }
 
@@ -285,6 +461,7 @@ int SGP30::read()
 			log_dbug(TAG,"co2=%u",co2eq);
 		} else {
 			log_warn(TAG,"co2eq CRC error: got %x, expected %x",crc,data[2]);
+			m_state = st_error;
 		}
 		uint8_t crc2 = crc8_0x31(data+3,2);
 		if (crc2 == data[5]) {
@@ -299,20 +476,6 @@ int SGP30::read()
 	m_tvoc.set(tvoc);
 	return r;
 }
-
-/*
-float relHumid2abs(float temp, float humid, float press)
-{
-	float I1 = temp;	// degC
-	float tK = I1 + 273.15;	// degK
-	float tK2 = tK * tK;	// degK^2
-	float I2 = humid;	// %
-	float H = I2/100;	// relative Humidity
-	float I3 = press;	// mBar
-	float P = press/1000;	// Bar
-	return 0.622 * H * (1.01325 * 10^(5.426651 - 2005.1 / tK + 0.00013869 * (tK2 - 293700) / tK * (10^(0.000000000011965 * (tK2 - 293700) * (tK2 - 293700)) - 1) - 0.0044 * 10^((-0.0057148 * (374.11 - I1)^1.25))) + ((tK / 647.3) - 0.422) * (0.577 - (tK / 647.3)) * EXP(0.000000000011965 * (tK2 - 293700) * (tK2 - 293700)) * 0.00980665) / (P - H * (1.01325 * 10^(5.426651 - 2005.1 / tK + 0.00013869 * (tK2 - 293700) / tK * (10^(0.000000000011965 * (tK2 - 293700) * (tK2 - 293700)) - 1) - 0.0044 * 10^((-0.0057148 * (374.11 - I1)^1.25))) + ((tK / 647.3) - 0.422) * (0.577 - (tK / 647.3)) * EXP(0.000000000011965 * (tK2 - 293700) * (tK2 - 293700)) * 0.00980665)) * P * 100000000 / (tK * 287.1);
-}
-*/
 
 
 unsigned sgp30_scan(uint8_t bus)

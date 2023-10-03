@@ -31,6 +31,8 @@
 #include "terminal.h"
 #include "wifi.h"
 
+#include <atomic>
+
 #include <string.h>
 
 #include <lwip/tcpip.h>
@@ -55,6 +57,8 @@
 #define log_devel(...)
 #endif
 
+using namespace std;
+
 
 enum { ntp_flag=(1<<3), sent_flag = (1<<4), sending_flag = (1<<5) };
 
@@ -76,7 +80,11 @@ struct Syslog
 	LogMsg *msgs = 0;
 	uint64_t ntpbase = 0;
 	uint32_t sent = 0;
-	int16_t unsent = 0, overwr = 0, lost = 0;
+#ifdef ESP32
+	atomic<int16_t> unsent, overwr, lost;
+#else
+	int16_t unsent, overwr, lost;
+#endif
 	uint16_t at = 0, num;
 	event_t ev;
 	bool triggered = false;
@@ -98,7 +106,8 @@ static void syslog_start(void*);
 
 
 Syslog::Syslog(size_t s)
-: ev(event_id("syslog`msg"))
+: unsent(0), overwr(0), lost(0)
+, ev(event_id("syslog`msg"))
 {
 	if ((s > 0) && (s < 512))
 		s = 512;
@@ -233,9 +242,10 @@ void sendall(void * = 0)
 			}
 			lock.lock();
 			m->flags |= sent_flag;
-			assert(Ctx->unsent>0);
-			--Ctx->unsent;
-			++Ctx->sent;
+			if (Ctx->unsent > 0) {
+				--Ctx->unsent;
+				++Ctx->sent;
+			}
 			++x;
 		}
 		++m;
@@ -379,7 +389,11 @@ const char *dmesg(Terminal &term, int argc, const char *args[])
 	Lock lock(Mtx,__FUNCTION__);		// would need a recursive lock to support execution with debug on lwtcp
 	LogMsg *at = Ctx->msgs+Ctx->at;
 	LogMsg *m = at;
+#ifdef ESP32
+	term.printf("%u queued, %u overwritten, %u sent, %u lost\n",Ctx->unsent.load(),Ctx->overwr.load(),Ctx->sent,Ctx->lost.load());
+#else
 	term.printf("%u queued, %u overwritten, %u sent, %u lost\n",Ctx->unsent,Ctx->overwr,Ctx->sent,Ctx->lost);
+#endif
 	do {
 		if (m->msg[0]) {
 			const char *mod = ModNames+ModNameOff[m->mod];
