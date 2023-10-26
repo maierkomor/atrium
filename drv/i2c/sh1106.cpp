@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021-2023, Thomas Maier-Komor
+ *  Copyright (C) 2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -18,9 +18,9 @@
 
 #include <sdkconfig.h>
 
-#ifdef CONFIG_SSD1306
+#ifdef CONFIG_SH1106
 
-#include "ssd1306.h"
+#include "sh1106.h"
 #include "log.h"
 #include "profiling.h"
 
@@ -39,8 +39,8 @@
 #define CTRL_CMDC	0xc0	// continuation command
 #define CTRL_DATA	0x00	// data only
 
-#define SSD1306_ADDR0	0x3c
-#define SSD1306_ADDR1	0x3d
+#define SH1106_ADDR0	0x3c
+#define SH1106_ADDR1	0x3d
 
 #define CMD_NOP		0xe3
 
@@ -48,10 +48,10 @@
 
 
 
-SSD1306 *SSD1306::Instance = 0;
+SH1106 *SH1106::Instance = 0;
 
 
-SSD1306::SSD1306(uint8_t bus, uint8_t addr)
+SH1106::SH1106(uint8_t bus, uint8_t addr)
 : I2CDevice(bus,addr,drvName())
 {
 	Instance = this;
@@ -59,7 +59,7 @@ SSD1306::SSD1306(uint8_t bus, uint8_t addr)
 }
 
 
-int SSD1306::init(uint8_t maxx, uint8_t maxy, uint8_t hwcfg)
+int SH1106::init(uint8_t maxx, uint8_t maxy, uint8_t hwcfg)
 {
 	log_info(TAG,"init(%u,%u)",maxx,maxy);
 	m_width = maxx;
@@ -70,10 +70,13 @@ int SSD1306::init(uint8_t maxx, uint8_t maxy, uint8_t hwcfg)
 		log_error(TAG,"out of memory");
 		return 1;
 	}
+	/*
 	uint8_t setup[] = {
 		m_addr,
-		0x00,				// command
 		0xae,				// display off
+		0xa4,				// output RAM
+		0xaf,
+		0x00,				// set lower column start address
 		0xd5, 0x80,			// oszi freq (default), clock div=1 (optional)
 		0xa8, (uint8_t)(m_height-1),	// MUX
 		0xd3, 0x00,			// display offset (optional)
@@ -86,12 +89,15 @@ int SSD1306::init(uint8_t maxx, uint8_t maxy, uint8_t hwcfg)
 		(uint8_t) (hwcfg&(hwc_rlmap|hwc_altm)),	
 		0x81, 0x80,			// medium contrast
 		0xd9, 0x22,			// default pre-charge (optional)
-		0xa4,				// output RAM
 		0xa6,				// normal mode, a7=inverse
 		0x2e,				// no scrolling
 	};
 	if (i2c_write(m_bus,setup,sizeof(setup),1,1))
 		return 1;
+		*/
+	xmitCmd(0xae);
+	xmitCmd(0xa4);
+	vTaskDelay(100);
 	clear();
 	flush();
 	setOn(true);
@@ -100,71 +106,80 @@ int SSD1306::init(uint8_t maxx, uint8_t maxy, uint8_t hwcfg)
 	return 0;
 }
 
-int SSD1306::setOn(bool on)
+
+void SH1106::xmitCmds(uint8_t *cmd, unsigned n)
 {
-	log_dbug(TAG,"setOn(%d)",on);
-	uint8_t cmd_on[] = { m_addr, 0x00, 0x8d, 0x1f, 0xaf };
-	uint8_t cmd_off[] = { m_addr, 0x00, 0xae, 0x8d, 0x10 };
-	return i2c_write(m_bus,on ? cmd_on : cmd_off,sizeof(cmd_on),1,1);
+	do {
+		xmitCmd(*cmd);
+		++cmd;
+		--n;
+	} while (n);
 }
 
-int SSD1306::setInvert(bool inv)
+
+int SH1106::xmitCmd(uint8_t cmd)
+{
+	log_dbug(TAG,"xmitCmd(0x%x)",cmd);
+	return i2c_write2(m_bus,m_addr,0x00,cmd);
+}
+
+
+int SH1106::setOn(bool on)
+{
+	log_dbug(TAG,"setOn(%d)",on);
+	return xmitCmd(0xae|on);
+	/*
+	uint8_t cmd_on[] = { m_addr, 0x00, 0xaf };
+	uint8_t cmd_off[] = { m_addr, 0x00, 0xae };
+	return i2c_write(m_bus,on ? cmd_on : cmd_off,sizeof(cmd_on),1,1);
+	*/
+}
+
+int SH1106::setInvert(bool inv)
 {
 	log_dbug(TAG,"invert(%d)",inv);
+	return xmitCmd(0xa6|inv);
+	/*
 	uint8_t cmd[3] = { m_addr, 0x00, 0xa6 };
 	if (inv)
 		cmd[2] |= 1;
 	return i2c_write(m_bus,cmd,sizeof(cmd),1,1);
+	*/
 }
 
 
-int SSD1306::setBrightness(uint8_t contrast)
+int SH1106::setBrightness(uint8_t contrast)
 {
 	uint8_t cmd[] = { m_addr, 0x00, 0x81, contrast };
 	return i2c_write(m_bus,cmd,sizeof(cmd),1,1);
 }
 
 
-void SSD1306::flush()
+void SH1106::flush()
 {
 	if (m_dirty == 0)
 		return;
 	PROFILE_FUNCTION();
-	uint8_t cmd[] = { m_addr, 0x00, 0xb0, 0x21, 0x00, (uint8_t)(m_width-1) };
+	uint8_t cmd[] = { m_addr, 0x00, 0x00, 0x10, 0xb0 };
 	uint8_t pfx[] = { m_addr, 0x40 };
 	uint8_t numpg = m_height / 8 + ((m_height & 7) != 0);
 	unsigned pgs = m_width;
-	if (pgs == 128) {
-		if (m_dirty == 0xff) {
-			i2c_write(m_bus,cmd,sizeof(cmd),1,1);
-			i2c_write(m_bus,pfx,sizeof(pfx),0,1);
-			i2c_write(m_bus,m_disp,128*8,1,0);
-			log_dbug(TAG,"sync 0-7");
-			m_dirty = 0;
-		} else if (m_dirty == 0xf) {
-			i2c_write(m_bus,cmd,sizeof(cmd),1,1);
-			i2c_write(m_bus,pfx,sizeof(pfx),0,1);
-			i2c_write(m_bus,m_disp,128*4,1,0);
-			log_dbug(TAG,"sync 0-3");
-			m_dirty = 0;
-		}
-	}
 	if (m_dirty) {
 		for (uint8_t p = 0; p < numpg; p++) {
 			if (m_dirty & (1<<p)) {
+				cmd[4] = 0xb0 + p;
 				i2c_write(m_bus,cmd,sizeof(cmd),1,1);
 				i2c_write(m_bus,pfx,sizeof(pfx),0,1);
 				i2c_write(m_bus,m_disp+p*pgs,pgs,1,0);
 				log_dbug(TAG,"sync %u",p);
 			}
-			++cmd[2];
 		}
 		m_dirty = 0;
 	}
 }
 
 
-int SSD1306::readByte(uint8_t x, uint8_t y, uint8_t *b)
+int SH1106::readByte(uint8_t x, uint8_t y, uint8_t *b)
 {
 	if ((x >= m_width) || (y >= m_height)) {
 		log_dbug(TAG,"off display %u,%u",x,y);
@@ -188,7 +203,7 @@ int SSD1306::readByte(uint8_t x, uint8_t y, uint8_t *b)
 }
 
 
-int SSD1306::drawMasked(uint8_t x, uint8_t y, uint8_t b, uint8_t m)
+int SH1106::drawMasked(uint8_t x, uint8_t y, uint8_t b, uint8_t m)
 {
 	uint8_t o;
 	if (readByte(x,y,&o))
@@ -238,7 +253,7 @@ static uint16_t scaleDouble(uint8_t byte)
  *  byte1    byte0
  */
 
-int SSD1306::drawBits(uint8_t x, uint8_t y, uint8_t b, uint8_t n)
+int SH1106::drawBits(uint8_t x, uint8_t y, uint8_t b, uint8_t n)
 {
 	static const uint8_t masks[] = {0x1,0x3,0x7,0xf,0x1f,0x3f,0x7f};
 	b &= masks[n-1];
@@ -256,7 +271,7 @@ int SSD1306::drawBits(uint8_t x, uint8_t y, uint8_t b, uint8_t n)
 }
 
 
-int SSD1306::drawByte(uint8_t x, uint8_t y, uint8_t b)
+int SH1106::drawByte(uint8_t x, uint8_t y, uint8_t b)
 {
 	uint8_t pg = y >> 3;
 	uint16_t idx = pg * m_width + x;
@@ -303,12 +318,12 @@ static uint8_t getBits(const uint8_t *data, unsigned off, uint8_t numb)
 }
 
 
-void SSD1306::drawBitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t *data, int32_t fg, int32_t bg)
+void SH1106::drawBitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t *data, int32_t fg, int32_t bg)
 {
 	static const uint8_t masks[] = {0x1,0x3,0x7,0xf,0x1f,0x3f,0x7f};
 	unsigned len = w*h;
 	uint16_t bitoff = 0;
-	log_dbug(TAG,"SSD1306::drawBitmap(%u,%u,%u,%u) %u/%u",x,y,w,h,len,len/8);
+	log_dbug(TAG,"SH1106::drawBitmap(%u,%u,%u,%u) %u/%u",x,y,w,h,len,len/8);
 	for (uint8_t x0 = x; x0 < x+w; ++x0) {
 		uint8_t yoff = y;
 		uint8_t numb = h;
@@ -340,40 +355,27 @@ void SSD1306::drawBitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const u
 			}
 		}
 	}
-//	return 0;
 }
 
 
 
-SSD1306 *SSD1306::create(uint8_t bus, uint8_t addr)
+SH1106 *SH1106::create(uint8_t bus, uint8_t addr)
 {
 	addr <<= 1;
-	uint8_t cmd[] = { (uint8_t)addr, CMD_NOP };
+	uint8_t cmd[] = { (uint8_t)addr, 0x00, CMD_NOP };
 	if (0 == i2c_write(bus,cmd,sizeof(cmd),1,1)) {
-		return new SSD1306(bus,addr);
+		return new SH1106(bus,addr);
 	}
 	return 0;
 }
 
 
-static int ssd1306_test(uint8_t bus, uint8_t addr)
+unsigned sh1106_scan(uint8_t bus)
 {
-	if (0 == i2c_write1(bus,addr,CMD_NOP)) {
-		new SSD1306(bus,addr);
-		return 1;
-	} else {
-		log_dbug(TAG,"no SSD1306 at 0x%x",addr);
-	}
-	return 0;
-}
-
-
-unsigned ssd1306_scan(uint8_t bus)
-{
-	log_dbug(TAG,"searching for SSD1306");
+	log_dbug(TAG,"searching for SH1106");
 	uint8_t addrs[] = { 0x3c, 0x3d };
 	for (uint8_t addr : addrs) {
-		if (ssd1306_test(bus,addr<<1))
+		if (SH1106::create(bus,addr))
 			return 1;
 	}
 	return 0;

@@ -64,6 +64,7 @@ void rootfs_add(const char *entr)
 	log_error(TAG,"rootfs out of entries");
 }
 
+#if defined ESP32 || defined CONFIG_USING_ESP_VFS
 static int rootfs_vfs_closedir(DIR *d)
 {
 	if (d) {
@@ -117,6 +118,7 @@ static struct dirent *rootfs_vfs_readdir(DIR *d)
 		return r;
 	return 0;
 }
+#endif
 
 
 #if 0 // not needed, as stat is directed to child filesystem
@@ -137,6 +139,7 @@ static int rootfs_vfs_stat(const char *p, struct stat *st)
 
 void rootfs_init()
 {
+#if defined ESP32 || defined CONFIG_USING_ESP_VFS
 	esp_vfs_t vfs;
 	bzero(&vfs,sizeof(vfs));
 	vfs.flags = ESP_VFS_FLAG_DEFAULT;
@@ -148,6 +151,7 @@ void rootfs_init()
 		log_warn(TAG,"VFS register rootfs: %s",esp_err_to_name(e));
 	else
 		log_info(TAG,"rootfs mounted");
+#endif
 }
 #endif
 

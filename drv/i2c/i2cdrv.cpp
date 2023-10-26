@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021, Thomas Maier-Komor
+ *  Copyright (C) 2021-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -21,6 +21,7 @@
 #ifdef CONFIG_I2C
 
 #include "bmx.h"
+#include "bmp388.h"
 #include "i2cdrv.h"
 #include "log.h"
 
@@ -449,6 +450,10 @@ int i2c_init(uint8_t port, uint8_t sda, uint8_t scl, unsigned freq, uint8_t xpul
 #ifdef CONFIG_BMX280
 	log_info(TAG,"search bmx");
 	n += bmx_scan(port);
+#endif
+#ifdef CONFIG_BMP388
+	log_info(TAG,"search bmp388");
+	n += bmp388_scan(port);
 #endif
 #ifdef CONFIG_SGP30
 	log_info(TAG,"search sgp30");

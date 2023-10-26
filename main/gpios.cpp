@@ -37,6 +37,7 @@
 #include <esp8266/gpio_struct.h>
 #else
 #include <hal/gpio_ll.h>
+#include <rom/gpio.h>
 #endif
 
 #ifdef CONFIG_LUA
@@ -70,7 +71,6 @@ class Gpio
 	Gpio(const char *name, xio_t gpio, unsigned config)
 	: m_env(name,false)
 	, m_gpio(gpio)
-	, m_intrev(0)
 	{
 		init(config);
 	}
@@ -90,7 +90,10 @@ class Gpio
 	{ return m_env.name(); }
 
 	void set_lvl(int lvl)
-	{ xio_set_lvl(m_gpio,(xio_lvl_t)lvl); }
+	{
+		if (-1 != xio_set_lvl(m_gpio,(xio_lvl_t)lvl))
+			m_env.set(lvl);
+	}
 
 	void attach(EnvObject *r)
 	{ r->add(&m_env); }
@@ -108,12 +111,17 @@ class Gpio
 	static void action_set0(void *);
 	static void action_set1(void *);
 	static void action_toggle(void *);
+#ifdef ESP32
+	static void action_hold(void *);
+	static void action_unhold(void *);
+#endif
 
 	EnvBool m_env;
 	xio_t m_gpio;
-	Gpio *m_next;			// set in init()
-	bool m_intlvl;			// level at time of interrupt
-	event_t m_intrev;
+	Gpio *m_next = 0;		// set in init()
+	bool m_intlvl = false;		// level at time of interrupt
+	bool hold = false;
+	event_t m_intrev = 0, m_fallev = 0, m_riseev = 0;
 	static Gpio *First;
 };
 
@@ -186,6 +194,7 @@ void Gpio::action_sample(void *arg)
 {
 	Gpio *gpio = (Gpio *)arg;
 	int lvl = gpio->get_lvl();
+	event_trigger(lvl != 0 ? gpio->m_riseev : gpio->m_fallev);
 	log_dbug(TAG,"%s = %d",gpio->name(),lvl);
 }
 
@@ -213,6 +222,24 @@ void Gpio::action_toggle(void *arg)
 	xio_set_lvl(gpio->m_gpio,(xio_lvl_t)lvl);
 	log_dbug(TAG,"%s <= %d",gpio->name(),lvl);
 }
+
+
+#ifdef ESP32
+void Gpio::action_hold(void *arg)
+{
+	Gpio *gpio = (Gpio *)arg;
+	gpio_pad_hold(gpio->m_gpio);
+	log_dbug(TAG,"hold %s",gpio->name());
+}
+
+
+void Gpio::action_unhold(void *arg)
+{
+	Gpio *gpio = (Gpio *)arg;
+	gpio_pad_unhold(gpio->m_gpio);
+	log_dbug(TAG,"unhold %s",gpio->name());
+}
+#endif
 
 
 void Gpio::init(unsigned config)
@@ -246,11 +273,21 @@ void Gpio::init(unsigned config)
 		action_add(concat(name,"!set_1"),Gpio::action_set1,(void*)this,"set gpio high");
 		action_add(concat(name,"!set_0"),Gpio::action_set0,(void*)this,"set gpio low");
 		action_add(concat(name,"!toggle"),Gpio::action_toggle,(void*)this,"toggle gpio");
+#ifdef ESP32
+		if (GPIO_IS_VALID_OUTPUT_GPIO(m_gpio)) {
+			action_add(concat(name,"!hold"),Gpio::action_hold,(void*)this,"hold gpio");
+			action_add(concat(name,"!unhold"),Gpio::action_unhold,(void*)this,"unhold gpio");
+		} else {
+			log_dbug(TAG,"no hold feature for gpio%u",m_gpio);
+		}
+#endif
 	}
 	if ((config >> 2) & 0x3) {
 		// configure interrupts
 		log_dbug(TAG,"gpio interrupts");
-		m_intrev = event_register(concat(name,"`intr"));
+		m_intrev = event_register(name,"`intr");
+		m_fallev = event_register(name,"`fall");
+		m_riseev = event_register(name,"`rise");
 		if (a == 0)
 			log_warn(TAG,"gpio%d: interrupts only work on inputs",m_gpio);
 		else if (xio_set_intr(m_gpio,isr_handler,this))

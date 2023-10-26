@@ -567,7 +567,7 @@ unsigned MatrixDisplay::drawChar(uint16_t x, uint16_t y, char c, int32_t fg, int
 	log_dbug(TAG,"drawChar(%d,%d,'%c') = %u",x,y,c,a);
 //	log_info(TAG,"%d/%d %+d/%+d, adv %u len %u",(int)w,(int)h,(int)dx,(int)dy,a,l);
 	if (bg != -1)
-		fillRect(x,y,dx,a,bg);
+		fillRect(x,y,a,m_font->yAdvance,bg);
 	drawBitmap(x+dx,y+dy+m_font->yAdvance-1,w,h,data,fg,bg);
 	return a;
 }

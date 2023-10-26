@@ -21,6 +21,7 @@
 #ifdef CONFIG_I2C
 
 #include "hdc1000.h"
+#include "opt3001.h"
 #include "log.h"
 
 #define DEV_ADDR	(0x40<<1)
@@ -42,9 +43,9 @@ static unsigned scan_addr(uint8_t bus, uint8_t addr)
 	if (i2c_w1rd(bus,addr,REG_DEV_ID,data,sizeof(data)))
 		return 0;
 	uint16_t id = (data[0] << 8) | data[1];
-	log_dbug(TAG,"found TI device 0x%04x",id);
+	log_info(TAG,"found TI device 0x%04x",id);
 #ifdef CONFIG_HDC1000
-	if ((id = 0x1000) || (id == 0x1050)) {
+	if ((id == 0x1000) || (id == 0x1050)) {
 		if (I2CDevice *s = HDC1000::create(bus,addr,id)) {
 			s->init();
 			return 1;
@@ -59,6 +60,7 @@ static unsigned scan_addr(uint8_t bus, uint8_t addr)
 		}
 	}
 #endif
+	log_warn(TAG,"no driver for device id 0x%04x",id);
 	return 0;
 
 }

@@ -695,7 +695,7 @@ static const char *shell_cp(Terminal &term, int argc, const char *args[])
 #endif
 
 
-void print_hex(Terminal &term, const uint8_t *b, size_t s, size_t off = 0)
+void print_hex(Terminal &term, const uint8_t *b, size_t s, size_t off)
 {
 	const uint8_t *a = b, *e = b + s;
 	while (a != e) {
@@ -1777,16 +1777,6 @@ static const char *nslookup(Terminal &term, int argc, const char *args[])
 }
 
 
-#ifdef CONFIG_DEVEL
-static const char *segv(Terminal &term, int argc, const char *args[])
-{
-	term.printf("triggering segment violoation\n");
-	*(char*)0 = 1;
-	return 0;
-}
-#endif
-
-
 static const char *sntp(Terminal &term, int argc, const char *args[])
 {
 	if (argc > 3)
@@ -2664,9 +2654,6 @@ ExeName ExeNames[] = {
 #endif
 #ifdef CONFIG_SMARTCONFIG
 	{"sc",1,sc,"SmartConfig actions",0},
-#endif
-#ifdef CONFIG_DEVEL
-	{"segv",1,segv,"trigger a segmentation violation",0},
 #endif
 #ifdef CONFIG_SPI
 	{"spi",0,spicmd,"list/configure/operate SPI devices",0},

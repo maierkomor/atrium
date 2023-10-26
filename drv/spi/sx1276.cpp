@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2022, Thomas Maier-Komor
+ *  Copyright (C) 2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -24,6 +24,7 @@
 #include "env.h"
 #include "event.h"
 #include "log.h"
+#include "shell.h"
 #include "sx1276.h"
 #include "terminal.h"
 #include "xio.h"
@@ -101,10 +102,13 @@
 #define FSKOOK_AFC_LSB			0x1c
 #define FSKOOK_FEI_MSB			0x1d
 #define FSKOOK_FEI_LSB			0x1e
+#define FSKOOK_PREEMBLE_DETECT		0x1f
+#define FSKOOK_OSC			0x24
 #define FSKOOK_PACKET_CONFIG		0x30
 #define FSKOOK_PAYLOAD_LENGTH		0x32
 #define FSKOOK_NODE_ADRS		0x33
 #define FSKOOK_BROADCAST_ADRS		0x34
+#define FSKOOK_FIFO_THRESH		0x35
 #define FSKOOK_TEMP			0x3c
 #define FSKOOK_IRQ_FLAGS1		0x3e
 #define FSKOOK_IRQ_FLAGS2		0x3f
@@ -141,7 +145,7 @@
 // RX_CONFIG
 #define BIT_RESTART_RX_ON_COLLISSION	(1<<7)
 #define BIT_RESTART_WITHOUT_PLL_LOCK	(1<<6)
-#define BIT_RESTART_WITH_PLL_LOCK	(1<<5)
+#define BIT_RESTART_RX_WPLL		(1<<5)
 #define BIT_AFC_AUTO_ON			(1<<4)
 #define BIT_AGC_AUTO_ON			(1<<3)
 #define MODE_INTR_NONE			0
@@ -150,8 +154,9 @@
 #define MODE_INTR_RX_PREAMBLE		7
 
 // PACKET_CONFIG
-#define BIT_FIXED_LENGTH		(1<<7)
+#define BIT_VARIABLE_LENGTH		(1<<7)
 #define BIT_CRC_ON			(1<<4)
+#define BIT_CRC_AUTOCLEAROFF		(1<<3)
 
 #define BIT_CRC_ON_PAYLOAD		(1<<6)
 #define BIT_PLL_TIMEOUT			(1<<7)
@@ -159,7 +164,9 @@
 #define BIT_RX_DONE			(1<<6)
 #define BIT_PAYLOAD_CRC_ERROR		(1<<5)
 #define BIT_VALID_HEADER		(1<<4)
-#define BIT_TX_DONE			(1<<3)
+#define BIT_TX_DONE			(1<<3)	// LORA
+#define BIT_TX_READY			(1<<5)	// OOK/FSK
+#define BIT_PACKET_SENT			(1<<3)	// OOK/FSK
 #define BIT_CAD_DONE			(1<<2)
 #define BIT_FHSS_CHANGE_CHANEL		(1<<1)
 #define BIT_CAD_DETECTED		(1<<0)
@@ -184,11 +191,48 @@
 
 #define TAG MODULE_SX1276
 
-struct PaConfig
+struct RegPaConfig
 {
 	uint8_t output_power : 4;
 	uint8_t max_power : 3;
 	uint8_t pa_select : 1;
+};
+
+struct RegPaRamp	// 0x0a
+{
+	uint8_t ramp:4;
+	uint8_t reserved:1;
+	uint8_t shaping:2;
+};
+
+struct RegOcp	// 0x0b
+{
+	uint8_t trim:5;
+	uint8_t on:1;
+};
+
+struct RegLna	// 0x0c
+{
+	uint8_t boosthf:2;
+	uint8_t reserved:1;
+	uint8_t boostlf:2;
+	uint8_t lnagain:3;
+};
+
+struct RegRxConfig	// 0x0d
+{
+	uint8_t rxtrigger:3;
+	uint8_t agcautoon:1;
+	uint8_t afcautoon:1;
+	uint8_t restart_w_pll:1;
+	uint8_t restart_wo_pll:1;
+	uint8_t restart_on_coll:1;
+};
+
+struct RegRssiConfig	// 0x0e
+{
+	uint8_t smoothing:3;
+	uint8_t offset:5;
 };
 
 
@@ -203,6 +247,22 @@ static const uint16_t BW_dkHz[] = {
 static const char *ModeStrs[] = {
 	"SLEEP", "STDBY", "FSTX", "TX", "FSRX", "RXCONT", "RXSINGLE", "CAD"
 };
+
+static const char *RegNames[] = {
+	"FIFO", "OpMode", "BitRateMsb", "BitRateLsb", "FdevMsb",
+	"FdevLsb", "FrFMsb", "FrfMid", "FrfLsb", "PaConfig",
+	"PaRamp", "Ocp", "Lna", "RxConfig", "RssiConfig", "RssiColl",
+	"RssiThresh", "RssiValue", "RxBw", "AfcBw", "OokPeak", "OokFix",
+	"OokAfg", "Res17", "Res18", "Res19", "AfcFei", "AfcMsb", "AfcLsb",
+	"FeiMsb", "FeiLsb", "PreambleDet", "RxTimeout1", "RxTimeout2", "RxTimeout3",
+	"RxDelay", "Osc", "PreambleMsb", "PreambleLsb", "SyncConfig", "SyncVal1",
+	"SyncVal2", "SyncVal3", "SyncVal4", "SyncVal5", "SyncVal6", "SyncVal7",
+	"SyncVal8", "PacketCfg1", "PacketCfg2", "PayloadLen", "NodeAdrs", "BcastAdrs",
+	"FifoThresh", "SeqConfig1", "SeqConfig2", "TimerRes", "Timer1Coef", "Timer2Coef",
+	"ImageCal", "Temp", "LowBat", "IrqFlags1", "IrqFlags2", "DioMap1", "DioMap2",
+	"Version", "Reserve43", "PllHop"
+};
+
 
 // heltec wireless stick:
 // reset 14
@@ -230,14 +290,23 @@ SX1276::SX1276(spi_host_device_t host, spi_device_interface_config_t &cfg, int8_
 	cfg.clock_speed_hz = SPI_MASTER_FREQ_10M;
 	cfg.queue_size = 1;
 	cfg.post_cb = postCallback;
-//	cfg.flags = ESP_INTR_FLAG_IRAM;
+	cfg.flags = ESP_INTR_FLAG_IRAM;
 	cfg.flags = SPI_DEVICE_HALFDUPLEX;
-	/*
 	if (-1 != intr) {
-		if (esp_err_t e = xio_set_intr(intr,intrHandler,this))
+		xio_cfg_t cfg = XIOCFG_INIT;
+		cfg.cfg_io = xio_cfg_io_in;
+		cfg.cfg_pull = xio_cfg_pull_none;
+		cfg.cfg_intr = xio_cfg_intr_edges;
+		if (0 > xio_config(intr,cfg)) {
+			log_warn(TAG,"config interrupt error");
+		} else if (esp_err_t e = xio_set_intr(intr,intr_handler,this))
 			log_warn(TAG,"error attaching interrupt: %s",esp_err_to_name(e));
+		else
+			log_info(TAG,"interrupt on %u",intr);
 	}
-	*/
+	Action *irqac = action_add("sx1276!irqh",intr_action,this,0);
+	m_irqev = event_register(concat(m_name,"`irq"));
+	event_callback(m_irqev,irqac);
 	if (esp_err_t e = spi_bus_add_device(host,&cfg,&m_hdl))
 		log_warn(TAG,"device add failed: %s",esp_err_to_name(e));
 	else
@@ -391,15 +460,18 @@ int SX1276::init()
 	log_info(TAG,"version: %u",ver);
 	log_info(TAG,"freq: %dMHz",getFreq());
 
-	writeReg(REG_PA_CONFIG,0);
+	writeReg(REG_PA_CONFIG,0x4f);
 	float pmax,pout;
-	getMaxPower(pmax);
-	getPower(pout);
+//	getMaxPower(pmax);
+	getPower(pout,pmax);
 	log_info(TAG,"power: max: %g, output %g",pmax,pout);
 
-	log_info(TAG,"Imax: %dmA, %sabled"
-		, getImax()
-		, getOCP() ? "en" : "dis");
+	unsigned imax;
+	bool ocp;
+	if (0 == getImax(imax,ocp))
+		log_info(TAG,"Imax: %dmA, %sabled", imax, ocp ? "en" : "dis");
+	else
+		log_warn(TAG,"cannot get Imax/OCP");
 
 	setFreq(433);
 	log_info(TAG,"freq: %dMHz",getFreq());
@@ -432,12 +504,20 @@ int SX1276::init()
 	writeReg(LORA_IRQ_FLAGS,0xff);
 	setLora(false);
 	m_rev = event_register(concat(m_name,"`recv"));
-	action_add(concat(m_name,"!send"),send_action,0,"set ");
+	action_add(concat(m_name,"!send"),send_action,0,"send data");
 	return 0;
 }
 
 
-void SX1276::intr_action(void *arg)
+void IRAM_ATTR SX1276::intr_handler(void *arg)
+{
+	SX1276 *dev = (SX1276 *) arg;
+	con_printf("intr\n");
+	event_isr_trigger(dev->m_irqev);
+}
+
+
+void IRAM_ATTR SX1276::intr_action(void *arg)
 {
 	SX1276 *dev = (SX1276 *) arg;
 	dev->processIntr();
@@ -469,7 +549,10 @@ void SX1276::processIntr()
 		readRegs(FSKOOK_IRQ_FLAGS1,sizeof(r),r);
 		log_dbug(TAG,"irq flags 0x%02x 0x%02x",r[0],r[1]);
 		if (r[1] & BIT_PAYLOAD_READY) {
-			// TODO
+			log_dbug(TAG,"payload ready");
+			uint8_t data[64], st;
+			readRegs(0,sizeof(data),data);
+			// TODO: handle data
 		}
 	}
 }
@@ -492,29 +575,65 @@ bool SX1276::isLora()
 
 int SX1276::setLora(bool lora)
 {
-	uint8_t r;
-	if (readReg(REG_OP_MODE,&r))
+	uint8_t m;
+	if (readReg(REG_OP_MODE,&m))
 		return -1;
-	if (((r&BIT_LORA) != 0) == lora) {
-		return 0;
+	if (((m&BIT_LORA) != 0) == lora) {
+		log_dbug(TAG,"LORA mode already %sactive",lora?"":"in");
+//		return 0;
 	}
-	uint8_t m = r & MASK_MODE;
-	r &= ~BIT_LORA;
-	r &= ~MASK_MODE;
+	log_dbug(TAG,"set modem %s",lora?"LORA":"OOK/FSK");
 	if (lora)
-		r |= BIT_LORA;
+		m |= BIT_LORA;
 	else
-		r &= ~BIT_LORA;
-	if (writeReg(REG_OP_MODE,r))
+		m &= ~BIT_LORA;
+	if (writeReg(REG_OP_MODE,m))
 		return -1;
-	writeReg(REG_OP_MODE,r|m);
 	if (lora) {
 		getBitRate();
-	} else {
-		writeReg(FSKOOK_RX_CONFIG,BIT_AFC_AUTO_ON|BIT_AGC_AUTO_ON|MODE_INTR_RX_PREAMBLE);
-		writeReg(FSKOOK_PACKET_CONFIG,BIT_CRC_ON);	// variable-length, no address filter
-		writeReg(FSKOOK_PAYLOAD_LENGTH,0xff);	// maximum payload lenght
 		getBandwidth();
+	} else {
+		uint8_t r;
+		uint8_t v = BIT_RESTART_RX_WPLL|BIT_AFC_AUTO_ON|BIT_AGC_AUTO_ON|MODE_INTR_RX_PREAMBLE;
+		writeReg(FSKOOK_RX_CONFIG,v);
+		v &= ~BIT_RESTART_RX_WPLL;	// remove trigger bit
+		r = 0;
+		readReg(FSKOOK_RX_CONFIG,&r);
+		assert(r == v);
+
+		v = BIT_VARIABLE_LENGTH|BIT_CRC_ON|BIT_CRC_AUTOCLEAROFF;	// variable-length, no address filter
+		v |= 3<<5;	// DC Free: whitening encoding enable
+		writeReg(FSKOOK_PACKET_CONFIG,v);
+		readReg(FSKOOK_PACKET_CONFIG,&r);
+		assert(r == v);
+		
+		// maximum payload length
+		// absolute max is 255, but some devices are limited to 0x7f
+		// why_
+		v = 0x60;
+		writeReg(FSKOOK_PAYLOAD_LENGTH,v);
+		readReg(FSKOOK_PAYLOAD_LENGTH,&r);
+		assert(r == v);
+
+		// preemble detect on 1<<7
+		// detector size 2 (3bytes) 2<<5
+		// detector tolerance 0xa (default)
+		// TODO preamble detect is not a trigger but not accepted, should be 0xaa
+		// v = 0xaa;
+		v = 0x2a;
+		writeReg(FSKOOK_PREEMBLE_DETECT,v);
+		readReg(FSKOOK_PREEMBLE_DETECT,&r);
+		assert(r == v);
+
+		v = 0x15;	// default value
+		writeReg(FSKOOK_RX_BW,v);
+		readReg(FSKOOK_RX_BW,&r);
+		assert(r == v);
+
+		v = 0x08;	// start directly
+		writeReg(FSKOOK_FIFO_THRESH,v);
+		readReg(FSKOOK_FIFO_THRESH,&r);
+		assert(r == v);
 	}
 	return 0;
 }
@@ -542,9 +661,10 @@ int SX1276::setOOK(bool ook)
 }
 
 
+/*
 int SX1276::getMaxPower(float &pmax)
 {
-	PaConfig pac;
+	RegPaConfig pac;
 	if (readRegs(REG_PA_CONFIG,sizeof(pac),(uint8_t*)&pac))
 		return -1;
 	pmax = (float) pac.max_power * 0.6 + 10.8;
@@ -555,6 +675,7 @@ int SX1276::getMaxPower(float &pmax)
 		);
 	return 0;
 }
+*/
 
 
 int SX1276::setMaxPower(float pmax)
@@ -563,7 +684,7 @@ int SX1276::setMaxPower(float pmax)
 		log_warn(TAG,"valid maximum power range 10.8..20dBm");
 		return -1;
 	}
-	PaConfig pac;
+	RegPaConfig pac;
 	if (readRegs(REG_PA_CONFIG,sizeof(pac),(uint8_t*)&pac))
 		return -1;
 	float pout;
@@ -589,12 +710,12 @@ int SX1276::setMaxPower(float pmax)
 }
 
 
-int SX1276::getPower(float &pout)
+int SX1276::getPower(float &pout, float &pmax)
 {
-	PaConfig pac;
+	RegPaConfig pac;
 	if (readRegs(REG_PA_CONFIG,sizeof(pac),(uint8_t*)&pac))
 		return -1;
-	float pmax = (float) pac.max_power * 0.6 + 10.8;
+	pmax = (float) pac.max_power * 0.6 + 10.8;
 	pout = pac.pa_select ? (2.0+pac.output_power) : pmax-(15-pac.output_power);
 	// negative value plausible?
 //	pout = pac.pa_select ? (2.0+pac.output_power) : (pmax-pac.output_power);
@@ -609,9 +730,11 @@ int SX1276::getPower(float &pout)
 
 int SX1276::setPower(float pout)
 {
-	if (pout > 20)
+	if (pout > 20) {
+		log_warn(TAG,"invalid power %g",pout);
 		return -1;
-	PaConfig pac;
+	}
+	RegPaConfig pac;
 	if (readRegs(REG_PA_CONFIG,sizeof(pac),(uint8_t*)&pac))
 		return -1;
 	if (pac.pa_select) {
@@ -619,6 +742,7 @@ int SX1276::setPower(float pout)
 			return -1;
 		pac.output_power = pout-2;
 	} else if (pout > (pac.max_power*0.6+10.8)) {
+		log_warn(TAG,"power %g: out of range",pout);
 		return -1;
 	} else {
 		float pmax = (float) pac.max_power * 0.6 + 10.8;
@@ -635,7 +759,7 @@ int SX1276::getFreq()
 	if (0 == readRegs(REG_FRF_MSB,sizeof(freq),freq)) {
 		uint32_t f = (freq[0]<<16)|(freq[1]<<8)|freq[0];
 		r = (f<<5)/(1<<19);
-		log_dbug(TAG,"freq: %uMHz",r);
+//		log_dbug(TAG,"freq: %uMHz",r);
 	}
 	return r;
 }
@@ -681,23 +805,23 @@ int SX1276::setImax(unsigned imax)
 }
 
 
-int SX1276::getImax()
+int SX1276::getImax(unsigned &imax, bool &ocp)
 {
-	uint8_t ocp;
-	if (readReg(REG_OCP,&ocp))
+	uint8_t v;
+	if (readReg(REG_OCP,&v))
 		return -1;
-	unsigned imax;
-	if ((ocp & 0x1f) <= 15) 
-		imax = 45+5*(ocp&0x1f);
-	else if ((ocp & 0x1f) <= 27) 
-		imax = -30 + 10 * (ocp&0x1f);
+	if ((v & 0x1f) <= 15) 
+		imax = 45+5*(v&0x1f);
+	else if ((v & 0x1f) <= 27) 
+		imax = -30 + 10 * (v&0x1f);
 	else
 		imax = 240;
+	ocp = v & (1<<5);
 	log_dbug(TAG,"OCP %sabled, Imax %u mA"
-			, ocp & (1<<5) ? "en" : "dis"
+			, ocp ? "en" : "dis"
 			, imax
 		);
-	return imax;
+	return 0;
 }
 
 
@@ -793,7 +917,7 @@ int SX1276::getBitRate()
 		return -1;
 	float br = (float)((v[0] << 8) | v[1]) + ((float)f/16);
 	float r = rintf(32.0E6 / br);
-	log_dbug(TAG,"bit-rate %dB/s",(int)r);
+//	log_dbug(TAG,"bit-rate %dB/s",(int)r);
 	return (int)r;
 }
 
@@ -947,6 +1071,7 @@ IRAM_ATTR void SX1276::postCallback(spi_transaction_t *t)
 }
 
 
+/*
 void SX1276::readRegsSync(uint8_t reg, uint8_t num)
 {
 	uint8_t data[num];
@@ -963,12 +1088,14 @@ void SX1276::readRegsSync(uint8_t reg, uint8_t num)
 	}
 	if (pdTRUE != xSemaphoreTake(m_sem,MUTEX_ABORT_TIMEOUT))
 		abort_on_mutex(m_sem,"sx1276");
-	log_hex(TAG,data,sizeof(data),"read regs %u@%u:",num,reg);
+	log_hex(TAG,data,sizeof(data),"readRegs %u@%u:",num,reg);
 }
+*/
 
 
 int SX1276::readRegs(uint8_t reg, uint8_t num, uint8_t *data)
 {
+	bzero(data,num);
 	spi_transaction_t t;
 	bzero(&t,sizeof(t));
 	t.user = this;
@@ -982,7 +1109,7 @@ int SX1276::readRegs(uint8_t reg, uint8_t num, uint8_t *data)
 	}
 	if (pdTRUE != xSemaphoreTake(m_sem,MUTEX_ABORT_TIMEOUT))
 		abort_on_mutex(m_sem,"sx1276");
-	log_hex(TAG,data,num,"read regs %u@%u:",num,reg);
+	log_hex(TAG,data,num,"readRegs %u of %s(0x%x):",num,(reg < (sizeof(RegNames)/sizeof(RegNames[0])) ? RegNames[reg] : "<unknown>"),reg,*data);
 	return 0;
 }
 
@@ -1002,7 +1129,7 @@ int SX1276::readReg(uint8_t reg, uint8_t *data)
 	}
 	if (pdTRUE != xSemaphoreTake(m_sem,MUTEX_ABORT_TIMEOUT))
 		abort_on_mutex(m_sem,"sx1276");
-	log_dbug(TAG,"read reg 0x%x: 0x%x",reg,*data);
+	log_dbug(TAG,"readReg %s(0x%02x): 0x%02x",(reg < (sizeof(RegNames)/sizeof(RegNames[0])) ? RegNames[reg] : "<unknown>"),reg,*data);
 	return 0;
 }
 
@@ -1013,37 +1140,36 @@ int SX1276::writeReg(uint8_t r, uint8_t v)
 	bzero(&t,sizeof(t));
 	t.cmd = 1;
 	t.user = this;
-	t.addr = r;
+	t.addr = r | 0x80;
 	t.length = 1<<3;
-	t.rxlength = 0;
-	t.rx_buffer = 0;
-	t.tx_buffer = &v;
-//	if (esp_err_t e = spi_device_transmit(m_hdl,&t))
-//		log_warn(TAG,"error writing reg 0x%x: %s",r,esp_err_to_name(e));
+	t.tx_data[0] = v;
+	t.flags = SPI_TRANS_USE_TXDATA;
 	if (esp_err_t e = spi_device_queue_trans(m_hdl,&t,1)) {
 		log_warn(TAG,"error queuing read: %s",esp_err_to_name(e));
 		return -1;
 	}
 	if (pdTRUE != xSemaphoreTake(m_sem,MUTEX_ABORT_TIMEOUT))
 		abort_on_mutex(m_sem,"sx1276");
-	log_dbug(TAG,"write 0x%02x, 0x%02x",r,v);
+	log_dbug(TAG,"writeReg %s(0x%02x), 0x%02x",(r < (sizeof(RegNames)/sizeof(RegNames[0])) ? RegNames[r] : "<unknown>"),r,v);
 	return 0;
 }
 
 
 int SX1276::writeRegs(uint8_t r, uint8_t n, uint8_t *v)
 {
+	log_hex(TAG,v,n,"write regs 0x%x",r);
 	spi_transaction_t t;
 	bzero(&t,sizeof(t));
 	t.cmd = 1;
 	t.user = this;
-	t.addr = r;
+	t.addr = r | 0x80;
 	t.length = n<<3;
-	t.rxlength = 0;
-	t.rx_buffer = 0;
-	t.tx_buffer = v;
-//	if (esp_err_t e = spi_device_transmit(m_hdl,&t))
-//		log_warn(TAG,"error writing reg 0x%x: %s",r,esp_err_to_name(e));
+	if (n > sizeof(t.tx_data)) {
+		t.tx_buffer = v;
+	} else {
+		memcpy(t.tx_data,v,n);
+		t.flags = SPI_TRANS_USE_TXDATA;
+	}
 	if (esp_err_t e = spi_device_queue_trans(m_hdl,&t,1)) {
 		log_warn(TAG,"error queuing read: %s",esp_err_to_name(e));
 		return -1;
@@ -1063,8 +1189,9 @@ int SX1276::send(const char *buf, int s)
 	}
 	if (readReg(REG_OP_MODE,&opm))
 		return -1;
-	if (((opm & MASK_MODE) != mode_stdb) && ((opm & MASK_MODE) != mode_sleep)) {
-		log_warn(TAG,"cannot send from mode %s",ModeStrs[opm&MASK_MODE]);
+	uint8_t mode = opm & MASK_MODE;
+	if ((mode != mode_stdb) && (mode != mode_sleep) && (mode != mode_tx)) {
+		log_warn(TAG,"cannot send from mode %s",ModeStrs[mode]);
 		return -1;
 	}
 	opm &= ~MASK_MODE;
@@ -1105,14 +1232,12 @@ int SX1276::send(const char *buf, int s)
 		opm |= mode_tx;
 		writeReg(REG_OP_MODE,opm);
 		log_dbug(TAG,"send started");
-		uint8_t irqf;
+		uint8_t flags[2];
 		do {
 			ets_delay_us(10000);
-			readReg(REG_OP_MODE,&opm);
-			readReg(LORA_IRQ_FLAGS,&irqf);
-		} while ((irqf & BIT_TX_DONE) == 0);
+			readRegs(FSKOOK_IRQ_FLAGS1,sizeof(flags),flags);
+		} while ((flags[1]& BIT_PACKET_SENT) == 0);
 		log_dbug(TAG,"send done");
-		writeReg(LORA_IRQ_FLAGS,BIT_TX_DONE);
 		opm &= ~MASK_MODE;
 		opm |= mode_stdb;
 		writeReg(REG_OP_MODE,opm);
@@ -1126,6 +1251,7 @@ const char *SX1276::exeCmd(Terminal &t, int argc, const char **args)
 	if ((argc == 0) || ((argc == 1) && (0 == strcmp(args[0],"-h")))) {
 		t.println(
 			"info       : print current settings\n"
+			"mode <m>   : set mode (rx/rx1/recv/tx/standby)\n"
 			"addr <a>   : 8bit node address (only FSK/OOK)\n"
 			"bca <a>    : 8bit broadcast address (only FSK/OOK)\n"
 			"modem <m>  : switch modem to FSK, OOK, LORA\n"
@@ -1163,6 +1289,20 @@ const char *SX1276::exeCmd(Terminal &t, int argc, const char **args)
 			t.printf("%02x %02x\n",flags[0],flags[1]);
 			if (flags[0] & 0x80)
 				t.println("mode ready");
+			if (flags[0] & 0x40)
+				t.println("rx ready");
+			if (flags[0] & 0x20)
+				t.println("tx ready");
+			if (flags[0] & 0x10)
+				t.println("pll lock");
+			if (flags[0] & 0x8)
+				t.println("rssi");
+			if (flags[0] & 0x4)
+				t.println("timeout");
+			if (flags[0] & 0x2)
+				t.println("preamble detect");
+			if (flags[0] & 0x1)
+				t.println("address match");
 			if (flags[1] & 0x80)
 				t.println("fifo full");
 			if (flags[1] & 0x40)
@@ -1201,9 +1341,17 @@ const char *SX1276::exeCmd(Terminal &t, int argc, const char **args)
 			setMode(mode_stdb);
 			setMode(mode_cad);
 		} else if (0 == strcmp(args[0],"regs")) {
-			uint8_t r[32];
-			readRegs(1,sizeof(r),r);
-			log_hex(TAG,r,sizeof(r),"regs:");
+			uint8_t r0[0x28];
+			r0[0] = 0;	// address 0 is the FIFO
+			readRegs(1,sizeof(r0)-1,r0+1);
+			t.println("regs:");
+			for (unsigned i = 1; i < sizeof(r0);  ++i)
+				printf("0x%02x %-12s 0x%02x\n",i,RegNames[i],r0[i]);
+			uint8_t r1[0x1b];
+			readRegs(sizeof(r0),sizeof(r1),r1);
+			for (unsigned i = 0; i < sizeof(r1);  ++i)
+				printf("0x%02x %-12s 0x%02x\n",i+sizeof(r0),RegNames[i+sizeof(r0)],r1[i]);
+//			print_hex(t,r,sizeof(r));
 		} else {
 			return "Invalid argument #1.";
 		}

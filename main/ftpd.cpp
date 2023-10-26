@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2022, Thomas Maier-Komor
+ *  Copyright (C) 2018-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -54,11 +54,13 @@ extern "C" {
 #define BUFSIZE 1024
 #define FTPD_PORT 21
 
+using namespace std;
+
 
 typedef struct ftpctx
 {
-	const char *root;
-	char *wd;
+	const char *root;	// always no slash-termination (wd has a leading slash)
+	char *wd;		// always slash-terminated
 	char *rnfr;
 	LwTcp *con, *dcon;
 	uint8_t login;	// 2 = ftp, 4 = root, 1 = unlocked
@@ -89,6 +91,27 @@ static char *arg2fn(ftpctx_t *ctx, const char *arg)
 	}
 	strcat(fn,arg);
 	return fn;
+}
+
+
+static int valid_path(const char *p, const char *r = 0)
+{
+	struct stat st;
+	size_t l = strlen(p);
+	if (l == 0) {
+		log_warn(TAG,"empty path");
+	} else if (p[l-1] != '/') {
+		log_warn(TAG,"path is not / terminated");
+	} else if (stat(p,&st)) {
+		log_warn(TAG,"failed to stat %s: %s",p,strerror(errno));
+	} else if (0 == S_ISDIR(st.st_mode) ) {
+		log_warn(TAG,"%s is not a directory",p);
+	} else if ((r != 0) && (strncmp(p,r,strlen(r)))) {
+		log_warn(TAG,"%s not in ftpd-root",p);
+	} else {
+		return 1;
+	}
+	return 0;
 }
 
 
@@ -129,12 +152,17 @@ static char *up_slash(char *str, char *at)
 static void fold_path(char *path)
 {
 	log_dbug(TAG,"folding %s",path);
-	while (0 == memcmp(path,"/../",4))
-		memmove(path,path+3,strlen(path+3)+1);
+	char *ds = strstr(path,"//");
+	while (ds) {
+		size_t l = strlen(ds);
+		memmove(ds,ds+1,l);
+		ds = strstr(path,"//");
+	}
 	char *dd = strstr(path,"/../");
 	while (dd) {
-		char *sl = up_slash(path,dd-1);
-		if (sl) {
+		if (dd == path) {
+			memmove(path,path+3,strlen(path+3)+1);
+		} else if (char *sl = up_slash(path,dd-1)) {
 			memmove(sl+1,dd+4,strlen(dd+4)+1);
 		} else {
 			memmove(dd,dd+3,strlen(dd+3)+1);
@@ -147,7 +175,7 @@ static void fold_path(char *path)
 
 static void pwd(ftpctx_t *ctx, const char *arg)
 {
-	answer(ctx,"200: %s",ctx->wd);
+	answer(ctx,"257 \"%s\"",ctx->wd);
 }
 
 
@@ -214,14 +242,14 @@ static void mkd(ftpctx_t *ctx, const char *arg)
 		answer(ctx,"501 missing argument");
 		return;
 	}
+#ifdef ESP8266
+	answer(ctx,"452 operation not supported");
+#else
 	char buf[256];
 	strcpy(buf,ctx->root);
 	strcat(buf,ctx->wd);
 	strcat(buf,arg);
 	fold_path(buf);
-#ifdef ESP8266
-	answer(ctx,"452 operation not supported");
-#else
 	log_dbug(TAG,"mkdir %s",buf);
 	if (-1 == mkdir(buf,0777)) {
 		log_warn(TAG,"failed to create %s: %s",arg,strerror(errno));
@@ -495,19 +523,30 @@ static void cwd(ftpctx_t *ctx, const char *arg)
 		answer(ctx,"501 missing argument",4,0);
 		return;
 	}
-	if (arg[0] == '/') {
-		ctx->wd = (char*)realloc(ctx->wd,strlen(arg)+1);
-		strcpy(ctx->wd,arg);
-	} else {
-		ctx->wd = (char*)realloc(ctx->wd,strlen(ctx->wd)+strlen(arg)+2);
-		strcat(ctx->wd,arg);
-		size_t al = strlen(arg);
-		if (arg[al-1] != '/')
-			strcat(ctx->wd,"/");
+	size_t al = strlen(arg);
+	size_t wl = strlen(ctx->wd);
+	size_t rl = strlen(ctx->root);
+	char path[al+wl+rl+2];
+	memcpy(path,ctx->root,rl);
+	char *at = path+rl;
+	if (arg[0] != '/') {
+		memcpy(at,ctx->wd,wl);
+		at += wl;
 	}
-	fold_path(ctx->wd);
-	answer(ctx,"200 %s",ctx->wd);
-	log_dbug(TAG,"cwd %s",ctx->wd);
+	memcpy(at,arg,al+1);
+	if (at[al-1] != '/') {
+		at[al] = '/';
+		at[al+1] = 0;
+	}
+	fold_path(path);
+	if (valid_path(path,ctx->root)) {
+		free(ctx->wd);
+		ctx->wd = strdup(path+rl);
+		answer(ctx,"200 %s",ctx->wd);
+		log_dbug(TAG,"cwd %s",ctx->wd);
+	} else {
+		answer(ctx,"501 invalid argument",4,0);
+	}
 }
 
 
@@ -517,14 +556,14 @@ static void cdup(ftpctx_t *ctx, const char *arg)
 	char *sl = strrchr(ctx->wd,'/');
 	if (sl == ctx->wd) {
 		answer(ctx,"200 %s",ctx->wd);
-		log_dbug(TAG,"cwd %s",ctx->wd);
+		log_dbug(TAG,"cdup %s",ctx->wd);
 		return;
 	}
 	assert(sl[1] == 0);
 	sl = up_slash(ctx->wd,sl-1);
 	sl[1] = 0;
 	answer(ctx,"200 %s",ctx->wd);
-	log_dbug(TAG,"cwd %s",ctx->wd);
+	log_dbug(TAG,"cdup %s",ctx->wd);
 }
 
 
@@ -669,7 +708,7 @@ static void passive(ftpctx_t *ctx, const char *arg)
 {
 	// TODO
 	// 202: not implemented
-	answer(ctx,"202 not implemented");
+	answer(ctx,"202 passive mode not implemented");
 }
 
 
@@ -830,9 +869,15 @@ void ftpd_setup()
 	if (c->has_port())
 		p = c->port();
 	const char *r = "/flash";
-	if (c->has_root())
-		r = c->root().c_str();
-	
+	if (c->has_root()) {
+		// ensure root is slash-terminated
+		auto *root = c->mutable_root();
+		if (root->back() == '/')
+			root->pop_back();
+		r = root->c_str();
+	} else {
+		c->set_root(r);
+	}
 	if (DIR *d = opendir(r)) {
 		closedir(d);
 		log_info(TAG,"port %hu, root '%s'",p,r);

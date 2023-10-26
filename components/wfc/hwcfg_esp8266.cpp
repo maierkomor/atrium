@@ -10,7 +10,7 @@
  * Copyright: 2018-2023
  * Author   : Thomas Maier-Komor
  * 
- * Code generated on 2023-07-31, 21:35:41 (CET).
+ * Code generated on 2023-10-24, 21:26:41 (CET).
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -292,6 +292,7 @@ static const char *i2cdrv_t_names[] = {
 	"i2cdrv_pca9685_xclk_npn",
 	"i2cdrv_pca9685_xclk_pnp",
 	"i2cdrv_pcf8574",
+	"i2cdrv_sh1106",
 	"i2cdrv_si7021",
 	"i2cdrv_ssd1306",
 	"i2cdrv_tca9555",
@@ -310,6 +311,7 @@ static i2cdrv_t i2cdrv_t_values[] = {
 	i2cdrv_pca9685_xclk_npn,
 	i2cdrv_pca9685_xclk_pnp,
 	i2cdrv_pcf8574,
+	i2cdrv_sh1106,
 	i2cdrv_si7021,
 	i2cdrv_ssd1306,
 	i2cdrv_tca9555,
@@ -332,6 +334,7 @@ size_t parse_ascii_i2cdrv_t(i2cdrv_t *v, const char *s)
 		{ "i2cdrv_pca9685_xclk_npn", i2cdrv_pca9685_xclk_npn},
 		{ "i2cdrv_pca9685_xclk_pnp", i2cdrv_pca9685_xclk_pnp},
 		{ "i2cdrv_pcf8574", i2cdrv_pcf8574},
+		{ "i2cdrv_sh1106", i2cdrv_sh1106},
 		{ "i2cdrv_si7021", i2cdrv_si7021},
 		{ "i2cdrv_ssd1306", i2cdrv_ssd1306},
 		{ "i2cdrv_tca9555", i2cdrv_tca9555},
@@ -396,6 +399,8 @@ const char *i2cdrv_t_str(i2cdrv_t e)
 		return "i2cdrv_tca9555";
 	case i2cdrv_ssd1306:
 		return "i2cdrv_ssd1306";
+	case i2cdrv_sh1106:
+		return "i2cdrv_sh1106";
 	}
 	#endif // !CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 	#ifdef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
@@ -414,6 +419,7 @@ static const char *disp_t_names[] = {
 	"dt_pcf8574_hd44780u",
 	"dt_sd_14seg",
 	"dt_sd_7seg",
+	"dt_sh1106",
 	"dt_ssd1306",
 	"dt_ssd1309",
 };
@@ -424,6 +430,7 @@ static disp_t disp_t_values[] = {
 	dt_pcf8574_hd44780u,
 	dt_sd_14seg,
 	dt_sd_7seg,
+	dt_sh1106,
 	dt_ssd1306,
 	dt_ssd1309,
 };
@@ -438,6 +445,7 @@ size_t parse_ascii_disp_t(disp_t *v, const char *s)
 		{ "dt_pcf8574_hd44780u", dt_pcf8574_hd44780u},
 		{ "dt_sd_14seg", dt_sd_14seg},
 		{ "dt_sd_7seg", dt_sd_7seg},
+		{ "dt_sh1106", dt_sh1106},
 		{ "dt_ssd1306", dt_ssd1306},
 		{ "dt_ssd1309", dt_ssd1309},
 	};
@@ -483,6 +491,8 @@ const char *disp_t_str(disp_t e)
 		return "dt_ssd1306";
 	case dt_ssd1309:
 		return "dt_ssd1309";
+	case dt_sh1106:
+		return "dt_sh1106";
 	case dt_ili9341:
 		return "dt_ili9341";
 	}

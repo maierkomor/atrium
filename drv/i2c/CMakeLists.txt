@@ -3,6 +3,7 @@ idf_component_register(
 	apds9930.cpp
 	bh1750.cpp
 	bme680.c
+	bmp388.cpp
 	bmx.cpp
 	ccs811b.cpp
 	hdc1000.cpp
@@ -15,6 +16,7 @@ idf_component_register(
 	pca9685.cpp
 	pcf8574.cpp
 	sgp30.cpp
+	sh1106.cpp
 	si7021.cpp
 	ssd1306.cpp
 	tca9555.cpp

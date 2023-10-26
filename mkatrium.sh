@@ -103,6 +103,8 @@ elif  [ "$CONFIG_IDF_TARGET_ESP32S3" == "y" ]; then
 	IDF_TARGET=esp32s3
 elif  [ "$CONFIG_IDF_TARGET_ESP32C3" == "y" ]; then
 	IDF_TARGET=esp32c3
+elif  [ "$CONFIG_IDF_TARGET_ESP32C6" == "y" ]; then
+	IDF_TARGET=esp32c6
 fi
 
 ATRIUM_VER=`cat "$BUILD_DIR/version.txt"`

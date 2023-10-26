@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2021, Thomas Maier-Komor
+ *  Copyright (C) 2020-2023, Thomas Maier-Komor
  *
  *  This source file belongs to Wire-Format-Compiler.
  *
@@ -82,6 +82,9 @@ class estring
 	{ if (len == 0) return 0; else return str[len-1]; }
 
 	void push_back(char c);
+	
+	void pop_back()
+	{ if (len) --len; }
 
 	const char *data() const
 	{ return str; }

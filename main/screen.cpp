@@ -216,12 +216,12 @@ void Screen::display_version()
 {
 	if (MatrixDisplay *dm = disp->toMatrixDisplay()) {
 		assert(dm->maxX());
-		dm->drawRect(1,1,dm->maxX()-2,dm->maxY()-2);
+		dm->drawRect(4,1,dm->maxX()-5,dm->maxY()-3);
 		dm->setFont(font_sanslight16);
-		dm->setPos(10,2);
+		dm->setPos(10,3);
 		dm->write("Atrium");
 		dm->setFont(font_sanslight12);
-		dm->setPos(10,24);
+		dm->setPos(10,26);
 		const char *sp = strchr(Version,' ');
 		dm->write(Version,sp-Version);
 		if (dm->maxY() >= 48) {
@@ -300,15 +300,6 @@ void Screen::display_sw()
 }
 
 
-/*
-static EnvElement *getNextEnv(EnvElement *e)
-{
-	if (e == 0)
-		return RTData->
-}
-*/
-
-
 static unsigned clock_iter(void *arg)
 {
 	bool alpha = Ctx->disp->hasAlpha();
@@ -322,7 +313,7 @@ static unsigned clock_iter(void *arg)
 			uint8_t nextFont = font_sans12;
 			switch (Ctx->mode) {
 			case cm_time:
-				text = "time of day";
+				text = "local time";
 //				nextFont = 4;
 				break;
 			case cm_date:
@@ -353,7 +344,7 @@ static unsigned clock_iter(void *arg)
 			if (text) {
 				log_dbug(TAG,"mode %s",text);
 				if (dm) {
-					dm->setFont(font_sanslight10);
+					dm->setFont(font_sanslight12);
 					dm->setPos(3,4);
 				} else {
 					Ctx->disp->setPos(0,0);
@@ -377,7 +368,7 @@ static unsigned clock_iter(void *arg)
 	unsigned d = 100;
 //	Ctx->disp->setPos(0,Ctx->disp->numLines() > 1 ? 1 : 0);
 	if (dm) {
-		dm->setPos(10,20);
+		dm->setPos(5,22);
 	} else {
 		Ctx->disp->write("\r");
 		Ctx->disp->clrEol();

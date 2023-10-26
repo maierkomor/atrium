@@ -355,7 +355,6 @@ err_t LwTcp::handle_connect(void *arg, struct tcp_pcb *pcb, err_t x)
 
 int LwTcp::read(char *buf, size_t l, unsigned timeout)
 {
-	PROFILE_FUNCTION();
 	int r;
 	struct pbuf *tofree = 0;
 	if ((m_pcb == 0) && (m_pbuf == 0)) {
@@ -365,6 +364,7 @@ int LwTcp::read(char *buf, size_t l, unsigned timeout)
 	log_local(TAG,"read@%u(%u,%u) fill=%u,pbuf=%u",m_port,l,timeout,m_fill,m_pbuf?m_pbuf->tot_len:0);
 	if (pdTRUE != xSemaphoreTakeRecursive(m_mtx,MUTEX_ABORT_TIMEOUT))
 		abort_on_mutex(m_mtx,__FUNCTION__);
+	PROFILE_FUNCTION();
 	if (m_pbuf) {
 		unsigned avail = m_pbuf->tot_len - m_taken;
 		unsigned copy = l > avail ? avail : l;

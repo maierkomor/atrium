@@ -35,6 +35,9 @@
 
 #include <string.h>
 
+#include <driver/gpio.h>
+#include <rom/gpio.h>
+
 #ifdef CONFIG_LUA
 #include "luaext.h"
 extern "C" {
@@ -48,12 +51,6 @@ extern "C" {
 #define stacksize 2560
 #else
 #define stacksize 1536
-#endif
-
-#if defined CONFIG_IDF_TARGET_ESP32 && IDF_VERSION >= 40
-#include <esp32/rom/gpio.h>
-#else
-#include <rom/gpio.h>
 #endif
 
 
@@ -388,6 +385,26 @@ static void led_toggle(void *arg)
 }
 
 
+#ifdef ESP32
+static void led_hold(void *arg)
+{
+	LedMode *m = (LedMode *)arg;
+	if (m) {
+		gpio_pad_hold(m->gpio);
+	}
+}
+
+
+static void led_unhold(void *arg)
+{
+	LedMode *m = (LedMode *)arg;
+	if (m) {
+		gpio_pad_unhold(m->gpio);
+	}
+}
+#endif
+
+
 extern "C"
 void statusled_set(ledmode_t m)
 {
@@ -564,6 +581,14 @@ int leds_setup()
 			action_add(concat(name,"!on"), led_set_on, (void*)ctx, "led on");
 			action_add(concat(name,"!off"), led_set_off, (void*)ctx, "led off");
 			action_add(concat(name,"!toggle"), led_toggle, (void*)ctx, "toggle led");
+#ifdef ESP32
+			if (GPIO_IS_VALID_OUTPUT_GPIO(gpio)) {
+				action_add(concat(name,"!hold"), led_hold, (void*)ctx, "hold LED state over reset");
+				action_add(concat(name,"!unhold"),led_unhold, (void*)ctx, "unhold LED");
+			} else {
+				log_dbug(TAG,"no hold feature for gpio%u",gpio);
+			}
+#endif
 		}
 		if (ctx)
 			cyclic_add_task(name,ledmode_subtask,(void*)ctx);

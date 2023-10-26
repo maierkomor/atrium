@@ -240,6 +240,7 @@ enum i2cdrv_t {
 	i2cdrv_si7021 = 12;
 	i2cdrv_tca9555 = 13;
 	i2cdrv_ssd1306 = 14;
+	i2cdrv_sh1106 = 15;
 }
 
 
@@ -399,6 +400,7 @@ enum disp_t
 	// monochrom displays
 	dt_ssd1306 = 32;	// I2C
 	dt_ssd1309 = 33;	// 4-wire spi
+	dt_sh1106 = 34;
 
 	// TFT displays
 	dt_ili9341 = 64;

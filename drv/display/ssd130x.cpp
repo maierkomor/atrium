@@ -124,14 +124,6 @@ uint16_t SSD130X::fontHeight() const
 }
 
 
-/*
-void SSD130X::clrEol()
-{
-	clearRect(m_posx,m_posy,m_width-m_posx,fontHeight());
-}
-*/
-
-
 uint16_t SSD130X::charsPerLine() const
 {
 	/*
@@ -392,35 +384,15 @@ unsigned SSD130X::drawChar(uint16_t x, uint16_t y, char c, int32_t fg, int32_t b
 	uint16_t a = m_font->glyph[ch].xAdvance;
 	log_dbug(TAG,"drawChar(%u,%u,'%c') with %ux%u",x,y,c,w,h);
 //	log_info(TAG,"%d/%d %+d/%+d, adv %u len %u",(int)w,(int)h,(int)dx,(int)dy,a,l);
-	clearRect(x,y,dx+w,m_font->yAdvance);
-//	drawBitmap(x+dx,y+dy+font->yAdvance,w,h,off,1,0);
+	clearRect(x,y,a,m_font->yAdvance);
 	drawBitmapNative(x+dx,y+dy+m_font->yAdvance-1,w,h,off);
 	return a;
 }
 
 
-/*
-void SSD130X::drawBitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t *data, int32_t fg, int32_t bg)
-{
-	unsigned len = w*h;
-	log_dbug(TAG,"drawBitmap(%u,%u,%u,%u,%d,%d)",x,y,w,h,fg,bg);
-	unsigned idx = 0;
-	uint8_t b = 0;
-	while (idx != len) {
-		if ((idx & 7) == 0)
-			b = data[idx>>3];
-		int32_t col = b & 0x80 ? fg : bg;
-		if (col != -2)
-			setPixel(x+idx%w,y+idx/w,col);
-		b<<=1;
-		++idx;
-	}
-}
-*/
-
-
 void SSD130X::drawHLine(uint16_t x, uint16_t y, uint16_t n, int32_t col)
 {
+	PROFILE_FUNCTION();
 	if ((x + n > m_width) || (y >= m_height) || (col != 1))
 		return;
 	if ((x + n) > m_width)
@@ -442,6 +414,7 @@ void SSD130X::drawHLine(uint16_t x, uint16_t y, uint16_t n, int32_t col)
 
 void SSD130X::drawVLine(uint16_t x, uint16_t y, uint16_t n, int32_t col)
 {
+	PROFILE_FUNCTION();
 	if ((x >= m_width) || (y >= m_height) || (col != 1))
 		return;
 	if ((y + n) > m_height)
@@ -490,6 +463,7 @@ static inline uint8_t getBits(const uint8_t *data, unsigned off, uint8_t numb)
 
 void SSD130X::drawBitmapNative(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t *data)
 {
+	PROFILE_FUNCTION();
 	static const uint8_t masks[] = {0x1,0x3,0x7,0xf,0x1f,0x3f,0x7f};
 	unsigned len = w*h;
 	uint16_t bitoff = 0;
@@ -528,7 +502,7 @@ void SSD130X::drawBitmapNative(uint16_t x, uint16_t y, uint16_t w, uint16_t h, c
 }
 
 
-void SSD130X::pClrPixel(uint16_t x, uint16_t y)
+inline void SSD130X::pClrPixel(uint16_t x, uint16_t y)
 {
 //	log_dbug(TAG,"clrPixel(%u,%u)",(unsigned)x,(unsigned)y);
 	if ((x < m_width) && (y < m_height)) {
@@ -594,6 +568,7 @@ void SSD130X::setPixel(uint16_t x, uint16_t y, int32_t col)
 
 int SSD130X::clearRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h)
 {
+	PROFILE_FUNCTION();
 	log_dbug(TAG,"clearRect(%u,%u,%u,%u)",x,y,w,h);
 	if ((x > m_width) || (y >= m_height))
 		return 1;
@@ -616,19 +591,6 @@ int SSD130X::clearRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h)
 }
 
 
-/*
-int SSD130X::drawRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, int32_t col)
-{
-	log_dbug(TAG,"drawRect(%u,%u,%u,%u)",x,y,w,h);
-	drawHLine(x,y,w,col);
-	drawHLine(x,y+h-1,w,col);
-	drawVLine(x,y,h,col);
-	drawVLine(x+w-1,y,h,col);
-	return 0;
-}
-*/
-
-
 int SSD130X::writeHex(uint8_t h, bool comma)
 {
 	log_dbug(TAG,"writeHex %x",h);
@@ -644,37 +606,3 @@ int SSD130X::writeHex(uint8_t h, bool comma)
 }
 
 
-/*
-int SSD130X::setPos(uint16_t x, uint16_t y)
-{
-	log_dbug(TAG,"setPos(%u/%u)",x,y);
-	x *= CHAR_WIDTH;
-	y *= fontHeight();
-	if ((x >= m_width-(CHAR_WIDTH)) || (y > m_height-fontHeight())) {
-		log_dbug(TAG,"invalid pos %u/%u",x,y);
-		return 1;
-	}
-	log_dbug(TAG,"setPos %u/%u",x,y);
-	m_posx = x;
-	m_posy = y;
-	return 0;
-}
-*/
-
-
-/*
-void SSD130X::write(const char *text, int len)
-{
-	log_dbug(TAG,"write %s",text);
-	size_t n = 0;
-	while (len) {
-		char c = *text++;
-		if (c == 0)
-			return n;
-		drawChar(c);
-		++n;
-		--len;
-	}
-	return n;
-}
-*/

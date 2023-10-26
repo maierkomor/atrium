@@ -71,6 +71,7 @@ typedef enum logmod_e {
 	logmod_nightsky,
 	logmod_ns,
 	logmod_nvm,
+	logmod_opt3001,
 	logmod_ota,
 	logmod_owb,
 	logmod_pca9685,
@@ -148,6 +149,7 @@ typedef enum logmod_e {
 #define MODULE_NIGHTSKY        logmod_nightsky
 #define MODULE_NS              logmod_ns
 #define MODULE_NVM             logmod_nvm
+#define MODULE_OPT3001         logmod_opt3001
 #define MODULE_OTA             logmod_ota
 #define MODULE_OWB             logmod_owb
 #define MODULE_PCA9685         logmod_pca9685
@@ -180,8 +182,8 @@ typedef enum logmod_e {
 #define MODULE_WWW             logmod_www
 #define MODULE_XIO             logmod_xio
 #define MODULE_XPT2046         logmod_xpt2046
-#define MAX_MODULE_ID           74
-#define NUM_MODULES             75
+#define MAX_MODULE_ID           75
+#define NUM_MODULES             76
 
 #ifdef USE_MODULE
 #define TAG USE_MODULE

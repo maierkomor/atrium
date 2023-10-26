@@ -29,6 +29,7 @@
 #include "pcf8574.h"
 #include "si7021.h"
 #include "ssd1306.h"
+#include "sh1106.h"
 #include "tca9555.h"
 #include "log.h"
 #include "terminal.h"
@@ -109,6 +110,14 @@ static inline void i2c_scan_device(uint8_t bus, uint8_t addr, i2cdrv_t drv, int8
 			SSD1306::create(bus,addr);
 		else
 			ssd1306_scan(bus);
+		break;
+#endif
+#ifdef CONFIG_SH1106
+	case i2cdrv_sh1106:
+		if (addr)
+			SH1106::create(bus,addr);
+		else
+			sh1106_scan(bus);
 		break;
 #endif
 	default:

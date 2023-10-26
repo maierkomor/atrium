@@ -78,7 +78,6 @@ for k,v in pairs(colors) do
 	numcolors = numcolors + 1
 	colornames[numcolors] = k
 end
-h,m = time()
 
 
 function color_set(arg)

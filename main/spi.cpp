@@ -222,18 +222,30 @@ void spi_setup()
 		if (c.has_miso()) {	
 			cfg.miso_io_num = c.miso();
 			cfg.flags |= SPICOMMON_BUSFLAG_MISO;
+#ifdef CONFIG_IDF_TARGET_ESP32C3
+			if (cfg.miso_io_num != 2)
+				cfg.flags |= SPICOMMON_BUSFLAG_GPIO_PINS;
+#endif
 		} else {
 			cfg.miso_io_num = -1;
 		}
 		if (c.has_mosi()) {	
 			cfg.mosi_io_num = c.mosi();
 			cfg.flags |= SPICOMMON_BUSFLAG_MOSI;
+#ifdef CONFIG_IDF_TARGET_ESP32C3
+			if (cfg.mosi_io_num != 7)
+				cfg.flags |= SPICOMMON_BUSFLAG_GPIO_PINS;
+#endif
 		} else {
 			cfg.mosi_io_num = -1;
 		}
 		if (c.has_sclk()) {	
 			cfg.sclk_io_num = c.sclk();
 			cfg.flags |= SPICOMMON_BUSFLAG_SCLK;
+#ifdef CONFIG_IDF_TARGET_ESP32C3
+			if (cfg.sclk_io_num != 6)
+				cfg.flags |= SPICOMMON_BUSFLAG_GPIO_PINS;
+#endif
 		} else {
 			cfg.sclk_io_num = -1;
 		}
@@ -241,6 +253,12 @@ void spi_setup()
 			cfg.quadwp_io_num = c.wp();
 			cfg.quadhd_io_num = c.hold();
 			cfg.flags |= SPICOMMON_BUSFLAG_WPHD;
+#ifdef CONFIG_IDF_TARGET_ESP32C3
+			if (cfg.quadwp_io_num != 5)
+				cfg.flags |= SPICOMMON_BUSFLAG_GPIO_PINS;
+			if (cfg.quadhd_io_num != 4)
+				cfg.flags |= SPICOMMON_BUSFLAG_GPIO_PINS;
+#endif
 		} else {
 			cfg.quadwp_io_num = -1;
 			cfg.quadhd_io_num = -1;

@@ -35,7 +35,7 @@
 #ifdef CONFIG_CORETEMP
 #include <driver/temperature_sensor.h>
 #include <hal/adc_ll.h>
-//#include <hal/temperature_sensor_ll.h>
+#include <hal/temperature_sensor_ll.h>
 #include <soc/temperature_sensor_periph.h>
 #endif
 #else
@@ -317,6 +317,7 @@ static int8_t s_temperature_regval_2_celsius(temperature_sensor_handle_t tsens, 
 }
 // END of import from IDF private header for BUG workaround
 
+#if 0
 // IDF BUG workaround by NoNullptr from github
 static inline uint32_t temperature_sensor_ll_get_raw_value_bugfix(void)
 {
@@ -346,11 +347,12 @@ s:              SENS.sar_peri_clk_gate_conf.tsens_clk_en = true;
 	SENS.sar_tctrl.tsens_dump_out = 0;
 	return SENS.sar_tctrl.tsens_out;
 }
+#endif
 
 static unsigned temp_cyclic(void *arg)
 {
 	PROFILE_FUNCTION();
-#if 1	// IDF still buggy?
+#if 0	// IDF still buggy?
 	uint32_t raw = temperature_sensor_ll_get_raw_value_bugfix();
 	EnvNumber *t = (EnvNumber *) arg;
 	t->set(s_temperature_regval_2_celsius(TSensHdl,raw));

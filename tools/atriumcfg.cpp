@@ -996,7 +996,7 @@ int set_idf(const char *path)
 	}
 	char tmp[l+32];
 	memcpy(tmp,path,l);
-	strcpy(tmp[l-1] == '/' ? tmp+l-1 : tmp+l,"/components/esp32");
+	strcpy(tmp[l-1] == '/' ? tmp+l-1 : tmp+l,"/components/esp_system");
 	ESP32 = (0 == isDir(tmp));
 	if (ESP32) {
 		printf("ESP32 IDF\n");

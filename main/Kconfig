@@ -232,7 +232,7 @@ config USB_DIAGLOG
 
 config USB_CONSOLE
 	depends on ESP_CONSOLE_USB_SERIAL_JTAG || ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG || TINYUSB_CDC_ENABLED
-	bool "diag output to USB serial"
+	bool "console on USB serial"
 	default true
 	help
 		Console on USB serial connections. Uses serial JTAG on
@@ -326,6 +326,12 @@ config SSD1306
 	help
 		"OLED displays based on SSD1306"
 
+config SH1106
+	depends on DISPLAY && I2C_XDEV
+	bool "SH1106 driver"
+	help
+		"OLED displays based on SH1106"
+
 config DHT
 	bool "DHT-xx sensor"
 	default false
@@ -395,7 +401,7 @@ config MCP2301X
 		I2C driver for MCP2301x devices (16-port GPIO expander)
 
 config OPT3001
-	depends on I2C && DEVEL
+	depends on I2C
 	bool "opt3001"
 	default true
 	help
@@ -421,6 +427,13 @@ config BMX280
 	default false
 	help
 		I2C driver for BME280 and BMP280 air sensor (temperature, humidity, pressure)
+
+config BMP388
+	depends on I2C && DEVEL
+	bool "BMP388"
+	default false
+	help
+		I2C driver for BMP388 air sensor (temperature, pressure)
 
 config BME680
 	depends on I2C
@@ -481,6 +494,7 @@ config SX1276
 
 config SSD1309
 	bool "SSD1309"
+	depends on DEVEL
 	default false
 	depends on SPI
 	help

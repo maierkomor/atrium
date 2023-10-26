@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2017-2022, Thomas Maier-Komor
+ *  Copyright (C) 2017-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -28,6 +28,7 @@ int exe_flags(char *cmd);
 const char *shellexe(Terminal &, char *cmd);
 void shell(Terminal &term, bool prompt = true);
 const char *help_cmd(Terminal &term, const char *arg);
+void print_hex(Terminal &term, const uint8_t *b, size_t s, size_t off = 0);
 
 extern "C"
 #endif

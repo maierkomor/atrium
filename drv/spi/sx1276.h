@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2022, Thomas Maier-Komor
+ *  Copyright (C) 2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -20,6 +20,7 @@
 #define SX1276_H
 
 #include "spidrv.h"
+
 
 struct Packet
 {
@@ -70,13 +71,13 @@ class SX1276 : public SpiDevice
 	int getOCP();
 	int setOCP(bool en);
 	int setImax(unsigned imax);
-	int getImax();
+	int getImax(unsigned &, bool &);
 	int getFreq();
 	int setFreq(unsigned f);
 	int setPower(float pmax);
-	int getPower(float &pmax);
+	int getPower(float &pout, float &pmax);
 	int setMaxPower(float pmax);
-	int getMaxPower(float &pmax);
+//	int getMaxPower(float &pmax);
 
 	// LORA only
 	int getBandwidth();
@@ -100,20 +101,21 @@ class SX1276 : public SpiDevice
 	static void dio3Handler(void *);
 	static void dio4Handler(void *);
 	static void dio5Handler(void *);
-	void readRegsSync(uint8_t reg, uint8_t num);
+//	void readRegsSync(uint8_t reg, uint8_t num);
 	int readRegs(uint8_t reg, uint8_t num, uint8_t *);
 	int readReg(uint8_t reg, uint8_t *);
 	int writeReg(uint8_t r, uint8_t v);
 	int writeRegs(uint8_t r, uint8_t num, uint8_t *v);
 	static void send_action(void *);
 	static void intr_action(void *);	// used internally
-	static void intrHandler(void *);
+	static void intr_handler(void *);
 	void processIntr();
 
 	class EnvObject *m_env = 0;
 	SemaphoreHandle_t m_sem;
 	uint8_t m_opmode = 0;
 	int8_t m_reset = -1;
+	event_t m_irqev = 0;
 	event_t m_rev = 0;		// receive event
 	event_t m_iev[6];
 	uint8_t m_rcvbuf[64];

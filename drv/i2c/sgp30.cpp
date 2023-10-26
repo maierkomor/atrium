@@ -229,11 +229,14 @@ unsigned SGP30::cyclic()
 		}
 		break;
 	case st_error:
+		m_state = st_init;
 		return 3000;
 	}
 	log_dbug(TAG,"had error");
 	m_err = e;
 	m_state = st_error;
+	m_tvoc.set(NAN);
+	m_co2.set(NAN);
 	return 5000;
 }
 
@@ -480,6 +483,9 @@ int SGP30::read()
 
 unsigned sgp30_scan(uint8_t bus)
 {
+	uint8_t vercmd[] = { SGP30_ADDR, REG_BASE, REG_GET_VERS };
+	if (0 != i2c_write(bus,vercmd,sizeof(vercmd),false,true))
+		return 0;
 	return SGP30::create(bus) != 0;
 }
 

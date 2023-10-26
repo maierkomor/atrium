@@ -18,7 +18,7 @@
 
 #include <sdkconfig.h>
 
-#ifndef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
+#if !defined ESP8266 || (defined CONFIG_LWIP_RAW && !defined CONFIG_ESPTOOLPY_FLASHSIZE_1MB)
 
 #include "globals.h"
 #include "log.h"

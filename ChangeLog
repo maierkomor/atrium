@@ -1,3 +1,13 @@
+R2310:
+======
+- fixes for SGP30: re-initialize after error, false detection
+- FTPd fixes
+- bugfixes for SSD1309
+- fixes for ESP32-C6
+- added hold/unhold actions for GPIOs and LEDs
+- added OPT3001 driver
+- added SH1106 driver
+
 R2309:
 ======
 - fix SNTP for IDFv5.1 64bit timeval struct

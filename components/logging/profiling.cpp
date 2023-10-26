@@ -30,11 +30,11 @@ TimeStats *TimeStats::First = 0;
 
 int prof(Terminal &term, int argc, const char *args[])
 {
-	term.printf("%8s %9s %10s %8s %5s %s\n","low","avg","high","total","calls","function");
+	term.printf("%8s %9s %10s %10s %5s %s\n","low","avg","high","total","calls","function");
 	TimeStats *s = TimeStats::First;
 	while (s) {
 		if (s->count)
-			term.printf("%8lu %9lu %10lu %8lu %5lu %s\n",s->low,(long unsigned)(s->total/s->count),(long unsigned)s->high,(long unsigned)s->total,(long unsigned)s->count,s->name);
+			term.printf("%8lu %9lu %10lu %10lu %5lu %s\n",s->low,(long unsigned)(s->total/s->count),(long unsigned)s->high,(long unsigned)s->total,(long unsigned)s->count,s->name);
 		s = s->next;
 	}
 	return 0;

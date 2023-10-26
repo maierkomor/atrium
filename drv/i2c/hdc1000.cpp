@@ -121,8 +121,8 @@ unsigned HDC1000::cyclic()
 		if (!m_cfgsynced) {
 //			uint16_t cfg = (unsigned) m_tres | (unsigned) m_hres;
 			uint8_t data[] = { m_addr, REG_CONFIG, (uint8_t)(m_cfg >> 8), (uint8_t)(m_cfg & 0xff) };
-			if (i2c_write(m_bus,data,sizeof(data),1,1)) {
-				log_warn(TAG,"config sync failed");
+			if (esp_err_t e = i2c_write(m_bus,data,sizeof(data),1,1)) {
+				log_warn(TAG,"config sync failed: %s",esp_err_to_name(e));
 				break;
 			}
 			m_cfgsynced = true;

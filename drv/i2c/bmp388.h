@@ -16,37 +16,51 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef OPT3001_H
-#define OPT3001_H
+#ifndef BMP388_H
+#define BMP388_H
 
-#include <sdkconfig.h>
 #include "env.h"
 #include "event.h"
 #include "i2cdrv.h"
 
-struct OPT3001 : public I2CDevice
+
+struct BMP388 : public I2CDevice
 {
-	static OPT3001 *create(unsigned bus, unsigned addr);
+	BMP388(uint8_t port, uint8_t addr, const char *n = 0);
 
-	const char *drvName() const override
-	{ return "opt3001"; }
+	const char *drvName() const
+	{ return "bmp388"; }
 
-	void attach(EnvObject *root) override;
 	void addIntr(uint8_t intr) override;
-#ifdef CONFIG_I2C_XCMD
-	const char *exeCmd(Terminal &term, int argc, const char **args) override;
-#endif
 	int init() override;
+	void attach(class EnvObject *);
+#ifdef CONFIG_I2C_XCMD
+	const char *exeCmd(struct Terminal &, int argc, const char **argv) override;
+#endif
 
-	private:
-	OPT3001(unsigned bus, unsigned addr);
-	static void sample(void *arg);
-	static void intrHandler(void *);
-	static unsigned cyclic(void *arg);
-	int read();
+	protected:
+	float calc_press(int32_t adc_P, int32_t t_fine);
+	void calc_tfine(uint32_t);
+	void calc_press(uint32_t);
+	int flush_fifo();
+	static void trigger(void *);
+	static void intr_handler(void *);
+	bool status();
+	virtual int sample();
+	virtual int read();
+	virtual void handle_error();
+	static unsigned cyclic(void *);
+	int get_error();
+	int get_status();
 
-	EnvNumber m_lum;
-	event_t m_isrev = 0;
+	EnvNumber m_temp, m_press;
+	float D[14];
+	event_t m_irqev = 0;
+	typedef enum { st_idle, st_sample, st_measure, st_read } state_t;
+	state_t m_state = st_idle;
 };
+
+
+unsigned bmp388_scan(uint8_t port);
 
 #endif

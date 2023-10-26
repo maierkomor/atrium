@@ -281,6 +281,7 @@ CONFIG_RELAY=y
 CONFIG_I2C=y
 # CONFIG_I2C_XCMD is not set
 # CONFIG_I2C_XDEV is not set
+# CONFIG_OPT3001 is not set
 CONFIG_BMX280=y
 # CONFIG_BME680 is not set
 # CONFIG_HDC1000 is not set

@@ -28,6 +28,7 @@
 #include "MAX7219.h"
 #include "pcf8574.h"
 #include "hd44780u.h"
+#include "sh1106.h"
 #include "ssd1306.h"
 #include "ssd1309.h"
 
@@ -69,6 +70,13 @@ void display_setup()
 			}
 			if (!ok)
 				log_warn(TAG,"no pcf8574/hd44780u found");
+#endif
+#ifdef CONFIG_SH1106
+		} else if (t == dt_sh1106) {
+			if (SH1106 *dev = SH1106::getInstance())
+				dev->init(maxx,maxy,c.options());
+			else
+				log_warn(TAG,"no ssd1306 found");
 #endif
 #ifdef CONFIG_SSD1306
 		} else if (t == dt_ssd1306) {
