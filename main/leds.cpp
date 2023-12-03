@@ -549,8 +549,10 @@ int leds_setup()
 			continue;
 		const auto &n = c.name();
 		const char *name = n.c_str();
+		bool initlvl = c.config_init_high();
 		xio_cfg_t cfg = XIOCFG_INIT;
 		cfg.cfg_io = c.config_open_drain() ? xio_cfg_io_od : xio_cfg_io_out;
+		cfg.cfg_initlvl = initlvl ? xio_cfg_initlvl_high : xio_cfg_initlvl_low;
 		xio_t gpio = (xio_t) c.gpio();
 		if (0 > xio_config(gpio,cfg)) {
 			log_warn(TAG,"failed to configure xio%u",gpio);
@@ -577,7 +579,7 @@ int leds_setup()
 			BusyOn = on;
 #endif
 		} else {
-			ctx = new LedMode(name,ledmode_off,gpio,on);
+			ctx = new LedMode(name,initlvl?ledmode_on:ledmode_off,gpio,on);
 			action_add(concat(name,"!on"), led_set_on, (void*)ctx, "led on");
 			action_add(concat(name,"!off"), led_set_off, (void*)ctx, "led off");
 			action_add(concat(name,"!toggle"), led_toggle, (void*)ctx, "toggle led");

@@ -48,6 +48,7 @@
 #define REG_ID		0x00
 #define REG_ERROR	0x02
 #define REG_STATUS	0x03
+#define REG_DATA	0x04
 #define REG_EVENT	0x10
 #define REG_INT_CTRL	0x19
 #define REG_PWR_CTRL	0x1b
@@ -119,7 +120,7 @@ void BMP388::addIntr(uint8_t intr)
 	cfg.cfg_intr = xio_cfg_intr_edges;
 	if (0 > xio_config(intr,cfg)) {
 		log_warn(TAG,"config interrupt error");
-	} else if (esp_err_t e = xio_set_intr(intr,intr_handler,this)) {
+	} else if (esp_err_t e = xio_set_intr(intr,intrHandler,this)) {
 		log_warn(TAG,"error attaching interrupt: %s",esp_err_to_name(e));
 	} else {
 		log_info(TAG,"BMP388@%u,0x%x: interrupt on GPIO%u",m_bus,m_addr,intr);
@@ -173,7 +174,7 @@ void BMP388::attach(EnvObject *root)
 }
 
 
-void BMP388::intr_handler(void *arg)
+void BMP388::intrHandler(void *arg)
 {
 	BMP388 *drv = (BMP388 *) arg;
 	event_isr_trigger(drv->m_irqev);
@@ -202,7 +203,14 @@ const char *BMP388::exeCmd(Terminal &term, int argc, const char **args)
 	static const uint8_t coef[] = {0,1,3,7,15,31,63,127};
 
 	if (argc == 1) {
-		if (0 == strcmp(args[0],"iir")) {
+		if (0 == strcmp(args[0],"-h")) {
+			term.println(
+				"iir [<val>]: set IIR value\n"
+				"osr        : read over-sampling rates\n"
+				"osrt <val> : set over-sampling rate for temperature\n"
+				"osrp <val> : set over-sampling rate for pressure\n"
+				);
+		} else if (0 == strcmp(args[0],"iir")) {
 			uint8_t iir;
 			if (esp_err_t e = i2c_w1rd(m_bus,m_addr,REG_CONFIG,&iir,sizeof(iir)))
 				return esp_err_to_name(e);
@@ -309,17 +317,10 @@ void BMP388::handle_error()
 
 void BMP388::calc_tfine(uint32_t uncomp_temp)
 {
-#if 1
+	log_dbug(TAG,"T1=%g, T2=%g, T3=%g",D[T1],D[T2],D[T3]);
 	float partial_data1 = (float)(uncomp_temp - D[T1]);
 	float partial_data2 = (float)(partial_data1 * D[T2]);
 	m_temp.set(partial_data2 + (partial_data1 * partial_data1) * D[T3]);
-#else
-	uint64_t partial_data1 = (float)(uncomp_temp - D[T1]);
-	uint64_t partial_data2 = (float)(partial_data1 * D[T2]);
-	uint64_t comp_temp = partial_data2 + (partial_data1 * partial_data1) * D[T3];
-	m_temp.set((float)comp_temp/100);
-
-#endif
 }
 
 
@@ -358,18 +359,26 @@ int BMP388::read()
 	uint8_t data[8];
 	if (int r = i2c_w1rd(m_bus,m_addr,REG_BASE,data,sizeof(data)))
 		return r;
+	log_hex(TAG,data,sizeof(data),"data read:");
+	if (data[0]) {
+		log_warn(TAG,"device error %x",data[0]);
+		return 1;
+	}
+	if ((data[1] & (BIT_ST_PRDY|BIT_ST_TRDY)) != (BIT_ST_PRDY|BIT_ST_TRDY)) {
+		log_warn(TAG,"data not ready");
+		return 1;
+	}
 	log_dbug(TAG,"status: temp %s, press %s, conf %s, cmd %s, %s"
 			,data[1]&0x40?"ready":"busy"
 			,data[1]&0x20?"ready":"busy"
 			,data[0]&0x4?"err":"ok"
 			,data[0]&0x2?"err":"ok"
 			,data[0]&0x1?"fatal":"ok"
-			);
-	log_hex(TAG,data,sizeof(data),"data read:");
-	uint32_t tempraw = (data[7]<<16) | (data[6]<<8) | data[5];
+		);
+	uint32_t tempraw = ((uint32_t)data[7]<<16) | ((uint32_t)data[6]<<8) | (uint32_t)data[5];
 	log_dbug(TAG,"tempraw = %u",tempraw);
 	calc_tfine(tempraw);
-	uint32_t pressraw = (data[4]<<16) | (data[3]<<8) | data[2];
+	uint32_t pressraw = ((uint32_t)data[4]<<16) | ((uint32_t)data[3]<<8) | (uint32_t)data[2];
 	calc_press(pressraw);
 #ifdef CONFIG_NEWLIB_LIBRARY_LEVEL_FLOAT_NANO
 	log_dbug(TAG,"t=%G, p=%G",m_temp.get(),m_press.get());
@@ -407,6 +416,7 @@ int BMP388::init()
 {
 	if (esp_err_t r = i2c_write2(m_bus, m_addr, REG_CMD, CMD_RESET))
 		log_warn(TAG,"failed to reset BMP388@%u,0x%x: %s",m_bus,m_addr,esp_err_to_name(r));
+	vTaskDelay(10);
 	uint8_t calib[21];
 	
 	if (esp_err_t r = i2c_w1rd(m_bus,m_addr,CALIB_DATA,calib,sizeof(calib))) {
@@ -415,15 +425,18 @@ int BMP388::init()
 	}
 	log_hex(TAG,calib,sizeof(calib),"calib:");
 	uint16_t t1 = ((uint16_t)calib[1] << 8) | calib[0];
-	D[T1] = (float)t1 / powf(2,-8);
+//	D[T1] = (float)t1 / powf(2,-8);
+	D[T1] = (float)t1 / 0.003909625f;
 	log_dbug(TAG,"t1 = %d, T1 = %g",t1,D[T1]);
 
 	uint16_t t2 = ((uint16_t)calib[3] << 8) | calib[2];
-	D[T2] = (float)t2 / powf(2,30);
+//	D[T2] = (float)t2 / powf(2,30);
+	D[T2] = (float)t2 / 1073741824.0;
 	log_dbug(TAG,"t2 = %d, T2 = %g",t2,D[T2]);
 
 	int8_t t3 = (int8_t)calib[4];
-	D[T3] = (float)t3 / powf(2,48);
+//	D[T3] = (float)t3 / powf(2,48);
+	D[T3] = (float)t3 / 281474976710656.0;
 	log_dbug(TAG,"t3 = %d, T3 = %g",t3,D[T3]);
 
 	int16_t p1 = (calib[6] << 8) | calib[5];

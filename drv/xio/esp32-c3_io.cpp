@@ -35,8 +35,10 @@ struct CoreIO : public XioCluster
 {
 	int get_dir(uint8_t num) const override;
 	int get_lvl(uint8_t io) override;
+	int get_out(uint8_t io) override;
 	int setm(uint32_t,uint32_t) override;
 	int set_hi(uint8_t io) override;
+	int set_hiz(uint8_t io) override;
 	int set_lo(uint8_t io) override;
 	int set_intr(uint8_t,xio_intrhdlr_t,void*) override;
 //	int intr_enable(uint8_t) override;
@@ -124,14 +126,14 @@ int CoreIO::config(uint8_t num, xio_cfg_t cfg)
 		log_dbug(TAG,"input %u",num);
 	} else if (cfg.cfg_io == xio_cfg_io_out) {
 		gpio_pad_select_gpio(num);
-		PIN_INPUT_DISABLE(GPIO_PIN_MUX_REG[num]);
+//		PIN_INPUT_DISABLE(GPIO_PIN_MUX_REG[num]);
 		GPIO.enable_w1ts.val = (1 << num);
 		gpio_matrix_out(num, SIG_GPIO_OUT_IDX, false, false);
 		GPIO.pin[num].pad_driver = 0;
 		log_dbug(TAG,"output %u",num);
 	} else if (cfg.cfg_io == xio_cfg_io_od) {
 		gpio_pad_select_gpio(num);
-		PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[num]);
+//		PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[num]);
 		GPIO.enable_w1ts.val = (1 << num);
 		gpio_matrix_out(num, SIG_GPIO_OUT_IDX, false, false);
 		GPIO.pin[num].pad_driver = 1;
@@ -195,6 +197,14 @@ int CoreIO::config(uint8_t num, xio_cfg_t cfg)
 		return -EINVAL;
 	}
 #endif
+	if (cfg.cfg_initlvl == xio_cfg_initlvl_keep) {
+	} else if (cfg.cfg_initlvl == xio_cfg_initlvl_low) {
+		set_lo(num);
+	} else if (cfg.cfg_initlvl == xio_cfg_initlvl_high) {
+		set_hi(num);
+	} else {
+		return -EINVAL;
+	}
 	return 0x1ff;
 }
 
@@ -223,10 +233,35 @@ int CoreIO::get_lvl(uint8_t num)
 }
 
 
+int CoreIO::get_out(uint8_t num)
+{
+	if (num < 22) {
+		if (((GPIO.enable.val >> num) & 1) == 0)
+			return xio_lvl_hiz;
+		return (GPIO.out.val >> num) & 1;
+	}
+	return -EINVAL;
+}
+
+
 int CoreIO::set_hi(uint8_t num)
 {
-	if (uint32_t b = 1 << num) {
+	if (num < 22) {
+		uint32_t b = 1 << num;
 		GPIO.out_w1ts.val = b;
+		GPIO.enable_w1ts.val = b;
+		return 0;
+	}
+	return -EINVAL;
+}
+
+
+int CoreIO::set_hiz(uint8_t num)
+{
+	if (num < 22) {
+		uint32_t b = 1 << num;
+		GPIO.out_w1tc.val = b;
+		GPIO.enable_w1tc.val = b;
 		return 0;
 	}
 	return -EINVAL;
@@ -235,8 +270,10 @@ int CoreIO::set_hi(uint8_t num)
 
 int CoreIO::set_lo(uint8_t num)
 {
-	if (uint32_t b = 1 << num) {
+	if (num < 22) {
+		uint32_t b = 1 << num;
 		GPIO.out_w1tc.val = b;
+		GPIO.enable_w1ts.val = b;
 		return 0;
 	}
 	return -EINVAL;
@@ -245,7 +282,8 @@ int CoreIO::set_lo(uint8_t num)
 
 int CoreIO::set_lvl(uint8_t num, xio_lvl_t l)
 {
-	if (uint32_t b = 1 << num) {
+	if (num < 22) {
+		uint32_t b = 1 << num;
 		if (l == xio_lvl_0) {
 			GPIO.out_w1tc.val = b;
 			GPIO.enable_w1ts.val = b;

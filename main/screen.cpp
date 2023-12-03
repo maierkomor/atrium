@@ -89,7 +89,7 @@ static void switch_mode(void *arg)
 			EnvElement *e = RTData->getElement(x);
 			while (e) {
 				const char *name = e->name();
-				if ((0 == strcmp(name,"version")) || (0 == strcmp(name,"ltime")) || (0 == strcmp(name,"uptime"))) {
+				if ((0 == strcmp(name,"ltime")) || (0 == strcmp(name,"uptime"))) {
 					++x;
 					e = RTData->getElement(x);
 					continue;
@@ -131,6 +131,7 @@ static void switch_mode(void *arg)
 	Ctx->modech = true;
 }
 
+
 static void bright_set(void *arg)
 {
 	if (arg) {
@@ -159,27 +160,24 @@ void Screen::display_time()
 {
 	uint8_t h=0,m=0,s=0;
 	unsigned y=0;
+	const char *str;
 	if (get_time_of_day(&h,&m,&s,0,0,0,&y)) {
-		disp->write("--:--:--");
+		str = "--:--:--";
 	} else {
-		char str[12];
-		sprintf(str,"%02u:%02u:%02u",h,m,s);
-		disp->write(str);
+		char *buf = (char *) alloca(16);
+		sprintf(buf,"%02u:%02u:%02u",h,m,s);
+		str = buf;
 	}
-	/*
-	disp->writeHex(h/10);
-	disp->writeHex(h%10,!colon);
-	if (colon)
-		disp->write(":");
-	disp->writeHex(m/10);
-	disp->writeHex(m%10,digits>=6?!colon:false);
-	if ((colon && (digits >= 8)) || (digits >= 6)) {
-		if (colon)
-			disp->write(":");
-		disp->writeHex(s/10);
-		disp->writeHex(s%10);
+	if (strcmp(str,prev.c_str())) {
+		if (MatrixDisplay *dm = disp->toMatrixDisplay()) {
+			dm->setupOffScreen(5,24,100,40,0);
+			dm->drawText(5,24,str,0xffff,-2);
+			dm->commitOffScreen();
+		} else {
+			disp->write(str);
+		}
+		prev = str;
 	}
-	*/
 }
 
 
@@ -187,71 +185,106 @@ void Screen::display_date()
 {
 	uint8_t wd=0,day=0,mon=0;
 	unsigned year=0;
+	const char *str;
 	if (get_time_of_day(0,0,0,&wd,&day,&mon,&year)) {
-		disp->write("--.--.----");
+		str = "--.--.----";
+	} else {
+		char *buf = (char *) alloca(16);
+		sprintf(buf,"%u.%u.%u",day,mon,year);
+		str = buf;
+	}
+	if (strcmp(str,prev.c_str())) {
+		if (MatrixDisplay *dm = disp->toMatrixDisplay())
+			dm->setPos(5,24);
+		disp->write(str);
+		prev = str;
+	}
+}
+
+
+void Screen::display_env()
+{
+	EnvElement *e = RTData->getElement(Ctx->mode-CLOCK_MODE_MAX);
+	if (e == 0)
 		return;
+	const char *str = 0;
+	if (EnvNumber *n = e->toNumber()) {
+		char *buf = (char *)alloca(128);
+		size_t a;
+		const char *fmt = n->getFormat();
+		double v = n->get();
+		if (!isnan(v) && (fmt != 0)) {
+			a = snprintf(buf,128,fmt,v);
+			str = buf;
+		} else {
+			if (Ctx->disp->hasAlpha())
+				str = "NaN";
+			else
+				str = "---";
+			a = 3;
+		}
+		if (const char *dim = e->getDimension()) {
+			buf[a++] = ' ';
+			strcpy(buf+a,dim);
+		}
+	} else if (EnvBool *b = e->toBool()) {
+		str = b->get() ? "on" : "off";
+	} else if (EnvString *s = e->toString()) {
+		str = s->get();
 	}
-	char str[12];
-	sprintf(str,"%u.%u.%u",day,mon,year);
-	disp->write(str);
-	/*
-	disp->writeHex(day/10);
-	disp->writeHex(day%10,true);
-	disp->writeHex(mon/10);
-	disp->writeHex(mon%10,true);
-	if (digits >= 8) {
-		disp->writeHex(year/1000);
-		disp->writeHex((year%1000)/100);
+	if ((str != 0) && (strcmp(prev.c_str(),str))) {
+		if (MatrixDisplay *dm = disp->toMatrixDisplay()) {
+			unsigned fh = dm->fontHeight();
+			dm->setupOffScreen(5,24,dm->maxX()-10,fh,0);
+			dm->drawText(5,24,str,-1,0xffff,-2);
+			dm->commitOffScreen();
+		} else {
+			disp->write(str);
+		}
+		prev = str;
 	}
-	if (digits >= 6) {
-		year %= 100;
-		disp->writeHex(year/10);
-		disp->writeHex(year%10);
-	}
-	*/
 }
 
 
 void Screen::display_version()
 {
+	const char *sp = strchr(Version,' ');
 	if (MatrixDisplay *dm = disp->toMatrixDisplay()) {
 		assert(dm->maxX());
 		dm->drawRect(4,1,dm->maxX()-5,dm->maxY()-3);
+		if (dm->setupOffScreen(10,8,100,50,0))
+			log_warn(TAG,"off screen too large");
 		dm->setFont(font_sanslight16);
-		dm->setPos(10,3);
-		dm->write("Atrium");
+		dm->drawText(10,8,"Atrium",6,-1,-2);
 		dm->setFont(font_sanslight12);
-		dm->setPos(10,26);
-		const char *sp = strchr(Version,' ');
-		dm->write(Version,sp-Version);
-		if (dm->maxY() >= 48) {
-			dm->setPos(10,48);
+		dm->drawText(10,28,Version,sp-Version);
+		if (dm->maxY() >= 50) {
 			dm->setFont(font_tomthumb);
-			dm->write("(C) 2021-2023, T.Maier-Komor");
+			dm->drawText(10,45,"(C) 2021-2023, T.Maier-Komor",28,0xffff,-2);
 		}
-		return;
-	}
-	const char *sp = strchr(Version,' ');
-	disp->setPos(0,0);
-	unsigned cpl = disp->charsPerLine();
-	unsigned nl = disp->numLines();
-	if (disp->hasAlpha() && (cpl > 6) && (nl > 1)) {
-		disp->write("Atrium ");
-		if (cpl < 12)
-			disp->setPos(0,1);
-		disp->write(Version,sp-Version);
-		if (cpl < 12)
-			return;
-		disp->setPos(0,1);
-		if (cpl >= 20)
-			disp->write("(C) 2023 Maier-Komor");
-		else
-			disp->write("(C) Maier-Komor");
-		if (nl > 2)
-			disp->write(sp+1);
-		disp->setPos(0,nl+1);
+		dm->commitOffScreen();
 	} else {
-		disp->write(Version+1,sp-Version-1);
+		disp->setPos(0,0);
+		unsigned cpl = disp->charsPerLine();
+		unsigned nl = disp->numLines();
+		if (disp->hasAlpha() && (cpl > 6) && (nl > 1)) {
+			disp->write("Atrium ");
+			if (cpl < 12)
+				disp->setPos(0,1);
+			disp->write(Version,sp-Version);
+			if (cpl < 12)
+				return;
+			disp->setPos(0,1);
+			if (cpl >= 20)
+				disp->write("(C) 2023 Maier-Komor");
+			else
+				disp->write("(C) Maier-Komor");
+			if (nl > 2)
+				disp->write(sp+1);
+			disp->setPos(0,nl+1);
+		} else {
+			disp->write(Version+1,sp-Version-1);
+		}
 	}
 }
 
@@ -295,8 +328,19 @@ void Screen::display_sw()
 	} else {
 		sprintf(str,"%02u.%u%u",s,dsec,hsec);
 	}
-	disp->write(str);
-	disp->clrEol();
+	if (strcmp(str,prev.c_str())) {
+		if (MatrixDisplay *dm = disp->toMatrixDisplay()) {
+			// monospace font - i.e. all glyphs have same width
+			unsigned cw = dm->getFont()->glyph[0].xAdvance;
+			dm->setupOffScreen(5,24,12*cw,dm->fontHeight(),0);
+			dm->drawText(5,24,str);
+			dm->commitOffScreen();
+		} else {
+			Ctx->disp->write("\r");
+			disp->write(str);
+		}
+		prev = str;
+	}
 }
 
 
@@ -308,9 +352,10 @@ static unsigned clock_iter(void *arg)
 	if (Ctx->modech) {
 		Ctx->disp->clear();
 		Ctx->modech = false;
+		Ctx->prev.clear();
 		if (alpha) {
 			const char *text = 0;
-			uint8_t nextFont = font_sans12;
+			uint8_t nextFont = font_sanslight16;
 			switch (Ctx->mode) {
 			case cm_time:
 				text = "local time";
@@ -325,6 +370,8 @@ static unsigned clock_iter(void *arg)
 			case cm_stopwatch:
 				text = "stop-watch";
 				nextFont = font_mono9;
+				break;
+			case cm_lua:
 				break;
 			default:
 				if (EnvElement *e = RTData->getElement(Ctx->mode-CLOCK_MODE_MAX)) {
@@ -345,11 +392,14 @@ static unsigned clock_iter(void *arg)
 				log_dbug(TAG,"mode %s",text);
 				if (dm) {
 					dm->setFont(font_sanslight12);
-					dm->setPos(3,4);
+					dm->setupOffScreen(5,4,100,20,0);
+					dm->drawText(5,4,text);
+					dm->commitOffScreen();
+
 				} else {
 					Ctx->disp->setPos(0,0);
+					Ctx->disp->write(text);
 				}
-				Ctx->disp->write(text);
 				if (dm) {
 					dm->setFont(nextFont);
 				}
@@ -367,25 +417,13 @@ static unsigned clock_iter(void *arg)
 		return 50;
 	unsigned d = 100;
 //	Ctx->disp->setPos(0,Ctx->disp->numLines() > 1 ? 1 : 0);
-	if (dm) {
-		dm->setPos(5,22);
-	} else {
+	if (0 == dm) {
 		Ctx->disp->write("\r");
-		Ctx->disp->clrEol();
 	}
-	double v = 0;
-	const char *fmt = 0, *dim = 0;
 	switch (Ctx->mode) {
 	case cm_date:
-		if ((uptime() - Ctx->modestart) < 5000) {
-			Ctx->display_date();
-			d = 500;
-			break;
-		}
-		log_dbug(TAG,"auto date->clock");
-		Ctx->mode = cm_time;
-		Ctx->modech = true;
-		d = 20;
+		Ctx->display_date();
+		d = 100;
 		break;
 	case cm_time:
 		Ctx->display_time();
@@ -411,44 +449,11 @@ static unsigned clock_iter(void *arg)
 		d = xlua_render(Ctx);
 #else
 		Ctx->mode = (clockmode_t)((int)Ctx->mode + 1);
+		Ctx->modech = true;
 #endif
 		break;
 	default:
-		if (EnvElement *e = RTData->getElement(Ctx->mode-CLOCK_MODE_MAX)) {
-			dim = e->getDimension();
-			fmt = "";
-			if (EnvNumber *n = e->toNumber()) {
-				fmt = n->getFormat();
-				v = n->get();
-				if (isnan(v))
-					fmt = "---";
-			} else if (EnvBool *b = e->toBool()) {
-				fmt = b->get() ? "on" : "off";
-			} else if (EnvString *s = e->toString()) {
-				fmt = s->get();
-			}
-//			log_dbug(TAG,"%s %s",e->name(),fmt);
-		}
-	}
-	if (fmt) {
-		if (isnan(v)) {
-			if (Ctx->disp->hasAlpha())
-				Ctx->disp->write("n/a");
-			else
-				Ctx->disp->write("----");
-		} else {
-			char buf[9];
-			snprintf(buf,sizeof(buf),fmt,v);
-//			log_dbug(TAG,"write %s",buf);
-			Ctx->disp->write(buf);
-			if (dim) {
-				if (Ctx->disp->charsPerLine() > 6)
-					Ctx->disp->write(" ");
-				Ctx->disp->write(dim);
-			} else {
-				Ctx->disp->clrEol();
-			}
-		}
+		Ctx->display_env();
 	}
 	Ctx->disp->flush();
 	return d;
@@ -771,8 +776,8 @@ void screen_setup()
 	if (d->maxBrightness() > 1) {
 		action_add("display!set_bright",bright_set,0,"set brightness to argument value");
 	}
-	action_add("display!off",shutdown,Ctx,"clock: turn off");
-	action_add("display!on",poweron,Ctx,"clock: turn on");
+	action_add("display!off",shutdown,Ctx,"turn display off");
+	action_add("display!on",poweron,Ctx,"turn display on");
 	action_add("sw!startstop",sw_startstop,Ctx,"stopwatch start/stop");
 	action_add("sw!reset",sw_clear,Ctx,"stopwatch reset");
 	action_add("sw!pause",sw_pause,Ctx,"stopwatch pause/resume");
@@ -784,9 +789,9 @@ void screen_setup()
 	d->clear();
 	cyclic_add_task("display", clock_iter, Ctx);
 #ifdef CONFIG_LUA
-	xlua_add_funcs("screen",Functions);	// TODO display mode Lua is missing
+	xlua_add_funcs("screen",Functions);
 	if (Ctx->disp->toMatrixDisplay())
-		xlua_add_funcs("fb",FbFunctions);	// TODO display mode Lua is missing
+		xlua_add_funcs("fb",FbFunctions);
 #endif
 	log_info(TAG,"ready");
 }

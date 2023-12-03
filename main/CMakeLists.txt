@@ -44,6 +44,7 @@ idf_component_register(
 	touchpads.cpp
 	uarts.cpp
 	udpctrl.cpp
+	usb.cpp
 	webcam.cpp
 	wfccore.cpp
 	wifi.cpp

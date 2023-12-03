@@ -55,7 +55,7 @@ static const char *States[] = {
 	"bist",
 	"get-serial",
 	"get-version",
-	"read-bist"
+	"read-bist",
 	"read-data",
 	"read-serial",
 	"read-version",
@@ -157,7 +157,7 @@ unsigned SGP30::cyclic()
 		e = selftest_start();
 		if (0 == e) {
 			m_state = st_readb;
-			return 220;
+			return 250;
 		}
 		break;
 	case st_gets:
@@ -370,6 +370,7 @@ int SGP30::selftest_finish()
 	if (e) {
 		log_warn(TAG,"selftest read failed: %s",esp_err_to_name(e));
 	} else {
+		log_hex(TAG,selftest,sizeof(selftest),"selftest");
 		if ((selftest[0] != 0xd4) || (selftest[1] != 0)) {
 			log_warn(TAG,"selftest failure %x",(((unsigned)selftest[1])<<8)|((unsigned)selftest[0]));
 			e = ESP_ERR_INVALID_RESPONSE;
@@ -486,6 +487,16 @@ unsigned sgp30_scan(uint8_t bus)
 	uint8_t vercmd[] = { SGP30_ADDR, REG_BASE, REG_GET_VERS };
 	if (0 != i2c_write(bus,vercmd,sizeof(vercmd),false,true))
 		return 0;
+	vTaskDelay(5);
+	uint8_t version[3];
+	if (0 != i2c_read(bus,SGP30_ADDR,version,sizeof(version)))
+		return 0;
+	uint8_t crc = crc8_0x31(version,2);
+	if (crc != version[2]) {
+		log_dbug(TAG,"version CRC mismatch");
+		return 0;
+	}
+	log_info(TAG,"SGP30 %02x %02x",version[0],version[1]);
 	return SGP30::create(bus) != 0;
 }
 

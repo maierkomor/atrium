@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2017-2023, Thomas Maier-Komor
+ *  Copyright (C) 2020-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -16,36 +16,16 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef SHELL_H
-#define SHELL_H
+#ifndef ADC_H
+#define ADC_H
 
-#define EXEFLAG_ADMIN		1
-#define EXEFLAG_INTERACTIVE	2
 
-#ifdef __cplusplus
-class Terminal;
-int exe_flags(char *cmd);
-const char *shellexe(Terminal &, char *cmd);
-void shell(Terminal &term, bool prompt = true);
-const char *help_cmd(Terminal &term, const char *arg);
-int arg_bool(const char *v, bool *b);
+#if IDF_VERSION >= 50
+#include <esp_adc/adc_oneshot.h>
 
-extern "C"
-#endif
-const char *getpwd();
+adc_oneshot_unit_handle_t adc_get_handle(uint8_t unit);
+adc_oneshot_unit_handle_t adc_get_unit_handle(adc_unit_t unit);
 
-typedef enum cmd_ret_e {
-	RET_OK = 0,
-	RET_FAILED,
-	RET_INV_NUMARG,
-	RET_INV_ARG_1,
-	RET_INV_ARG_2,
-	RET_INV_ARG_3,
-	RET_INV_ARG_4,
-	RET_OOM,		// out of memory
-	RET_PERM,		// access denied
-	RET_ERRNO,
-} cmd_ret_t;
-
+#endif // IDF_VERSION >= 50
 
 #endif

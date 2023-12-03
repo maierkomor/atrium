@@ -58,7 +58,7 @@ struct SGP30 : public I2CDevice
 	int read_serial();
 	int read_version();
 
-	typedef enum { st_none, st_init, st_bist, st_gets, st_getv, st_readb, st_readd
+	typedef enum { st_none = 0, st_init, st_bist, st_gets, st_getv, st_readb, st_readd
 		, st_reads, st_readv, st_iaq, st_idle, st_update, st_measure, st_error
 	} state_t;
 	enum { f_ver = 1, f_ser = 2, f_bist = 4, f_iaq = 8 };

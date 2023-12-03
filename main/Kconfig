@@ -224,14 +224,14 @@ endmenu # filesystem
 menu "hardware support"
 
 config USB_DIAGLOG
-	depends on ESP_CONSOLE_USB_SERIAL_JTAG
+	depends on SOC_USB_SERIAL_JTAG_SUPPORTED
 	bool "diag output to USB serial"
 	default true
 	help
 		output diagnostic log to USB serial connections
 
 config USB_CONSOLE
-	depends on ESP_CONSOLE_USB_SERIAL_JTAG || ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG || TINYUSB_CDC_ENABLED
+	depends on SOC_USB_SERIAL_JTAG_SUPPORTED
 	bool "console on USB serial"
 	default true
 	help
@@ -277,6 +277,13 @@ config ROTARYENCODER
 	depends on BUTTON
 	help
 		support rotary encoders
+
+config BUZZER
+	depends on !IDF_TARGET_ESP8266
+	bool	"buzzer support"
+	default true
+	help
+		driver for PWM driven buzzer
 
 config RELAY
 	bool "relay"
@@ -351,75 +358,12 @@ config I2C
 	help
 		I2C bus infrastructure
 
-config I2C_XCMD
-	bool "extended command support for I2C devices"
-	depends on I2C
-	default true
-	help
-		provide extended commands for configuring I2C devices
-
-config I2C_XDEV
-	bool "explicit I2C device configuration"
-	depends on I2C
-	default true
-	help
-		support for configuring devices that cannot be detected automatically
-
-config PCA9685
-	depends on I2C_XDEV
-	bool "pca9685"
-	default true
-	help
-		16 channel, 12bit PWM I2C driver
-
-config PCF8574
-	depends on I2C_XDEV
-	bool "pcf8574"
-	default true
-	help
-		I2C driver for PCF8574 (GPIO expander), used as bridge for HD44780U
-
-config TCA9555
-	depends on I2C_XDEV
-	bool "tca9555"
-	default true
-	help
-		I2C driver for TCA9555 (GPIO expander)
-
-config MCP2300X
-	depends on I2C_XDEV
-	bool "mcp2300x"
-	default true
-	help
-		I2C driver for MCP2300x devices (8-port GPIO expander)
-
-config MCP2301X
-	depends on I2C_XDEV
-	bool "mcp2301x"
-	default true
-	help
-		I2C driver for MCP2301x devices (16-port GPIO expander)
-
 config OPT3001
 	depends on I2C
 	bool "opt3001"
 	default true
 	help
 		I2C driver for OPT3001 (light intensity sensor)
-
-config INA2XX
-	bool "ina219"
-	depends on I2C_XDEV
-	default true
-	help
-		I2C driver for INA219 (current/voltage sensor)
-
-config SI7021
-	depends on I2C_XDEV
-	bool "SI7021"
-	default true
-	help
-		I2C driver for HTU21/SI7021/SI7020/SI7013 (temperature,humidity)
 
 config BMX280
 	depends on I2C
@@ -429,7 +373,7 @@ config BMX280
 		I2C driver for BME280 and BMP280 air sensor (temperature, humidity, pressure)
 
 config BMP388
-	depends on I2C && DEVEL
+	depends on I2C
 	bool "BMP388"
 	default false
 	help
@@ -441,6 +385,13 @@ config BME680
 	default false
 	help
 		I2C driver for BME680 air sensor (temperature, humidity, pressure, electric resistance)
+
+config BQ25601D
+	depends on I2C
+	bool "BQ25601D"
+	default false
+	help
+		I2C driver for BQ25601D charging controller
 
 config HDC1000
 	depends on I2C
@@ -477,6 +428,69 @@ config BH1750
 	help
 		I2C driver for BH1750 (illuminance sensor)
 
+config I2C_XCMD
+	bool "extended command support for I2C devices"
+	depends on I2C
+	default true
+	help
+		provide extended commands for configuring I2C devices
+
+config I2C_XDEV
+	bool "explicit I2C device configuration"
+	depends on I2C
+	default true
+	help
+		support for configuring devices that cannot be detected automatically
+
+config INA2XX
+	bool "ina219"
+	depends on I2C_XDEV
+	default true
+	help
+		I2C driver for INA219 (current/voltage sensor)
+
+config SI7021
+	depends on I2C_XDEV
+	bool "SI7021"
+	default true
+	help
+		I2C driver for HTU21/SI7021/SI7020/SI7013 (temperature,humidity)
+
+config PCA9685
+	depends on I2C_XDEV
+	bool "pca9685"
+	default true
+	help
+		16 channel, 12bit PWM I2C driver
+
+config PCF8574
+	depends on I2C_XDEV
+	bool "pcf8574"
+	default true
+	help
+		I2C driver for PCF8574 (GPIO expander), used as bridge for HD44780U
+
+config TCA9555
+	depends on I2C_XDEV
+	bool "tca9555"
+	default true
+	help
+		I2C driver for TCA9555 (GPIO expander)
+
+config MCP2300X
+	depends on I2C_XDEV
+	bool "mcp2300x"
+	default true
+	help
+		I2C driver for MCP2300x devices (8-port GPIO expander)
+
+config MCP2301X
+	depends on I2C_XDEV
+	bool "mcp2301x"
+	default true
+	help
+		I2C driver for MCP2301x devices (16-port GPIO expander)
+
 config SPI
 	bool "SPI"
 	depends on !IDF_TARGET_ESP8266
@@ -494,7 +508,6 @@ config SX1276
 
 config SSD1309
 	bool "SSD1309"
-	depends on DEVEL
 	default false
 	depends on SPI
 	help

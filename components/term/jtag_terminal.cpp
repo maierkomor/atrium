@@ -18,7 +18,7 @@
 
 #include <sdkconfig.h>
 
-#if defined CONFIG_IDF_TARGET_ESP32C3 || defined CONFIG_IDF_TARGET_ESP32S3
+#ifdef CONFIG_USB_CONSOLE
 
 #include "jtag_terminal.h"
 #include <driver/usb_serial_jtag.h>
@@ -32,9 +32,7 @@ using namespace std;
 JtagTerminal::JtagTerminal(bool crnl)
 : Terminal(crnl)
 {
-//	usb_serial_jtag_driver_config_t cfg = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
-	usb_serial_jtag_driver_config_t cfg;
-	bzero(&cfg,sizeof(cfg));
+	usb_serial_jtag_driver_config_t cfg = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
 	cfg.rx_buffer_size = 256;
 	cfg.tx_buffer_size = 256;
 	usb_serial_jtag_driver_install(&cfg);
@@ -44,7 +42,7 @@ JtagTerminal::JtagTerminal(bool crnl)
 int JtagTerminal::read(char *buf, size_t s, bool block)
 {
 	int n = usb_serial_jtag_read_bytes(buf,s,0);
-	if (n > 0)
+	if ((n > 0) || (!block))
 		return n;
 	n = usb_serial_jtag_read_bytes(buf,1,portMAX_DELAY);
 	if (s == 1)

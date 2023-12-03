@@ -27,6 +27,10 @@
 #include <math.h>
 
 
+static const char *OnStr[] = { "true","on","yes","enable" };
+static const char *OffStr[] = { "false","off","no","disable" };
+
+
 #ifdef CONFIG_NEWLIB_LIBRARY_LEVEL_NANO
 char *float_to_str(char *buf, float f)
 {
@@ -81,6 +85,24 @@ size_t chrcntn(const char *s, char c, size_t n)
 		s = f;
 	}
 	return r;
+}
+
+
+int arg_bool(const char *v, bool *b)
+{
+	for (const char *on : OnStr) {
+		if (0 == strcasecmp(on,v)) {
+			*b = true;
+			return 0;
+		}
+	}
+	for (const char *off : OffStr) {
+		if (0 == strcasecmp(off,v)) {
+			*b = false;
+			return 0;
+		}
+	}
+	return 1;
 }
 
 

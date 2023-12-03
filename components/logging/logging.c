@@ -36,7 +36,7 @@
 #include <driver/hw_timer.h>
 #endif
 
-#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+#if defined CONFIG_USB_CONSOLE || defined CONFIG_USB_DIAGLOG
 #include <driver/usb_serial_jtag.h>
 #endif
 
@@ -91,6 +91,7 @@
 
 extern void log_usb(const char *, size_t n);
 
+uint8_t UsbDiag = 1;
 static SemaphoreHandle_t UartLock;
 #if CONFIG_CONSOLE_UART_NONE != 1
 static uart_port_t LogUart = (uart_port_t) CONFIG_CONSOLE_UART_NUM;
@@ -131,7 +132,7 @@ void con_print(const char *str)
 		xSemaphoreGive(UartLock);
 	}
 #endif
-#if defined CONFIG_USB_DIAGLOG && (defined CONFIG_IDF_TARGET_ESP32C3 || defined CONFIG_IDF_TARGET_ESP32S3)
+#if defined CONFIG_USB_DIAGLOG
 	// will block until a jtag connection is present
 	// therefore, max delay: 10ms
 	usb_serial_jtag_write_bytes(str,s,10);
@@ -166,7 +167,7 @@ void con_printv(const char *f, va_list val)
 			xSemaphoreGive(UartLock);
 		}
 #endif
-#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+#ifdef CONFIG_USB_DIAGLOG
 		usb_serial_jtag_write_bytes(buf,n,portMAX_DELAY);
 #endif
 	}
@@ -182,7 +183,7 @@ void con_write(const char *str, ssize_t s)
 		xSemaphoreGive(UartLock);
 	}
 #endif
-#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+#ifdef CONFIG_USB_DIAGLOG
 	usb_serial_jtag_write_bytes(str,s,portMAX_DELAY);
 #endif
 }
@@ -205,7 +206,7 @@ void log_setup()
 #endif
 #endif
 
-#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+#if defined CONFIG_USB_DIAGLOG || defined CONFIG_USB_CONSOLE
 	usb_serial_jtag_driver_config_t cfg;
 	bzero(&cfg,sizeof(cfg));
 	cfg.rx_buffer_size = 256;
@@ -301,7 +302,9 @@ void log_common(log_level_t l, logmod_t m, const char *f, va_list val)
 		if (pdTRUE != xSemaphoreTake(UartLock,MUTEX_ABORT_TIMEOUT))
 			abort_on_mutex(UartLock,__BASE_FILE__);
 		uart_write_bytes((uart_port_t)LogUart,buf,s);
-//		if (l <= ll_warn)
+#ifndef CONFIG_DEVEL
+		if (l <= ll_warn)
+#endif
 			uart_wait_tx_done((uart_port_t)LogUart,portMAX_DELAY);
 		xSemaphoreGive(UartLock);
 	}
@@ -316,8 +319,9 @@ void log_common(log_level_t l, logmod_t m, const char *f, va_list val)
 	if ((l != ll_local) && (m != MODULE_LOG) && (m != MODULE_LWTCP))
 		log_syslog(l,m,buf+p,s-p-2,&tv);
 #endif
-#ifdef CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
-	usb_serial_jtag_write_bytes(buf,s,0);
+#ifdef CONFIG_USB_DIAGLOG
+	if (UsbDiag)
+		usb_serial_jtag_write_bytes(buf,s,0);
 #endif
 #if 0 // defined CONFIG_USB_CONSOLE && defined CONFIG_TINYUSB_CDC_ENABLED
 //	Logging to CDC would only work if driver is ready.

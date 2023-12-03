@@ -195,11 +195,11 @@ unsigned CCS811B::read()
 	uint8_t data[6];
 	if (i2c_w1rd(m_bus,m_addr,REG_DATA,data,sizeof(data))) {
 		log_warn(TAG,"I2C error");
-		return 0;
+		return 5000;
 	}
 	if ((data[4] & STATUS_FLAG_ERROR) != 0) {
 		log_dbug(TAG,"error 0x%x",data[5]);
-		return 0;
+		return 5000;
 	} if ((data[4] & STATUS_DATA_READY) == 0) {
 		++m_cnt;
 		return 10;
@@ -269,8 +269,9 @@ unsigned ccs811b_scan(uint8_t bus)
 		uint8_t hwid;
 		if (i2c_read(bus,addr,&hwid,1))
 			continue;
-		if (hwid != CCS811B_HWID)
-			continue;
+		log_dbug(TAG,"device hwid 0x%02x",hwid);
+//		if (hwid != CCS811B_HWID)
+//			continue;
 		uint8_t hwver;
 		if (i2c_w1rd(bus,addr,REG_HW_VER,&hwver,sizeof(hwver)))
 			continue;

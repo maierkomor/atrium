@@ -103,7 +103,8 @@ void XPT2046::attach(EnvObject *root)
 
 XPT2046 *XPT2046::create(spi_host_device_t host, spi_device_interface_config_t &cfg, int8_t intr)
 {
-	cfg.clock_speed_hz = SPI_MASTER_FREQ_8M;	// maximum: ???MHz
+	if (cfg.clock_speed_hz == 0)
+		cfg.clock_speed_hz = SPI_MASTER_FREQ_8M;	// maximum: ???MHz
 	cfg.post_cb = spidrv_post_cb_relsem;
 	cfg.queue_size = 1;
 	spi_device_handle_t hdl;
@@ -225,7 +226,7 @@ void XPT2046::readRegs()
 			log_warn(TAG,"error queuing read: %s",esp_err_to_name(e));
 		} else {
 			if (pdTRUE != xSemaphoreTake(m_sem,MUTEX_ABORT_TIMEOUT))
-				abort_on_mutex(m_sem,"ili9341");
+				abort_on_mutex(m_sem,"xpt2046");
 //			log_hex(TAG,rxbuf,sizeof(rxbuf),"read regs");
 		}
 		x += (rxbuf[1] << 4) | (rxbuf[2] >> 4);
@@ -235,6 +236,7 @@ void XPT2046::readRegs()
 	x >>= 3;
 	y >>= 3;
 	z >>= 3;
+	log_dbug(TAG,"x=%u, y=%u, z=%u",x,y,z);
 	if (z > m_uz) {
 		if ((m_lx == 0) || (x < m_lx))
 			m_lx = x;
@@ -249,12 +251,29 @@ void XPT2046::readRegs()
 			m_p.set(true);
 			event_trigger(m_evp);
 		}
-		float a0 = ((float)(x-m_lx))/((float)(m_ux-m_lx))*100.0;
+		float a0 = 0, a1 = 0;
+		if (m_lx != m_ux)
+			a0 = ((float)(x-m_lx))/((float)(m_ux-m_lx))*100.0;
 		m_a0.set(a0);
-		assert(a0 <= 100);
-		float a1 = ((float)(y-m_ly))/((float)(m_uy-m_ly))*100.0;
-		assert(a1 <= 100);
+		if (m_lx != m_ux)
+			a1 = ((float)(y-m_ly))/((float)(m_uy-m_ly))*100.0;
 		m_a1.set(a1);
+		log_dbug(TAG,"a0 %g, a1 %g",a0,a1);
+		if (a0 < 0) {
+			log_warn(TAG,"a0 = %g",a0);
+			a0 = 0;
+		} else if (a0 > 1000) {
+			log_warn(TAG,"a0 = %g",a0);
+			a0 = 100;
+		}
+		if (a1 < 0) {
+			log_warn(TAG,"a1 = %g",a1);
+			a1 = 0;
+		} else if (a1 > 100) {
+			log_warn(TAG,"a1 = %g",a1);
+			a1 = 100;
+		}
+//		assert((a0 >= 0) && (a1 >= 0) && (a0 <= 100) && (a1 <= 100));
 	} else if (z < m_lz) {
 		if (m_pressed) {
 			m_pressed = false;

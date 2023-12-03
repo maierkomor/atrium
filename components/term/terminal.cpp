@@ -154,6 +154,44 @@ int Terminal::readInput(char *buf, size_t l, bool echo)
 	return x;
 }
 
+
+void Terminal::print_hex(const uint8_t *b, size_t s, size_t off)
+{
+	const uint8_t *a = b, *e = b + s;
+	while (a != e) {
+		char tmp[64], *t = tmp;
+		t += sprintf(t,"%04x: ",a-b+off);
+		int i = 0;
+		while ((a < e) && (i < 16)) {
+			*t++ = ' ';
+			if (i == 8)
+				*t++ = ' ';
+#if 0
+			uint8_t d = *a;
+			uint8_t h = d >> 4;
+			if (h > 9)
+				*t = 'a' - 10 + h;
+			else
+				*t = '0' + h;
+			++t;
+			uint8_t l = d & 0xf;
+			if (l > 9)
+				*t = 'a' - 10 + l;
+			else
+				*t = '0' + l;
+			++t;
+#else
+			t += sprintf(t,"%02x",*a);
+#endif
+			++i;
+			++a;
+		}
+		*t = 0;
+		println(tmp);
+	}
+}
+
+
 int Terminal::setPwd(const char *cd)
 {
 	if (cd == 0)

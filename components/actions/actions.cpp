@@ -77,6 +77,7 @@ void Action::activate(void *a)
 	if (arg != 0)
 		a = arg;
 	assert(func);
+	log_dbug(TAG,"activate %s",name);
 	uint64_t st = esp_timer_get_time();
 	func(a);
 	uint64_t end = esp_timer_get_time();

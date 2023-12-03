@@ -25,26 +25,20 @@ class SSD130X : public MatrixDisplay
 {
 	public:
 	SSD130X()
-	: MatrixDisplay(cs_mono)
+	: MatrixDisplay(cs_mono,1/*FG:WHITE*/,0/*BG:BLACK*/)
 	{ }
 
 	~SSD130X();
 	void clear();
-	uint16_t fontHeight() const;
-//	int clrEol();
-	uint16_t charsPerLine() const;
 	uint16_t numLines() const;
-	int setFont(unsigned) override;
-	int setFont(const char *fn) override;
-//	void drawBitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t *data, int32_t fg, int32_t bg) override;
+	void drawBitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t *data, int32_t fg = -1, int32_t bg = -1) override;
+	unsigned drawChar(uint16_t x, uint16_t y, char c, int32_t fg, int32_t bg) override;
 	void drawHLine(uint16_t x, uint16_t y, uint16_t n, int32_t col = -1) override;
 	void drawVLine(uint16_t x, uint16_t y, uint16_t n, int32_t col = -1) override;
-//	void drawRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, int32_t col = -1) override;
+	int32_t getColor(color_t) const override;
 	void fillRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, int32_t col = -1) override;
 	void setPixel(uint16_t x, uint16_t y, int32_t col = -1) override;
-	int writeHex(uint8_t h, bool comma);
-//	int setPos(uint16_t x, uint16_t y);
-	//void write(const char *text, int len);
+	int setupOffScreen(uint16_t x, uint16_t y, uint16_t w, uint16_t h, int32_t bg) override;
 
 	bool hasAlpha() const override
 	{ return true; }
@@ -60,13 +54,9 @@ class SSD130X : public MatrixDisplay
 	int drawMasked(uint8_t x, uint8_t y, uint8_t b, uint8_t m);
 	int drawBits(uint8_t x, uint8_t y, uint8_t b, uint8_t n);
 	int drawByte(uint8_t x, uint8_t y, uint8_t b);
-	void drawChar(char c);
-	unsigned drawChar(uint16_t x, uint16_t y, char c, int32_t fg, int32_t bg) override;
-	void drawBitmapNative(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t *data);
 
 	uint8_t *m_disp = 0;
 	uint8_t m_dirty = 0xff;
-//	fontid_t m_font = font_native;
 };
 
 

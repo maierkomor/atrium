@@ -20,6 +20,7 @@
 #define SCREEN_H
 
 #include <stdint.h>
+#include "estring.h"
 
 
 typedef enum clockmode {
@@ -39,7 +40,9 @@ struct Screen
 	uint8_t digits;
 	clockmode_t mode = cm_time;
 	bool modech = false;
+	estring prev;
 
+	void display_env();
 	void display_time();
 	void display_date();
 	void display_data();

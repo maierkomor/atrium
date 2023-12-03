@@ -21,9 +21,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
-#include "log.h"
 #include <esp_err.h>
-
 #include <string.h>
 
 #include "globals.h"
@@ -34,6 +32,7 @@
 #include "terminal.h"
 
 using namespace std;
+
 
 #define TAG MODULE_CON
 
@@ -77,7 +76,7 @@ static inline void uart_console_setup(void)
 #endif // CONFIG_UART_CONSOLE
 
 
-#if defined CONFIG_USB_CONSOLE && (defined CONFIG_IDF_TARGET_ESP32C3 || defined CONFIG_IDF_TARGET_ESP32S3)
+#if defined CONFIG_USB_CONSOLE
 #include "jtag_terminal.h"
 
 static inline void jtag_console_setup(void)
@@ -115,8 +114,18 @@ static inline void cdc_console_setup(void)
 #endif
 
 
+#ifdef CONFIG_USB_DIAGLOG
+extern "C" {
+	extern uint8_t UsbDiag;
+}
+#endif
+
 void console_setup()
 {
+#ifdef CONFIG_USB_DIAGLOG
+	if (!HWConf.system().usb_diag())
+		UsbDiag = 0;
+#endif
 	uart_console_setup();
 	jtag_console_setup();
 	cdc_console_setup();

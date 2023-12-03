@@ -287,7 +287,8 @@ SX1276::SX1276(spi_host_device_t host, spi_device_interface_config_t &cfg, int8_
 	cfg.command_bits = 1;
 	cfg.address_bits = 7;
 	cfg.cs_ena_pretrans = 0;
-	cfg.clock_speed_hz = SPI_MASTER_FREQ_10M;
+	if (0 == cfg.clock_speed_hz)
+		cfg.clock_speed_hz = SPI_MASTER_FREQ_10M;
 	cfg.queue_size = 1;
 	cfg.post_cb = postCallback;
 	cfg.flags = ESP_INTR_FLAG_IRAM;

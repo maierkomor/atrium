@@ -207,5 +207,6 @@ class countstream : public stream
 size_t chrcnt(const char *s, char c);
 size_t chrcntn(const char *s, char c, size_t n);
 char *float_to_str(char *buf, float f);
+int arg_bool(const char *v, bool *b);
 
 #endif

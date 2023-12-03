@@ -43,6 +43,9 @@
 #define SH1106_ADDR1	0x3d
 
 #define CMD_NOP		0xe3
+#define CMD_DISP_OFF	0xae
+#define CMD_DISP_ON	0xaf
+#define CMD_OUTPUT_RAM	0xa4
 
 #define TAG MODULE_SSD130X
 
@@ -55,7 +58,7 @@ SH1106::SH1106(uint8_t bus, uint8_t addr)
 : I2CDevice(bus,addr,drvName())
 {
 	Instance = this;
-	log_info(TAG,"ssd1306 at %u,0x%x",bus,addr);
+	log_info(TAG,"sh1106 at %u,0x%x",bus,addr);
 }
 
 
@@ -95,8 +98,8 @@ int SH1106::init(uint8_t maxx, uint8_t maxy, uint8_t hwcfg)
 	if (i2c_write(m_bus,setup,sizeof(setup),1,1))
 		return 1;
 		*/
-	xmitCmd(0xae);
-	xmitCmd(0xa4);
+	xmitCmd(CMD_DISP_OFF);
+	xmitCmd(CMD_OUTPUT_RAM);
 	vTaskDelay(100);
 	clear();
 	flush();
@@ -165,6 +168,7 @@ void SH1106::flush()
 	uint8_t numpg = m_height / 8 + ((m_height & 7) != 0);
 	unsigned pgs = m_width;
 	if (m_dirty) {
+		log_dbug(TAG,"dirty 0x%x",m_dirty);
 		for (uint8_t p = 0; p < numpg; p++) {
 			if (m_dirty & (1<<p)) {
 				cmd[4] = 0xb0 + p;
@@ -177,186 +181,6 @@ void SH1106::flush()
 		m_dirty = 0;
 	}
 }
-
-
-int SH1106::readByte(uint8_t x, uint8_t y, uint8_t *b)
-{
-	if ((x >= m_width) || (y >= m_height)) {
-		log_dbug(TAG,"off display %u,%u",x,y);
-		return 1;
-	}
-	uint8_t shift = y & 7;
-	uint8_t pg = y >> 3;
-	uint16_t idx = pg * m_width + x;
-	uint8_t b0 = m_disp[idx];
-	if (shift) {
-		b0 >>= shift;
-		idx += m_width;
-		if (idx < (m_width*m_height)) {
-			uint8_t b1 = m_disp[idx];
-			b1 <<= (8-shift);
-			b0 |= b1;
-		}
-	}
-	*b = b0;
-	return 0;
-}
-
-
-int SH1106::drawMasked(uint8_t x, uint8_t y, uint8_t b, uint8_t m)
-{
-	uint8_t o;
-	if (readByte(x,y,&o))
-		return 1;
-	o &= ~m;
-	o |= (b & m);
-	return drawByte(x,y,o);
-}
-
-
-/*
-static uint16_t scaleDouble(uint8_t byte)
-{
-      uint16_t r = 0;
-      uint16_t m = 1;
-      for (uint8_t b = 0; b < 8; ++b) {
-              if (byte & (1<<b)) {
-                      r |= m;
-                      m <<= 1;
-                      r |= m;
-                      m <<= 1;
-              } else {
-                      m <<= 2;
-              }
-      }
-      return r;
-}
-*/
-
-
-/*
- *  xxxxXXXX
- *  00000000vvvVVVVV	vertical offset
- *  shl 5
- *  XXXXxxxxx	byte0
- *  shr 3
- *  xxxxxxxX	byte1
- *
- *  vVVVVVVV	7 used, 1 bit b0
- *  xxxXXXXX	5 bits to write
- *  Aaaaaaaa	byte0: shl7
- *  bbbbbbbB	byte1: shr1
- *
- *  00000000 vvvvVVVV	4 used, 4bit b0
- *           xxxXXXXX	5 bits to write
- *  000000AA AAAaaaaa
- *  byte1    byte0
- */
-
-int SH1106::drawBits(uint8_t x, uint8_t y, uint8_t b, uint8_t n)
-{
-	static const uint8_t masks[] = {0x1,0x3,0x7,0xf,0x1f,0x3f,0x7f};
-	b &= masks[n-1];
-//	log_dbug(TAG,"drawBits(%u,%u,%x,%u)",x,y,b,n);
-	uint8_t pg = y >> 3;
-	unsigned off = pg * m_width + x;
-	uint8_t shl = y & 7;
-	uint16_t b0 = (uint16_t)b << shl;
-	uint8_t b1 = (uint8_t)(b0 >> 8);
-	if (b1)
-		m_disp[off+m_width] |= b1;
-	m_disp[off] |= (uint8_t)(b0&0xff);
-//	log_dbug(TAG,"drawBits %x at %u",b0,off);
-	return 0;
-}
-
-
-int SH1106::drawByte(uint8_t x, uint8_t y, uint8_t b)
-{
-	uint8_t pg = y >> 3;
-	uint16_t idx = pg * m_width + x;
-	if ((x >= m_width) || (y >= m_height)) {
-		log_dbug(TAG,"off display %u,%u=%u pg=%u",(unsigned)x,(unsigned)y,(unsigned)idx,(unsigned)pg);
-		return 1;
-	}
-	uint8_t shift = y & 7;
-	if (shift != 0) {
-		uint16_t idx2 = idx + m_width;
-		if (idx2 >= (m_width*m_height))
-			return 1;
-		m_dirty |= 1<<(pg+1);
-		uint16_t w = (uint16_t) b << shift;
-		uint16_t m = 0xff << shift;
-		m = ~m;
-		uint8_t b0 = (m_disp[idx] & m) | (w & 0xFF);
-		if (b0 != m_disp[idx]) {
-			m_disp[idx] = b0;
-			m_dirty |= 1<<pg;
-		}
-		b = (m_disp[idx2] & (m >> 8)) | (w >> 8);
-		idx = idx2;
-	}
-	if (m_disp[idx] != b) {
-		m_dirty |= 1<<pg;
-		m_disp[idx] = b;
-	}
-	return 0;
-}
-
-
-static uint8_t getBits(const uint8_t *data, unsigned off, uint8_t numb)
-{
-	unsigned b = off >> 3;
-	uint8_t byte = data[b];
-	unsigned bitst = off & 7;
-	uint8_t got = 8-bitst;
-	byte >>= bitst;
-	if (got < numb)
-		byte |= data[b+1] << got;
-//	log_dbug(TAG,"getBits(%u,%u): %x",off,numb,byte);
-	return byte;
-}
-
-
-void SH1106::drawBitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t *data, int32_t fg, int32_t bg)
-{
-	static const uint8_t masks[] = {0x1,0x3,0x7,0xf,0x1f,0x3f,0x7f};
-	unsigned len = w*h;
-	uint16_t bitoff = 0;
-	log_dbug(TAG,"SH1106::drawBitmap(%u,%u,%u,%u) %u/%u",x,y,w,h,len,len/8);
-	for (uint8_t x0 = x; x0 < x+w; ++x0) {
-		uint8_t yoff = y;
-		uint8_t numb = h;
-		while (numb) {
-//			log_dbug(TAG,"numb=%u",numb);
-			uint8_t byte = getBits(data,bitoff,numb);
-			if (numb >= 8) {
-//				log_dbug(TAG,"byte %x at %u/%u",byte,x0,y+yoff);
-				if (byte)
-					drawByte(x0,yoff,byte);
-				numb -= 8;
-				yoff += 8;
-				bitoff += 8;
-			} else {
-				byte &= masks[numb-1];
-				if (byte) {
-//					drawBits(x0,yoff,byte,numb);
-					uint8_t pg = yoff >> 3;
-					unsigned off = pg * m_width + x0;
-					uint8_t shl = yoff & 7;
-					uint16_t b0 = (uint16_t)byte << shl;
-					m_disp[off] |= (uint8_t)(b0&0xff);
-					uint8_t b1 = (uint8_t)(b0 >> 8);
-					if (b1)
-						m_disp[off+m_width] |= b1;
-				}
-				bitoff += numb;
-				break;
-			}
-		}
-	}
-}
-
 
 
 SH1106 *SH1106::create(uint8_t bus, uint8_t addr)

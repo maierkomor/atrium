@@ -41,6 +41,12 @@
 
 #define TAG MODULE_SSD130X
 
+#if 0
+#define log_devel log_dbug
+#else
+#define log_devel(...)
+#endif
+
 
 /*
 static Font NativeFont = {
@@ -83,7 +89,7 @@ void SSD130X::clear()
 }
 
 
-void SSD130X::fillRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, int32_t col)
+void SSD130X::fillRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, int32_t c)
 {
 	log_dbug(TAG,"fillRect(%u,%u,%u,%u)",x,y,w,h);
 	if ((x > m_width) || (y >= m_height))
@@ -92,16 +98,17 @@ void SSD130X::fillRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, int32_t c
 		w = m_width - x;
 	if ((y+h) > m_height)
 		h = m_height - y;
+	uint8_t col = c ? 0xff : 0;
 	for (int i = x; i < x+w; ++i) {
 		uint16_t y0 = y;
 		uint16_t h0 = h;
 		do {
 			if (((y & 7) == 0) && (h0 >= 8)) {
-				drawByte(i,y0,0xff);
+				drawByte(i,y0,col);
 				y0 += 8;
 				h0 -= 8;
 			} else {
-				setPixel(i,y0);
+				setPixel(i,y0,c);
 				++y0;
 				--h0;
 			}
@@ -110,55 +117,24 @@ void SSD130X::fillRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, int32_t c
 }
 
 
-uint16_t SSD130X::fontHeight() const
+int32_t SSD130X::getColor(color_t c) const
 {
-	/*
-	switch (m_font) {
-	case -1: return 8;
-	case -2: return 16;
+	switch (c) {
+	case WHITE:
+		return 1;
+	case BLACK:
+		return 0;
 	default:
-		return Fonts[m_font].yAdvance;
+		return 0;
 	}
-	*/
-	return m_font->yAdvance;
-}
-
-
-uint16_t SSD130X::charsPerLine() const
-{
-	/*
-	if (m_font == font_nativedbl)
-		return m_width/CHAR_WIDTH<<1;
-	*/
-	return m_width/CHAR_WIDTH;
 }
 
 
 uint16_t SSD130X::numLines() const
 {
-	return m_height/fontHeight();
-}
-
-
-int SSD130X::setFont(const char *fn)
-{
-	/*
-	if (0 == strcasecmp(fn,"native")) {
-		m_font = (fontid_t)-1;
-		return 0;
-	}
-	if (0 == strcasecmp(fn,"nativedbl")) {
-		m_font = (fontid_t)-2;
-		return 0;
-	}
-	*/
-	for (int i = 0; i < NumFontsBCM; ++i) {
-		if (0 == strcasecmp(FontsBCM[i].name,fn)) {
-			m_font = FontsBCM+i;
-			return 0;
-		}
-	}
-	return -1;
+	if (m_font)
+		return m_height/fontHeight();
+	return m_height>>3;
 }
 
 
@@ -200,19 +176,19 @@ int SSD130X::drawMasked(uint8_t x, uint8_t y, uint8_t b, uint8_t m)
 /*
 static uint16_t scaleDouble(uint8_t byte)
 {
-      uint16_t r = 0;
-      uint16_t m = 1;
-      for (uint8_t b = 0; b < 8; ++b) {
-              if (byte & (1<<b)) {
-                      r |= m;
-                      m <<= 1;
-                      r |= m;
-                      m <<= 1;
-              } else {
-                      m <<= 2;
-              }
-      }
-      return r;
+	uint16_t r = 0;
+	uint16_t m = 1;
+	for (uint8_t b = 0; b < 8; ++b) {
+		if (byte & (1<<b)) {
+			r |= m;
+			m <<= 1;
+			r |= m;
+			m <<= 1;
+		} else {
+			m <<= 2;
+		}
+	}
+	return r;
 }
 */
 
@@ -240,7 +216,7 @@ int SSD130X::drawBits(uint8_t x, uint8_t y, uint8_t b, uint8_t n)
 {
 	static const uint8_t masks[] = {0x1,0x3,0x7,0xf,0x1f,0x3f,0x7f};
 	b &= masks[n-1];
-//	log_dbug(TAG,"drawBits(%u,%u,%x,%u)",x,y,b,n);
+	log_devel(TAG,"drawBits(%u,%u,%x,%u)",x,y,b,n);
 	uint8_t pg = y >> 3;
 	unsigned off = pg * m_width + x;
 	uint8_t shl = y & 7;
@@ -283,10 +259,12 @@ int SSD130X::drawByte(uint8_t x, uint8_t y, uint8_t b)
 		m_dirty |= 1<<pg;
 		m_disp[idx] = b;
 	}
+	log_devel(TAG,"drawByte %d,%d %x dirty %x",x,y,b,m_dirty);
 	return 0;
 }
 
 
+#if 0
 void SSD130X::drawChar(char c)
 {
 	if (c == '\r') {
@@ -311,29 +289,29 @@ unsigned SSD130X::drawChar(uint16_t x, uint16_t y, char c, int32_t fg, int32_t b
 //		m_posx = 0;
 //		m_posy += fontHeight();
 		return 0;
-	case 176:	// '°'
-		c = 133;
+	case 0xb0: //176:	// '°'
+		c = 127;
 		break;
 	case 196:	// 'Ä'
-		c = 130;
+		c = 129;
 		break;
 	case 220:	// 'Ü'
 		c = 128;
 		break;
 	case 214:	// 'Ö'
-		c = 132;
+		c = 133;
 		break;
 	case 223:	// 'ß'
 		c = 134;
 		break;
 	case 228:	// 'ä'
-		c = 129;
+		c = 128;
 		break;
 	case 246:	// 'ö'
-		c = 131;
+		c = 130;
 		break;
 	case 252:	// 'ü'
-		c = 127;
+		c = 132;
 		break;
 	default:
 		break;
@@ -376,7 +354,7 @@ unsigned SSD130X::drawChar(uint16_t x, uint16_t y, char c, int32_t fg, int32_t b
 		return 1;
 	}
 	uint8_t ch = c - m_font->first;
-	const uint8_t *off = m_font->bitmap + m_font->glyph[ch].bitmapOffset;
+	const uint8_t *off = m_font->BCMbitmap + m_font->glyph[ch].bitmapOffset;
 	uint8_t w = m_font->glyph[ch].width;
 	uint8_t h = m_font->glyph[ch].height;
 	int8_t dx = m_font->glyph[ch].xOffset;
@@ -385,7 +363,34 @@ unsigned SSD130X::drawChar(uint16_t x, uint16_t y, char c, int32_t fg, int32_t b
 	log_dbug(TAG,"drawChar(%u,%u,'%c') with %ux%u",x,y,c,w,h);
 //	log_info(TAG,"%d/%d %+d/%+d, adv %u len %u",(int)w,(int)h,(int)dx,(int)dy,a,l);
 	clearRect(x,y,a,m_font->yAdvance);
-	drawBitmapNative(x+dx,y+dy+m_font->yAdvance-1,w,h,off);
+	drawBitmapNative(x+dx,y+dy,w,h,off);
+	return a;
+}
+#endif
+
+
+unsigned SSD130X::drawChar(uint16_t x, uint16_t y, char c, int32_t fg, int32_t bg)
+{
+	PROFILE_FUNCTION();
+	c = charToGlyph(c);
+	if ((c < m_font->first) || (c > m_font->last))
+		return 0;
+	if (fg == -1)
+		fg = m_colfg;
+	if (bg == -1)
+		bg = m_colbg;
+	uint8_t ch = c - m_font->first;
+	const uint8_t *data = m_font->BCMbitmap + m_font->glyph[ch].bitmapOffset;
+	uint8_t w = m_font->glyph[ch].width;
+	uint8_t h = m_font->glyph[ch].height;
+	int8_t dx = m_font->glyph[ch].xOffset;
+	int8_t dy = m_font->glyph[ch].yOffset;
+	uint8_t a = m_font->glyph[ch].xAdvance;
+	log_dbug(TAG,"drawChar(%d,%d,'%c',%d,%d) = %u",x,y,c,fg,bg,a);
+//	log_info(TAG,"%d/%d %+d/%+d, adv %u char '%c'",(int)w,(int)h,(int)dx,(int)dy,a,c);
+	if (bg != -2)
+		fillRect(x,y,a,m_font->yAdvance,bg);
+	drawBitmap(x+dx,y+dy,w,h,data,fg,bg);
 	return a;
 }
 
@@ -461,14 +466,15 @@ static inline uint8_t getBits(const uint8_t *data, unsigned off, uint8_t numb)
 }
 
 
-void SSD130X::drawBitmapNative(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t *data)
+void SSD130X::drawBitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t *data, int32_t fg, int32_t bg)
 {
 	PROFILE_FUNCTION();
 	static const uint8_t masks[] = {0x1,0x3,0x7,0xf,0x1f,0x3f,0x7f};
 	unsigned len = w*h;
 	uint16_t bitoff = 0;
 	log_dbug(TAG,"drawBitmapNative(%u,%u,%u,%u) %u/%u",x,y,w,h,len,len/8);
-	for (uint8_t x0 = x; x0 < x+w; ++x0) {
+	for (uint16_t x0 = x; x0 < x+w; ++x0) {
+		assert(x0 >= x);
 		uint8_t yoff = y;
 		uint8_t numb = h;
 		while (numb) {
@@ -486,6 +492,7 @@ void SSD130X::drawBitmapNative(uint16_t x, uint16_t y, uint16_t w, uint16_t h, c
 				if (byte) {
 //					drawBits(x0,yoff,byte,numb);
 					uint8_t pg = yoff >> 3;
+					m_dirty |= 1<<pg;
 					unsigned off = pg * m_width + x0;
 					uint8_t shl = yoff & 7;
 					uint16_t b0 = (uint16_t)byte << shl;
@@ -534,13 +541,11 @@ void SSD130X::pSetPixel(uint16_t x, uint16_t y)
 }
 
 
-int SSD130X::setFont(unsigned f)
+int SSD130X::setupOffScreen(uint16_t x, uint16_t y, uint16_t w, uint16_t h, int32_t bg)
 {
-	if (f < NumFontsBCM) {
-		m_font = FontsBCM + f;
-		return 0;
-	}
-	return -1;
+	if (bg != -2)
+		fillRect(x,y,w,h,bg);
+	return 0;
 }
 
 
@@ -553,13 +558,15 @@ void SSD130X::setPixel(uint16_t x, uint16_t y, int32_t col)
 		uint8_t bit = 1 << (y & 7);
 		uint8_t b = *p;
 		if ((b & bit) == 0) {
-			if (col == 1) {
+			if (col != 0) {
 				*p = b | bit;
 				m_dirty |= (1 << pg);
 			}
 		} else {
 			if (col == 0) {
-				m_dirty &= ~(1 << pg);
+				b &= ~bit;
+				*p = b;
+				m_dirty |= (1 << pg);
 			}
 		}
 	}
@@ -591,6 +598,7 @@ int SSD130X::clearRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h)
 }
 
 
+/*
 int SSD130X::writeHex(uint8_t h, bool comma)
 {
 	log_dbug(TAG,"writeHex %x",h);
@@ -604,5 +612,6 @@ int SSD130X::writeHex(uint8_t h, bool comma)
 		drawChar('.');
 	return 0;
 }
+*/
 
 

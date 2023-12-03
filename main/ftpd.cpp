@@ -128,8 +128,6 @@ static void answer(ftpctx_t *ctx, const char *fmt, ...)
 	buf[n] = 0;
 	log_dbug(TAG,"answer %.*s",n-2,b);
 	int r = ctx->con->write(b,n);
-	if (b != buf)
-		free(b);
 	if (-1 == r) {
 		log_error(TAG,"failed to send answer: %s",ctx->con->error());
 		ctx->con->close();

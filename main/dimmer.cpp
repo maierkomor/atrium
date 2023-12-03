@@ -427,18 +427,20 @@ void dimmer_setup()
 	unsigned nch = 0;
 	uint32_t pins[nleds];
 	uint32_t duties[nleds];
-#elif defined CONFIG_IDF_TARGET_ESP32
+#elif defined ESP32
 	ledc_timer_config_t tm;
 	bzero(&tm,sizeof(tm));
 	tm.duty_resolution = LEDC_TIMER_10_BIT;
 	tm.freq_hz         = freq;
 	tm.speed_mode      = SPEED_MODE;
 	tm.timer_num       = LEDC_TIMER_0;
-	tm.clk_cfg          = LEDC_AUTO_CLK;
+	tm.clk_cfg         = LEDC_AUTO_CLK;
 	if (esp_err_t e = ledc_timer_config(&tm)) {
 		log_error(TAG,"timer config %x",e);
 		return;
 	}
+#else
+#error unknown target
 #endif
 	for (auto &conf : HWConf.led()) {
 		if ((conf.pwm_ch() == -1) || (conf.gpio() == -1))
@@ -469,7 +471,6 @@ void dimmer_setup()
 		ch.gpio_num   = dim->gpio;
 		ch.channel    = dim->channel;
 		ch.duty       = 0;
-		ch.gpio_num   = dim->gpio;
 		ch.speed_mode = SPEED_MODE;
 		ch.timer_sel  = LEDC_TIMER_0;
 		ch.hpoint     = 0;

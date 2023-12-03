@@ -203,6 +203,7 @@ void Gpio::action_set0(void *arg)
 {
 	Gpio *gpio = (Gpio *)arg;
 	xio_set_lo(gpio->m_gpio);
+	gpio->m_env.set(false);
 	log_dbug(TAG,"%s <= 0",gpio->name());
 }
 
@@ -211,6 +212,7 @@ void Gpio::action_set1(void *arg)
 {
 	Gpio *gpio = (Gpio *)arg;
 	xio_set_hi(gpio->m_gpio);
+	gpio->m_env.set(true);
 	log_dbug(TAG,"%s <= 1",gpio->name());
 }
 
@@ -220,6 +222,7 @@ void Gpio::action_toggle(void *arg)
 	Gpio *gpio = (Gpio *)arg;
 	unsigned lvl = xio_get_lvl(gpio->m_gpio)^1;
 	xio_set_lvl(gpio->m_gpio,(xio_lvl_t)lvl);
+	gpio->m_env.set(lvl);
 	log_dbug(TAG,"%s <= %d",gpio->name(),lvl);
 }
 
@@ -255,9 +258,10 @@ void Gpio::init(unsigned config)
 	else if (config & (1<<8))
 		cfg.cfg_pull = xio_cfg_pull_down;
 	if (config & (1<<5)) {	// set-init?
-		bool inithi = config & (1 << 6);
+		bool inithi = (config >> 6) & 1;
 		cfg.cfg_initlvl = inithi ? xio_cfg_initlvl_high : xio_cfg_initlvl_low;
-		log_dbug(TAG,"init %s",inithi ? "high" : "low");
+		log_dbug(TAG,"init %s %s",m_env.name(),inithi ? "high" : "low");
+		m_env.set(inithi);
 	}
 	if (0 > xio_config(m_gpio,cfg)) {
 		log_warn(TAG,"config gpio %u failed",m_gpio);
@@ -357,8 +361,8 @@ const char *gpio(Terminal &term, int argc, const char *args[])
 {
 #ifdef CONFIG_IOEXTENDERS
 	if (argc == 1) {
-		const char *dir[] = {"in: 0","in: 1","out","od"};
-		const char *out[] = {"","out: lo","out: hi"};
+		const char *dir[] = {"in","out","od"};
+		const char out[] = {'0','1','Z'};
 		XioCluster **cl = XioCluster::getClusters();
 		uint8_t num = XioCluster::numClusters();
 		term.printf("%u io clusters\n",num);
@@ -372,15 +376,11 @@ const char *gpio(Terminal &term, int argc, const char *args[])
 			term.printf("cluster %s: %u IOs\n",n,num);
 			for (int i = 0; i < num; ++i) {
 				int d = c->get_dir(i);
-				int o = d == 2 ? c->get_out(i) : -1;
-				++o;
 				if (d != -1) {
-					if (d)
-						++d;
-					else
-						d = c->get_lvl(i);
-					assert(dir[d]);
-					term.printf("%2u (%s/%d): %s%s\n",gpio,n,i,dir[d],out[o]);
+					int o = d ? c->get_out(i) : c->get_lvl(i);
+					assert((d >= 0) && (d < sizeof(dir)/sizeof(dir[0])));
+					assert((o >= 0) && (o < sizeof(out)/sizeof(out[0])));
+					term.printf("%2u (%s/%d): %s %c\n",gpio,n,i,dir[d],out[o]);
 				}
 				++gpio;
 			}

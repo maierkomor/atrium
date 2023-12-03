@@ -132,11 +132,12 @@ SDCard *SDCard::create(spi_host_device_t host, spi_device_interface_config_t &cf
 }
 #endif
 
-static void spi_init_device(spi_host_device_t host, spidrv_t drv, int8_t cs, int8_t intr, int8_t reset, int8_t cd)
+static void spi_init_device(spi_host_device_t host, spidrv_t drv, int8_t cs, int8_t intr, int8_t reset, int8_t cd, unsigned freq)
 {
 	spi_device_interface_config_t cfg;
 	bzero(&cfg,sizeof(cfg));
 	cfg.spics_io_num = cs;
+	cfg.clock_speed_hz = freq * 1000;
 	switch (drv) {
 	case spidrv_invalid:
 		break;
@@ -271,7 +272,7 @@ void spi_setup()
 		}
 		log_info(TAG,"initialized SPI%u",host);
 		for (auto &d : c.devices()) {
-			spi_init_device(hdev,d.drv(),d.cs(),d.intr(),d.reset(),d.cd());
+			spi_init_device(hdev,d.drv(),d.cs(),d.intr(),d.reset(),d.cd(),d.freq());
 		}
 	}
 	SpiDevice *d = SpiDevice::getFirst();

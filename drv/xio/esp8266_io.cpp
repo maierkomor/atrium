@@ -40,8 +40,10 @@ struct CoreIO : public XioCluster
 {
 	CoreIO();
 	int get_lvl(uint8_t io) override;
+	int get_out(uint8_t io) override;
 	int setm(uint32_t,uint32_t) override;
 	int set_hi(uint8_t io) override;
+	int set_hiz(uint8_t io) override;
 	int set_lo(uint8_t io) override;
 	int set_intr(uint8_t,xio_intrhdlr_t,void*) override;
 	int config(uint8_t io, xio_cfg_t) override;
@@ -207,10 +209,30 @@ int CoreIO::get_lvl(uint8_t num)
 }
 
 
+int CoreIO::get_out(uint8_t num)
+{
+	if (num < 16)
+		return (GPIO.out >> num) & 1;
+	return -EINVAL;
+}
+
+
 int CoreIO::set_hi(uint8_t num)
 {
 	if (uint16_t b = 1 << num) {
 		GPIO.out_w1ts |= b;
+		GPIO.enable_w1ts |= b;
+		return 0;
+	}
+	return -EINVAL;
+}
+
+
+int CoreIO::set_hiz(uint8_t num)
+{
+	if (uint16_t b = 1 << num) {
+		GPIO.out_w1tc |= b;
+		GPIO.enable_w1tc |= b;
 		return 0;
 	}
 	return -EINVAL;
@@ -221,6 +243,7 @@ int CoreIO::set_lo(uint8_t num)
 {
 	if (uint16_t b = 1 << num) {
 		GPIO.out_w1tc |= b;
+		GPIO.enable_w1ts |= b;
 		return 0;
 	}
 	return -EINVAL;

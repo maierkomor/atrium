@@ -725,6 +725,7 @@ unsigned xlua_render(Screen *ctx)
 		lua_gc(LS,LUA_GCCOLLECT);
 	} else {
 		ctx->mode = (clockmode_t) (ctx->mode + 1);
+		ctx->modech = true;
 	}
 	return d;
 }

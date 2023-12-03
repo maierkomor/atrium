@@ -57,12 +57,6 @@ class estring
 	bool operator != (const estring &a) const
 	{ return (a.len != len) || (0 != memcmp(str,a.str,len)); }
 
-	bool operator == (const char *s) const
-	{ return (str == 0) ? (*s == 0) : (0 == strcmp(str,s)); }
-
-	bool operator != (const char *s) const
-	{ return (str == 0) ? (*s != 0) : (0 != strcmp(str,s)); }
-
 	const char *c_str() const
 	{
 		if (str == 0)
@@ -103,6 +97,8 @@ class estring
 	friend bool operator <= (const estring &, const char *);
 	friend bool operator > (const estring &, const char *);
 	friend bool operator >= (const estring &, const char *);
+	friend bool operator == (const estring &, const char *);
+	friend bool operator != (const estring &, const char *);
 
 	private:
 	friend struct estring_cmp;
@@ -168,6 +164,16 @@ inline bool operator > (const estring &l, const char *rs)
 inline bool operator >= (const estring &l, const char *rs)
 {
 	return strcmp(l.str,rs) >= 0;
+}
+
+inline bool operator == (const estring &l, const char *rs)
+{
+	return strcmp(l.str,rs) == 0;
+}
+
+inline bool operator != (const estring &l, const char *rs)
+{
+	return strcmp(l.str,rs) != 0;
 }
 
 #endif

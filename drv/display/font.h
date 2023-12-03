@@ -22,11 +22,21 @@ typedef struct {
 /// Data stored for FONT AS A WHOLE
 typedef struct {
   const char *name;
-  const uint8_t *bitmap;  ///< Glyph bitmaps, concatenated
-  GFXglyph *glyph;     ///< Glyph array
+  const uint8_t *bitmap;  ///< Glyph bitmaps, concatenated, in row-major format
+  const GFXglyph *glyph;     ///< Glyph array
   uint16_t first;   ///< ASCII extents (first char)
   uint16_t last;    ///< ASCII extents (last char)
   uint8_t yAdvance; ///< Newline distance (y axis)
+} GFXfont;
+
+typedef struct {
+  const uint8_t *RMbitmap;  ///< Glyph bitmaps, concatenated, in row-major format
+  const uint8_t *BCMbitmap;  ///< Glyph bitmaps, concatenated, in byte-column major format
+  const GFXglyph *glyph;     ///< Glyph array
+  uint8_t first;   ///< ASCII extents (first char)
+  uint8_t last;    ///< ASCII extents (last char)
+  uint8_t yAdvance; ///< Newline distance (y axis)
+  const char name[17];
 } Font;
 
 typedef enum {
@@ -35,10 +45,10 @@ typedef enum {
 	font_mono9 = 0,
 	font_mono12,
 	font_mono18,
-	font_mono24,
+//	font_mono24,
 	font_tomthumb,
-	font_sans9,
-	font_sans12,
+//	font_sans9,
+//	font_sans12,
 	font_sanslight10,
 	font_sanslight12,
 	font_sanslight14,

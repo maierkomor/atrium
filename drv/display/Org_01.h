@@ -26,7 +26,7 @@ const uint8_t Org_01Bitmaps[] = {
     0x99, 0x97, 0x8C, 0x6B, 0xF0, 0x96, 0x69, 0x99, 0x9F, 0x10, 0x2E, 0x8F,
     0x2B, 0x22, 0xF8, 0x89, 0xA8, 0x0F, 0xE0};
 
-const GFXglyph Org_01Glyphs[] = {{0, 0, 0, 6, 0, 1},     // 0x20 ' '
+const GFXglyph Org01Glyphs[] = {{0, 0, 0, 6, 0, 1},     // 0x20 ' '
                                          {0, 1, 5, 2, 0, -4},    // 0x21 '!'
                                          {1, 3, 1, 4, 0, -4},    // 0x22 '"'
                                          {2, 5, 5, 6, 0, -4},    // 0x23 '#'
@@ -122,7 +122,7 @@ const GFXglyph Org_01Glyphs[] = {{0, 0, 0, 6, 0, 1},     // 0x20 ' '
                                          {267, 3, 5, 4, 0, -4},  // 0x7D '}'
                                          {269, 5, 3, 6, 0, -3}}; // 0x7E '~'
 
-//const Font Org_01 = {(uint8_t *)Org_01Bitmaps,
-//                                (GFXglyph *)Org_01Glyphs, 0x20, 0x7E, 7};
+GFXfont Org_01 = {"Org01",(uint8_t *)Org_01Bitmaps,
+                                (GFXglyph *)Org01Glyphs, 0x20, 0x7E, 7};
 
 // Approx. 943 bytes

@@ -39,6 +39,7 @@ typedef enum colorspace_e
 #define COLOR_NONE -2
 
 
+uint8_t charToGlyph(char c);
 color_t color_get(const char *);
 
 struct TextDisplay
@@ -149,6 +150,13 @@ struct MatrixDisplay : public TextDisplay
 	{
 	}
 
+	explicit MatrixDisplay(colorspace_t cs, uint32_t fg, uint32_t bg)
+	: m_colorspace(cs)
+	, m_colfg(fg)
+	, m_colbg(bg)
+	{
+	}
+
 	MatrixDisplay *toMatrixDisplay() override
 	{ return this; }
 
@@ -167,17 +175,22 @@ struct MatrixDisplay : public TextDisplay
 
 	virtual int setFont(unsigned);
 	virtual int setFont(const char *);
+	Font *getFont() const
+	{ return m_font; }
 
 	uint16_t charWidth(char c) const override;
 	uint16_t fontHeight() const;
 	void clrEol() override;
 	uint16_t charsPerLine() const override
-	{ return m_width/8; }
+	{ return m_width>>3; }
 	uint16_t numLines() const override
 	{ return m_height/fontHeight(); }
 
 	virtual void setPixel(uint16_t x, uint16_t y, int32_t color)
 	{ }
+
+	virtual int setupOffScreen(uint16_t x, uint16_t y, uint16_t w, uint16_t h, int32_t bg = -1);
+	virtual void commitOffScreen();
 
 	// col = -1: use default color (m_colfg/m_colbg)
 	// col = -2 for bg: do not fill
@@ -193,6 +206,8 @@ struct MatrixDisplay : public TextDisplay
 	virtual void drawVLine(uint16_t x0, uint16_t y0, uint16_t len, int32_t col = -1);
 	virtual unsigned drawText(uint16_t x, uint16_t y, const char *txt, int n = -1, int32_t fg = -1, int32_t bg = -1);
 	virtual unsigned drawChar(uint16_t x, uint16_t y, char c, int32_t fg, int32_t bg);
+
+	unsigned textWidth(const char *, int font = -1);
 
 	virtual int setInvert(bool)
 	{ return -1; }
@@ -234,7 +249,7 @@ struct MatrixDisplay : public TextDisplay
 	// clip x/y-low/high
 	uint16_t m_clxl = 0, m_clxh = 0xffff, m_clyl = 0, m_clyh = 0xffff;
 #endif
-	const Font *m_font = 0;
+	Font *m_font = 0;
 	colorspace_t m_colorspace;
 	int32_t m_colfg, m_colbg;
 };

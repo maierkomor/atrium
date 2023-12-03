@@ -483,6 +483,9 @@ action.
 Parasite power is supported and is enabled if you configure the
 related gpio. 
 
+1-Wire does not work when the CPU runs in a lower frequency mode, as an
+internal ROM function does not adjust to that alternate frequency.
+
 
 Lua support:
 ============

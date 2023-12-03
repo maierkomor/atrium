@@ -1737,6 +1737,7 @@ CONFIG_UDNS=y
 # CONFIG_IOEXTENDERS is not set
 # CONFIG_LEDS is not set
 # CONFIG_BUTTON is not set
+# CONFIG_BUZZER is not set
 # CONFIG_RELAY is not set
 # CONFIG_ONEWIRE is not set
 # CONFIG_TOUCHPAD is not set

@@ -28,6 +28,9 @@
 #include "si7021.h"
 #include "terminal.h"
 
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+
 #define TAG MODULE_SI7021
 
 #define SI7021_ADDR (0x40 << 1)
@@ -58,6 +61,7 @@ static const uint8_t MeasureTime[] = { 23, 8, 12, 10 };
 #define CMD_RD_UR1	0xe7
 #define CMD_WR_HCR	0x51
 #define CMD_RD_HCR	0x11
+#define CMD_RESET	0xfe
 
 #define VDDS_BIT	(1<<6)
 #define HEATER_BIT	(1<<2)
@@ -308,6 +312,11 @@ void SI7021::triggert(void *arg)
 
 SI7021 *SI7021::create(uint8_t bus, uint8_t addr)
 {
+	if (i2c_write1(bus,SI7021_ADDR,CMD_RESET)) {
+		log_dbug(TAG,"reset failed");
+		return 0;
+	}
+	vTaskDelay(20);
 	uint8_t data[] = { SI7021_ADDR, 0xfa, 0x0f };
 	if (esp_err_t e = i2c_write(bus,data,sizeof(data),0,1)) {
 		log_dbug(TAG,"no response: %s",esp_err_to_name(e));
@@ -352,6 +361,7 @@ SI7021 *SI7021::create(uint8_t bus, uint8_t addr)
 	case 0x14:
 		typ = "si7020";
 		break;
+	case 0x00:
 	case 0x32:
 		typ = "htu21";
 		combined = false;

@@ -188,7 +188,8 @@ int xio_set_lo(xio_t x)
 
 int xio_set_lvl(xio_t x, xio_lvl_t l)
 {
-	log_dbug(TAG,"set_lvl %u,%u",x,l);
+//	log_dbug here causes problem in timing critical functions like onewire xmitBit
+//	log_dbug(TAG,"set_lvl %u,%u",x,l);
 	if (XioCluster *c = XioCluster::getCluster(x))
 		return c->set_lvl(x-c->getBase(),l);
 	log_warn(TAG,"set_lvl: invalid io %u",x);

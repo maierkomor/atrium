@@ -39,8 +39,10 @@ struct CoreIO0 : public XioCluster
 {
 	int get_dir(uint8_t num) const override;
 	int get_lvl(uint8_t io) override;
+	int get_out(uint8_t io) override;
 	int setm(uint32_t,uint32_t) override;
 	int set_hi(uint8_t io) override;
+	int set_hiz(uint8_t io) override;
 	int set_lo(uint8_t io) override;
 	int set_intr(uint8_t,xio_intrhdlr_t,void*) override;
 //	int intr_enable(uint8_t) override;
@@ -56,8 +58,10 @@ struct CoreIO1 : public XioCluster
 {
 	int get_dir(uint8_t num) const override;
 	int get_lvl(uint8_t io) override;
+	int get_out(uint8_t io) override;
 	int setm(uint32_t,uint32_t) override;
 	int set_hi(uint8_t io) override;
+	int set_hiz(uint8_t io) override;
 	int set_lo(uint8_t io) override;
 	int set_intr(uint8_t,xio_intrhdlr_t,void*) override;
 //	int intr_enable(uint8_t) override;
@@ -242,6 +246,14 @@ int CoreIO0::config(uint8_t num, xio_cfg_t cfg)
 		return -EINVAL;
 	}
 #endif
+	if (cfg.cfg_initlvl == xio_cfg_initlvl_keep) {
+	} else if (cfg.cfg_initlvl == xio_cfg_initlvl_low) {
+		set_lo(num);
+	} else if (cfg.cfg_initlvl == xio_cfg_initlvl_high) {
+		set_hi(num);
+	} else {
+		return -EINVAL;
+	}
 	return 0x1ff;
 }
 
@@ -340,6 +352,14 @@ int CoreIO1::config(uint8_t num, xio_cfg_t cfg)
 		return -EINVAL;
 	}
 
+	if (cfg.cfg_initlvl == xio_cfg_initlvl_keep) {
+	} else if (cfg.cfg_initlvl == xio_cfg_initlvl_low) {
+		set_lo(num);
+	} else if (cfg.cfg_initlvl == xio_cfg_initlvl_high) {
+		set_hi(num);
+	} else {
+		return -EINVAL;
+	}
 	return r;
 }
 
@@ -379,10 +399,7 @@ int CoreIO1::get_dir(uint8_t num) const
 int CoreIO0::get_lvl(uint8_t num)
 {
 	if (num < COREIO0_NUMIO) {
-		if (GPIO.enable & (1 << num))
-			return (GPIO.out >> num) & 0x1;
-		else
-			return (GPIO.in >> num) & 0x1;
+		return (GPIO.in >> num) & 0x1;
 	}
 	return -EINVAL;
 }
@@ -390,11 +407,30 @@ int CoreIO0::get_lvl(uint8_t num)
 
 int CoreIO1::get_lvl(uint8_t num)
 {
+	if (num < COREIO1_NUMIO) {
+		return (GPIO.in1.data >> num) & 0x1;
+	}
+	return -EINVAL;
+}
+
+
+int CoreIO0::get_out(uint8_t num)
+{
 	if (num < COREIO0_NUMIO) {
-		if (GPIO.enable1.data & (1 << num))
-			return (GPIO.out >> num) & 0x1;
-		else
-			return (GPIO.in1.data >> num) & 0x1;
+		if (((GPIO.enable >> num) & 1) == 0)
+			return xio_lvl_hiz;
+		return (GPIO.out >> num) & 1;
+	}
+	return -EINVAL;
+}
+
+
+int CoreIO1::get_out(uint8_t num)
+{
+	if (num < COREIO1_NUMIO) {
+		if (((GPIO.enable1.val >> num) & 1) == 0)
+			return xio_lvl_hiz;
+		return (GPIO.out1.val >> num) & 1;
 	}
 	return -EINVAL;
 }
@@ -404,6 +440,7 @@ int CoreIO0::set_hi(uint8_t num)
 {
 	if (uint32_t b = 1 << num) {
 		GPIO.out_w1ts = b;
+		GPIO.enable_w1ts = b;
 		return 0;
 	}
 	return -EINVAL;
@@ -412,8 +449,33 @@ int CoreIO0::set_hi(uint8_t num)
 
 int CoreIO1::set_hi(uint8_t num)
 {
-	if (uint32_t b = 1 << num) {
+	if (num < COREIO1_NUMIO) {
+		uint32_t b = 1 << num;
 		GPIO.out1_w1ts.data = b;
+		GPIO.enable1_w1ts.data = b;
+		return 0;
+	}
+	return -EINVAL;
+}
+
+
+int CoreIO0::set_hiz(uint8_t num)
+{
+	if (uint32_t b = 1 << num) {
+		GPIO.out_w1tc = b;
+		GPIO.enable_w1tc = b;
+		return 0;
+	}
+	return -EINVAL;
+}
+
+
+int CoreIO1::set_hiz(uint8_t num)
+{
+	if (num < COREIO1_NUMIO) {
+		uint32_t b = 1 << num;
+		GPIO.out1_w1tc.data = b;
+		GPIO.enable1_w1tc.data = b;
 		return 0;
 	}
 	return -EINVAL;
@@ -424,6 +486,7 @@ int CoreIO0::set_lo(uint8_t num)
 {
 	if (uint32_t b = 1 << num) {
 		GPIO.out_w1tc = b;
+		GPIO.enable_w1ts = b;
 		return 0;
 	}
 	return -EINVAL;
@@ -432,8 +495,10 @@ int CoreIO0::set_lo(uint8_t num)
 
 int CoreIO1::set_lo(uint8_t num)
 {
-	if (uint32_t b = 1 << num) {
+	if (num < COREIO1_NUMIO) {
+		uint32_t b = 1 << num;
 		GPIO.out1_w1tc.data = b;
+		GPIO.enable1_w1ts.data = b;
 		return 0;
 	}
 	return -EINVAL;
@@ -452,7 +517,7 @@ int CoreIO0::set_lvl(uint8_t num, xio_lvl_t l)
 			GPIO.enable_w1ts = b;
 			return 0;
 		} else if (l == xio_lvl_hiz) {
-			GPIO.out_w1tc= b;
+			GPIO.out_w1tc = b;
 			GPIO.enable_w1tc = b;
 			return 0;
 		}
@@ -463,7 +528,8 @@ int CoreIO0::set_lvl(uint8_t num, xio_lvl_t l)
 
 int CoreIO1::set_lvl(uint8_t num, xio_lvl_t l)
 {
-	if (uint32_t b = 1 << num) {
+	if (num < COREIO1_NUMIO) {
+		uint32_t b = 1 << num;
 		if (l == xio_lvl_0) {
 			GPIO.out1_w1tc.data = b;
 			GPIO.enable1_w1ts.data = b;

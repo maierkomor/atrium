@@ -95,8 +95,20 @@ INA219 *INA219::create(uint8_t bus, uint8_t addr)
 	addr <<= 1;
 	log_info(TAG,"checking for INA219 at %d/0x%x",bus,addr);
 	uint8_t v[2];
-	if (i2c_w1rd(bus,addr,INA_REG_CONF,v,sizeof(v)))
-		return 0;
+	if (addr) {
+		if (i2c_w1rd(bus,addr,INA_REG_CONF,v,sizeof(v)))
+			return 0;
+	} else {
+		esp_err_t err;
+		for (addr = 0x40; addr < 0x50; ++addr) {
+			err = i2c_w1rd(bus,addr<<1,INA_REG_CONF,v,sizeof(v));
+			if (err == 0)
+				break;
+		}
+		if (err)
+			return 0;
+		addr <<= 1;
+	}
 	uint16_t rv = (v[0] << 8) | v[1];
 	log_dbug(TAG,"config = 0x%x",rv);
 	if (rv != INA_CONF_RESET_VALUE) {
@@ -107,7 +119,7 @@ INA219 *INA219::create(uint8_t bus, uint8_t addr)
 			return 0;
 		rv = (v[0] << 8) | v[1];
 		if (rv != INA_CONF_RESET_VALUE)
-			return 0;
+			log_warn(TAG,"unexpected config %04x",rv);
 	}
 	char nvsn[32]; 
 	sprintf(nvsn,"ina219@%u,%x.cfg",bus,addr);

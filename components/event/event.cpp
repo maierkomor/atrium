@@ -373,7 +373,7 @@ void event_trigger_arg(event_t id, void *arg)
 }
 
 
-void event_isr_trigger(event_t id)
+void IRAM_ATTR event_isr_trigger(event_t id)
 {
 	// ! don't log from ISR
 	if (id != 0) {
@@ -385,7 +385,7 @@ void event_isr_trigger(event_t id)
 }
 
 
-void event_isr_trigger_arg(event_t id, void *arg)
+void IRAM_ATTR event_isr_trigger_arg(event_t id, void *arg)
 {
 	// ! don't log from ISR
 	if (id != 0) {

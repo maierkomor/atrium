@@ -104,6 +104,12 @@ message SystemConfig
 	string model_number = 8;
 	bool usb_diag = 9	[ unset = true, ifdef=CONFIG_USB_DIAGLOG ];
 	bool usb_con = 10	[ unset = true, ifdef=CONFIG_USB_CONSOLE ];
+
+	// CC1/CC2 must be GPIO ports with ADC channel.
+	// Related driver provides cable orientation, plug state, 
+	// and max. current delivered.
+	sint8 cc1_gpio = 11	[ unset = -1, ifdef=CONFIG_ESP_PHY_ENABLE_USB ];
+	sint8 cc2_gpio = 12	[ unset = -1, ifdef=CONFIG_ESP_PHY_ENABLE_USB ];
 }
 
 
@@ -278,6 +284,7 @@ bitset ledcfg_t
 {
 	bool active_high : 0;
 	bool open_drain : 1;
+	bool init_high : 2;
 }
 
 
@@ -365,7 +372,8 @@ bitset gpiocfg_t
 	bool initlvl : 6;
 	bool pullup : 7;
 	bool pulldown : 8;
-	bool cap_freq_r2r : 9;	// determine frequence rise-to-rise
+// TODO:
+//	bool cap_freq_r2r : 9;	// determine frequence rise-to-rise
 }
 
 
@@ -446,6 +454,7 @@ message SpiDeviceConfig
 	sint8 intr = 3		[ unset = -1 ];		// interrupt
 	sint8 reset = 4		[ unset = -1 ];		// reset
 	sint8 cd = 5		[ unset = -1 ];		// command/data
+	unsigned freq = 6	[ unset = 0 ];		// frequency in kHz, 0=use default
 }
 
 
@@ -493,6 +502,27 @@ message SX1276Config
 }
 
 
+message Tone
+{
+	unsigned freq = 1;	// given in Hz
+	unsigned duration = 2;	// given in ms
+}
+
+
+message Melody
+{
+	string name = 1;
+	repeated fixed16 tones = 2;	// sequence of freq [Hz], time [ms] pairs
+}
+
+
+message BuzzerConfig
+{
+	sint8 gpio = 1		[ unset = -1 ];
+	repeated Melody melodies = 2;
+}
+
+
 message HardwareConfig
 {
 	fixed32 magic = 0;	// should always be set to 0xAE54EDCB
@@ -509,6 +539,7 @@ message HardwareConfig
 	repeated ButtonConfig button = 16	[ ifdef=CONFIG_BUTTON ];
 	repeated RelayConfig relay = 17		[ ifdef=CONFIG_RELAY ];
 	repeated LedConfig led = 18		[ ifdef=CONFIG_LEDS ];
+	BuzzerConfig buzzer = 19		[ ifdef=CONFIG_BUZZER ];
 
 	// direct attached devices
 	Hlw8012Config hlw8012 = 20		[ ifdef=CONFIG_HLW8012 ];

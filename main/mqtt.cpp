@@ -288,7 +288,7 @@ static const LuaFn Functions[] = {
 
 MqttClient::MqttClient()
 : pcb(0)
-, mtx(xSemaphoreCreateMutex())
+, mtx(xSemaphoreCreateRecursiveMutex())
 , sem(xSemaphoreCreateBinary())
 , state(offline)
 , upev(event_id("mqtt`update"))
@@ -741,7 +741,7 @@ static void mqtt_ping()
 	if ((Client == 0) || (Client->state != running))
 		return;
 	log_dbug(TAG,"ping");
-	Lock lock(Client->mtx,__FUNCTION__);
+	RLock lock(Client->mtx,__FUNCTION__);
 #if LWIP_TCPIP_CORE_LOCKING == 1
 	uint8_t request[] = { PINGREQ, 0 };
 	LWIP_LOCK();
@@ -947,36 +947,36 @@ static void mqtt_tcpout_fn(void *)
 
 static void mqtt_pub_rtdata(void *)
 {
+	RLock lock(Client->mtx,__FUNCTION__);
 	if ((Client == 0) || (Client->state != running)) {
 		if ((StationMode == station_connected) && (Config.mqtt().enable() && ((Client == 0) || (Client->state == offline))))
 			mqtt_start();
-		return;
-	}
-	if (Client->pcb == 0)
-		return;
-	mqtt_pub_uptime();
-	rtd_lock();
-	for (EnvElement *e : RTData->getChilds()) {
-		const char *n = e->name();
-		if (!strcmp(n,"node") || !strcmp(n,"mqtt")) {
-			// skip
-		} else if (EnvObject *o = e->toObject()) {
+	} else if (Client->pcb != 0) {
+		mqtt_pub_uptime();
+		rtd_lock();
+		for (EnvElement *e : RTData->getChilds()) {
 			const char *n = e->name();
-			for (auto c : o->getChilds()) {
-				pub_element(c,n);
+			if (!strcmp(n,"node") || !strcmp(n,"mqtt")) {
+				// skip
+			} else if (EnvObject *o = e->toObject()) {
+				const char *n = e->name();
+				for (auto c : o->getChilds()) {
+					pub_element(c,n);
+				}
+			} else {
+				pub_element(e);
 			}
-		} else {
-			pub_element(e);
 		}
-	}
-	rtd_unlock();
+		rtd_unlock();
 #if LWIP_TCPIP_CORE_LOCKING == 1
-	LWIP_LOCK();
-	tcp_output(Client->pcb);
-	LWIP_UNLOCK();
+		LWIP_LOCK();
+		if (Client->pcb)
+			tcp_output(Client->pcb);
+		LWIP_UNLOCK();
 #else
-	tcpip_send_msg_wait_sem(mqtt_tcpout_fn,0,&LwipSem);
+		tcpip_send_msg_wait_sem(mqtt_tcpout_fn,0,&LwipSem);
 #endif
+	}
 }
 
 
@@ -997,7 +997,7 @@ int MqttClient::subscribe(const char *topic, void (*callback)(const char *,const
 {
 	Subscription s;
 	s.callback = callback;
-	Lock lock(mtx,__FUNCTION__);
+	RLock lock(mtx,__FUNCTION__);
 	subscriptions.insert(make_pair((estring)topic,s));
 	EnvString *str = signals->add(topic,"");
 	values.insert(make_pair((estring)topic,str));
@@ -1030,7 +1030,7 @@ void mqtt_stop(void *arg)
 	if (Client == 0)
 		return;
 	log_dbug(TAG,"stop");
-	Lock lock(Client->mtx,__FUNCTION__);
+	RLock lock(Client->mtx,__FUNCTION__);
 	if (Client->pcb != 0) {
 #if LWIP_TCPIP_CORE_LOCKING == 1
 		uint8_t request[] { DISCONNECT, 0 };
@@ -1060,7 +1060,7 @@ void mqtt_stop(void *arg)
 static void mqtt_connect(const char *hn, const ip_addr_t *addr, void *arg)
 {
 	// called as callback from tcpip_task
-	Lock lock(Client->mtx,__FUNCTION__);
+	RLock lock(Client->mtx,__FUNCTION__);
 	if ((Client->state != connecting) && (Client->state != running) && (addr != 0)) {
 		uint16_t port = (uint16_t)(unsigned)arg;
 		if (Client->pcb) {

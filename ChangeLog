@@ -1,3 +1,16 @@
+R2311:
+======
+- added driver foc.config_init_high()r BQ25601D charging IC
+- added BMP388
+- added buzzer driver
+- added USB-C interface driver for CC1/CC2 power detection
+- added SPI per device bus frequency setting
+- added LED init level support
+- update to head of ESP8266 IDF v3.3
+- screen/display caching
+- font unifications and optimization
+- many bug-fixes (ADC, XIO, SM, SSD130x, display, ...)
+
 R2310:
 ======
 - fixes for SGP30: re-initialize after error, false detection

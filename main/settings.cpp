@@ -269,6 +269,7 @@ static int set_mqtt_enable(Terminal &t, const char *value)
 {
 	return set_bool_option(t,Config.mutable_mqtt()->mutable_enable(),value,false);
 }
+#endif
 
 
 int set_timezone(Terminal &t, const char *value)
@@ -277,7 +278,6 @@ int set_timezone(Terminal &t, const char *value)
 	setenv("TZ",Config.timezone().c_str(),1);
 	return r;
 }
-#endif
 
 
 static int set_domainname(Terminal &t, const char *value)
@@ -296,8 +296,8 @@ static int set_password(Terminal &t, const char *p)
 pair<const char *, int (*)(Terminal &t, const char *)> SetFns[] = {
 	{"password", set_password},
 	{"domainname", set_domainname},
-#if 0
 	{"timezone", set_timezone},
+#if 0
 	{"cpu_freq", set_cpu_freq},
 	{"ap_activate", set_ap_activate},
 	{"ap_pass", set_ap_pass},
@@ -509,6 +509,7 @@ void cfg_init_defaults()
 	Config.mutable_softap()->set_activate(true);
 	initNodename();
 	Config.mutable_softap()->set_ssid(Config.nodename().c_str());
+	setenv("TZ","C",1);
 }
 
 
@@ -680,6 +681,8 @@ void cfg_activate()
 	PROFILE_FUNCTION();
 	log_info(TAG,"activate config");
 
+	if (Config.has_timezone())
+		setenv("TZ",Config.timezone().c_str(),1);
 	if (!Config.has_nodename()) 
 		initNodename();
 	if (Config.has_domainname()) {

@@ -253,7 +253,8 @@ StateMachine::StateMachine(const StateMachineConfig &cfg)
 		uint8_t x = cfg.ini_st();
 		if (x >= numst)
 			x = 0;
-		x = nvm_read_u8(m_name.c_str(),x);
+		if (m_persistent)
+			x = nvm_read_u8(m_name.c_str(),x);
 		if (x < cfg.states_size())
 			switch_state(cfg.states(x).name().c_str());
 	}

@@ -24,7 +24,6 @@
 #include "log.h"
 #include "profiling.h"
 
-//#include "fonts.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -150,14 +149,21 @@ void SSD1306::flush()
 		}
 	}
 	if (m_dirty) {
-		for (uint8_t p = 0; p < numpg; p++) {
-			if (m_dirty & (1<<p)) {
+		uint8_t p = 0;
+		while (p < numpg) {
+			uint8_t f = p;
+			unsigned n = 0;
+			while (m_dirty & (1<<p)) {
+				++n;
+				++p;
+			}
+			if (n) {
 				i2c_write(m_bus,cmd,sizeof(cmd),1,1);
 				i2c_write(m_bus,pfx,sizeof(pfx),0,1);
-				i2c_write(m_bus,m_disp+p*pgs,pgs,1,0);
-				log_dbug(TAG,"sync %u",p);
+				i2c_write(m_bus,m_disp+f*pgs,n*pgs,1,0);
+				log_dbug(TAG,"sync %u-%u",f,p);
 			}
-			++cmd[2];
+			++p;
 		}
 		m_dirty = 0;
 	}

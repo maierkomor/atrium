@@ -167,7 +167,7 @@ const uint8_t FreeSans12pt7bBitmaps[] = {
     0x8C, 0x63, 0x18, 0xC6, 0x73, 0x00, 0x70, 0x3E, 0x09, 0xE4, 0x1F, 0x03,
     0x80};
 
-const GFXglyph FreeSans12pt7bGlyphs[] = {
+const GFXglyph FreeSans12Glyphs[] = {
     {0, 0, 0, 6, 0, 1},         // 0x20 ' '
     {0, 2, 18, 8, 3, -17},      // 0x21 '!'
     {5, 6, 6, 8, 1, -16},       // 0x22 '"'
@@ -264,12 +264,12 @@ const GFXglyph FreeSans12pt7bGlyphs[] = {
     {1947, 5, 23, 8, 2, -17},   // 0x7D '}'
     {1962, 10, 5, 12, 1, -10}}; // 0x7E '~'
 
-//const Font FreeSans12pt7b = {(uint8_t *)FreeSans12pt7bBitmaps,
-//                                        (GFXglyph *)FreeSans12pt7bGlyphs, 0x20,
-//                                        0x7E, 20};
+GFXfont FreeSans12pt7b = {"FreeSans12",(uint8_t *)FreeSans12pt7bBitmaps,
+                                        (GFXglyph *)FreeSans12Glyphs, 0x20,
+                                        0x7E, 20};
 /*
 extern uint8_t FreeSans12pt7b_SSD1306[];
-const Font FreeSans12pt7b_ssd1306 = {(uint8_t *)FreeSans12pt7b_SSD1306
+GFXfont FreeSans12pt7b_ssd1306 = {(uint8_t *)FreeSans12pt7b_SSD1306
                                         (GFXglyph *)FreeSans12pt7bGlyphs, 0x20,
                                         0x7E, 29};
 */

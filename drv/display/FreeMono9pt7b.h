@@ -1,4 +1,4 @@
-const uint8_t FreeMono9pt7bBitmaps[] = {
+const uint8_t FreeMono9Bitmaps[] = {
     0xAA, 0xA8, 0x0C, 0xED, 0x24, 0x92, 0x48, 0x24, 0x48, 0x91, 0x2F, 0xE4,
     0x89, 0x7F, 0x28, 0x51, 0x22, 0x40, 0x08, 0x3E, 0x62, 0x40, 0x30, 0x0E,
     0x01, 0x81, 0xC3, 0xBE, 0x08, 0x08, 0x71, 0x12, 0x23, 0x80, 0x23, 0xB8,
@@ -71,7 +71,7 @@ const uint8_t FreeMono9pt7bBitmaps[] = {
     0xBF, 0x29, 0x24, 0xA2, 0x49, 0x26, 0xFF, 0xF8, 0x89, 0x24, 0x8A, 0x49,
     0x2C, 0x61, 0x24, 0x30};
 
-const GFXglyph FreeMono9pt7bGlyphs[] = {
+const GFXglyph FreeMono9Glyphs[] = {
     {0, 0, 0, 11, 0, 1},      // 0x20 ' '
     {0, 2, 11, 11, 4, -10},   // 0x21 '!'
     {3, 6, 5, 11, 2, -10},    // 0x22 '"'
@@ -168,8 +168,8 @@ const GFXglyph FreeMono9pt7bGlyphs[] = {
     {836, 3, 13, 11, 4, -10}, // 0x7D '}'
     {841, 7, 3, 11, 2, -6}};  // 0x7E '~'
 
-//const Font FreeMono9pt7b = {(uint8_t *)FreeMono9pt7bBitmaps,
-//                                       (GFXglyph *)FreeMono9pt7bGlyphs, 0x20,
-//                                       0x7E, 18};
+GFXfont FreeMono9pt7b = {"FreeMono9",(uint8_t *)FreeMono9Bitmaps,
+                                       (GFXglyph *)FreeMono9Glyphs, 0x20,
+                                       0x7E, 18};
 
 // Approx. 1516 bytes

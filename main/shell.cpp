@@ -695,43 +695,6 @@ static const char *shell_cp(Terminal &term, int argc, const char *args[])
 #endif
 
 
-void print_hex(Terminal &term, const uint8_t *b, size_t s, size_t off)
-{
-	const uint8_t *a = b, *e = b + s;
-	while (a != e) {
-		char tmp[64], *t = tmp;
-		t += sprintf(t,"%04x: ",a-b+off);
-		int i = 0;
-		while ((a < e) && (i < 16)) {
-			*t++ = ' ';
-			if (i == 8)
-				*t++ = ' ';
-#if 0
-			uint8_t d = *a;
-			uint8_t h = d >> 4;
-			if (h > 9)
-				*t = 'a' - 10 + h;
-			else 
-				*t = '0' + h;
-			++t;
-			uint8_t l = d & 0xf;
-			if (l > 9)
-				*t = 'a' - 10 + l;
-			else 
-				*t = '0' + l;
-			++t;
-#else
-			t += sprintf(t,"%02x",*a);
-#endif
-			++i;
-			++a;
-		}
-		*t = 0;
-		term.println(tmp);
-	}
-}
-
-
 #ifdef HAVE_FS
 static const char *shell_touch(Terminal &term, int argc, const char *args[])
 {
@@ -784,7 +747,7 @@ static const char *shell_xxd(Terminal &term, int argc, const char *args[])
 	int n = read(fd,buf,sizeof(buf));
 	size_t off = 0;
 	while (n > 0) {
-		print_hex(term,buf,n,off);
+		term.print_hex(buf,n,off);
 		n = read(fd,buf,sizeof(buf));
 		off += n;
 	}
@@ -1131,7 +1094,7 @@ static const char *hwconf(Terminal &term, int argc, const char *args[])
 		size_t s = HWConf.calcSize();
 		uint8_t *buf = (uint8_t *) malloc(s);
 		HWConf.toMemory(buf,s);
-		print_hex(term,buf,s);
+		term.print_hex(buf,s);
 		free(buf);
 	} else if ((!strcmp("show",args[1])) || !strcmp("print",args[1])) {
 		if (argc == 2)
@@ -1173,7 +1136,7 @@ static const char *hwconf(Terminal &term, int argc, const char *args[])
 		if (int e = nvm_read_blob("hw.cfg",&buf,&s)) {
 			return esp_err_to_name(e);
 		}
-		print_hex(term,buf,s);
+		term.print_hex(buf,s);
 		free(buf);
 	} else if (!strcmp("parsexxd",args[1])) {
 		if (parse_xxd(term,hwcfgbuf))
@@ -1191,7 +1154,7 @@ static const char *hwconf(Terminal &term, int argc, const char *args[])
 	} else if (!strcmp("clearbuf",args[1])) {
 		hwcfgbuf.clear();
 	} else if (!strcmp("xxdbuf",args[1])) {
-		print_hex(term,hwcfgbuf.data(),hwcfgbuf.size());
+		term.print_hex(hwcfgbuf.data(),hwcfgbuf.size());
 	} else if (!strcmp(args[1],"read")) {
 		return cfg_read_hwcfg() ? "Failed." : 0;
 	} else if (!strcmp(args[1],"backup")) {
@@ -1205,32 +1168,11 @@ static const char *hwconf(Terminal &term, int argc, const char *args[])
 }
 
 
-static const char *OnStr[] = { "true","on","yes" };
-static const char *OffStr[] = { "false","off","no" };
-
-
-static int arg_bool(const char *v, bool &b)
-{
-	for (const char *on : OnStr) {
-		if (0 == strcasecmp(on,v)) {
-			b = true;
-			return 0;
-		}
-	}
-	for (const char *off : OffStr) {
-		if (0 == strcasecmp(off,v)) {
-			b = false;
-			return 0;
-		}
-	}
-	return 1;
-}
-
 
 static bool parse_bool(int argc, const char *args[], int a, bool d)
 {
 	bool r;
-	if ((a >= argc) || arg_bool(args[a],r))
+	if ((a >= argc) || arg_bool(args[a],&r))
 		return d;
 	return r;
 }
@@ -1334,7 +1276,7 @@ static const char *timefuse(Terminal &term, int argc, const char *args[])
 	if ('r' == optchr) {
 		const char *r = 0;
 		bool rep;
-		if (arg_bool(args[3],rep))
+		if (arg_bool(args[3],&rep))
 			r = "Invalid argument #3.";
 #ifdef ESP32
 		else if (timefuse_repeat_set(args[2],rep))
@@ -1693,7 +1635,7 @@ static const char *dumpcore(Terminal &term, const char *fn)
 	}
 	const char *ret = 0;
 	if (fn == 0) {
-		print_hex(term,data,size);
+		term.print_hex(data,size);
 	} else {
 		const char *f = fn;
 		if (fn[0] != '/') {
@@ -1847,7 +1789,7 @@ static const char *xxdSettings(Terminal &t)
 	if (buf == 0)
 		return "Out of memory.";
 	Config.toMemory(buf,s);
-	print_hex(t,buf,s);
+	t.print_hex(buf,s);
 	free(buf);
 	return 0;
 }
@@ -1955,7 +1897,7 @@ static const char *config(Terminal &term, int argc, const char *args[])
 	} else if (!strcmp("clearbuf",args[1])) {
 		rtcfgbuf.clear();
 	} else if (!strcmp("xxdbuf",args[1])) {
-		print_hex(term,rtcfgbuf.data(),rtcfgbuf.size());
+		term.print_hex(rtcfgbuf.data(),rtcfgbuf.size());
 	} else if (!strcmp(args[1],"xxd")) {
 		return xxdSettings(term);
 	} else if (!strcmp(args[1],"nvxxd")) {
@@ -1963,7 +1905,7 @@ static const char *config(Terminal &term, int argc, const char *args[])
 		uint8_t *buf = 0;
 		if (int e = nvm_read_blob("node.cfg",&buf,&s))
 			return e ? "Failed." : 0;
-		print_hex(term,buf,s);
+		term.print_hex(buf,s);
 		free(buf);
 	} else {
 		return "Invalid argument #1.";
@@ -2310,7 +2252,7 @@ static const char *thresholds(Terminal &term, int argc, const char *args[])
 			return "Invalid argument #1.";
 		n->setThresholds(lo,hi);
 		bool updated = false;
-		for (auto t : *Config.mutable_thresholds()) {
+		for (ThresholdConfig &t : *Config.mutable_thresholds()) {
 			if (t.name() == args[1]) {
 				t.set_low(lo);
 				t.set_high(hi);
@@ -2496,6 +2438,7 @@ static const char *version(Terminal &term, int argc, const char *args[])
 extern const char *adc(Terminal &term, int argc, const char *args[]);
 extern const char *at(Terminal &term, int argc, const char *args[]);
 extern const char *bme(Terminal &term, int argc, const char *args[]);
+extern const char *buzzer(Terminal &t, int argc, const char *args[]);
 extern const char *dht(Terminal &term, int argc, const char *args[]);
 extern const char *dim(Terminal &term, int argc, const char *args[]);
 extern const char *distance(Terminal &term, int argc, const char *args[]);
@@ -2544,6 +2487,9 @@ ExeName ExeNames[] = {
 #endif
 #ifdef CONFIG_OTA
 	{"boot",0,boot,"get/set boot partition",boot_man},
+#endif
+#ifdef CONFIG_BUZZER
+	{"buzzer",0,buzzer,"buzzer with frequency and time",0},
 #endif
 	{"cat",0,shell_cat,"cat file",0},
 #if defined CONFIG_FATFS || defined CONFIG_ROMFS_VFS

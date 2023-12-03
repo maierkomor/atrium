@@ -56,6 +56,10 @@
 
 #define TAG MODULE_OPT3001
 
+#if 0
+// normally not needed, pure polling
+#define ISR_SUPPORT
+#endif
 
 static const float Ranges[] =
 	{ 40.95, 81.90, 163.8, 327.6, 655.2, 1310.4, 2620.8
@@ -73,6 +77,7 @@ OPT3001::OPT3001(unsigned bus, unsigned addr)
 
 void OPT3001::addIntr(uint8_t gpio)
 {
+#ifdef ISR_SUPPORT
 	m_isrev = event_register(m_name,"`isr");
 	xio_cfg_t cfg = XIOCFG_INIT;
 	cfg.cfg_io = xio_cfg_io_in;
@@ -83,6 +88,7 @@ void OPT3001::addIntr(uint8_t gpio)
 	} else if (xio_set_intr(gpio,intrHandler,this)) {
 		log_warn(TAG,"add handler for gpio %u interrupt failed",gpio);
 	}
+#endif
 }
 
 void OPT3001::attach(EnvObject *root)
@@ -121,8 +127,7 @@ OPT3001 *OPT3001::create(unsigned bus, unsigned addr)
 #ifdef CONFIG_I2C_XCMD
 const char *OPT3001::exeCmd(Terminal &term, int argc, const char **args)
 {
-	// TODO
-	return 0;
+	return "Not implimented.";
 }
 #endif
 
@@ -142,8 +147,10 @@ int OPT3001::init()
 
 void OPT3001::intrHandler(void *arg)
 {
+#ifdef ISR_SUPPORT
 	OPT3001 *dev = (OPT3001 *) arg;
 	event_isr_trigger(dev->m_isrev);
+#endif
 }
 
 
@@ -155,7 +162,7 @@ int OPT3001::read()
 		m_lum.set(NAN);
 		return r;
 	}
-	log_dbug(TAG,"status: %s%s%s"
+	log_dbug(TAG,"status:%s%s%s"
 		, data[1]&0x80?" CRF":""
 		, data[1]&0x40?" FH":""
 		, data[1]&0x20?" FL":""

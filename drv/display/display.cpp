@@ -492,7 +492,7 @@ void MatrixDisplay::drawBitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, c
 }
 
 
-static uint8_t charToGlyph(char c)
+uint8_t charToGlyph(char c)
 {
 	switch ((unsigned char) c) {
 	case '\r':
@@ -500,21 +500,21 @@ static uint8_t charToGlyph(char c)
 	case '\n':
 		return 0;
 	case 176:	// '°'
-		return 133;
+		return 127;
 	case 196:	// 'Ä'
-		return 130;
+		return 129;
 	case 220:	// 'Ü'
-		return 128;
+		return 133;
 	case 214:	// 'Ö'
-		return 132;
+		return 131;
 	case 223:	// 'ß'
 		return 134;
 	case 228:	// 'ä'
-		return 129;
+		return 128;
 	case 246:	// 'ö'
-		return 131;
+		return 130;
 	case 252:	// 'ü'
-		return 127;
+		return 132;
 	default:
 		return c;
 	}
@@ -524,17 +524,12 @@ static uint8_t charToGlyph(char c)
 uint16_t MatrixDisplay::charWidth(char c) const
 {
 	c = charToGlyph(c);
-	if (c == 0)
-		return 0;
-	/*
-	const Font *font = Fonts+(int)m_font;
-	if ((c < font->first) || (c > font->last))
-		return 0;
-	*/
-	uint8_t ch = c - m_font->first;
-	if (m_font->glyph == 0)
-		return 6;
-	return m_font->glyph[ch].xAdvance;
+	if (c >= m_font->first) {
+		uint8_t ch = c - m_font->first;
+		if (m_font->glyph != 0)
+			return m_font->glyph[ch].xAdvance;
+	}
+	return 0;
 }
 
 
@@ -558,7 +553,7 @@ unsigned MatrixDisplay::drawChar(uint16_t x, uint16_t y, char c, int32_t fg, int
 	if (bg == -1)
 		bg = m_colbg;
 	uint8_t ch = c - m_font->first;
-	const uint8_t *data = m_font->bitmap + m_font->glyph[ch].bitmapOffset;
+	const uint8_t *data = m_font->RMbitmap + m_font->glyph[ch].bitmapOffset;
 	uint8_t w = m_font->glyph[ch].width;
 	uint8_t h = m_font->glyph[ch].height;
 	int8_t dx = m_font->glyph[ch].xOffset;
@@ -566,18 +561,18 @@ unsigned MatrixDisplay::drawChar(uint16_t x, uint16_t y, char c, int32_t fg, int
 	uint8_t a = m_font->glyph[ch].xAdvance;
 	log_dbug(TAG,"drawChar(%d,%d,'%c') = %u",x,y,c,a);
 //	log_info(TAG,"%d/%d %+d/%+d, adv %u len %u",(int)w,(int)h,(int)dx,(int)dy,a,l);
-	if (bg != -1)
+	if (bg != -2)
 		fillRect(x,y,a,m_font->yAdvance,bg);
-	drawBitmap(x+dx,y+dy+m_font->yAdvance-1,w,h,data,fg,bg);
+	drawBitmap(x+dx,y+dy,w,h,data,fg,bg);
 	return a;
 }
 
 
 unsigned MatrixDisplay::drawText(uint16_t x, uint16_t y, const char *txt, int n, int32_t fg, int32_t bg)
 {
-	log_dbug(TAG,"drawText(%d,%d,'%s')",x,y,txt);
 	if (n < 0)
 		n = strlen(txt);
+	log_dbug(TAG,"drawText(%d,%d,'%.*s',%d,%d)",x,y,n,txt,fg,bg);
 	uint16_t a = 0, amax = 0;
 	const char *e = txt + n;
 	while (txt != e) {
@@ -597,9 +592,14 @@ unsigned MatrixDisplay::drawText(uint16_t x, uint16_t y, const char *txt, int n,
 				amax = a;
 			a = 0;
 			x = 0;
+		} else if (c == 0xc2) {
+			// first byte of a 2-byte utf-8
+			// used for degree symbol \u00b0 i.e.
+			// 0xc2 0xb0
+			continue;
 		} else {
 			uint16_t cw = charWidth(c);
-			if (m_posx + cw > m_width)
+			if (x + cw > m_width)
 				break;
 			drawChar(x,y,c,fg,bg);
 			a += cw;
@@ -837,8 +837,8 @@ int32_t MatrixDisplay::setBgColor(color_t c)
 
 int MatrixDisplay::setFont(unsigned f)
 {
-	if (f < NumFontsRM) {
-		m_font = FontsRM+f;
+	if (f < NumFonts) {
+		m_font = Fonts+f;
 		return 0;
 	}
 	return -1;
@@ -857,13 +857,46 @@ int MatrixDisplay::setFont(const char *fn)
 		return 0;
 	}
 	*/
-	for (int i = 0; i < NumFontsRM; ++i) {
-		if (0 == strcasecmp(FontsRM[i].name,fn)) {
-			m_font = FontsRM+i;
+	for (int i = 0; i < NumFonts; ++i) {
+		if (0 == strcasecmp(Fonts[i].name,fn)) {
+			m_font = Fonts+i;
 			return 0;
 		}
 	}
 	return -1;
+}
+
+
+int MatrixDisplay::setupOffScreen(uint16_t x, uint16_t y, uint16_t w, uint16_t h, int32_t bg)
+{
+	return -1;
+}
+
+
+void MatrixDisplay::commitOffScreen()
+{
+}
+
+
+unsigned MatrixDisplay::textWidth(const char *t, int f)
+{
+	// uses row-major font
+	if (f >= NumFonts)
+		return 0;
+	const Font *font;
+	if (f == -1)
+		font = m_font;
+	else
+		font = &Fonts[f];
+	unsigned w = 0;
+	unsigned s = font->first;
+	unsigned e = font->last;
+	while (char c = *t) {
+		if ((c >= s) && (c <= e))
+			w += font->glyph[c-s].xAdvance;
+		++c;
+	}
+	return w;
 }
 
 
@@ -882,7 +915,7 @@ void MatrixDisplay::write(const char *txt, int n)
 			--n;
 		}
 		if (at != txt) {
-			m_posx += drawText(m_posx,m_posy,txt,at-txt,-1,-1);
+			m_posx += drawText(m_posx,m_posy,txt,at-txt,-1,-2);
 			txt = at;
 			if (m_posx >= m_width) {
 				m_posx = m_width - 1;

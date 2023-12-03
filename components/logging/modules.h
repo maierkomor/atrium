@@ -35,7 +35,9 @@ typedef enum logmod_e {
 	logmod_apds,
 	logmod_bh1750,
 	logmod_bmx,
+	logmod_bq25,
 	logmod_button,
+	logmod_buzzer,
 	logmod_cam,
 	logmod_ccs811b,
 	logmod_cfg,
@@ -113,7 +115,9 @@ typedef enum logmod_e {
 #define MODULE_APDS            logmod_apds
 #define MODULE_BH1750          logmod_bh1750
 #define MODULE_BMX             logmod_bmx
+#define MODULE_BQ25            logmod_bq25
 #define MODULE_BUTTON          logmod_button
+#define MODULE_BUZZER          logmod_buzzer
 #define MODULE_CAM             logmod_cam
 #define MODULE_CCS811B         logmod_ccs811b
 #define MODULE_CFG             logmod_cfg
@@ -182,8 +186,8 @@ typedef enum logmod_e {
 #define MODULE_WWW             logmod_www
 #define MODULE_XIO             logmod_xio
 #define MODULE_XPT2046         logmod_xpt2046
-#define MAX_MODULE_ID           75
-#define NUM_MODULES             76
+#define MAX_MODULE_ID           77
+#define NUM_MODULES             78
 
 #ifdef USE_MODULE
 #define TAG USE_MODULE

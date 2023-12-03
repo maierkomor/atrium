@@ -35,7 +35,6 @@ class SH1106 : public SSD130X, public I2CDevice
 
 	static SH1106 *create(uint8_t bus, uint8_t addr);
 	int init(uint8_t maxx, uint8_t maxy, uint8_t options);
-	void drawBitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t *data, int32_t fg, int32_t bg) override;
 
 	void flush() override;
 	int setBrightness(uint8_t contrast) override;
@@ -52,11 +51,6 @@ class SH1106 : public SSD130X, public I2CDevice
 	{ return 255; }
 
 	private:
-	int drawByte(uint8_t x, uint8_t y, uint8_t b);
-	int drawBits(uint8_t x, uint8_t y, uint8_t b, uint8_t n);
-	int drawChar(char c);
-	int readByte(uint8_t x, uint8_t y, uint8_t *b);
-	int drawMasked(uint8_t x, uint8_t y, uint8_t b, uint8_t m);
 	int xmitCmd(uint8_t cmd);
 	void xmitCmds(uint8_t *cmd, unsigned n);
 

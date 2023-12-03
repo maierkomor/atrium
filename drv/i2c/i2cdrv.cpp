@@ -22,6 +22,7 @@
 
 #include "bmx.h"
 #include "bmp388.h"
+#include "bq25601d.h"
 #include "i2cdrv.h"
 #include "log.h"
 
@@ -49,6 +50,31 @@ I2CDevice *I2CDevice::m_first = 0;
 #define TAG MODULE_I2C
 static uint8_t Ports = 0;
 static SemaphoreHandle_t Mtx = 0;
+
+#ifdef CONFIG_ESP_PHY_ENABLE_USB
+static Charger *ChargerInstance;
+
+Charger::Charger()
+{
+	ChargerInstance = this;
+}
+
+Charger *Charger::getInstance()
+{ return ChargerInstance; }
+#else
+Charger::Charger()
+{
+}
+
+Charger *Charger::getInstance()
+{ return 0; }
+#endif
+
+int Charger::setImax(unsigned mA)
+{ return -1; }
+
+int Charger::getImax()
+{ return -1; }
 
 
 I2CDevice::I2CDevice(uint8_t bus, uint8_t addr, const char *name)
@@ -466,6 +492,9 @@ int i2c_init(uint8_t port, uint8_t sda, uint8_t scl, unsigned freq, uint8_t xpul
 #ifdef CONFIG_APDS9930
 	log_info(TAG,"search apds9930");
 	n += apds9930_scan(port);
+#endif
+#ifdef CONFIG_BQ25601D
+	BQ25601D::scan(port);
 #endif
 	n += ti_scan(port);
 	/*

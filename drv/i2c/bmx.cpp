@@ -40,6 +40,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
+// address 0x76,0x77
 #define BME_ADDR_MIN		0xec
 #define BME_ADDR_MAX		0xee
 

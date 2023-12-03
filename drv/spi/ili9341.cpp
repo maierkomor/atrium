@@ -322,8 +322,8 @@ ILI9341 *ILI9341::create(spi_host_device_t host, spi_device_interface_config_t &
 	cfg.command_bits = 0;
 	cfg.address_bits = 0;
 	cfg.cs_ena_pretrans = 0;
-//	cfg.clock_speed_hz = SPI_MASTER_FREQ_8M;	// maximum: 10MHz
-	cfg.clock_speed_hz = SPI_MASTER_FREQ_10M;	// maximum: 10MHz
+	if (0 == cfg.clock_speed_hz)
+		cfg.clock_speed_hz = SPI_MASTER_FREQ_10M;	// maximum: 10MHz
 	cfg.queue_size = 8;
 	cfg.pre_cb = ili9341_pre_cb;
 	cfg.post_cb = ili9341_post_cb;
@@ -365,7 +365,7 @@ void ILI9341::sleepOut()
 
 int ILI9341::init(uint16_t maxx, uint16_t maxy, uint8_t options)
 {
-	log_info(TAG,"init(%u,%u)",maxx,maxy);
+	log_info(TAG,"init(%u,%u): %u size",maxx,maxy);
 	if (maxx < maxy)
 		writeCmdArg(CMD_MADCTL,0x48);
 	else
@@ -385,6 +385,7 @@ int ILI9341::init(uint16_t maxx, uint16_t maxy, uint8_t options)
 	m_os = (uint16_t *) heap_caps_malloc(m_oss, MALLOC_CAP_DMA);
 	if (m_os == 0) {
 		m_oss = heap_caps_get_largest_free_block(MALLOC_CAP_DMA);
+		log_info(TAG,"largest available DMA block is %u",m_oss);
 		m_os = (uint16_t *) heap_caps_malloc(m_oss, MALLOC_CAP_DMA);
 		if (m_os == 0) {
 			m_oss = 16 << 10;
@@ -399,15 +400,15 @@ int ILI9341::init(uint16_t maxx, uint16_t maxy, uint8_t options)
 			}
 		}
 	} else if (m_oss == foss) {
-		log_dbug(TAG,"full off-screen buffer");
+		log_info(TAG,"full off-screen buffer");
 		m_fos = true;
 		m_osx = 0;
 		m_osy = 0;
 		m_osw = maxx;
 		m_osh = maxy;
 	}
-	log_dbug(TAG,"off-screen buffer: %u Bytes",m_oss);
-//	checkPowerMode();
+	log_info(TAG,"off-screen buffer: %u Bytes",m_oss);
+	checkPowerMode();
 	writeCmd(CMD_IDMOFF);
 	initOK();
 	log_info(TAG,"ready");
@@ -458,7 +459,7 @@ int ILI9341::setupOffScreen(uint16_t x, uint16_t y, uint16_t w, uint16_t h, int3
 	m_osy = y;
 	m_osw = w;
 	m_osh = h;
-	if (bg >= 0) {
+	if (bg >= 0) {	// bg == -2 is keep content, bg == -1 => bg = m_bgcol
 		wchar_t f = bg;
 		wmemset((wchar_t*)m_os,f,w*h);
 		if ((w*h) & 1)
@@ -509,7 +510,7 @@ void ILI9341::drawBitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const u
 	if ((x + w) > m_width)
 		w = m_width - x;
 	if ((y + h) > m_height)
-		h = m_height - x;
+		h = m_height - y;
 	if ((w == 0) || (h == 0))
 		return;
 	uint16_t fgc = fg >= 0 ? (uint16_t)(fg & 0xffff) : m_colfg;
@@ -708,6 +709,7 @@ unsigned ILI9341::drawChars(const char *at, const char *e, int32_t fg, int32_t b
 	return x;
 }
 
+#if 0
 unsigned ILI9341::drawText(uint16_t x, uint16_t y, const char *txt, int n, int32_t fg, int32_t bg)
 {
 	log_dbug(TAG,"drawText(%d,%d,'%s')",x,y,txt);
@@ -722,6 +724,14 @@ unsigned ILI9341::drawText(uint16_t x, uint16_t y, const char *txt, int n, int32
 			x = 0;
 			y += h;
 			++at;
+		/*
+		} else if (c == 0xc2) {
+			++at;
+			// first byte of a 2-byte utf-8
+			// used for degree symbol \u00b0 i.e.
+			// 0xc2 0xb0
+			continue;
+		*/
 		}
 		if (c == 0)
 			return a;
@@ -745,12 +755,12 @@ unsigned ILI9341::drawText(uint16_t x, uint16_t y, const char *txt, int n, int32
 			// too big for off-screen rendering
 			break;
 		}
-		if (!m_fos)
-			setupOffScreen(x+a,y,da,h,bg == -1 ? m_colbg : bg);
+//		if (!m_fos)
+//			setupOffScreen(x+a,y,da,h,bg == -1 ? m_colbg : bg);
 		drawChars(st,at,fg,bg);
 		a += da;
-		if (!m_fos)
-			commitOffScreen();
+//		if (!m_fos)
+//			commitOffScreen();
 	}
 	if (at != e)
 		log_dbug(TAG,"drawText on screen");
@@ -767,6 +777,7 @@ unsigned ILI9341::drawText(uint16_t x, uint16_t y, const char *txt, int n, int32
 	}
 	return a;
 }
+#endif
 
 
 int ILI9341::writeCmd(uint8_t v)

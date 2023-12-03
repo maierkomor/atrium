@@ -2,6 +2,7 @@ idf_component_register(
 	SRCS
 	apds9930.cpp
 	bh1750.cpp
+	bq25601d.cpp
 	bme680.c
 	bmp388.cpp
 	bmx.cpp

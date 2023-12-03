@@ -29,11 +29,11 @@ struct BMP280 : public I2CDevice
 {
 	BMP280(uint8_t port, uint8_t addr, const char *n = 0);
 
-	const char *drvName() const
+	const char *drvName() const override
 	{ return "bmp280"; }
 
-	int init();
-	void attach(class EnvObject *);
+	int init() override;
+	void attach(class EnvObject *) override;
 #ifdef CONFIG_I2C_XCMD
 	const char *exeCmd(struct Terminal &, int argc, const char **argv) override;
 #endif

@@ -124,7 +124,8 @@ SSD1309 *SSD1309::create(spi_host_device_t host, spi_device_interface_config_t &
 	cfg.command_bits = 0;
 	cfg.address_bits = 0;
 	cfg.cs_ena_pretrans = 0;
-	cfg.clock_speed_hz = SPI_MASTER_FREQ_8M;
+	if (cfg.clock_speed_hz == 0)
+		cfg.clock_speed_hz = SPI_MASTER_FREQ_8M;
 	cfg.queue_size = 8;
 	cfg.pre_cb = ssd1309_preop;
 	cfg.post_cb = ssd1309_postop;
@@ -159,7 +160,7 @@ int SSD1309::init(uint16_t maxx, uint16_t maxy, uint8_t hwcfg)
 	}
 	m_width = maxx;
 	m_height = maxy;
-	uint32_t dsize = maxx * maxy;
+	uint32_t dsize = maxx * (maxy>>3);
 	m_disp = (uint8_t *) malloc(dsize); // two dimensional array of n pages each of n columns.
 	if (m_disp == 0) {
 		log_error(TAG,"Out of memory.");
@@ -176,7 +177,7 @@ int SSD1309::init(uint16_t maxx, uint16_t maxy, uint8_t hwcfg)
 		0xd5, 0x80,				// oszi freq (default), clock div=1 (optional)
 		0xd9, 0x22,				// default pre-charge (optional)
 		0xda, 0x12,					// COM hardware config
-		//	(uint8_t) ((hwcfg&(hwc_rlmap|hwc_altm))|0x2),	
+			(uint8_t) ((hwcfg&(hwc_rlmap|hwc_altm))|0x2),	
 		0xa4,					// output RAM
 		0xaf,					// display on
 

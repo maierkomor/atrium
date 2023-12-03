@@ -16,6 +16,8 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "sdkconfig.h"
+
 #include "env.h"
 #include "stream.h"
 
@@ -85,6 +87,7 @@ void EnvBool::writeValue(stream &o) const
 void EnvNumber::set(float v)
 {
 	m_value = v;
+#ifdef CONFIG_THRESHOLDS
 	if (m_evhi) {
 		if (m_tst <= 0) {
 			if (v > m_high) {
@@ -100,19 +103,24 @@ void EnvNumber::set(float v)
 			}
 		}
 	}
+#endif
 }
 
 
 int EnvNumber::setThresholds(float l, float h, const char *n)
 {
+#ifdef CONFIG_THRESHOLDS
 	if (l+FLT_EPSILON >= h)
 		return 1;
 	if (m_evhi == 0) {
-		m_evhi = event_register(n ? n : m_name,"`high");
-		m_evlo = event_register(n ? n : m_name,"`low");
+		if (n == 0)
+			n = concat(getParent()->name(),m_name);
+		m_evhi = event_register(n,"`high");
+		m_evlo = event_register(n,"`low");
 	}
 	m_low = l;
 	m_high = h;
+#endif
 	return 0;
 }
 

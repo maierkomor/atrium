@@ -18,6 +18,7 @@
 
 #include <sdkconfig.h>
 
+#include "adc.h"
 #include "actions.h"
 #include "cyclic.h"
 #include "env.h"
@@ -73,6 +74,7 @@ extern "C" {
 #endif
 #endif
 
+static adc_oneshot_unit_handle_t AdcHdl1 = 0, AdcHdl2 = 0;
 
 struct AdcSignal : public EnvObject
 {
@@ -135,31 +137,31 @@ struct AdcSignal : public EnvObject
 				log_warn(TAG,"converting ADC%u,%u: %s",unit,channel,esp_err_to_name(e));
 			else
 				v = voltage;
-		}
-		volt.set(v);
-#else
-		switch (atten) {
-		case ADC_ATTEN_DB_0:
-//			v = x * 950.0 / 4095.0;
-			v = x * 750.0 / 4095.0;
-			break;
-		case ADC_ATTEN_DB_2_5:
-//			v = x * 1250.0 / 4095.0;
-			v = x * 1050.0 / 4095.0;
-			break;
-		case ADC_ATTEN_DB_6:
-//			v = x * 1750.0 / 4095.0;
-			v = x * 1300.0 / 4095.0;
-			break;
-		case ADC_ATTEN_DB_11:
-//			v = x * 2450.0 / 4095.0;
-			v = x * 2500.0 / 4095.0;
-			break;
-		default:
-			break;
-		}
-		volt.set(v);
+		} else
 #endif
+		{
+			switch (atten) {
+			case ADC_ATTEN_DB_0:
+	//			v = x * 950.0 / 4095.0;
+				v = x * 750.0 / 4095.0;
+				break;
+			case ADC_ATTEN_DB_2_5:
+	//			v = x * 1250.0 / 4095.0;
+				v = x * 1050.0 / 4095.0;
+				break;
+			case ADC_ATTEN_DB_6:
+	//			v = x * 1750.0 / 4095.0;
+				v = x * 1300.0 / 4095.0;
+				break;
+			case ADC_ATTEN_DB_11:
+	//			v = x * 2450.0 / 4095.0;
+				v = x * 2500.0 / 4095.0;
+				break;
+			default:
+				break;
+			}
+		}
+		volt.set(v);
 		phys.set(v*scale+offset);
 	}
 
@@ -466,6 +468,53 @@ static const char *adc_sample(Terminal &t, const char *arg)
 }
 
 
+#if IDF_VERSION >= 50
+adc_oneshot_unit_handle_t adc_get_handle(uint8_t unit)
+{
+	adc_unit_t u;
+	if (unit == 1) {
+		if (AdcHdl1 != 0)
+			return AdcHdl1;
+		u = ADC_UNIT_1;
+	} else if (unit == 2) {
+		if (AdcHdl2 != 0)
+			return AdcHdl2;
+		u = ADC_UNIT_2;
+	} else {
+		return 0;
+	}
+	return adc_get_unit_handle(u);
+}
+
+
+adc_oneshot_unit_handle_t adc_get_unit_handle(adc_unit_t unit)
+{
+	adc_oneshot_unit_handle_t *hdlptr;
+	adc_oneshot_unit_init_cfg_t ucfg;
+	if (unit == ADC_UNIT_1) {
+		if (AdcHdl1 != 0)
+			return AdcHdl1;
+		ucfg.unit_id = ADC_UNIT_1;
+		hdlptr = &AdcHdl1;
+	} else if (unit == ADC_UNIT_2) {
+		if (AdcHdl2 != 0)
+			return AdcHdl2;
+		ucfg.unit_id = ADC_UNIT_2;
+		hdlptr = &AdcHdl2;
+	} else {
+		return 0;
+	}
+//	ucfg.clk_src = ADC_DEFAULT_CLOCK;
+	ucfg.clk_src = (adc_oneshot_clk_src_t)0;
+	ucfg.ulp_mode = ADC_ULP_MODE_DISABLE;
+	if (esp_err_t e = adc_oneshot_new_unit(&ucfg,hdlptr)) {
+		log_warn(TAG,"ADC unit %d: %s",unit+1,esp_err_to_name(e));
+	}
+	return *hdlptr;
+}
+#endif
+
+
 void adc_setup()
 {
 #ifdef CONFIG_CORETEMP
@@ -479,9 +528,9 @@ void adc_setup()
 	adc_bitwidth_t w2 = ADC_BITWIDTH_DEFAULT;
 #if IDF_VERSION >= 50
 	if (conf.has_adc1_bits())
-		w1 = (adc_bitwidth_t) conf.adc1_bits();
+		w1 = (adc_bitwidth_t) (ADC_BITWIDTH_9 + conf.adc1_bits());
 	if (conf.has_adc2_bits())
-		w2 = (adc_bitwidth_t) conf.adc2_bits();
+		w2 = (adc_bitwidth_t) (ADC_BITWIDTH_9 + conf.adc2_bits());
 #else
 	if (conf.adc1_bits()) {
 		if (esp_err_t e = adc_set_data_width(ADC_UNIT_1,(adc_bits_width_t)conf.adc1_bits()))
@@ -503,19 +552,25 @@ void adc_setup()
 	log_info(TAG,"%u channels",NumAdc);
 	Adcs = (AdcSignal **) malloc(sizeof(AdcSignal*)*NumAdc);
 	bzero(Adcs,sizeof(AdcSignal*)*NumAdc);
-	adc_oneshot_unit_handle_t hdl1 = 0, hdl2 = 0;
 	for (const AdcChannel &c : conf.channels()) {
 		unsigned u = c.unit();
-		if ((u < 1) || (u > 2)) {
+		adc_unit_t unit;
+		switch (u) {
+		case 1:
+			unit = ADC_UNIT_1;
+			break;
+		case 2:
+			unit = ADC_UNIT_2;
+			break;
+		default:
 			log_warn(TAG,"invalid unit %u",u);
 			continue;
 		}
-		adc_unit_t unit = u == 1 ? ADC_UNIT_1 : ADC_UNIT_2;
 		int ch = c.ch();
 #if IDF_VERSION >= 50
 		if (ch >= SOC_ADC_CHANNEL_NUM(unit)) {
 #else
-		if (((u == 1) && (ch >= ADC1_CHANNEL_MAX)) || ((u == 2) && (ch >= ADC2_CHANNEL_MAX))) {
+		if (((unit == ADC_UNIT_1) && (ch >= ADC1_CHANNEL_MAX)) || ((unit == ADC_UNIT_2) && (ch >= ADC2_CHANNEL_MAX))) {
 #endif
 			log_warn(TAG,"invalid channel %u",ch);
 			continue;
@@ -532,36 +587,16 @@ void adc_setup()
 		adc_oneshot_channel_to_io(unit,(adc_channel_t)ch,&gpio);
 		log_info(TAG,"init %s on ADC%u.%u at GPIO%u, atten %u",n,u,ch,gpio,atten);
 #if IDF_VERSION >= 50
-		adc_oneshot_unit_handle_t hdl = 0;
-		adc_oneshot_unit_init_cfg_t ucfg;
-		ucfg.unit_id = unit;
-//		ucfg.clk_src = ADC_DEFAULT_CLOCK;
-		ucfg.clk_src = (adc_oneshot_clk_src_t)0;
-		ucfg.ulp_mode = ADC_ULP_MODE_DISABLE;
-		if (u == 1) {
-			if (hdl1 == 0) {
-				if (esp_err_t e = adc_oneshot_new_unit(&ucfg,&hdl1)) {
-					log_warn(TAG,"ADC unit %d: %s",u,esp_err_to_name(e));
-					continue;
-				}
-			}
-			hdl = hdl1;
-		} else if (u == 2) {
-			if (hdl2 == 0) {
-				if (esp_err_t e = adc_oneshot_new_unit(&ucfg,&hdl2)) {
-					log_warn(TAG,"ADC unit %d: %s",u,esp_err_to_name(e));
-					continue;
-				}
-			}
-			hdl = hdl2;
-		} else {
-			abort();
+		adc_oneshot_unit_handle_t hdl = adc_get_unit_handle(unit);
+		if (hdl == 0) {
+			log_warn(TAG,"failed to get ADC unit handle for unit %d",u);
+			continue;
 		}
 		adc_oneshot_chan_cfg_t cc;
 		cc.atten = atten;
-		cc.bitwidth = u == 1 ? w1 : w2;
+		cc.bitwidth = unit == ADC_UNIT_1 ? w1 : w2;
 		adc_oneshot_config_channel(hdl,(adc_channel_t)ch,&cc);
-		Adcs[num] = new AdcSignal(n,hdl,(adc_unit_t)u,(adc_channel_t)ch,atten,c.window());
+		Adcs[num] = new AdcSignal(n,hdl,unit,(adc_channel_t)ch,atten,c.window());
 #else
 		if (u == 1) {
 			if (esp_err_t e = adc1_config_channel_atten((adc1_channel_t)ch,atten)) {
@@ -578,7 +613,7 @@ void adc_setup()
 				continue;
 			}
 		}
-		Adcs[num] = new AdcSignal(n,(adc_unit_t)u,(adc_channel_t)ch,c.window());
+		Adcs[num] = new AdcSignal(n,unit,(adc_channel_t)ch,c.window());
 #endif
 		Adcs[num]->atten = atten;
 		if (c.has_scale() || c.has_offset() || c.has_dim()) {

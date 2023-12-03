@@ -16,51 +16,50 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef BMP388_H
-#define BMP388_H
+#ifndef BQ25601D_H
+#define BQ25601D_H
 
+#include <sdkconfig.h>
+#include "charger.h"
+#include "i2cdrv.h"
 #include "env.h"
 #include "event.h"
-#include "i2cdrv.h"
 
 
-struct BMP388 : public I2CDevice
+struct BQ25601D : public I2CDevice
+#ifdef CONFIG_ESP_PHY_ENABLE_USB
+		  , public Charger
+#endif
 {
-	BMP388(uint8_t port, uint8_t addr, const char *n = 0);
+	BQ25601D(uint8_t port, uint8_t addr, const char *n = 0);
 
-	const char *drvName() const
-	{ return "bmp388"; }
+	void addIntr(uint8_t gpio) override;
+	void attach(class EnvObject *) override;
 
-	void addIntr(uint8_t intr) override;
-	int init() override;
-	void attach(class EnvObject *);
+	const char *drvName() const override
+	{ return "bq25601d"; }
+
+	static BQ25601D *scan(uint8_t);
+
 #ifdef CONFIG_I2C_XCMD
 	const char *exeCmd(struct Terminal &, int argc, const char **argv) override;
 #endif
+	int getImax();
+	int setImax(unsigned imax);
 
 	protected:
-	float calc_press(int32_t adc_P, int32_t t_fine);
-	void calc_tfine(uint32_t);
-	void calc_press(uint32_t);
-	int flush_fifo();
-	static void trigger(void *);
-	static void intrHandler(void *);
-	bool status();
-	virtual int sample();
-	virtual int read();
-	virtual void handle_error();
+	static void intrHandler(void *arg);
+	static void processIntr(void *arg);
+	static void powerDown(void *arg);
+	void processIntr();
 	static unsigned cyclic(void *);
-	int get_error();
-	int get_status();
-
-	EnvNumber m_temp, m_press;
-	double D[14];
-	event_t m_irqev = 0;
-	typedef enum { st_idle, st_sample, st_measure, st_read } state_t;
-	state_t m_state = st_idle;
+	unsigned cyclic();
+	EnvBool m_pg;
+	EnvString m_charge, m_vbus;
+	unsigned m_irqcnt = 0;
+	uint8_t m_regs[0xb];
+	event_t m_irqev = 0, m_onev = 0, m_offev = 0;
 };
 
-
-unsigned bmp388_scan(uint8_t port);
 
 #endif

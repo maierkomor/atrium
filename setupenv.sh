@@ -215,23 +215,32 @@ git reset --hard v3.3 || exit 1
 git submodule deinit -f --all
 git switch release/v3.3
 git submodule update --init
-IDF_PATH=`pwd` python2 tools/idf_tools.py install || exit 1
+echo install tools
+python2 -m pip install --upgrade pip
+IDF_PATH="$IDF_ESP8266" python2 tools/check_python_dependencies.py
 IDF_PATH=`pwd` python2 tools/idf_tools.py install-python-env || exit 1
-echo patching IDF for ESP8266
-patch -t -p1 < $patchdir/idf-esp8266-v3.3.diff || echo PATCHING FAILED!
+IDF_PATH=`pwd` python2 tools/idf_tools.py install || exit 1
 popd > /dev/null
 
 echo settings for $IDF_ESP8266
 pushd "$IDF_ESP8266"
 echo IDF_ESP8266=$IDF_ESP8266 >> $settings
-IDF_PATH="$IDF_ESP8266" python2 "$IDF_ESP8266/tools/idf_tools.py" export | sed "s/export //g;s/=/_ESP8266=/g;s/;/\n/g;s/\"//g" >> $settings
+IDF_PATH="$IDF_ESP8266" python2 "tools/idf_tools.py" export | sed "s/export //g;s/=/_ESP8266=/g;s/;/\n/g;s/\"//g" >> $settings
 popd > /dev/null
+echo checking requirements of ESP8266 IDF in $IDF_ESP8266
+#IDF_PATH=$IDF_ESP8266 python2 -m pip install --user -r requirements.txt
 
 echo ===================
 cat $settings
 echo ===================
 echo
 
+pushd "$IDF_ESP8266"
+echo "updating to latest v3.3"
+git checkout v3.3
+echo patching IDF for ESP8266
+patch -t -p1 < $patchdir/idf-esp8266-v3.3.diff || echo PATCHING FAILED!
+popd
 
 ## ESP32 IDF
 if [ "$IDF_ESP32" == "" ]; then
@@ -350,6 +359,7 @@ popd > /dev/null
 #echo checking requirements of ESP32 IDF in $IDF_ESP32
 #IDF_PATH=$IDF_ESP32 pip install -r $IDF_ESP32/requirements.txt
 #
+#pip install -U pip
 #echo checking requirements of ESP8266 IDF in $IDF_ESP8266
 #IDF_PATH=$IDF_ESP8266 pip install -r $IDF_ESP8266/requirements.txt
 

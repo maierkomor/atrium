@@ -96,7 +96,7 @@ const uint8_t FreeSans9pt7bBitmaps[] = {
     0xCE, 0x66, 0x66, 0x66, 0x30, 0xFF, 0xFF, 0xFF, 0xFF, 0xC0, 0xC6, 0x66,
     0x66, 0x67, 0x37, 0x66, 0x66, 0x66, 0xC0, 0x61, 0x24, 0x38};
 
-const GFXglyph FreeSans9pt7bGlyphs[] = {
+const GFXglyph FreeSans9Glyphs[] = {
     {0, 0, 0, 5, 0, 1},        // 0x20 ' '
     {0, 2, 13, 6, 2, -12},     // 0x21 '!'
     {4, 5, 4, 6, 1, -12},      // 0x22 '"'
@@ -193,8 +193,8 @@ const GFXglyph FreeSans9pt7bGlyphs[] = {
     {1138, 4, 17, 6, 1, -12},  // 0x7D '}'
     {1147, 7, 3, 9, 1, -7}};   // 0x7E '~'
 
-//const Font FreeSans9pt7b = {(uint8_t *)FreeSans9pt7bBitmaps,
-//                                       (GFXglyph *)FreeSans9pt7bGlyphs, 0x20,
-//                                       0x7E, 22};
+GFXfont FreeSans9pt7b = {"FreeSans9",(uint8_t *)FreeSans9pt7bBitmaps,
+                                       (GFXglyph *)FreeSans9Glyphs, 0x20,
+                                       0x7E, 22};
 
 // Approx. 1822 bytes

@@ -68,6 +68,8 @@ class Terminal : public stream
 	virtual bool isInteractive() const
 	{ return true; }
 
+	void print_hex(const uint8_t *b, size_t s, size_t off = 0);
+
 	protected:
 	const char *m_error = 0;
 	estring m_pwd;

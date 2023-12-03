@@ -94,6 +94,7 @@ void action_setup();
 void adc_setup();
 void alarms_setup();
 void button_setup();
+void buzzer_setup();
 void console_setup();
 void cyclic_setup();
 void dht_setup();
@@ -120,6 +121,7 @@ void timefuse_setup();
 void tlc5947_setup();
 int touchpads_setup();
 void udns_setup();
+void usb_setup();
 void xlua_setup();
 void udpctrl_setup();
 int webcam_setup();
@@ -304,10 +306,16 @@ void app_main()
 #ifdef CONFIG_I2C
 	i2c_setup();	// must be before xio_setup to provide io-cluster
 #endif
+#ifdef CONFIG_ESP_PHY_ENABLE_USB
+	usb_setup();
+#endif
 #ifdef CONFIG_SPI
 	spi_setup();	// must be before xio_setup to provide io-cluster
 #endif
 	xio_setup();
+#ifdef CONFIG_BUZZER
+	buzzer_setup();
+#endif
 	verify_heap();
 	adc_setup();
 #ifdef CONFIG_IDF_TARGET_ESP32
@@ -396,13 +404,14 @@ void app_main()
 #ifdef CONFIG_LUA
 	xlua_setup();
 #endif
-#ifdef CONFIG_STATEMACHINES
-	sm_setup();
-#endif
 #ifdef CONFIG_DISPLAY
 	display_setup();
 	screen_setup();
 #endif // CONFIG_DISPLAY
+
+#ifdef CONFIG_STATEMACHINES
+	sm_setup();
+#endif
 
 	// activate actions after all events and actions are setup
 	// otherwise this step will fail
