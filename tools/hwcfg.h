@@ -1,1 +1,0 @@
-../components/wfc/hwcfg_pc.h

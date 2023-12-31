@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2022, Thomas Maier-Komor
+ *  Copyright (C) 2018-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -80,16 +80,16 @@
 
 BMP280::BMP280(uint8_t port, uint8_t addr, const char *n)
 : I2CDevice(port,addr,n ? n : drvName())
+, m_temp("temperature","\u00b0C","%4.1f")
+, m_press("pressure","hPa","%4.1f")
 {
-	m_temp = new EnvNumber("temperature","\u00b0C","%4.1f");
-	m_press = new EnvNumber("pressure","hPa","%4.1f");
 }
 
 
 BME280::BME280(uint8_t port, uint8_t addr)
 : BMP280(port,addr,drvName())
+, m_humid("humidity","%","%4.1f")
 {
-	m_humid = new EnvNumber("humidity","%","%4.1f");
 }
 
 
@@ -131,8 +131,8 @@ unsigned BMP280::cyclic(void *arg)
 
 void BMP280::attach(EnvObject *root)
 {
-	root->add(m_temp);
-	root->add(m_press);
+	root->add(&m_temp);
+	root->add(&m_press);
 	cyclic_add_task(m_name,BMP280::cyclic,this,0);
 	action_add(concat(m_name,"!sample"),trigger,(void*)this,"BMP280 sample data");
 }
@@ -141,7 +141,7 @@ void BMP280::attach(EnvObject *root)
 void BME280::attach(EnvObject *root)
 {
 	BMP280::attach(root);
-	root->add(m_humid);
+	root->add(&m_humid);
 }
 
 
@@ -254,14 +254,14 @@ const char *BME280::exeCmd(Terminal &term, int argc, const char **args)
 
 void BMP280::handle_error()
 {
-	m_temp->set(NAN);
-	m_press->set(NAN);
+	m_temp.set(NAN);
+	m_press.set(NAN);
 }
 
 
 void BME280::handle_error()
 {
-	m_humid->set(NAN);
+	m_humid.set(NAN);
 	BMP280::handle_error();
 }
 
@@ -324,7 +324,7 @@ float BMP280::calc_press(int32_t adc_P, int32_t t_fine)
 	var1 = ((var1 * var1 * (int64_t)P3)>>8) + ((var1 * (int64_t)P2)<<12);
 	var1 = (((((int64_t)1)<<47)+var1))*((int64_t)P1)>>33;
 	if (var1 == 0) {
-		m_press = 0;
+		m_press.set(NAN);
 		log_dbug(TAG,"press: div by 0");
 		return NAN; // avoid exception caused by division by zero
 	}
@@ -374,8 +374,8 @@ int BMP280::read()
 	int32_t t_fine = calc_tfine(data);
 	float t = (float)((t_fine * 5 + 128) >> 8) / 100.0;
 	float p = calc_press((data[0] << 12) | (data[1] << 4) | (data[2] >> 4), t_fine);
-	m_temp->set(t);
-	m_press->set(p);
+	m_temp.set(t);
+	m_press.set(p);
 #ifdef CONFIG_NEWLIB_LIBRARY_LEVEL_FLOAT_NANO
 	log_dbug(TAG,"t=%G, p=%G",t,p);
 #else
@@ -411,11 +411,11 @@ int BME280::read()
 		return r;
 	int32_t t_fine = calc_tfine(data);
 	float t = (float)((t_fine * 5 + 128) >> 8) / 100.0;
-	m_temp->set(t);
+	m_temp.set(t);
 	float p = calc_press((data[0] << 12) | (data[1] << 4) | (data[2] >> 4), t_fine);
-	m_press->set(p);
+	m_press.set(p);
 	float h = calc_humid((data[6] << 8) | data[7], t_fine);
-	m_humid->set(h);
+	m_humid.set(h);
 #ifdef CONFIG_NEWLIB_LIBRARY_LEVEL_FLOAT_NANO
 	log_dbug(TAG,"t=%G, p=%G, h=%G",t,p,h);
 #else
@@ -496,12 +496,17 @@ int BME280::init()
 
 
 #ifdef CONFIG_BME680
+BME680::BME680(uint8_t port, uint8_t addr)
+: I2CDevice(port,addr,drvName())
+, m_temp("temperature","\u00b0C","%41f")
+, m_press("pressure","hPa","%4.1f")
+, m_humid("humidity","%","%4.1f")
+, m_gas("gasresistance","kOhm","%4.1f")
+{ }
+
+
 int BME680::init()
 {
-	m_temp = new EnvNumber("temperature","\u00b0C","%4.1f");
-	m_press = new EnvNumber("pressure","hPa","%4.1f");
-	m_humid = new EnvNumber("humidity","%","%4.1f");
-	m_gas = new EnvNumber("gasresistance","kOhm","%4.1f");
 	bzero(&m_dev,sizeof(m_dev));
 	m_dev.bus = m_bus;
 	m_dev.addr = m_addr;
@@ -531,10 +536,10 @@ unsigned BME680::cyclic(void *arg)
 	case st_read:
 		return dev->read();
 	case st_error:
-		dev->m_temp->set(NAN);
-		dev->m_press->set(NAN);
-		dev->m_humid->set(NAN);
-		dev->m_gas->set(NAN);
+		dev->m_temp.set(NAN);
+		dev->m_press.set(NAN);
+		dev->m_humid.set(NAN);
+		dev->m_gas.set(NAN);
 		dev->m_state = st_idle;
 		return 1000;
 	default:
@@ -564,10 +569,6 @@ unsigned BME680::sample()
 
 unsigned BME680::read()
 {
-	if (m_temp == 0) {
-		log_dbug(TAG,"read on non-attached device");
-		return 50;
-	}
 	uint8_t status = 0;
 	int r = i2c_w1rd(m_bus,m_addr,0x1d,&status,1);
 	if (r != 0) {
@@ -585,32 +586,32 @@ unsigned BME680::read()
 		return 20;
 	}
 #ifdef BME680_FLOAT_POINT_COMPENSATION
-	m_temp->set(data.temperature);
-	m_press->set(data.pressure);
-	m_humid->set(data.humidity);
+	m_temp.set(data.temperature);
+	m_press.set(data.pressure);
+	m_humid.set(data.humidity);
 #else
-	m_temp->set((float)data.temperature/100.0);
-	m_press->set((float)data.pressure/100.0);
-	m_humid->set((float)data.humidity/1000.0);
+	m_temp.set((float)data.temperature/100.0);
+	m_press.set((float)data.pressure/100.0);
+	m_humid.set((float)data.humidity/1000.0);
 #endif
 #ifdef CONFIG_NEWLIB_LIBRARY_LEVEL_FLOAT_NANO
-	log_dbug(TAG,"t=%G, p=%G, h=%G",m_temp->get(),m_press->get(),m_humid->get());
+	log_dbug(TAG,"t=%G, p=%G, h=%G",m_temp.get(),m_press.get(),m_humid.get());
 #else
 	if (log_module_enabled(TAG)) {
 		char t[8],p[8],h[8];
-		float_to_str(t,m_temp->get());
-		float_to_str(p,m_press->get());
-		float_to_str(h,m_humid->get());
+		float_to_str(t,m_temp.get());
+		float_to_str(p,m_press.get());
+		float_to_str(h,m_humid.get());
 		log_dbug(TAG,"t=%s,p=%s,h=%s",t,p,h);
 	}
 #endif
 	m_state = st_idle;
 	if (data.status & BME680_GASM_VALID_MSK) {
 		log_dbug(TAG,"r=%d", data.gas_resistance);
-		m_gas->set((float)data.gas_resistance/1000.0);
+		m_gas.set((float)data.gas_resistance/1000.0);
 	} else {
 		log_dbug(TAG,"gas invalid");
-		m_gas->set(NAN);
+		m_gas.set(NAN);
 	}
 	return 50;
 }
@@ -618,10 +619,10 @@ unsigned BME680::read()
 
 void BME680::attach(EnvObject *root)
 {
-	root->add(m_temp);
-	root->add(m_press);
-	root->add(m_humid);
-	root->add(m_gas);
+	root->add(&m_temp);
+	root->add(&m_press);
+	root->add(&m_humid);
+	root->add(&m_gas);
 	cyclic_add_task(m_name,cyclic,this,0);
 	action_add(concat(m_name,"!sample"),trigger,(void*)this,"BME680 sample data");
 }

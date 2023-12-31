@@ -97,14 +97,15 @@ DS18B20::DS18B20(uint64_t id, const char *name)
 			ready = true;
 		}
 	}
-	if (!ready)
+	if (ready) {
+		action_add(concat(name,"!sample"),sample,this,"trigger DS18B20 convertion/sampling");
+		action_add(concat(name,"!setres9b"),set_res9b,this,"set conversion resolution to 9bit");
+		action_add(concat(name,"!setres10b"),set_res10b,this,"set conversion resolution to 10bit");
+		action_add(concat(name,"!setres11b"),set_res11b,this,"set conversion resolution to 11bit");
+		action_add(concat(name,"!setres12b"),set_res12b,this,"set conversion resolution to 12bit");
+	} else {
 		log_warn(TAG,"device %s is not ready",name);
-	action_add(concat(name,"!sample"),sample,this,"trigger DS18B20 convertion/sampling");
-	action_add(concat(name,"!setres9b"),set_res9b,this,"set conversion resolution to 9bit");
-	action_add(concat(name,"!setres10b"),set_res10b,this,"set conversion resolution to 10bit");
-	action_add(concat(name,"!setres11b"),set_res11b,this,"set conversion resolution to 11bit");
-	action_add(concat(name,"!setres12b"),set_res12b,this,"set conversion resolution to 12bit");
-	cyclic_add_task(name,cyclic,this,0);
+	}
 }
 
 
@@ -178,7 +179,7 @@ void DS18B20::read()
 		if (v != 0x7fff) {
 			reset = false;
 			float f = v;
-			if (sp[1] & 0x80)
+			if (sp[1] & 0xf8)
 				f *= -1;
 			f *= 0.0625;
 			if (m_json)
@@ -208,6 +209,7 @@ void DS18B20::set_resolution(res_t r)
 
 void DS18B20::attach(EnvObject *o)
 {
+	cyclic_add_task(m_name,cyclic,this,0);
 	if (m_json == 0)
 		m_json = o->add(m_name,NAN,"\u00b0C");
 }

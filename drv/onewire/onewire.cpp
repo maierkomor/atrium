@@ -27,7 +27,6 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
-//#include <xtensa/hal.h>
 #include <freertos/task.h>
 #include <freertos/portmacro.h>
 

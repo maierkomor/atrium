@@ -64,14 +64,16 @@ ROMFS_FILE	=$(ROMFS_LST:%.lst=%.romfs)
 ROMFS_FILES	=$(shell cat $(ROMFS_LST) 2>/dev/null)
 ROMFS_ADDR	=$(CONFIG_ROMFS_ADDR)
 IDF_VER		:=$(shell cd $(IDF_PATH); git describe --tags 2>/dev/null | sed 's/\.//;s/v//;s/-.*//;s/\..*//')
-CPPFLAGS	=-DIDF_VERSION=$(IDF_VER) -D$(CHIP) -DFWCFG=\"$(PROJECT)\" -I$(BUILD_DIR_BASE)/config
+# shell call to remove ""
+WFC_TARGET	=$(shell echo $(CONFIG_WFC_TARGET))
+CPPFLAGS	=-DIDF_VERSION=$(IDF_VER) -D$(CHIP) -DFWCFG=\"$(PROJECT)\" -DWFC_TARGET=$(WFC_TARGET) -I$(BUILD_DIR_BASE)/config
 BUILD_DIR_BASE	=$(PWD)/build.$(PROJECT)
 PROJECT_ROOT	=$(PWD)
 WFCINC		=$(WFCDIR)/include
 PROJECT_VER	=$(shell bin/mkversion.sh)
 MEMFILES	=$(shell cd data; ls -1 man/*.man)
 ROMFS_PARTITION	=storage
-CFG_CXX		=tools/atriumcfg.cpp tools/hwcfg.cpp tools/swcfg.cpp tools/wfccore.cpp
+CFG_CXX		=tools/atriumcfg.cpp components/wfc/hwcfg_pc.cpp components/wfc/swcfg_pc.cpp components/wfc/wfccore_pc.cpp
 PATH		:=$(PATH_$(CHIP)):$(PATH)
 IDF_PYTHON_ENV_PATH	=$(IDF_PYTHON_ENV_PATH_$(CHIP))
 
@@ -81,7 +83,7 @@ endif
 
 .PHONY: prepare settings
 
-export BUILD_DIR_BASE CHIP CPPFLAGS PROJECT_NAME IDF_PATH IDF_VER PATH PTABLE PROJECT_ROOT PROJECT SDKCONFIG WFC WFCDIR ESPTOOL_ALL_FLASH_ARGS CXXFLAGS PROJECT_VER MEMFILES CONFIG_INTEGRATED_HELP
+export BUILD_DIR_BASE CHIP CPPFLAGS PROJECT_NAME IDF_PATH IDF_VER PATH PTABLE PROJECT_ROOT PROJECT SDKCONFIG WFC WFCDIR ESPTOOL_ALL_FLASH_ARGS CXXFLAGS PROJECT_VER MEMFILES CONFIG_INTEGRATED_HELP WFC_TARGET
 
 romfs/%.romfs: prepare
 	bin/mkromfs -c data -o $@ $(ROMFS_FILES) version.txt
@@ -181,7 +183,7 @@ build.$(PROJECT)/spiffs.bin: $(ROMFS_FILES:%=data/%)
 atriumcfg: bin/atriumcfg$(EXEEXT)
 
 bin/atriumcfg$(EXEEXT): $(CFG_CXX) tools/version.h tools/pcconfig.h
-	g++ -g -Imain -Icomponents/streams $(CFG_CXX) -leditline -lmd -o $@
+	g++ -g -DWFC_TARGET=pc -Imain -Icomponents/wfc -Itools $(CFG_CXX) -ledit -lmd -o $@
 
 always:
 

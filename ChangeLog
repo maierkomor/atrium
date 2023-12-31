@@ -1,3 +1,13 @@
+R2312:
+======
+- fix DS18B20 negative values
+- fix ESP32-C3 1-wire regression
+- fix for SSD1306 font rendering
+- SSD130x code unification
+- enable core temperature support on C3,S2,S3
+- update atriumcfg config to include all configurations
+- added support for rendering PNM icons (PBM, PGM, PPM)
+
 R2311:
 ======
 - added driver foc.config_init_high()r BQ25601D charging IC

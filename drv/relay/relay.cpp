@@ -59,7 +59,7 @@ static void relay_toggle(void *R)
 }
 
 
-Relay::Relay(const char *name, xio_t gpio, uint32_t minitv, bool onlvl)
+Relay::Relay(const char *name, xio_t gpio, uint32_t minitv, bool onlvl, bool initv, bool pers)
 : m_next(Relays)
 , m_name(name)
 , m_envon("on",0.0)
@@ -78,6 +78,15 @@ Relay::Relay(const char *name, xio_t gpio, uint32_t minitv, bool onlvl)
 	action_add(concat(name,"!off"),relay_turn_off,this,"turn off");
 	action_add(concat(name,"!toggle"),relay_toggle,this,"toggle relay");
 	Relays = this;
+	if (pers) {
+		initv = nvm_read_u8(m_name,initv);
+		xio_unhold(m_gpio);
+	}
+	m_state = initv;
+	xio_set_lvl(m_gpio,(m_state^m_onlvl)?xio_lvl_0:xio_lvl_1);
+	if (pers) {
+		xio_hold(m_gpio);
+	}
 }
 
 
@@ -91,7 +100,7 @@ void Relay::attach(class EnvObject *root)
 }
 
 
-Relay *Relay::create(const char *name, xio_t gpio, uint32_t minitv, bool onlvl)
+Relay *Relay::create(const char *name, xio_t gpio, uint32_t minitv, bool onlvl, bool initv, bool pers)
 {
 	if (0 == Mtx)
 		Mtx = xSemaphoreCreateMutex();
@@ -102,7 +111,7 @@ Relay *Relay::create(const char *name, xio_t gpio, uint32_t minitv, bool onlvl)
 		log_warn(TAG,"config %s at %u failed",name,gpio);
 		return 0;
 	}
-	Relays = new Relay(name,gpio,minitv,onlvl);
+	Relays = new Relay(name,gpio,minitv,onlvl,initv,pers);
 	xSemaphoreGive(Mtx);
 	return Relays;
 }
@@ -173,9 +182,14 @@ void Relay::sync()
 			// state=off, onlvl=high, !(s^o) = 0
 			// state=on, onlvl=low, !(s^o) = 0
 			// state=off, onlvl=low, !(s^o) = 1
+		if (m_persistent) {
+			xio_unhold(m_gpio);
+		}
 		xio_set_lvl(m_gpio,(m_state^m_onlvl)?xio_lvl_0:xio_lvl_1);
-		if (m_persistent)
+		if (m_persistent) {
+			xio_hold(m_gpio);
 			nvm_store_u8(m_name,m_state);
+		}
 		char ltime[40];
 		localtimestr(ltime);
 		if (m_state) {

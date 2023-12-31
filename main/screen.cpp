@@ -569,6 +569,25 @@ static const LuaFn Functions[] = {
 	{ 0, 0, 0 }
 };
 
+
+int luax_fb_drawicon(lua_State *L)
+{
+	if (MatrixDisplay *md = Ctx->disp->toMatrixDisplay()) {
+		const char *fn = luaL_checkstring(L,1);
+		int x = luaL_checkinteger(L,2);
+		int y = luaL_checkinteger(L,3);
+		int col = 0;
+		if (lua_isinteger(L,4))
+			col = lua_tointeger(L,4);
+		md->drawIcon(x,y,fn,col);
+		return 0;
+	}
+	lua_pushliteral(L,"fb_drawicon: no display.");
+	lua_error(L);
+	return 0;
+}
+
+
 static int luax_fb_setbgcol(lua_State *L)
 {
 	if (MatrixDisplay *md = Ctx->disp->toMatrixDisplay()) {
@@ -744,6 +763,49 @@ static int luax_fb_fillrect(lua_State *L)
 }
 
 
+static int luax_fb_flush(lua_State *L)
+{
+	if (MatrixDisplay *md = Ctx->disp->toMatrixDisplay()) {
+		md->flush();
+		return 0;
+	}
+	lua_pushliteral(L,"fb_drawrect: no display.");
+	lua_error(L);
+	return 0;
+}
+
+
+static int luax_fb_offscreen(lua_State *L)
+{
+	if (MatrixDisplay *md = Ctx->disp->toMatrixDisplay()) {
+		int x = luaL_checkinteger(L,1);
+		int y = luaL_checkinteger(L,2);
+		int w = luaL_checkinteger(L,3);
+		int h = luaL_checkinteger(L,4);
+		int bg = -1;
+		if (lua_isinteger(L,5))
+			bg = lua_tointeger(L,5);
+		md->setupOffScreen(x,y,w,h,bg);
+		return 0;
+	}
+	lua_pushliteral(L,"fb_drawrect: no display.");
+	lua_error(L);
+	return 0;
+}
+
+
+static int luax_fb_commit(lua_State *L)
+{
+	if (MatrixDisplay *md = Ctx->disp->toMatrixDisplay()) {
+		md->commitOffScreen();
+		return 0;
+	}
+	lua_pushliteral(L,"fb_drawrect: no display.");
+	lua_error(L);
+	return 0;
+}
+
+
 static const LuaFn FbFunctions[] = {
 	{ "fb_drawrect", luax_fb_drawrect, "draw rectangle" },
 	{ "fb_drawtext", luax_fb_drawtext, "draw text string" },
@@ -754,6 +816,10 @@ static const LuaFn FbFunctions[] = {
 	{ "fb_setbgcol", luax_fb_setbgcol, "set background color" },
 	{ "fb_setfgcol", luax_fb_setfgcol, "set foreground color" },
 	{ "fb_setfont", luax_fb_setfont, "set font" },
+	{ "fb_drawicon", luax_fb_drawicon, "draw icon" },
+	{ "fb_flush", luax_fb_flush, "flush to display" },
+	{ "fb_offscreen", luax_fb_offscreen, "setup off-screen area" },
+	{ "fb_commit", luax_fb_commit, "commit off-screen area" },
 	{ 0, 0, 0 },
 };
 

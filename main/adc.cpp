@@ -35,7 +35,7 @@
 #include <esp_adc/adc_cali_scheme.h>
 #ifdef CONFIG_CORETEMP
 #include <driver/temperature_sensor.h>
-#include <hal/adc_ll.h>
+//#include <hal/adc_ll.h>
 #include <hal/temperature_sensor_ll.h>
 #include <soc/temperature_sensor_periph.h>
 #endif
@@ -195,6 +195,114 @@ typedef adc_bitwidth_t adc_bits_width_t;
 static adc_bits_width_t U2Width = DEFAULT_ADC_WIDTH;
 #endif
 
+
+static void adc_sample_cb(void *arg)
+{
+	AdcSignal *s = (AdcSignal*)arg;
+	int sample = 0;
+	assert(s);
+#if IDF_VERSION >= 50
+	int raw;
+	if (esp_err_t e = adc_oneshot_read(s->hdl, s->channel, &raw)) {
+		log_warn(TAG,"reading ADC%u,%u: %s",s->unit,s->channel,esp_err_to_name(e));
+		return;
+	}
+	sample = raw;
+#else
+	if (s->unit == 1) {
+		sample = adc1_get_raw((adc1_channel_t)s->channel);
+	} else if (s->unit == 2) {
+		if (esp_err_t e = adc2_get_raw((adc2_channel_t)s->channel,U2Width,&sample)) {
+			log_warn(TAG,"error reading adc2, channel %u, bits %u: %s",s->channel,U2Width,esp_err_to_name(e));
+			return;
+		}
+	}
+#endif
+	if (s->ringbuf) {
+		s->ringbuf->put(sample);
+		float a = s->ringbuf->avg();
+		log_dbug(TAG,"sample %s: %u, average %f, sum %u",s->name(),sample,a,s->ringbuf->sum());
+		s->set(a);
+	} else {
+		log_dbug(TAG,"sample %s: %u",s->name(),sample);
+		s->set(sample);
+	}
+}
+
+
+static AdcSignal *getAdc(const char *arg)
+{
+	char *e;
+	long l = strtol(arg,&e,0);
+	if (e == arg) {
+		unsigned x = 0;
+		AdcSignal *s = Adcs[x];
+		while (s && strcmp(s->name(),arg)) {
+			++x;
+			if (x == NumAdc)
+				return 0;
+			s = Adcs[x];
+		}
+		return s;
+	} else if ((l < 0) || (l >= NumAdc)) {
+		return 0;
+	}
+	return Adcs[l];
+}
+
+
+#ifdef CONFIG_LUA
+static int luax_adc_get_raw(lua_State *L)
+{
+	// adc_get(name)
+	const char *name = luaL_checkstring(L,1);
+	AdcSignal *adc = getAdc(name);
+	if (adc == 0) {
+		lua_pushliteral(L,"Invalid argument #1.");
+		lua_error(L);
+	}
+	lua_pushnumber(L,adc->raw.get());
+	return 1;
+}
+
+
+static int luax_adc_get_volt(lua_State *L)
+{
+	// adc_get(name)
+	const char *name = luaL_checkstring(L,1);
+	AdcSignal *adc = getAdc(name);
+	if (adc == 0) {
+		lua_pushliteral(L,"Invalid argument #1.");
+		lua_error(L);
+	}
+	lua_pushnumber(L,adc->volt.get());
+	return 1;
+}
+
+
+static int luax_adc_sample(lua_State *L)
+{
+	// adc_get(name)
+	const char *name = luaL_checkstring(L,1);
+	AdcSignal *adc = getAdc(name);
+	if (adc == 0) {
+		lua_pushliteral(L,"Invalid argument #1.");
+		lua_error(L);
+	}
+	adc_sample_cb(adc);
+	return 0;
+}
+
+
+static LuaFn Functions[] = {
+	{ "adc_get_raw", luax_adc_get_raw, "get raw value of last ADC sample (name)" },
+	{ "adc_get_volt", luax_adc_get_volt, "get voltage value from last  ADC sample (name)" },
+	{ "adc_get_sample", luax_adc_sample, "get a sample from ADC (name)" },
+	{ 0, 0, 0 }
+};
+#endif
+
+
 //#if IDF_VERSION < 50 && defined CONFIG_IDF_TARGET_ESP32
 #if defined CONFIG_IDF_TARGET_ESP32
 
@@ -253,40 +361,6 @@ const char *hall(Terminal &term, int argc, const char *args[])
 #endif // CONFIG_IDF_TARGET_ESP32
 
 
-static void adc_sample_cb(void *arg)
-{
-	AdcSignal *s = (AdcSignal*)arg;
-	int sample = 0;
-	assert(s);
-#if IDF_VERSION >= 50
-	int raw;
-	if (esp_err_t e = adc_oneshot_read(s->hdl, s->channel, &raw)) {
-		log_warn(TAG,"reading ADC%u,%u: %s",s->unit,s->channel,esp_err_to_name(e));
-		return;
-	}
-	sample = raw;
-#else
-	if (s->unit == 1) {
-		sample = adc1_get_raw((adc1_channel_t)s->channel);
-	} else if (s->unit == 2) {
-		if (esp_err_t e = adc2_get_raw((adc2_channel_t)s->channel,U2Width,&sample)) {
-			log_warn(TAG,"error reading adc2, channel %u, bits %u: %s",s->channel,U2Width,esp_err_to_name(e));
-			return;
-		}
-	}
-#endif
-	if (s->ringbuf) {
-		s->ringbuf->put(sample);
-		float a = s->ringbuf->avg();
-		log_dbug(TAG,"sample %s: %u, average %f, sum %u",s->name(),sample,a,s->ringbuf->sum());
-		s->set(a);
-	} else {
-		log_dbug(TAG,"sample %s: %u",s->name(),sample);
-		s->set(sample);
-	}
-}
-
-
 static unsigned adc_cyclic_cb(void *arg)
 {
 	AdcSignal *s = (AdcSignal*)arg;
@@ -313,58 +387,15 @@ struct temperature_sensor_obj_t {
 #endif // SOC_TEMPERATURE_SENSOR_INTR_SUPPORT
 };
 
-static int8_t s_temperature_regval_2_celsius(temperature_sensor_handle_t tsens, uint8_t regval)
-{
-	return TEMPERATURE_SENSOR_LL_ADC_FACTOR * regval - TEMPERATURE_SENSOR_LL_DAC_FACTOR * tsens->tsens_attribute->offset - TEMPERATURE_SENSOR_LL_OFFSET_FACTOR;
-}
-// END of import from IDF private header for BUG workaround
-
-#if 0
-// IDF BUG workaround by NoNullptr from github
-static inline uint32_t temperature_sensor_ll_get_raw_value_bugfix(void)
-{
-	if (!SENS.sar_peri_clk_gate_conf.tsens_clk_en ||
-			!SENS.sar_tctrl2.tsens_xpd_force ||
-			!SENS.sar_tctrl.tsens_power_up_force ||
-			!SENS.sar_tctrl.tsens_power_up ||
-			!SENS.sar_tctrl.tsens_dump_out
-	   ) {
-s:              SENS.sar_peri_clk_gate_conf.tsens_clk_en = true;
-		SENS.sar_tctrl2.tsens_xpd_force = true;
-		SENS.sar_tctrl.tsens_power_up_force = true;
-		SENS.sar_tctrl.tsens_power_up = true;
-		vTaskDelay(pdMS_TO_TICKS(10));
-	}
-	SENS.sar_tctrl.tsens_dump_out = 1;
-	while (!SENS.sar_tctrl.tsens_ready) {
-		if (!SENS.sar_peri_clk_gate_conf.tsens_clk_en ||
-				!SENS.sar_tctrl2.tsens_xpd_force ||
-				!SENS.sar_tctrl.tsens_power_up_force ||
-				!SENS.sar_tctrl.tsens_power_up ||
-				!SENS.sar_tctrl.tsens_dump_out
-		   ) {
-			goto s;
-		}
-	}
-	SENS.sar_tctrl.tsens_dump_out = 0;
-	return SENS.sar_tctrl.tsens_out;
-}
-#endif
 
 static unsigned temp_cyclic(void *arg)
 {
 	PROFILE_FUNCTION();
-#if 0	// IDF still buggy?
-	uint32_t raw = temperature_sensor_ll_get_raw_value_bugfix();
-	EnvNumber *t = (EnvNumber *) arg;
-	t->set(s_temperature_regval_2_celsius(TSensHdl,raw));
-#else
 	float celsius;
 	if (0 == temperature_sensor_get_celsius(TSensHdl,&celsius)) {
 		EnvNumber *t = (EnvNumber *) arg;
 		t->set(celsius);
 	}
-#endif
 	return 200;
 }
 
@@ -380,11 +411,7 @@ void temp_sensor_setup()
 }
 
 
-#elif defined CONFIG_IDF_TARGET_ESP32C3
-// S2 support seems to be broken
-// S3 had trouble, too - what config is causing this issue?
-//#if defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
-//#if defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
+#elif defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
 static unsigned temp_cyclic(void *arg)
 {
 	float celsius;
@@ -410,27 +437,6 @@ void temp_sensor_setup()
 }
 #endif
 #endif // CONFIG_CORETEMP
-
-
-static AdcSignal *getAdc(const char *arg)
-{
-	char *e;
-	long l = strtol(arg,&e,0);
-	if (e == arg) {
-		unsigned x = 0;
-		AdcSignal *s = Adcs[x];
-		while (s && strcmp(s->name(),arg)) {
-			++x;
-			if (x == NumAdc)
-				return 0;
-			s = Adcs[x];
-		}
-		return s;
-	} else if ((l < 0) || (l >= NumAdc)) {
-		return 0;
-	}
-	return Adcs[l];
-}
 
 
 static const char *adc_print(Terminal &t, const char *arg)
@@ -517,6 +523,9 @@ adc_oneshot_unit_handle_t adc_get_unit_handle(adc_unit_t unit)
 
 void adc_setup()
 {
+#ifdef CONFIG_LUA
+	xlua_add_funcs("adc",Functions);
+#endif
 #ifdef CONFIG_CORETEMP
 	temp_sensor_setup();
 #endif
@@ -690,58 +699,6 @@ static const char *adc_sample(Terminal &term)
 	adc_sample_cb();
 	return adc_print(term);
 }
-
-
-#ifdef CONFIG_LUA
-static int luax_adc_get_raw(lua_State *L)
-{
-	// adc_get(name)
-	const char *name = luaL_checkstring(L,1);
-	AdcSignal *adc = getAdc(name);
-	if (adc == 0) {
-		lua_pushliteral(L,"Invalid argument #1.");
-		lua_error(L);
-	}
-	lua_pushnumber(L,adc->raw.get());
-	return 1;
-}
-
-
-static int luax_adc_get_volt(lua_State *L)
-{
-	// adc_get(name)
-	const char *name = luaL_checkstring(L,1);
-	AdcSignal *adc = getAdc(name);
-	if (adc == 0) {
-		lua_pushliteral(L,"Invalid argument #1.");
-		lua_error(L);
-	}
-	lua_pushnumber(L,adc->volt.get());
-	return 1;
-}
-
-
-static int luax_adc_sample(lua_State *L)
-{
-	// adc_get(name)
-	const char *name = luaL_checkstring(L,1);
-	AdcSignal *adc = getAdc(name);
-	if (adc == 0) {
-		lua_pushliteral(L,"Invalid argument #1.");
-		lua_error(L);
-	}
-	adc_sample_cb(adc);
-	return 0;
-}
-
-
-static LuaFn Functions[] = {
-	{ "adc_get_raw", luax_adc_get_raw, "get raw value of last ADC sample (name)" },
-	{ "adc_get_volt", luax_adc_get_volt, "get voltage value from last  ADC sample (name)" },
-	{ "adc_get_sample", luax_adc_sample, "get a sample from ADC (name)" },
-	{ 0, 0, 0 }
-};
-#endif
 
 
 int adc_setup()

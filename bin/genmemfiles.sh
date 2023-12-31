@@ -38,11 +38,12 @@ cat > $MEMFILES_H << EOF
 #define MEMFILES_H
 
 #ifdef CONFIG_IDF_TARGET_ESP8266
-#define ROMSTR __attribute__((section(".irom0.text.romstr")))
+#define ROMSTR __attribute__((section(".flash.text")))
 #else
 #define ROMSTR
 #endif
 
+#ifdef CONFIG_INTEGRATED_HELP
 EOF
 
 cat > $CMAKELISTS << EOF
@@ -55,26 +56,42 @@ for i in $MEMFILES; do
 	filename=`basename "$i"`
 	fn_nodot=`echo $filename | sed 's/\./_/g'`
 	cpp_file=`printf "%s.cpp" $fn_nodot`
-	if [ "$CONFIG_INTEGRATED_HELP" = "y" ]; then
-		size=`stat --printf='%s' $i`
-		printf "extern const char ROMSTR $fn_nodot""[];\n#define $fn_nodot""_len $size\n" >> $MEMFILES_H
-		test ! -e "$ldir/$cpp_file" -o "$file" -nt "$ldir/$cpp_file"
-		if [ "$?" == "0" ]; then
-			echo updating $ldir/$cpp_file
-			pushd `dirname $i`
-			xxd -i $filename "$ldir/$cpp_file"
-			popd > /dev/null
-			sed -i 's/unsigned char /#include "memfiles.h"\nconst char ROMSTR /;s/]/]/;s/^unsigned //;s/}/ ,0x00}/;s/int .*;//' "$ldir/$cpp_file"
-		fi
-		echo "	$filename" | sed 's/.man/_man.cpp/' >> $CMAKELISTS
-	else
-		echo "#define $fn_nodot 0" >> $MEMFILES_H
-		rm -f "$ldir/$cpp_file"
+	size=`stat --printf='%s' $i`
+	printf "extern const char ROMSTR $fn_nodot""[];\n#define $fn_nodot""_len $size\n" >> $MEMFILES_H
+	test ! -e "$ldir/$cpp_file" -o "$file" -nt "$ldir/$cpp_file"
+	if [ "$?" == "0" ]; then
+		echo updating $ldir/$cpp_file
+		cat << EOHEADER > "$ldir/$cpp_file"
+#include <sdkconfig.h>
+#include "memfiles.h"
+
+#ifdef CONFIG_INTEGRATED_HELP
+EOHEADER
+		pushd `dirname $i`
+		xxd -i "$filename" >> "$ldir/$cpp_file"
+		popd > /dev/null
+		sed -i 's/unsigned char/const char ROMSTR/;s/]/]/;s/^unsigned //;s/}/ ,0x00}/;s/int .*;//' "$ldir/$cpp_file"
+		cat << EOFOOTER >> "$ldir/$cpp_file"
+#else
+#define $fn_nodot 0
+#endif
+EOFOOTER
 	fi
+	echo "	$filename" | sed 's/.man/_man.cpp/' >> $CMAKELISTS
 	shift
 done
 
-printf "\n#endif" >> $MEMFILES_H
+printf "\n#else // no CONFIG_INTEGRATED_HELP\n\n" >> $MEMFILES_H
+
+for i in $MEMFILES; do
+	file="$i"
+	filename=`basename "$i"`
+	fn_nodot=`echo $filename | sed 's/\./_/g'`
+	printf "#define $fn_nodot 0\n#define ${fn_nodot}_len 0\n" >> $MEMFILES_H
+	shift
+done
+
+printf "\n\n#endif // CONFIG_INTEGRATED_HELP\n\n#endif\n" >> $MEMFILES_H
 printf ")\nregister_component()" >> $CMAKELISTS
 
 if [ -e "$ldir/memfiles.h" ]; then

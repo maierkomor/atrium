@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2022, Thomas Maier-Komor
+ *  Copyright (C) 2020-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -15,24 +15,6 @@
  *  You should have received a copy of the GNU General Public License
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
-#define CONFIG_BUTTON
-#define CONFIG_DHT
-#define CONFIG_DISPLAY
-#define CONFIG_HCSR04
-#define CONFIG_I2C
-#define CONFIG_LEDSTRIP
-#define CONFIG_MAX7219
-#define CONFIG_NIGHTSKY
-#define CONFIG_ONEWIRE
-#define CONFIG_RELAY
-
-#define CONFIG_APP_PARAMS
-#define CONFIG_FTP
-#define CONFIG_HTTP
-#define CONFIG_INFLUX
-#define CONFIG_MQTT
-#define CONFIG_SIGNAL_PROC
 
 #include "hwcfg.h"
 #include "swcfg.h"
@@ -1295,7 +1277,9 @@ int main(int argc, char **argv)
 	//rl_attempted_completion_function = completion_function;
 	for (;;) {
 		char *line = readline("> ");
-		if ((line == 0) || (line[0] == '#'))
+		if (line == 0)
+			break;
+		if ((line[0] == 0) || (line[0] == '#'))
 			continue;
 		add_history(line);
 		char *cmd = strtok(line," \t");

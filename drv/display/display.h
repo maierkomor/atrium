@@ -21,6 +21,8 @@
 
 #include "ledcluster.h"
 #include "fonts.h"
+#include "support.h"
+#include <map>
 
 class MatrixDisplay;
 class SegmentDisplay;
@@ -37,6 +39,22 @@ typedef enum colorspace_e
 
 #define COLOR_DEFAULT -1
 #define COLOR_NONE -2
+
+typedef enum image_e
+{
+	img_invalid = 0,
+	img_pgm,		// portable graymap
+	img_pbm,		// portable bitmap
+	img_ppm,		// portable bixmap
+	img_obm,		// oled bitmap
+} image_t;
+
+struct Image
+{
+	uint16_t w,h;
+	uint8_t *data;
+	image_t type;
+};
 
 
 uint8_t charToGlyph(char c);
@@ -206,6 +224,7 @@ struct MatrixDisplay : public TextDisplay
 	virtual void drawVLine(uint16_t x0, uint16_t y0, uint16_t len, int32_t col = -1);
 	virtual unsigned drawText(uint16_t x, uint16_t y, const char *txt, int n = -1, int32_t fg = -1, int32_t bg = -1);
 	virtual unsigned drawChar(uint16_t x, uint16_t y, char c, int32_t fg, int32_t bg);
+	virtual void drawIcon(uint16_t x0, uint16_t y0, const char *fn, int32_t fg);
 
 	unsigned textWidth(const char *, int font = -1);
 
@@ -237,12 +256,21 @@ struct MatrixDisplay : public TextDisplay
 	void clear() override;
 	void write(const char *txt, int n = -1) override;
 
+	virtual int32_t rgb24_to_native(uint32_t rgb) const
+	{ return rgb; }
+
 #if 0	// TODO
 	void setClipping(uint16_t xl, uint16_t xh, uint16_t yl, uint16_t yh)
 	{ m_clxl = xl; m_clxh = xh; m_clyl = yl; m_clyh = yh; }
 #endif
 
 	protected:
+	Image *openIcon(const char *fn);
+	virtual void drawPbm(uint16_t x0, uint16_t y, uint16_t w, uint16_t h, uint8_t *data, int32_t fg);
+	virtual void drawPgm(uint16_t x0, uint16_t y, uint16_t w, uint16_t h, uint8_t *data, int32_t fg);
+	virtual void drawPpm(uint16_t x0, uint16_t y, uint16_t w, uint16_t h, uint8_t *data);
+	virtual void drawObm(uint16_t x0, uint16_t y, uint16_t w, uint16_t h, uint8_t *data, int32_t fg);
+	Image *importImage(const char *fn, uint8_t *data, size_t s);
 //	int writeChar(uint16_t x, uint16_t y, char c);
 
 #if 0	// TODO
@@ -250,6 +278,7 @@ struct MatrixDisplay : public TextDisplay
 	uint16_t m_clxl = 0, m_clxh = 0xffff, m_clyl = 0, m_clyh = 0xffff;
 #endif
 	Font *m_font = 0;
+	std::map<const char *,Image,CStrLess> m_images;
 	colorspace_t m_colorspace;
 	int32_t m_colfg, m_colbg;
 };

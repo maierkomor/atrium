@@ -85,6 +85,12 @@ class EnvElement
 	EnvObject *getParent() const
 	{ return m_parent; }
 
+	bool skip() const
+	{ return m_skip; }
+
+	void setSkip(bool s = true)
+	{ m_skip = s; }
+
 	protected:
 	explicit EnvElement(const char *n, const char *dim = 0);
 
@@ -92,6 +98,7 @@ class EnvElement
 	char *m_dim;
 	friend class EnvObject;
 	EnvObject *m_parent = 0;
+	bool m_skip = false;
 
 	private:
 	EnvElement(const EnvElement &);		// intentionally not supported

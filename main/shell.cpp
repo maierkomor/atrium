@@ -1404,6 +1404,8 @@ static const char *wifi(Terminal &term, int argc, const char *args[])
 		return "Invalid argument #1.";
 	if (ESP_OK != esp_wifi_set_mode(m)) {
 		term.println("error changing wifi mode");
+	} else if (m == WIFI_MODE_NULL) {
+		esp_wifi_stop();
 	}
 	return 0;
 }
@@ -2699,8 +2701,10 @@ const char *shellexe(Terminal &term, char *cmd)
 		return 0;
 	log_info(TAG,"on %s execute '%s'",term.type(),cmd);
 	char *args[8];
+	/* space trimming is done in shell()
 	while ((*cmd == ' ') || (*cmd == '\t'))
 		++cmd;
+	*/
 #ifdef CONFIG_LUA
 	if ((0 == memcmp("lua",cmd,3)) && ((cmd[3] == ' ') || (cmd[3] == '\t')))
 		return xlua_exe(term,cmd+4);
@@ -2824,11 +2828,11 @@ void shell(Terminal &term, bool prompt)
 		if ((r < 0) || ((r == 4) && !memcmp(at,"exit",4)))
 			return;
 		const char *msg = 0;
-		if (com[0] == '#') {
+		if (at[0] == '#') {
 		} else if (r > 0) {
 			term.println();
-			com[r] = 0;
-			msg = shellexe(term,com);
+			at[r] = 0;
+			msg = shellexe(term,at);
 			if (msg == 0)
 				msg = "OK.";
 		}

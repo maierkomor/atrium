@@ -204,15 +204,12 @@ void relay_setup()
 		}
 #endif
 		
-		if (Relay *r = Relay::create(n,(xio_t)gpio,itv,c.config_active_high())) {
+		bool p = c.config_persistent();
+		bool iv = c.config_init_on();
+		if (Relay *r = Relay::create(n,(xio_t)gpio,itv,c.config_active_high(),iv,p)) {
 #ifdef CONFIG_MQTT
 			r->setCallback(relay_callback);
 #endif
-			bool iv = c.config_init_on();
-			if (c.config_persistent()) {
-				r->setPersistent(true);
-				iv = nvm_read_u8(n,iv);
-			}
 			r->attach(RTData);
 			log_info(TAG,"relay '%s' at gpio%d init %d",n,gpio,(int)iv);
 			r->set(iv);

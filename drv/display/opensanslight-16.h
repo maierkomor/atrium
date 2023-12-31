@@ -200,7 +200,7 @@ const GFXglyph SansLight16Glyphs[] = {
 	  {   975,   2,  17,  10,    4,  -13 }, // '|'
 	  {   980,   6,  15,   7,    1,  -12 }, // '}'
 	{ 992, 8, 2, 10, 0, -7 },		// ~
-	{ 994, 8, 4, 8, 2, -13 },		// degree
+	{ 994, 8, 4, 8, 0, -13 },		// degree
 };
 
 GFXfont SansLight16 = {"SansLight16",

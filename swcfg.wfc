@@ -31,10 +31,11 @@ option pc : common {
 	toSink="";
 	toASCII=toASCII;
 	optimize=speed;
-	header="pcconfig.h";
+	//header="pcconfig.h";
 	header="support.h";
 	enumnames=true;
 	enummap=true;
+	cfgdefs=all;
 }
 
 option esp : common {

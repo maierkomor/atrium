@@ -30,10 +30,11 @@ option pc : common {
 	toSink="";
 	toASCII=toASCII;
 	optimize=speed;
-	header="pcconfig.h";
+	//header="pcconfig.h";
 	header="support.h";
 	enumnames=true;
 	enummap=true;
+	cfgdefs=all;
 }
 
 option esp : common {
@@ -356,7 +357,7 @@ message AdcConfig
 	uint8 clk_div = 5;	// esp8266 only
 
 	// name of hall sensor
-	string hall_name = 6;
+	string hall_name = 6	[ ifdef=CONFIG_IDF_TARGET_ESP32 ];
 
 	repeated AdcChannel channels = 7;
 }
@@ -421,6 +422,7 @@ message DisplayConfig
 	unsigned options = 2	[ default = 0 ];
 	unsigned maxx = 3;
 	unsigned maxy = 4	[ default = 1 ];
+	repeated string skip_env = 5;
 }
 
 

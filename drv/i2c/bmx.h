@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2022, Thomas Maier-Komor
+ *  Copyright (C) 2018-2023, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -19,10 +19,9 @@
 #ifndef BMXDRV_H
 #define BMXDRV_H
 
-#include "i2cdrv.h"
 #include "bme680.h"
-
-class EnvNumber;
+#include "env.h"
+#include "i2cdrv.h"
 
 
 struct BMP280 : public I2CDevice
@@ -48,7 +47,7 @@ struct BMP280 : public I2CDevice
 	virtual void handle_error();
 	static unsigned cyclic(void *);
 
-	EnvNumber *m_temp = 0, *m_press = 0;
+	EnvNumber m_temp, m_press;
 	uint16_t T1 = 0;
 	int16_t T2 = 0, T3 = 0;
 	uint16_t P1 = 0;
@@ -86,7 +85,7 @@ struct BME280 : public BMP280
 	int read();
 	void handle_error();
 
-	EnvNumber *m_humid = 0;
+	EnvNumber m_humid;
 	int16_t H2 = 0, H4 = 0, H5 = 0;
 	int8_t H3 = 0, H6 = 0;
 };
@@ -94,9 +93,7 @@ struct BME280 : public BMP280
 
 struct BME680 : public I2CDevice
 {
-	BME680(uint8_t port, uint8_t addr)
-	: I2CDevice(port,addr,drvName())
-	{ }
+	BME680(uint8_t port, uint8_t addr);
 
 	const char *drvName() const
 	{ return "bme680"; }
@@ -110,7 +107,7 @@ struct BME680 : public I2CDevice
 	static unsigned cyclic(void *);
 	static void trigger(void *);
 
-	EnvNumber *m_temp = 0, *m_press = 0, *m_humid = 0, *m_gas = 0;
+	EnvNumber m_temp, m_press, m_humid, m_gas;
 	bme680_dev m_dev;
 	typedef enum { st_idle, st_sample, st_read, st_error } state_t;
 	state_t m_state = st_idle;

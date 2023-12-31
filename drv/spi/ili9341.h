@@ -69,11 +69,16 @@ class ILI9341 : public MatrixDisplay, public SpiDevice
 	static ILI9341 *getInstance()
 	{ return Instance; }
 
+	int32_t rgb24_to_native(uint32_t rgb) const override;
+
 	void drawHLine(uint16_t x, uint16_t y, uint16_t n, int32_t col = -1) override;
 	void drawVLine(uint16_t x, uint16_t y, uint16_t n, int32_t col = -1) override;
 //	unsigned drawText(uint16_t x, uint16_t y, const char *txt, int n, int32_t fg, int32_t bg) override;
 	int setupOffScreen(uint16_t x, uint16_t y, uint16_t w, uint16_t h, int32_t bg) override;
 	void commitOffScreen() override;
+
+	protected:
+	void drawPpm(uint16_t x0, uint16_t y, uint16_t w, uint16_t h, uint8_t *data) override;
 
 	private:
 	ILI9341(uint8_t cs, uint8_t cd, int8_t r, SemaphoreHandle_t sem, spi_device_handle_t hdl);
@@ -97,6 +102,7 @@ class ILI9341 : public MatrixDisplay, public SpiDevice
 	void checkPowerMode();
 	unsigned drawChars(const char *at, const char *e, int32_t fg, int32_t bg);
 	void drawBitmapOffScr(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t *data, int32_t fg, int32_t bg);
+	//void drawPgm(uint16_t x0, uint16_t y, uint16_t w, uint16_t h, uint8_t *data, int32_t fg) override;
 
 	static int readRegs(spi_device_handle_t hdl, uint8_t reg, uint8_t num, uint8_t *data, SemaphoreHandle_t);
 	spi_transaction_t *getTransaction(preop_t);

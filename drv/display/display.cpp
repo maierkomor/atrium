@@ -19,11 +19,18 @@
 #include "display.h"
 #include "log.h"
 #include "profiling.h"
+#include "romfs.h"
 
+#include <fcntl.h>
 #include <math.h>
-
+#include <stdio.h>
+//#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #define TAG MODULE_DISP
+
+using namespace std;
 
 
 static const uint8_t Circle[] = {
@@ -489,6 +496,230 @@ void MatrixDisplay::drawBitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, c
 			++idx;
 		}
 	}
+}
+
+
+static int32_t grayScale(int32_t col, uint8_t a)
+{
+	if (a == 0)
+		return 0;
+	if (a == 0xff)
+		return col;
+	uint8_t r = col & 0xff, g = (col >> 8) & 0xff, b = (col >> 16) & 0xff;
+	while ((a & 0x80) == 0) {
+		r >>= 1;
+		g >>= 1;
+		b >>= 1;
+		a <<= 1;
+	}	
+	return (b << 16) | (g << 8) | r;
+}
+
+
+void MatrixDisplay::drawPgm(uint16_t x0, uint16_t y, uint16_t w, uint16_t h, uint8_t *data, int32_t fg)
+{
+	log_dbug(TAG,"draw pgm %ux%u@%u,%u",w,h,x0,y);
+	uint16_t ye = y+h, xe = x0+w;
+	while (y < ye) {
+		for (uint16_t x = x0; x < xe; ++x) {
+			uint8_t g = *data;
+			if (0xff == g)
+				setPixel(x,y,fg);
+			else if (g)
+				setPixel(x,y,grayScale(fg,g));
+			++data;
+		}
+		++y;
+	}
+}
+
+
+void MatrixDisplay::drawPbm(uint16_t x0, uint16_t y, uint16_t w, uint16_t h, uint8_t *data, int32_t fg)
+{
+	log_dbug(TAG,"draw pbm %ux%u@%u,%u",w,h,x0,y);
+	uint8_t byte = *data;
+	unsigned off = 0;
+	uint16_t ye = y+h;
+	while (y < ye) {
+		for (uint16_t x = x0; x < x0+w; ++x) {
+			if (byte&0x80)
+				setPixel(x,y,fg);
+			byte <<= 1;
+			++off;
+			if ((off & 7) == 0) {
+				++data;
+				byte = *data;
+			}
+		}
+		if (off&7) {
+			++data;
+			byte = *data;
+			off = 0;
+		}
+		++y;
+	}
+	//drawBitmap(x0,y,w,h,data,fg,-1);
+}
+
+
+void MatrixDisplay::drawPpm(uint16_t x0, uint16_t y, uint16_t w, uint16_t h, uint8_t *data)
+{
+	log_dbug(TAG,"draw ppm %ux%u@%u,%u",w,h,x0,y);
+	uint16_t ye = y+h;
+	while (y < ye) {
+		for (uint16_t x = x0; x < x0+w; ++x) {
+			uint32_t col = *data++;
+			col |= (*data++) << 8;
+			col |= (*data++) << 16;
+			setPixel(x,y,rgb24_to_native(col));
+		}
+		++y;
+	}
+}
+
+
+// OLED bitmap with 8 bit vertical, arranged horizontal
+void MatrixDisplay::drawObm(uint16_t x0, uint16_t y, uint16_t w, uint16_t h, uint8_t *data, int32_t fg)
+{
+	uint8_t byte = *data;
+	unsigned off = 0;
+	uint16_t ye = y+h;
+	while (y < ye) {
+		for (uint16_t x = x0; x < x0+w; ++x) {
+			if (byte&1)
+				setPixel(x,y,fg);
+			byte >>= 1;
+			++off;
+			if ((off & 7) == 0)
+				byte = *data++;
+		}
+		y += 8;
+	}
+}
+
+
+void MatrixDisplay::drawIcon(uint16_t x0, uint16_t y0, const char *fn, int32_t fg)
+{
+	if (Image *i = openIcon(fn)) {
+		log_dbug(TAG,"draw icon %s",fn);
+		switch (i->type) {
+		case img_pbm:
+			drawPbm(x0,y0,i->w,i->h,i->data,fg);
+			break;
+		case img_pgm:
+			drawPgm(x0,y0,i->w,i->h,i->data,fg);
+			break;
+		case img_ppm:
+			drawPpm(x0,y0,i->w,i->h,i->data);
+			break;
+		case img_obm:
+			drawObm(x0,y0,i->w,i->h,i->data,fg);
+			break;
+		default:
+			return;
+		}
+	} else {
+		log_warn(TAG,"failed to open icon %s",fn);
+	}
+}
+
+
+Image *MatrixDisplay::importImage(const char *fn, uint8_t *data, size_t s)
+{
+	if (data[0] == 'P') {
+		unsigned typ, w, h, n0, depth = 0, n1 = 0;
+		int c = sscanf((char*)data+1,"%u%u%u%n%u%n",&typ,&w,&h,&n0,&depth,&n1);
+		if (3 > c) {
+			log_warn(TAG,"invalid format of %s",fn);
+			return 0;
+		}
+		Image i;
+		i.w = w;
+		i.h = h;
+		if (typ == 4) {
+			log_dbug(TAG,"%s is PBM",fn);
+			if ((w*h) > ((s-2-n0)<<3)) {
+				log_warn(TAG,"data in %s is truncated",fn);
+				return 0;
+			}
+			i.data = data+n0+2;
+			i.type = img_pbm;
+		} else if (typ == 9) {
+			log_dbug(TAG,"%s is OBM",fn);
+			i.data = data+2+n0;
+			i.type = img_obm;
+		} else if (4 > c) {
+			log_warn(TAG,"invalid format of %s",fn);
+			return 0;
+		} else if (typ == 5) {
+			if (depth != 255) {
+				log_warn(TAG,"unsupported color depth");
+				return 0;
+			}
+			if (w*h > s-2-n1) {
+				log_warn(TAG,"data in %s is truncated",fn);
+				return 0;
+			}
+			i.data = data+s-(w*h);
+			log_dbug(TAG,"%s is PGM",fn);
+			i.type = img_pgm;
+		} else if (typ == 6) {
+			if (depth != 255) {
+				log_warn(TAG,"unsupported color depth");
+				return 0;
+			}
+			if (w*h*3 > s-2-n1) {
+				log_warn(TAG,"data in %s is truncated",fn);
+				return 0;
+			}
+			i.data = data+s-(w*h*3);
+			log_dbug(TAG,"%s is PPM",fn);
+			i.type = img_ppm;
+		} else {
+			log_warn(TAG,"unsupported format of %s",fn);
+			return 0;
+		}
+		auto x = m_images.insert(make_pair(strdup(fn),i));
+		return &x.first->second;
+	}
+	return 0;
+}
+
+
+Image *MatrixDisplay::openIcon(const char *fn)
+{
+	auto x = m_images.find(fn);
+	if (x != m_images.end())
+		return &x->second;
+#if defined CONFIG_ROMFS && defined ESP32
+	int rfd = romfs_open(fn);
+	if (rfd != -1) {
+		if (uint8_t *data = (uint8_t *) romfs_mmap(rfd))
+			return importImage(fn,data,romfs_size_fd(rfd));
+	}
+#endif
+	int fd = open(fn,O_RDONLY);
+	if (fd == -1) {
+		log_warn(TAG,"unable to open %s",fn);
+		return 0;
+	}
+	struct stat st;
+	if (-1 == fstat(fd,&st)) {
+		log_warn(TAG,"failed to stat %s",fn);
+		return 0;
+	}
+	if (uint8_t *data = (uint8_t *) malloc(st.st_size)) {
+		int n = read(fd,data,st.st_size);
+		if (n == st.st_size) {
+			close(fd);
+			return importImage(fn,data,st.st_size);
+		}
+		log_warn(TAG,"failed to read %s",fn);
+	} else {
+		log_warn(TAG,"unable alloc for %s",fn);
+	}
+	close(fd);
+	return 0;
 }
 
 

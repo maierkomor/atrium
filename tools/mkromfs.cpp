@@ -439,7 +439,7 @@ int main(int argc, char *argv[])
 			printf("warning: ignoring duplicate entry name '%s' (file %s)\n",ename,fname);
 			continue;
 		}
-		check_exit(strlen(ename)>(M32 ? 15 : 11),"filename '%s' is too long\n",ename);
+		check_exit(strlen(ename)>(M32 ? 23 : 11),"filename '%s' is too long\n",ename);
 	}
 	unsigned idx = 0;
 	for (auto x : entries) {

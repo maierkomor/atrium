@@ -14,7 +14,6 @@ idf_component_register(
 	globals.cpp
 	gpios.cpp
 	httpd.cpp
-	hwcfg.cpp
 	HttpReq.cpp
 	HttpResp.cpp
 	HttpServer.cpp
@@ -37,8 +36,6 @@ idf_component_register(
 	spi.cpp
 	startup.cpp
 	statemach.cpp
-	support.cpp
-	swcfg.cpp
 	syslog.cpp
 	telnet.cpp
 	touchpads.cpp
@@ -46,7 +43,6 @@ idf_component_register(
 	udpctrl.cpp
 	usb.cpp
 	webcam.cpp
-	wfccore.cpp
 	wifi.cpp
 
 	REQUIRES
@@ -54,4 +50,4 @@ idf_component_register(
 	hc-sr04 hlw8012 i2c logging lua max7219 memfiles onewire relay
 	spi timefuse tlc5947 wpa_supplicant ws8212b espcoredump vfs
 	spi_flash esp_hw_support esp_adc esp_netif esp_rom esp_rom
-	esp_wifi mbedtls)
+	esp_wifi mbedtls wfc)

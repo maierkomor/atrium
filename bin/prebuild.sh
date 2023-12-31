@@ -44,4 +44,3 @@ ln -s -f build.$PROJECT build || exit 1
 export COMPONENT_PATH=`pwd`/main
 bash bin/mkversion.sh main/versions.h || exit 1
 bash bin/genmemfiles.sh || exit 1
-bash bin/link_wfc.sh || exit 1

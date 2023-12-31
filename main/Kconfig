@@ -247,8 +247,8 @@ config GPIOS
 
 config CORETEMP
 	bool "core temperature sensor"
+	depends on SOC_TEMP_SENSOR_SUPPORTED
 	default false
-	depends on DEVEL
 	help
 		Core temperature sensor support is buggy in the IDF. 
 		Workarounds are applied, but may cause build failures.

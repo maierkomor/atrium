@@ -31,7 +31,7 @@
 class Relay
 {
 	public:
-	static Relay *create(const char *, xio_t gpio, uint32_t minitv, bool onlvl);
+	static Relay *create(const char *, xio_t gpio, uint32_t minitv, bool onlvl, bool init, bool pers);
 
 	void attach(class EnvObject *);
 	void set(bool);
@@ -74,7 +74,7 @@ class Relay
 
 
 	private:
-	Relay(const char *, xio_t gpio, uint32_t minitv, bool onlvl);
+	Relay(const char *, xio_t gpio, uint32_t minitv, bool onlvl, bool init, bool pers);
 	static void timerCallback(TimerHandle_t h);
 	void sync();
 
@@ -89,7 +89,7 @@ class Relay
 		, m_minitv = 0;		// minimum toggle interval
 	xio_t m_gpio;
 	event_t m_onev = 0, m_offev = 0, m_changedev = 0;
-	bool m_state = false, m_set = false, m_persistent = false, m_onlvl;
+	uint8_t m_state = 2, m_set = 0, m_persistent = false, m_onlvl;
 };
 
 #endif

@@ -556,7 +556,64 @@ void ILI9341::drawBitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const u
 			++idx;
 		}
 	}
+}
 
+
+/*
+void ILI9341::drawPgm(uint16_t x0, uint16_t y, uint16_t w, uint16_t h, uint8_t *data, int32_t fg)
+{
+	uint16_t ye = y+h, xe = x0+w;
+	while (y < ye) {
+		for (uint16_t x = x0; x < xe; ++x) {
+			uint8_t g = *data;
+			if (0xff == g)
+				setPixel(x,y,fg);
+			else if (g)
+				setPixel(x,y,grayScale(fg,g));
+			++data;
+		}
+		++y;
+	}
+}
+*/
+
+
+int32_t ILI9341::rgb24_to_native(uint32_t rgb) const
+{
+//	blue : 0xfe00
+//	red  : 0x00f0
+//	green: 0x000f
+	uint8_t r = rgb >> 20, g = (rgb >> 12) & 0xf, b = (rgb >> 1) & 0x7f;
+	uint32_t x = (r << 4) | g | (b << 9);
+//	con_printf("%06x => %04x\n",rgb,x);
+	return x;
+}
+
+
+void ILI9341::drawPpm(uint16_t x0, uint16_t y, uint16_t w, uint16_t h, uint8_t *data)
+{
+	log_dbug(TAG,"draw ppm %ux%u@%u,%u",w,h,x0,y);
+	uint16_t ye = y+h;
+	while (y < ye) {
+		for (uint16_t x = x0; x < x0+w; ++x) {
+#if 0
+			uint32_t col = *data << 16;
+			++data;
+			col |= *data << 8;
+			++data;
+			col |= *data;
+			++data;
+			setPixel(x,y,rgb24_to_native(col));
+#else
+			uint8_t r = (*data++) >> 4;
+			uint8_t g = (*data++) >> 4;
+			uint8_t b = (*data++) & 0x7f;
+			uint32_t col = (r << 4) | g | (b << 9);
+			setPixel(x,y,col);
+#endif
+		}
+		++y;
+	}
 }
 
 
@@ -611,7 +668,7 @@ int32_t ILI9341::getColor(color_t c) const
 	case BLACK:	return 0x0000;
 	case BLUE:	return 0xfc00;
 	case RED:	return 0x03c0;
-	case GREEN:	return 0x007f;
+	case GREEN:	return 0x003f;
 //	case PURPLE:	return 0xffc0;
 	case YELLOW:	return 0x03ff;
 	case CYAN:	return 0xfc7f;

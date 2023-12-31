@@ -173,6 +173,12 @@ struct XioCluster
 	virtual int set_intr_b(xio_t)
 	{ return -1; }
 
+	virtual int hold(uint8_t io)
+	{ return -1; }
+
+	virtual int unhold(uint8_t io)
+	{ return -1; }
+
 //	virtual int intr_enable(uint8_t)
 //	{ return -1; }
 
@@ -224,6 +230,8 @@ int xio_set_hi(xio_t x);
 int xio_set_lo(xio_t x);
 int xio_set_lvl(xio_t x, xio_lvl_t l);
 int xio_set_intr(xio_t x, xio_intrhdlr_t h, void *arg);
+int xio_hold(xio_t x);
+int xio_unhold(xio_t x);
 //int xio_intr_enable(xio_t x);
 //int xio_intr_disable(xio_t x);
 event_t xio_get_fallev(xio_t x);
@@ -248,6 +256,8 @@ event_t xio_get_riseev(xio_t x);
 #define xio_intr_disable gpio_intr_disable
 #define xio_get_fallev(x) 0
 #define xio_get_riseev(x) 0
+#define xio_hold(x)	{}
+#define xio_unhold(x)	{}
 int xio_config(xio_t x, xio_cfg_t c);
 
 #endif // CONFIG_IOEXTENDERS

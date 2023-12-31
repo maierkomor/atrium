@@ -91,7 +91,6 @@ fi
 
 eval `python3 $IDF_PATH/tools/idf_tools.py export`
 
-bash bin/link_wfc.sh || exit 1
 bin/genmemfiles.sh || exit 1
 bin/mkversion.sh main/versions.h || exit 1
 
@@ -107,16 +106,14 @@ elif  [ "$CONFIG_IDF_TARGET_ESP32C6" == "y" ]; then
 	IDF_TARGET=esp32c6
 fi
 
+export WFC_TARGET=$CONFIG_WFC_TARGET
+export CONFIG_WFC_TARGET
 ATRIUM_VER=`cat "$BUILD_DIR/version.txt"`
 
 export TIMESTAMP=`date +%s`
 
 if [ "$2" != "" ]; then
-	#$IDF_PY -B "$BUILD_DIR" -DIDF_TARGET=$IDF_TARGET -DSDKCONFIG=$SDKCONFIG -DFWCFG="$FWCFG" "-DPROJECT_VER=$ATRIUM_VER" $2
 	$IDF_PY -B "$BUILD_DIR" -DIDF_TARGET=$IDF_TARGET -DSDKCONFIG=$SDKCONFIG "-DPROJECT_VER=$ATRIUM_VER" $2
-	#$IDF_PY -B "$BUILD_DIR" $2
 else
-	#$IDF_PY -B "$BUILD_DIR" -DIDF_TARGET=$IDF_TARGET -DSDKCONFIG=$SDKCONFIG -DFWCFG="$FWCFG" "-DPROJECT_VER=$ATRIUM_VER" build
 	$IDF_PY -B "$BUILD_DIR" -DIDF_TARGET=$IDF_TARGET -DSDKCONFIG=$SDKCONFIG "-DPROJECT_VER=$ATRIUM_VER" build
-	#$IDF_PY -B "$BUILD_DIR" build
 fi

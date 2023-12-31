@@ -197,6 +197,26 @@ int xio_set_lvl(xio_t x, xio_lvl_t l)
 }
 
 
+int xio_hold(xio_t x)
+{
+//	log_dbug(TAG,"set_lo %u",x);
+	if (XioCluster *c = XioCluster::getCluster(x))
+		return c->hold(x-c->getBase());
+	log_warn(TAG,"hold: invalid io %u",x);
+	return -1;
+}
+
+
+int xio_unhold(xio_t x)
+{
+//	log_dbug(TAG,"set_lo %u",x);
+	if (XioCluster *c = XioCluster::getCluster(x))
+		return c->unhold(x-c->getBase());
+	log_warn(TAG,"unhold: invalid io %u",x);
+	return -1;
+}
+
+
 int xio_set_intr(xio_t x, xio_intrhdlr_t h, void *arg)
 {
 	log_dbug(TAG,"set intr xio%u",x);
