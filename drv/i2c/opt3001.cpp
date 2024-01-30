@@ -88,6 +88,8 @@ void OPT3001::addIntr(uint8_t gpio)
 	} else if (xio_set_intr(gpio,intrHandler,this)) {
 		log_warn(TAG,"add handler for gpio %u interrupt failed",gpio);
 	}
+#else
+	log_warn(TAG,"use of interrupt not compiled in");
 #endif
 }
 

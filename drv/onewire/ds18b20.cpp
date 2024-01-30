@@ -175,12 +175,12 @@ void DS18B20::read()
 		} else {
 			log_dbug(TAG,"CRC ok");
 		}
-		uint16_t v = ((uint16_t)(sp[1] & 0x7f) << 8) | (uint16_t)sp[0];
+		uint16_t v = ((uint16_t)(sp[1] & 0x07) << 8) | (uint16_t)sp[0];
 		if (v != 0x7fff) {
 			reset = false;
 			float f = v;
 			if (sp[1] & 0xf8)
-				f *= -1;
+				f -= 2048;
 			f *= 0.0625;
 			if (m_json)
 				m_json->set(f);

@@ -172,7 +172,6 @@ void SSD1306::flush()
 
 SSD1306 *SSD1306::create(uint8_t bus, uint8_t addr)
 {
-	addr <<= 1;
 	uint8_t cmd[] = { (uint8_t)addr, CMD_NOP };
 	if (0 == i2c_write(bus,cmd,sizeof(cmd),1,1)) {
 		return new SSD1306(bus,addr);
@@ -196,7 +195,7 @@ static int ssd1306_test(uint8_t bus, uint8_t addr)
 unsigned ssd1306_scan(uint8_t bus)
 {
 	log_dbug(TAG,"searching for SSD1306");
-	uint8_t addrs[] = { 0x3c, 0x3d };
+	uint8_t addrs[] = { 0x3c<<1, 0x3d<<1 };
 	for (uint8_t addr : addrs) {
 		if (ssd1306_test(bus,addr<<1))
 			return 1;

@@ -53,7 +53,6 @@ BH1750::BH1750(uint8_t b, uint8_t a)
 
 BH1750 *BH1750::create(uint8_t bus, uint8_t addr)
 {
-	addr <<= 1;
 	if ((addr != 0b10111000) && (addr != 0b01000110)) {
 		log_warn(TAG,"invalid address 0x%x",addr);
 		return 0;
@@ -272,9 +271,9 @@ int bh1750_scan(uint8_t bus)
 {
 	// auto-scan does not work reliable
 	unsigned ret = 0;
-	if (BH1750::create(bus,0b0100011))
+	if (BH1750::create(bus,0b01000110))
 		++ret;
-	if (BH1750::create(bus,0b1011100))
+	if (BH1750::create(bus,0b10111000))
 		++ret;
 	return ret;
 }

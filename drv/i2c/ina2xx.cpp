@@ -92,7 +92,6 @@ void INA219::attach(class EnvObject *root)
 
 INA219 *INA219::create(uint8_t bus, uint8_t addr)
 {
-	addr <<= 1;
 	log_info(TAG,"checking for INA219 at %d/0x%x",bus,addr);
 	uint8_t v[2];
 	if (addr) {

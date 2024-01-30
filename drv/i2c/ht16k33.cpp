@@ -58,7 +58,6 @@ void HT16K33::create(uint8_t bus, uint8_t addr)
 	} else if ((addr < DEV_ADDR_MIN) || (addr > DEV_ADDR_MAX)) {
 		log_warn(TAG,"invalid address 0x%x",(unsigned)addr);
 	} else {
-		addr <<= 1;
 		if (i2c_write1(bus,addr,CMD_SYS_ON)) {
 			log_warn(TAG,"no HT16k33 at %u,0x%x",bus,(unsigned)addr);
 		} else {

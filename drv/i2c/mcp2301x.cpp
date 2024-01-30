@@ -137,8 +137,7 @@ void MCP2301X::intrHandlerB(void *arg)
 
 MCP2301X *MCP2301X::create(uint8_t bus, uint8_t addr, int8_t inta, int8_t intb)
 {
-	addr |= 0x20;
-	addr <<= 1;
+	addr |= 0x40;
 	log_dbug(TAG,"seraching for device at %u/%x",bus,addr);
 	uint8_t data[16];
 	memset(data,0x55,sizeof(data));

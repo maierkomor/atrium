@@ -95,8 +95,7 @@ void MCP2300X::intrHandler(void *arg)
 
 MCP2300X *MCP2300X::create(uint8_t bus, uint8_t addr, int8_t inta)
 {
-	addr |= 0x20;
-	addr <<= 1;
+	addr |= 0x40;
 	log_dbug(TAG,"seraching for device at %u/%x",bus,addr);
 	uint8_t data[8];
 	memset(data,0x55,sizeof(data));

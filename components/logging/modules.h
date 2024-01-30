@@ -31,6 +31,7 @@ typedef enum logmod_e {
 	logmod_invalid = 0,
 	logmod_action,
 	logmod_adc,
+	logmod_ads1x,
 	logmod_alarms,
 	logmod_apds,
 	logmod_bh1750,
@@ -111,6 +112,7 @@ typedef enum logmod_e {
 // module defines
 #define MODULE_ACTION          logmod_action
 #define MODULE_ADC             logmod_adc
+#define MODULE_ADS1X           logmod_ads1x
 #define MODULE_ALARMS          logmod_alarms
 #define MODULE_APDS            logmod_apds
 #define MODULE_BH1750          logmod_bh1750
@@ -186,8 +188,8 @@ typedef enum logmod_e {
 #define MODULE_WWW             logmod_www
 #define MODULE_XIO             logmod_xio
 #define MODULE_XPT2046         logmod_xpt2046
-#define MAX_MODULE_ID           77
-#define NUM_MODULES             78
+#define MAX_MODULE_ID           78
+#define NUM_MODULES             79
 
 #ifdef USE_MODULE
 #define TAG USE_MODULE

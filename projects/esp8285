@@ -280,6 +280,7 @@ CONFIG_RELAY=y
 # CONFIG_DHT is not set
 CONFIG_I2C=y
 # CONFIG_OPT3001 is not set
+# CONFIG_ADS1X1X is not set
 CONFIG_BMX280=y
 # CONFIG_BMP388 is not set
 # CONFIG_BME680 is not set

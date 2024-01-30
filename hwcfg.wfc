@@ -248,6 +248,12 @@ enum i2cdrv_t {
 	i2cdrv_tca9555 = 13;
 	i2cdrv_ssd1306 = 14;
 	i2cdrv_sh1106 = 15;
+	i2cdrv_ads1013 = 16;
+	i2cdrv_ads1014 = 17;
+	i2cdrv_ads1015 = 18;
+	i2cdrv_ads1113 = 19;
+	i2cdrv_ads1114 = 20;
+	i2cdrv_ads1115 = 21;
 }
 
 

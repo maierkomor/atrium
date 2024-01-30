@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021-2023, Thomas Maier-Komor
+ *  Copyright (C) 2021-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -21,6 +21,7 @@
 #ifdef CONFIG_I2C
 
 #include "globals.h"
+#include "ads1x1x.h"
 #include "hwcfg.h"
 #include "ht16k33.h"
 #include "i2cdrv.h"
@@ -104,6 +105,26 @@ static inline void i2c_scan_device(uint8_t bus, uint8_t addr, i2cdrv_t drv, int8
 		SI7021::create(bus,addr);
 		break;
 #endif
+#ifdef CONFIG_ADS1X1X
+	case i2cdrv_ads1013:
+		ADS1x1x::create(bus,addr,ADS1x1x::ads1013);
+		break;
+	case i2cdrv_ads1014:
+		ADS1x1x::create(bus,addr,ADS1x1x::ads1014);
+		break;
+	case i2cdrv_ads1015:
+		ADS1x1x::create(bus,addr,ADS1x1x::ads1015);
+		break;
+	case i2cdrv_ads1113:
+		ADS1x1x::create(bus,addr,ADS1x1x::ads1113);
+		break;
+	case i2cdrv_ads1114:
+		ADS1x1x::create(bus,addr,ADS1x1x::ads1114);
+		break;
+	case i2cdrv_ads1115:
+		ADS1x1x::create(bus,addr,ADS1x1x::ads1115);
+		break;
+#endif
 #ifdef CONFIG_SSD1306
 	case i2cdrv_ssd1306:
 		if (addr)
@@ -143,6 +164,7 @@ void i2c_setup(void)
 #ifdef CONFIG_I2C_XDEV 
 			for (i2cdev_t d : c.devices()) {
 				uint8_t addr = d & 0xff;
+				addr <<= 1;
 				uint8_t intr = (d >> 16) & 0x3f;
 				if (i2cdrv_t drv = (i2cdrv_t)((d >> 8) & 0xff))
 					i2c_scan_device(bus,addr,drv,intr-1);

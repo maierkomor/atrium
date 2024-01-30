@@ -78,22 +78,25 @@ int Charger::getImax()
 
 
 I2CDevice::I2CDevice(uint8_t bus, uint8_t addr, const char *name)
-: m_bus(bus), m_addr(addr)
+: m_next(m_first)
+, m_bus(bus)
+, m_addr(addr)
 {
-	strcpy(m_name,name);
-	bool x = hasInstance(name);
-	log_info(TAG,"%s on bus %d, id 0x%x",name,bus,addr);
+	if (name)
+		strcpy(m_name,name);
+	else
+		abort();
 	Lock lock(Mtx);
-	m_next = m_first;
+	bool had = hasInstance(name);
 	m_first = this;
-	if (x)
+	if (had)
 		updateNames(name);
 }
 
 
 void I2CDevice::addIntr(uint8_t intr)
 {
-	log_warn(TAG,"%s does not support interrupts",m_name);
+	log_warn(TAG,"%s no interrupt support",m_name);
 }
 
 
@@ -317,6 +320,7 @@ int i2c_read2(uint8_t port, uint8_t addr, uint8_t reg0, uint8_t reg1, uint8_t *d
 	uint8_t data[] = { (uint8_t)(addr|I2C_MASTER_WRITE), reg0, reg1 };
 	return i2c_readback((i2c_port_t)port,data,sizeof(data),d,n);
 }
+*/
 
 
 int i2c_write4(uint8_t port, uint8_t addr, uint8_t r0, uint8_t v0, uint8_t r1, uint8_t v1)
@@ -347,12 +351,13 @@ int i2c_writen(uint8_t port, uint8_t addr, uint8_t *d, unsigned n)
 	int ret = i2c_master_cmd_begin((i2c_port_t) port, cmd, 1000 / portTICK_PERIOD_MS);
 	i2c_cmd_link_delete(cmd);
 	if (log_module_enabled(TAG)) {
-		log_dbug(TAG,"i2c_writen(%u,0x%x,0x%p,%u)=%d",port,addr,d,n,ret);
-		log_hex(TAG,d,n);
+		log_hex(TAG,d,n,"i2c_writen(%u,0x%x,0x%p,%u)=%d",port,addr,d,n,ret);
 	}
 	return ret;
 }
 
+
+/*
 int i2c_write1(uint8_t port, uint8_t d, bool stop)
 {
 	i2c_cmd_handle_t cmd = i2c_cmd_link_create();
@@ -468,6 +473,10 @@ int i2c_init(uint8_t port, uint8_t sda, uint8_t scl, unsigned freq, uint8_t xpul
 	assert(r == 0);
 #endif
 #endif
+#ifdef CONFIG_CCS811B
+	log_info(TAG,"search ccs811b");
+	n += ccs811b_scan(port);
+#endif
 #ifdef CONFIG_BH1750
 	// autoscan conflicts with TCA9555
 	log_info(TAG,"search bh1750");
@@ -484,10 +493,6 @@ int i2c_init(uint8_t port, uint8_t sda, uint8_t scl, unsigned freq, uint8_t xpul
 #ifdef CONFIG_SGP30
 	log_info(TAG,"search sgp30");
 	n += sgp30_scan(port);
-#endif
-#ifdef CONFIG_CCS811B
-	log_info(TAG,"search ccs811b");
-	n += ccs811b_scan(port);
 #endif
 #ifdef CONFIG_APDS9930
 	log_info(TAG,"search apds9930");

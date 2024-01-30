@@ -185,7 +185,6 @@ void SH1106::flush()
 
 SH1106 *SH1106::create(uint8_t bus, uint8_t addr)
 {
-	addr <<= 1;
 	uint8_t cmd[] = { (uint8_t)addr, 0x00, CMD_NOP };
 	if (0 == i2c_write(bus,cmd,sizeof(cmd),1,1)) {
 		return new SH1106(bus,addr);
@@ -197,7 +196,7 @@ SH1106 *SH1106::create(uint8_t bus, uint8_t addr)
 unsigned sh1106_scan(uint8_t bus)
 {
 	log_dbug(TAG,"searching for SH1106");
-	uint8_t addrs[] = { 0x3c, 0x3d };
+	uint8_t addrs[] = { 0x3c<<1, 0x3d<<1 };
 	for (uint8_t addr : addrs) {
 		if (SH1106::create(bus,addr))
 			return 1;

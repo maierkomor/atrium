@@ -263,11 +263,15 @@ unsigned ccs811b_scan(uint8_t bus)
 {
 	unsigned n = 0;
 	for (uint8_t addr = DEV_ADDR_MIN; addr <= DEV_ADDR_MAX; addr+=2) {
+		uint8_t hwid;
+		/*
 		uint8_t cmd[] = { addr, REG_HW_ID };
 		if (i2c_write(bus,cmd,sizeof(cmd),true,true))
 			continue;
-		uint8_t hwid;
 		if (i2c_read(bus,addr,&hwid,1))
+			continue;
+		*/
+		if (i2c_w1rd(bus,addr,REG_HW_ID,&hwid,sizeof(hwid)))
 			continue;
 		log_dbug(TAG,"device hwid 0x%02x",hwid);
 //		if (hwid != CCS811B_HWID)

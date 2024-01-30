@@ -47,11 +47,10 @@ TCA9555 *TCA9555::Instance = 0;
 
 TCA9555 *TCA9555::create(uint8_t bus, uint8_t addr)
 {
-	if ((addr < DEV_ADDR_MIN) || (addr >= DEV_ADDR_MAX)) {
+	if ((addr < (DEV_ADDR_MIN<<1)) || (addr >= (DEV_ADDR_MAX<<1))) {
 		log_warn(TAG,"address %x out of range",addr);
 		return 0;
 	}
-	addr <<= 1;
 	bool reinit = false;
 	for (int r = 0; r < 8; ++r) {
 		uint8_t data;

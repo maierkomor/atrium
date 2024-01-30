@@ -147,7 +147,6 @@ PCA9685::PCA9685(uint8_t bus, uint8_t addr)
 PCA9685 *PCA9685::create(uint8_t bus, uint8_t addr, bool invrt, bool outdrv, bool xclk)
 {
 	uint8_t m1;
-	addr <<= 1;
 	if (i2c_w1rd(bus,addr,REG_MODE1,&m1,sizeof(m1))) {
 		log_warn(TAG,"no device at %u,0x%x",bus,addr);
 		return 0;

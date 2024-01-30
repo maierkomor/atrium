@@ -10,7 +10,7 @@
  * Copyright: 2018-2023
  * Author   : Thomas Maier-Komor
  * 
- * Code generated on 2023-12-23, 20:23:21 (CET).
+ * Code generated on 2024-01-12, 11:32:18 (CET).
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -281,6 +281,12 @@ const char *dht_model_t_str(dht_model_t e)
 
 #ifdef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 static const char *i2cdrv_t_names[] = {
+	"i2cdrv_ads1013",
+	"i2cdrv_ads1014",
+	"i2cdrv_ads1015",
+	"i2cdrv_ads1113",
+	"i2cdrv_ads1114",
+	"i2cdrv_ads1115",
 	"i2cdrv_ht16k33",
 	"i2cdrv_ina219",
 	"i2cdrv_invalid",
@@ -300,6 +306,12 @@ static const char *i2cdrv_t_names[] = {
 };
 
 static i2cdrv_t i2cdrv_t_values[] = {
+	i2cdrv_ads1013,
+	i2cdrv_ads1014,
+	i2cdrv_ads1015,
+	i2cdrv_ads1113,
+	i2cdrv_ads1114,
+	i2cdrv_ads1115,
 	i2cdrv_ht16k33,
 	i2cdrv_ina219,
 	i2cdrv_invalid,
@@ -323,6 +335,12 @@ size_t parse_ascii_i2cdrv_t(i2cdrv_t *v, const char *s)
 {
 	#ifndef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 	static std::map<const char *,i2cdrv_t, cstr_less> namesmap = {
+		{ "i2cdrv_ads1013", i2cdrv_ads1013},
+		{ "i2cdrv_ads1014", i2cdrv_ads1014},
+		{ "i2cdrv_ads1015", i2cdrv_ads1015},
+		{ "i2cdrv_ads1113", i2cdrv_ads1113},
+		{ "i2cdrv_ads1114", i2cdrv_ads1114},
+		{ "i2cdrv_ads1115", i2cdrv_ads1115},
 		{ "i2cdrv_ht16k33", i2cdrv_ht16k33},
 		{ "i2cdrv_ina219", i2cdrv_ina219},
 		{ "i2cdrv_invalid", i2cdrv_invalid},
@@ -402,6 +420,18 @@ const char *i2cdrv_t_str(i2cdrv_t e)
 		return "i2cdrv_ssd1306";
 	case i2cdrv_sh1106:
 		return "i2cdrv_sh1106";
+	case i2cdrv_ads1013:
+		return "i2cdrv_ads1013";
+	case i2cdrv_ads1014:
+		return "i2cdrv_ads1014";
+	case i2cdrv_ads1015:
+		return "i2cdrv_ads1015";
+	case i2cdrv_ads1113:
+		return "i2cdrv_ads1113";
+	case i2cdrv_ads1114:
+		return "i2cdrv_ads1114";
+	case i2cdrv_ads1115:
+		return "i2cdrv_ads1115";
 	}
 	#endif // !CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 	#ifdef CONFIG_ESPTOOLPY_FLASHSIZE_1MB

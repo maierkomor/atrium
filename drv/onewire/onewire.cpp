@@ -190,7 +190,7 @@ static IRAM_ATTR unsigned xmitBit(uint8_t bus, uint8_t b)
 {
 	// TESTED OK
 	// idle bus is input pull-up
-	unsigned r;
+	unsigned d,r;
 	ets_delay_us(2);
 	xio_set_lvl(bus,xio_lvl_0);
 	if (b) {
@@ -198,13 +198,14 @@ static IRAM_ATTR unsigned xmitBit(uint8_t bus, uint8_t b)
 		xio_set_lvl(bus,xio_lvl_hiz);
 		ets_delay_us(10);
 		r = xio_get_lvl(bus);
-		ets_delay_us(65);
+		d = 65;
 	} else {
 		ets_delay_us(70);
 		xio_set_lvl(bus,xio_lvl_hiz);
-		ets_delay_us(10);
+		d = 10;
 		r = 0;
 	}
+	ets_delay_us(d);
 //	log_dbug(TAG,"xmit(%d): %d",b,r);
 	return r;
 }
@@ -240,9 +241,9 @@ static IRAM_ATTR uint64_t searchId(uint8_t bus, uint64_t &xid, vector<uint64_t> 
 		}
 		x0 |= (uint64_t)t0 << b;
 		x1 |= (uint64_t)t1 << b;
-		if (t0)
+		if (t0) {
 			id |= 1LL<<b;
-		if ((t1|t0) == 0) {
+		} else if ((t1|t0) == 0) {
 			// collision
 //			log_dbug(TAG,"collision id %x",id|1<<b);
 			if ((id >> b) & 1) {	// collision seen before

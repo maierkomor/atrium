@@ -10,7 +10,7 @@
  * Copyright: 2018-2023
  * Author   : Thomas Maier-Komor
  * 
- * Code generated on 2023-12-23, 20:23:21 (CET).
+ * Code generated on 2024-01-12, 11:32:19 (CET).
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -179,6 +179,12 @@ typedef enum {
 	i2cdrv_tca9555 = 13,
 	i2cdrv_ssd1306 = 14,
 	i2cdrv_sh1106 = 15,
+	i2cdrv_ads1013 = 16,
+	i2cdrv_ads1014 = 17,
+	i2cdrv_ads1015 = 18,
+	i2cdrv_ads1113 = 19,
+	i2cdrv_ads1114 = 20,
+	i2cdrv_ads1115 = 21,
 } i2cdrv_t;
 //! Function to get an ASCII string from a value of a i2cdrv_t.
 const char *i2cdrv_t_str(i2cdrv_t e);
