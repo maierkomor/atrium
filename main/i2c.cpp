@@ -22,6 +22,7 @@
 
 #include "globals.h"
 #include "ads1x1x.h"
+#include "ahtxx.h"
 #include "hwcfg.h"
 #include "ht16k33.h"
 #include "i2cdrv.h"
@@ -50,6 +51,8 @@
 static inline void i2c_scan_device(uint8_t bus, uint8_t addr, i2cdrv_t drv, int8_t intr)
 {
 	switch (drv) {
+	case i2cdrv_invalid:
+		break;
 #ifdef CONFIG_PCF8574
 	case i2cdrv_pcf8574:
 		PCF8574::create(bus,addr);
@@ -97,7 +100,10 @@ static inline void i2c_scan_device(uint8_t bus, uint8_t addr, i2cdrv_t drv, int8
 #endif
 #ifdef CONFIG_INA2XX
 	case i2cdrv_ina219:
-		INA219::create(bus,addr);
+		INA2XX::create(bus,addr,ID_INA219);
+		break;
+	case i2cdrv_ina220:
+		INA2XX::create(bus,addr,ID_INA220);
 		break;
 #endif
 #ifdef CONFIG_SI7021
@@ -141,6 +147,17 @@ static inline void i2c_scan_device(uint8_t bus, uint8_t addr, i2cdrv_t drv, int8
 			sh1106_scan(bus);
 		break;
 #endif
+#ifdef CONFIG_AHTXX
+	case i2cdrv_aht10:
+		aht_scan(bus,AHTXX::aht10);
+		break;
+	case i2cdrv_aht20:
+		aht_scan(bus,AHTXX::aht20);
+		break;
+	case i2cdrv_aht30:
+		aht_scan(bus,AHTXX::aht30);
+		break;
+#endif
 	default:
 		log_warn(TAG,"unsupported I2C config %d at %u,0x%x",drv,bus,addr);
 	}
@@ -154,6 +171,7 @@ void i2c_setup(void)
 		if (c.has_sda() && c.has_scl()) {
 			uint8_t bus = c.port();
 			log_info(TAG,"bus%d: sda=%d, scl=%d",bus,c.sda(),c.scl());
+			// i2c_init performs a bus scan of known devices
 #ifdef CONFIG_IDF_TARGET_ESP8266
 			int r = i2c_init(bus,c.sda(),c.scl(),0,c.xpullup());
 #else
@@ -164,14 +182,16 @@ void i2c_setup(void)
 #ifdef CONFIG_I2C_XDEV 
 			for (i2cdev_t d : c.devices()) {
 				uint8_t addr = d & 0xff;
-				addr <<= 1;
 				uint8_t intr = (d >> 16) & 0x3f;
 				if (i2cdrv_t drv = (i2cdrv_t)((d >> 8) & 0xff))
-					i2c_scan_device(bus,addr,drv,intr-1);
+					i2c_scan_device(bus,addr<<1,drv,intr-1);
 				if (intr && addr) {
+					log_info(TAG,"interrupt for %u,%x on GPIO %u",bus,addr,intr-1);
 					I2CDevice *dev = I2CDevice::getByAddr(addr);
 					if (dev)
 						dev->addIntr(intr-1);
+					else
+						log_warn(TAG,"device %u,%x not found",bus,addr,intr-1);
 				}
 			}
 #endif

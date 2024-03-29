@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2023, Thomas Maier-Komor
+ *  Copyright (C) 2023-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -113,18 +113,21 @@ BMP388::BMP388(uint8_t port, uint8_t addr, const char *n)
 
 void BMP388::addIntr(uint8_t intr)
 {
-	m_irqev = event_register(m_name,"`irq");
+#if 0
+	// TODO: currently incomplete
+	event_t irqev = event_register(m_name,"`irq");
 	xio_cfg_t cfg = XIOCFG_INIT;
 	cfg.cfg_io = xio_cfg_io_in;
 	cfg.cfg_pull = xio_cfg_pull_none;
-	cfg.cfg_intr = xio_cfg_intr_edges;
+	cfg.cfg_intr = xio_cfg_intr_fall;
 	if (0 > xio_config(intr,cfg)) {
 		log_warn(TAG,"config interrupt error");
-	} else if (esp_err_t e = xio_set_intr(intr,intrHandler,this)) {
+	} else if (esp_err_t e = xio_set_intr(intr,event_isr_handler,(void*)(unsigned)irqev)) {
 		log_warn(TAG,"error attaching interrupt: %s",esp_err_to_name(e));
 	} else {
 		log_info(TAG,"BMP388@%u,0x%x: interrupt on GPIO%u",m_bus,m_addr,intr);
 	}
+#endif
 }
 
 
@@ -167,17 +170,12 @@ unsigned BMP388::cyclic(void *arg)
 
 void BMP388::attach(EnvObject *root)
 {
+	if (init())
+		return;
 	root->add(&m_temp);
 	root->add(&m_press);
 	cyclic_add_task(m_name,BMP388::cyclic,this,0);
 	action_add(concat(m_name,"!sample"),trigger,(void*)this,"BMP388 sample data");
-}
-
-
-void BMP388::intrHandler(void *arg)
-{
-	BMP388 *drv = (BMP388 *) arg;
-	event_isr_trigger(drv->m_irqev);
 }
 
 
@@ -477,8 +475,7 @@ unsigned bmp388_scan(uint8_t bus)
 		// so ignore return codes > 0
 		log_dbug(TAG,"scan BMP388 at 0x%x: %d, id=0x%x",addr,r,id);
 		if ((r >= 0) && (id == 0x50)) {
-			I2CDevice *d = new BMP388(bus,addr);
-			d->init();
+			new BMP388(bus,addr);
 			num = 1;
 		}
 		addr += 2;

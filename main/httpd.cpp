@@ -375,7 +375,7 @@ static void updateFirmware(HttpRequest *r)
 		app = true;
 		updatep = esp_ota_get_next_update_partition(NULL);
 		if ((updatep == 0) || (s <= 0)) {
-			const char *err = "no update partition";
+			const char *err = "No update partition.";
 			log_warn(TAG,err);
 			UpdateState->set(err);
 			ans.addContent(err);
@@ -571,15 +571,6 @@ static void postConfig(HttpRequest *r)
 static void httpd_session(LwTcp *con)
 {
 	PROFILE_FUNCTION();
-#ifdef CONFIG_IDF_TARGET_ESP32
-	/*
-	struct timeval tv;
-	tv.tv_sec = 3;
-	tv.tv_usec = 0;
-	if (0 > setsockopt(con,SOL_SOCKET,SO_RCVTIMEO,&tv,sizeof(tv)))
-		log_warn(TAG,"error setting receive timeout: %s",strneterr(con));
-		*/
-#endif
 	if (pdTRUE == xSemaphoreTake(Sem,100/portTICK_PERIOD_MS)) {
 		if (WWW)
 			WWW->handleConnection(con);

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2023, Thomas Maier-Komor
+ *  Copyright (C) 2018-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -20,7 +20,7 @@
 
 #ifdef CONFIG_INA2XX
 
-#define TAG MODULE_INA219
+#define TAG MODULE_INA2XX
 
 #include "actions.h"
 #include "cyclic.h"
@@ -28,23 +28,46 @@
 #include "nvm.h"
 #include "log.h"
 #include "terminal.h"
+#include "xio.h"
 
 #include <esp_err.h>
 
 
 #define INA_REG_CONF	0x00
-#define INA_REG_SHUNT	0x01
 #define INA_REG_BUS	0x02
 #define INA_REG_POW	0x03
 #define INA_REG_AMP	0x04
-#define INA_REG_CALIB	0x05
-#define INA_REG_MASK	0x06	// ina226 only
-#define INA_REG_ALERT	0x07	// ina226 only
-#define INA_REG_MANID	0xfe	// ina226 only
-#define INA_REG_DIEID	0xff	// ina226 only
+#define INA_REG_CALIB	0x05	// not ina260
+#define INA_REG_MASK	0x06
+#define INA_REG_ALERT	0x07
+#define INA_REG_MANID	0xfe	// ina226/ina260 only
+#define INA_REG_DIEID	0xff	// ina226/ina260 only
 
-#define INA219_ADDR_MIN_ID	0x80
-#define INA219_ADDR_MAX_ID	0x8f
+#define INA_REG01	0x01
+#define INA_REG02	0x02
+#define INA_REG03	0x03
+#define INA_REG04	0x04
+#define INA_REG05	0x05
+#define INA_REG06	0x06
+#define INA_REG07	0x07
+
+#define MODE_SMPL_CUR	0x1
+#define MODE_SMPL_VLT	0x2
+#define MODE_CONT	0x4
+
+/* Reg Map	INA219	INA220	INA226	INA260
+ * 00h		cfg	cfg	cfg	cfg
+ * 01h		shunt	shunt	shunt	cur
+ * 02h		bus	bus	bus	bus
+ * 03h		pwr	pwr	pwr	pwr
+ * 04h		cur	cur	cur	---
+ * 05h		cal	cal	cal	---
+ * 06h		---	---	mask	mask
+ * 07h		---	---	alert	alert
+ */
+
+#define INA2XX_ADDR_MIN_ID	0x80
+#define INA2XX_ADDR_MAX_ID	0x8f
 
 #define CONF_RESET		(1 << 15) // bit to perform a reset
 #define CONF_BRNG		(1 << 13)
@@ -61,119 +84,454 @@
 #define CONF_MODE_CONT		0x4
 #define INA_CONF_RESET_VALUE	0x399f
 
+#define SHIFT_ISHCT	3
+#define SHIFT_VSHCT	3
+#define SHIFT_VBUSCT	6
+#define SHIFT_AVG	9
+#define SHIFT_PG	11
+#define SHIFT_BADC	7
+#define SHIFT_SADC	3
 
-static uint8_t ConvTimes[] = {2,2,3,5,9,18,35,70};
+#define MASK_ISHCT	0x0038
+#define MASK_VSHCT	0x0038
+#define MASK_VBUSCT	0x01c0
+#define MASK_AVG	0x0e00
+#define MASK_PG		0x1800
+#define MASK_BADC	0x0f00
+#define MASK_SADC	0x00f0
+
+#define ENABLE_LEN	(1<<0)	// alert latch enable
+#define ENABLE_APOL	(1<<1)	// alert polarity 0=active-low
+#define ENABLE_OVF	(1<<2)	// math overflow
+#define ENABLE_CVRF	(1<<3)	// conversion ready flag
+#define ENABLE_AFF	(1<<4)	// alert function flag
+#define ENABLE_CVR	(1<<10)	// conversion ready
+#define ENABLE_POL	(1<<11)	// power over limit
+#define ENABLE_BUL	(1<<12)	// bus under-voltage
+#define ENABLE_BOL	(1<<13)	// bus over-voltage
+#define ENABLE_SUL	(1<<14)	// shunt under-voltage
+#define ENABLE_SOL	(1<<15)	// shunt over-voltage
+
+#define CFG_DFLT_219	0x399f
+#define CFG_DFLT_220	0x399f
+#define CFG_DFLT_226	0x4127
+#define CFG_DFLT_260	0x6127
+
+// INA219, INA220 only
+#define BIT_BRNG	(1<<13)
+#define BIT_BADC4	(1<<10)
+#define BIT_SADC4	(1<<6)
+
+// INA219, INA220, INA226 only
+#define BIT_PG1		(1<<12)
+#define BIT_PG0		(1<<11)
+
+struct cfg_ina219 {	// same for INA220
+	uint16_t
+		mode:3,
+		sadc:4,		// shunt ADC resolution and sample count
+		badc:4,		// bus ADC resolution and sample count
+		pg:2,		// gain: 0:40mV,1:80mV,2:160mV,3:320mV
+		brng:1,		// bus range: 0=16V, 1=32V
+		reserved:1,
+		rst:1;
+};
 
 
-INA219::INA219(uint8_t bus, uint8_t addr)
-: I2CDevice(bus,addr,"ina219")
+union ucfg_ina219
+{
+	uint16_t cfgb;
+	cfg_ina219 cfgs;
+};
+
+
+struct cfg_ina226 {
+	uint16_t
+		mode:3,
+		vshct:4,	// shunt conversion time: 0.14ms..8.244ms
+		vbusct:4,	// bus conversion time: 0.14ms..8.244ms
+		avg:3,		// averaging count 
+		reserved:3,
+		rst:1;
+};
+
+
+union ucfg_ina226
+{
+	uint16_t cfgb;
+	cfg_ina226 cfgs;
+};
+
+
+struct cfg_ina260 {
+	uint16_t
+		mode:3,
+		ishct:3,	// shunt conversion time: 0.14ms..8.244ms
+		vbusct:3,	// bus conversion time: 0.14ms..8.244ms
+		avg:3,		// averaging count 
+		reserved:3,
+		rst:1;
+};
+
+
+union ucfg_ina260
+{
+	uint16_t cfgb;
+	cfg_ina260 cfgs;
+};
+
+
+// also used for INA220
+struct INA219 : public INA2XX
+{
+	INA219(uint8_t bus, uint8_t addr, bool is220)
+	: INA2XX(bus,addr,ID_INA219+is220,is220?"ina220":"ina219")
+	, m_shunt("shunt","mV","%4.3f")
+	, m_is220(is220)
+	{ }
+
+	const char *drvName() const override
+	{ return m_is220?"ina220":"ina219"; }
+
+	void attach(class EnvObject *) override;
+
+	protected:
+	void init();
+	float getShunt() const override;
+	void read() override;
+	const char *setNumSamples(unsigned n) override;
+	const char *setShunt(float r) override;
+
+	EnvNumber m_shunt;
+	float m_res = 0;
+	bool m_is220;
+};
+
+
+struct INA226 : public INA2XX
+{
+	INA226(uint8_t bus, uint8_t addr)
+	: INA2XX(bus,addr,ID_INA226,"ina226")
+	, m_shunt("shunt","mV","%4.3f")
+	{ }
+
+	const char *drvName() const override
+	{ return "ina226"; }
+
+	void addIntr(uint8_t gpio) override;
+	void attach(class EnvObject *) override;
+
+	protected:
+	static void read(void *);
+
+	void init();
+	float getShunt() const override;
+	void read() override;
+	const char *setNumSamples(unsigned n) override;
+	const char *setShunt(float r) override;
+
+	EnvNumber m_shunt;
+	float m_res = 0;
+	uint16_t m_mask = 0;
+	event_t m_isrev = 0;
+};
+
+
+struct INA260 : public INA2XX
+{
+	INA260(uint8_t bus, uint8_t addr)
+	: INA2XX(bus,addr,ID_INA260,"ina260")
+	{ }
+
+	const char *drvName() const override
+	{ return "ina260"; }
+
+	void addIntr(uint8_t gpio) override;
+	void attach(class EnvObject *) override;
+
+	protected:
+	static void read(void *);
+
+	void init();
+	float getShunt() const override;
+	void read() override;
+	const char *setNumSamples(unsigned n) override;
+
+	uint16_t m_mask = 0;
+	event_t m_isrev = 0;
+};
+
+
+static uint16_t ConvTime[] = {140,204,332,588,1100,2116,4156,8244};
+static uint16_t Avgs[] = {1,4,16,64,128,256,512,1024};
+
+
+static int conv_time_index(unsigned t)
+{
+	if ((t > 10000) || (t < 70))
+		return -1;
+	int idx = 0;
+	do {
+		uint16_t d = ConvTime[idx+1] - ConvTime[idx];
+		d >>= 1;
+		if (t <= ConvTime[idx]+d)
+			return idx;
+		++idx;
+	} while (idx+1 < sizeof(ConvTime)/sizeof(ConvTime[0]));
+	return idx;
+}
+
+
+static event_t init_alert(const char *name, uint8_t gpio)
+{
+	event_t ev = event_register(name,"`isr");
+	xio_cfg_t cfg = XIOCFG_INIT;
+	cfg.cfg_io = xio_cfg_io_in;
+	cfg.cfg_pull = xio_cfg_pull_up;
+	cfg.cfg_intr = xio_cfg_intr_fall;
+	if (0 > xio_config(gpio,cfg)) {
+		log_warn(TAG,"gpio %u config failed",gpio);
+	} else if (xio_set_intr(gpio,event_isr_handler,(void*)(unsigned)ev)) {
+		log_warn(TAG,"gpio%u interrupt failed",gpio);
+	} else {
+		return ev;
+	}
+	return 0;
+}
+
+
+static float nvm_get_res(uint8_t type, uint8_t bus, uint8_t addr)
+{
+	char nvsn[32];
+	sprintf(nvsn,"ina2%02u@%u,%x.r",type,bus,addr);
+	return nvm_read_float(nvsn,0);
+}
+
+
+INA2XX::INA2XX(uint8_t bus, uint8_t addr, uint8_t type, const char *name)
+: I2CDevice(bus,addr,name)
 , m_volt("bus","V","%4.1f")
 , m_amp("current","A","%4.4f")
-, m_shunt("shunt","mV","%4.3f")
 , m_power("power","W","%4.1f")
 , m_conf(INA_CONF_RESET_VALUE)
 , m_st(st_cont)
-, m_delay(2)
+, m_type(type)
 {
-	log_info(TAG,"ina219 at %d/0x%x",bus,addr);
+}
+
+
+void INA226::addIntr(uint8_t gpio)
+{
+	m_isrev = init_alert(m_name,gpio);
+	if (m_isrev) {
+		if (Action *a = action_add(concat(m_name,"!read"),read,this,0)) {
+			event_callback(m_isrev,a);
+			uint8_t mask[2];
+			i2c_w1rd(m_bus,m_addr,INA_REG_MASK,mask,sizeof(mask));
+			m_mask = (mask[1]<<8)|mask[0]|ENABLE_CVR;
+			uint8_t data[] = {INA_REG_MASK,(uint8_t)(m_mask>>8),(uint8_t)(m_mask&0xff)};
+			if (esp_err_t e = i2c_writen(m_bus,m_addr,data,sizeof(data))) {
+				log_warn(TAG,"config alert: %s",esp_err_to_name(e));
+			} else {
+				log_info(TAG,"alert on GPIO%u",gpio);
+			}
+		}
+	}
+}
+
+
+void INA260::addIntr(uint8_t gpio)
+{
+	m_isrev = init_alert(m_name,gpio);
+	if (m_isrev) {
+		if (Action *a = action_add(concat(m_name,"!read"),read,this,0)) {
+			event_callback(m_isrev,a);
+			m_mask |= ENABLE_CVR;
+			uint8_t data[] = {INA_REG_MASK,(uint8_t)(m_mask>>8),(uint8_t)(m_mask&0xff)};
+			if (esp_err_t e = i2c_writen(m_bus,m_addr,data,sizeof(data))) {
+				log_warn(TAG,"config alert: %s",esp_err_to_name(e));
+			} else {
+				log_info(TAG,"alert on GPIO%u",gpio);
+			}
+		}
+	}
+}
+
+
+void INA2XX::attach(class EnvObject *root)
+{
+	root->add(&m_amp);
+	root->add(&m_volt);
+	root->add(&m_power);
 }
 
 
 void INA219::attach(class EnvObject *root)
 {
-	root->add(&m_amp);
-	root->add(&m_volt);
+	init();
 	root->add(&m_shunt);
-	root->add(&m_power);
+	INA2XX::attach(root);
 	cyclic_add_task(m_name,cyclic,this,0);
-	action_add(concat(m_name,"!sample"),trigger,(void*)this,"sample data");
 }
 
 
-INA219 *INA219::create(uint8_t bus, uint8_t addr)
+void INA226::attach(class EnvObject *root)
 {
-	log_info(TAG,"checking for INA219 at %d/0x%x",bus,addr);
-	uint8_t v[2];
-	if (addr) {
-		if (i2c_w1rd(bus,addr,INA_REG_CONF,v,sizeof(v)))
-			return 0;
-	} else {
-		esp_err_t err;
-		for (addr = 0x40; addr < 0x50; ++addr) {
-			err = i2c_w1rd(bus,addr<<1,INA_REG_CONF,v,sizeof(v));
-			if (err == 0)
-				break;
+	init();
+	root->add(&m_shunt);
+	INA2XX::attach(root);
+	if (0 == m_isrev)
+		cyclic_add_task(m_name,cyclic,this,0);
+}
+
+
+void INA260::attach(class EnvObject *root)
+{
+	INA2XX::init();
+	INA2XX::attach(root);
+	if (0 == m_isrev)
+		cyclic_add_task(m_name,cyclic,this,0);
+}
+
+
+INA2XX *INA2XX::create(uint8_t bus, uint8_t addr, uint8_t type)
+{
+	if ((type == ID_INA219)||(type == ID_INA220)) {
+		log_info(TAG,"checking for INA%u at %d/0x%x",type,bus,addr);
+		uint8_t v[2];
+		if (addr) {
+			if (i2c_w1rd(bus,addr,INA_REG_CONF,v,sizeof(v)))
+				return 0;
+		} else {
+			esp_err_t err;
+			for (addr = 0x40; addr < 0x50; ++addr) {
+				err = i2c_w1rd(bus,addr<<1,INA_REG_CONF,v,sizeof(v));
+				if (err == 0)
+					break;
+			}
+			if (err)
+				return 0;
+			addr <<= 1;
 		}
-		if (err)
-			return 0;
-		addr <<= 1;
 	}
-	uint16_t rv = (v[0] << 8) | v[1];
-	log_dbug(TAG,"config = 0x%x",rv);
-	if (rv != INA_CONF_RESET_VALUE) {
-		uint8_t reset[] = {addr,INA_REG_CONF,0x80,0x00};
-		if (i2c_write(bus,reset,sizeof(reset),1,1))
-			return 0;
-		if (i2c_w1rd(bus,addr,INA_REG_CONF,v,sizeof(v)))
-			return 0;
-		rv = (v[0] << 8) | v[1];
-		if (rv != INA_CONF_RESET_VALUE)
-			log_warn(TAG,"unexpected config %04x",rv);
+	switch (type) {
+	case ID_INA219:
+		return new INA219(bus,addr,false);
+	case ID_INA220:
+		return new INA219(bus,addr,true);
+	case ID_INA226:
+		return new INA226(bus,addr);
+	case ID_INA260:
+		return new INA260(bus,addr);
+	default:
+		;
 	}
-	char nvsn[32]; 
-	sprintf(nvsn,"ina219@%u,%x.cfg",bus,addr);
-	uint16_t cfgv = nvm_read_u16(nvsn,0x399f);
-	uint8_t cfg[] = {addr,INA_REG_CONF,(uint8_t)(cfgv>>8),(uint8_t)cfgv};
-	if (esp_err_t e = i2c_write(bus,cfg,sizeof(cfg),1,1))
-		log_warn(TAG,"config failed: %s",esp_err_to_name(e));
-	sprintf(nvsn,"ina219@%u,%x.cal",bus,addr);
-	uint16_t cal = nvm_read_u16(nvsn,0x5000);
-	uint8_t data[] = { addr, INA_REG_CALIB, (uint8_t)(cal >> 8), (uint8_t)(cal >> 0) };
-	if (esp_err_t e = i2c_write(bus,data,sizeof(data),1,1))
-		log_warn(TAG,"calibration failed: %s",esp_err_to_name(e));
-	return new INA219(bus,addr);
+	return 0;
 }
 
 
-unsigned INA219::cyclic(void *arg)
+void INA2XX::init()
 {
-	INA219 *dev = (INA219 *)arg;
-	uint8_t data[2];
-	uint16_t bus = 0;
-	int16_t shunt = 0, amp = 0;
-	bool has_amp = false;
+	reset();
+	log_info(TAG,"init");
+	char nvsn[32];
+	sprintf(nvsn,"ina2%02u@%u,%x.cfg",m_type,m_bus,m_addr);
+	uint16_t cfgv = nvm_read_u16(nvsn,m_conf);	// use reset value as default
+	if (cfgv != m_conf)
+		setConfig(cfgv);
+}
+
+
+void INA219::init()
+{
+	INA2XX::init();
+	m_res = nvm_get_res(m_type,m_bus,m_addr);
+}
+
+
+void INA226::init()
+{
+	INA2XX::init();
+	m_res = nvm_get_res(m_type,m_bus,m_addr);
+}
+
+
+void INA2XX::setConfig(uint16_t cfgv)
+{
+	if (cfgv != m_conf) {
+		uint8_t cfg[] = {m_addr,INA_REG_CONF,(uint8_t)(cfgv>>8),(uint8_t)cfgv};
+		if (esp_err_t e = i2c_write(m_bus,cfg,sizeof(cfg),1,1)) {
+			log_warn(TAG,"config failed: %s",esp_err_to_name(e));
+		} else {
+			m_conf = cfgv;
+			char nvsn[32];
+			sprintf(nvsn,"ina2%02u@%u,%x.cfg",m_type,m_bus,m_addr);
+			nvm_store_u16(nvsn,m_conf);	// use reset value as default
+		}
+	}
+}
+
+
+int INA2XX::setMode(bool cur, bool volt, bool cont)
+{
+	uint16_t cfg = m_conf;
+	if (cur)
+		cfg |= MODE_SMPL_CUR;
+	else
+		cfg &= ~MODE_SMPL_CUR;
+	if (volt)
+		cfg |= MODE_SMPL_VLT;
+	else
+		cfg &= !MODE_SMPL_VLT;
+	if (cont)
+		cfg |= MODE_CONT;
+	else
+		cfg &= ~MODE_CONT;
+	setConfig(cfg);
+	return 0;
+}
+
+
+const char *INA2XX::setShunt(float r)
+{
+	return "Operation not supported.";
+}
+
+
+static void store_shunt(uint8_t type, uint8_t bus, uint8_t addr, float r)
+{
+	char nvsn[32]; 
+	sprintf(nvsn,"ina2%02u@%u,%x.r",type,bus,addr);
+	nvm_store_float(nvsn,r);
+}
+
+
+const char *INA219::setShunt(float r)
+{
+	store_shunt(m_type,m_bus,m_addr,r);
+	m_res = r;
+	return 0;
+}
+
+
+const char *INA226::setShunt(float r)
+{
+	store_shunt(m_type,m_bus,m_addr,r);
+	m_res = r;
+	return 0;
+}
+
+
+unsigned INA2XX::cyclic(void *arg)
+{
+	INA2XX *dev = (INA2XX *)arg;
 	switch (dev->m_st) {
 	case st_read:
 		dev->m_st = st_off;
-		dev->m_conf = (dev->m_conf & ~CONF_MODE);
+		dev->m_conf &= ~CONF_MODE;
 		/* FALLTHRU */
 	case st_cont:
-		if (0 == i2c_w1rd(dev->m_bus,dev->m_addr,INA_REG_SHUNT,data,sizeof(data))) {
-			shunt = (int16_t) ((data[0] << 8) | data[1]);
-			dev->m_shunt.set(((float)shunt)*1E-2);
-		} else {
-			dev->m_shunt.set(NAN);
-		}
-		if (0 == i2c_w1rd(dev->m_bus,dev->m_addr,INA_REG_AMP,data,sizeof(data))) {
-			amp = (int16_t) ((data[0] << 8) | data[1]);
-			dev->m_amp.set((float)amp/100);
-			has_amp = true;
-		} else {
-			dev->m_amp.set(NAN);
-		}
-		if (0 == i2c_w1rd(dev->m_bus,dev->m_addr,INA_REG_BUS,data,sizeof(data))) {
-			bus = (uint16_t) ((data[0] << 8) | data[1]);
-			bus >>= 3;
-			dev->m_volt.set((float)bus*0.004);
-			if (has_amp)
-				dev->m_power.set(dev->m_volt.get()*dev->m_amp.get());
-			else
-				dev->m_power.set(NAN);
-		} else {
-			dev->m_volt.set(NAN);
-			dev->m_power.set(NAN);
-		}
-		log_dbug(TAG,"bus %f, shunt %d, amp %d",(float)bus*0.004,shunt,amp);
+		dev->read();
 		break;
 	case st_trigger:
 		{
@@ -189,68 +547,264 @@ unsigned INA219::cyclic(void *arg)
 	default:
 		abort();
 	}
-	return dev->m_delay;
+	return 10;
 }
 
 
-void INA219::updateDelay()
+void INA226::read(void *arg)
 {
-	if ((m_conf & CONF_MODE_CONT) == 0) {
-		m_delay = 10;
-	} else {
-		uint8_t adc = m_badc < m_sadc ? m_sadc : m_badc;
-		if (adc & 0x8)
-			m_delay = ConvTimes[adc&7];
-		else
-			m_delay = 2;
-	}
-	log_dbug(TAG,"delay %u",m_delay);
+	INA226 *dev = (INA226 *) arg;
+	dev->read();
 }
 
 
-static int sample_cfg(long l)
+void INA260::read(void *arg)
 {
-	switch (l) {
-	case 9:
-	case 10:
-	case 11:
-	case 12:
-		return (l-9);
-	case 2:
-		return 9;
-	case 4:
-		return 10;
-	case 8:
-		return 11;
-	case 16:
-		return 12;
-	case 32:
-		return 13;
-	case 64:
-		return 14;
-	case 128:
-		return 15;
-	default:
-		return -1;
+	INA260 *dev = (INA260 *) arg;
+	dev->read();
+}
+
+
+void INA2XX::read()
+{
+}
+
+
+void INA219::read()
+{
+	float fshnt = NAN, fvlt = NAN;
+	int16_t shnt = 0;
+	uint16_t vlt = 0;
+	uint8_t data[2];
+	if (0 == i2c_w1rd(m_bus,m_addr,INA_REG01,data,sizeof(data))) {
+		shnt = (int16_t) ((data[0] << 8) | data[1]);
+		fshnt = (float)shnt * 0.01;
 	}
+	if (0 == i2c_w1rd(m_bus,m_addr,INA_REG02,data,sizeof(data))) {
+		vlt = (uint16_t) ((data[0] << 8) | data[1]);
+		vlt >>= 3;
+		fvlt = (float)vlt * 0.004;
+	}
+	m_shunt.set(fshnt);
+	m_volt.set(fvlt);
+	float fcur = fshnt / m_res * 1E-3;
+	m_amp.set(fcur);
+	float fpwr = fcur*fvlt;
+	if (fpwr < 0)
+		fpwr *= -1;
+	m_power.set(fpwr);
+	log_dbug(TAG,"shnt %4.3fmV, cur %4.3fA, vlt %4.3fV, pwr %4.3fW, res %4.3f",fshnt,fcur,fvlt,fpwr,m_res);
+}
+
+
+void INA226::read()
+{
+	uint8_t data[2];
+	float fshnt = NAN, fvlt = NAN;
+	if (0 == i2c_w1rd(m_bus,m_addr,INA_REG01,data,sizeof(data))) {
+		log_dbug(TAG,"reg1 %02x %02x",data[0],data[1]);
+		int16_t shnt = (int16_t) ((data[0] << 8) | data[1]);
+		fshnt = (float)shnt * 2.5E-6;
+	}
+	if (0 == i2c_w1rd(m_bus,m_addr,INA_REG02,data,sizeof(data))) {
+		log_dbug(TAG,"reg2 %02x %02x",data[0],data[1]);
+		uint16_t vlt = (int16_t) ((data[0] << 8) | data[1]);
+		fvlt = (float)vlt * 1.25E-3;
+	}
+	if (m_isrev) {
+		if (0 == i2c_w1rd(m_bus,m_addr,INA_REG06,data,sizeof(data)))
+			log_dbug(TAG,"reg6 %02x %02x",data[0],data[1]);
+		uint8_t data[] = {INA_REG_MASK,(uint8_t)(m_mask>>8),(uint8_t)(m_mask&0xff)};
+		if (esp_err_t e = i2c_writen(m_bus,m_addr,data,sizeof(data)))
+			log_warn(TAG,"reset mask: %s",esp_err_to_name(e));
+	}
+	m_shunt.set(fshnt);
+	m_volt.set(fvlt);
+	float fcur = fshnt * m_res;
+	m_amp.set(fcur);
+	float fpwr = fcur * fvlt;
+	m_power.set(fpwr);
+	log_dbug(TAG,"shnt %4.3fV, cur %4.3fA, vlt %4.3fV, pwr %4.3fW",fshnt,fcur,fvlt,fpwr);
+}
+
+
+void INA260::read()
+{
+	uint8_t data[2];
+	float fcur = NAN, fvlt = NAN;
+	if (0 == i2c_w1rd(m_bus,m_addr,INA_REG01,data,sizeof(data))) {
+		int16_t crr = (int16_t) ((data[0] << 8) | data[1]);
+		fcur = (float)crr * 1.25E-3;
+		m_amp.set(fcur);
+	}
+	if (0 == i2c_w1rd(m_bus,m_addr,INA_REG02,data,sizeof(data))) {
+		uint16_t vlt = (int16_t) ((data[0] << 8) | data[1]);
+		fvlt = (float)vlt * 1.25E-3;
+		m_volt.set(fvlt);
+	}
+	float fpwr = fcur * fvlt;
+	m_power.set(fpwr);
+	log_dbug(TAG,"cur %4.3fA, vlt %4.3fV, pwr %4.3fW",fcur,fvlt,fpwr);
+}
+
+
+static void printMode(Terminal &term, uint16_t v)
+{
+	if (v & (MODE_SMPL_CUR|MODE_SMPL_VLT)) 
+		term.printf("mode %s%s%s\n"
+			,v&MODE_CONT?"continuous":"triggered"
+			,v&MODE_SMPL_CUR?" shunt":""
+			,v&MODE_SMPL_VLT?" bus":""
+		);
+	else
+		term.println("mode power-down");
+}
+
+
+static void printConfig_219(Terminal &term, uint16_t v)
+{
+	term.printf(
+		"BRNG %uV\n"
+		"PG   %u0mV\nBADC "
+		,v&BIT_BRNG?32:16
+		,4 << ((v&MASK_PG)>>SHIFT_PG)
+	);
+	if (v&BIT_BADC4)
+		term.printf("%ubit\n",((v>>SHIFT_BADC)&7)+9);
+	else
+		term.printf("%usamples\n",1<<((v>>SHIFT_BADC)&7));
+	if (v&BIT_SADC4)
+		term.printf("SADC %ubit\n",((v>>SHIFT_SADC)&7)+9);
+	else
+		term.printf("SADC %usamples\n",1<<((v>>SHIFT_SADC)&7));
+}
+
+
+static void printConfig_AVI(Terminal &term, uint16_t v)
+{
+	term.printf(
+		"AVG %u\n"
+		"VCT %uus\n"
+		"ICT %uus\n"
+		,Avgs[(v&MASK_AVG)>>SHIFT_AVG]
+		,ConvTime[(v&MASK_VBUSCT)>>SHIFT_VBUSCT]
+		,ConvTime[(v&MASK_VSHCT)>>SHIFT_VSHCT]
+	);
+}
+
+
+float INA219::getShunt() const
+{
+	return m_res;
+}
+
+
+float INA226::getShunt() const
+{
+	return m_res;
+}
+
+
+float INA260::getShunt() const
+{
+	return 0.002;
+}
+
+
+const char *INA2XX::setNumSamples(unsigned n)
+{
+	return "Operation not supported.";
+}
+
+
+const char *INA219::setNumSamples(unsigned n)
+{
+	unsigned avg = 0;
+	while ((n&1) == 0) {
+		n >>= 1;
+		++avg;
+	}
+	if (n&~1)
+		return "Invalid sample count.";
+	avg |= 0x8;
+	uint16_t cfg = m_conf;
+	cfg &= ~MASK_SADC&~MASK_BADC;
+	cfg |= avg << SHIFT_BADC;
+	cfg |= avg << SHIFT_SADC;
+	setConfig(cfg);
+	log_dbug(TAG,"AVG set to %u\n",avg+1);
+	return 0;
+}
+
+
+const char *INA226::setNumSamples(unsigned n)
+{
+	unsigned avg = 0;
+	while ((avg < sizeof(Avgs)/sizeof(Avgs[0])) && (n != Avgs[avg])) {
+		++avg;
+	}
+	if (avg == sizeof(Avgs)/sizeof(Avgs[0]))
+		return "Invalid sample count.";
+	uint16_t cfg = m_conf;
+	cfg &= ~MASK_AVG;
+	cfg |= avg << SHIFT_AVG;
+	setConfig(cfg);
+	log_dbug(TAG,"AVG set to %u\n",avg+1);
+	return 0;
+}
+
+
+const char *INA260::setNumSamples(unsigned n)
+{
+	unsigned avg = 0;
+	while ((avg < sizeof(Avgs)/sizeof(Avgs[0])) && (n != Avgs[avg])) {
+		++avg;
+	}
+	if (avg == sizeof(Avgs)/sizeof(Avgs[0]))
+		return "Invalid sample count.";
+	uint16_t cfg = m_conf;
+	cfg &= ~MASK_AVG;
+	cfg |= avg << SHIFT_AVG;
+	setConfig(cfg);
+	log_dbug(TAG,"AVG set to %u\n",avg+1);
+	return 0;
+}
+
+
+esp_err_t INA2XX::reset()
+{
+	uint8_t data[] = { INA_REG_CONF, 0x80, 0x00 };
+	esp_err_t e = i2c_writen(m_bus,m_addr,data,sizeof(data));
+	if (0 == e) {
+		uint8_t cfg[2];
+		e = i2c_w1rd(m_bus, m_addr, INA_REG_CONF, cfg, sizeof(cfg));
+		if (0 == e) {
+			m_conf = (cfg[1]<<8) | cfg[0];
+			m_conf &= 0x7fff;	// clear reset bit
+			log_info(TAG,"reset: config %04x",m_conf);
+		}
+	}
+	return e;
 }
 
 
 #ifdef CONFIG_I2C_XCMD
-const char *INA219::exeCmd(Terminal &term, int argc, const char **args)
+const char *INA2XX::exeCmd(Terminal &term, int argc, const char **args)
 {
 	if ((argc == 0) || (0 == strcmp(args[0],"-h"))) {
 		term.println(
-			"brng <v>: set bus voltage range (valid values: 16, 32)\n"
-			"pg <r>  : set shunt range (valid values: 40, 80, 160, 320)\n"
-			"badc <r>: set bus-ADC (9..12bits or 2,4,8,16,32,64,128 samples)\n"
-			"sadc <r>: set shunt-ADC (9..12bits or 2,4,8,16,32,64,128 samples)\n"
-			"cal <c> : set calibration value (0..65535)\n"
-			"mode <m>: set mode (off, bus, shunt, both, bus1, shunt1, both1)\n"
+			"brng <v> : set bus voltage range (valid values: 16, 32)\n"
+			"pg <r>   : set shunt range (valid values: 40, 80, 160, 320)\n"
+			"avg <c>  : set number of samples for averaging\n"
+			"mode <m> : set mode (off, bus, shunt, both, bus1, shunt1, both1)\n"
+			"reset    : reset to power-on defaults\n"
+			"shunt <r>: set shunt resistor to <r> Ohm\n"
+			"vct <t>  : set bus voltage conversion time\n"
+			"ict <t>  : set current conversion time\n"
+			"           <t> in {140,204,332,588,1100,2116,4156,8244}\n"
 			);
 		return 0;
 	}
-	static const uint8_t AdcMap[] = {1,2,4,8,16,32,64,128};
 	uint8_t data[2];
 	uint16_t v;
 	if (esp_err_t e = i2c_w1rd(m_bus,m_addr,INA_REG_CONF,data,sizeof(data))) {
@@ -258,42 +812,33 @@ const char *INA219::exeCmd(Terminal &term, int argc, const char **args)
 		return "";
 	}
 	v = (data[0] << 8) | data[1];
-	m_conf = v;
 	if (argc == 1) {
-		if (0 == strcmp(args[0],"cal")) {
-			if (esp_err_t e = i2c_w1rd(m_bus,m_addr,INA_REG_CALIB,(uint8_t*)&v,sizeof(v))) {
-				term.printf("com error: %s\n",esp_err_to_name(e));
-				return "";
-			}
-			term.printf("calib %d\n",(uint16_t)(v>>8)|(uint16_t)(v<<8));
-		} else if (0 == strcmp(args[0],"conf")) {
-			term.printf("conf 0x%x\n",v);
+		if (v != m_conf) {
+			log_warn(TAG,"hidden conf update: %x => %x",m_conf,v);
+			m_conf = v;
+		}
+		if (0 == strcmp(args[0],"conf")) {
+			printMode(term,v);
+			if ((ID_INA260 == m_type) || (ID_INA226 == m_type))
+				printConfig_AVI(term,v);
+			else if ((ID_INA219 == m_type) || (ID_INA220 == m_type))
+				printConfig_219(term,v);
 		} else if (0 == strcmp(args[0],"brng")) {
-			term.printf("brng %d\n",v & CONF_BRNG ? 32 : 16);
+			if ((ID_INA219 == m_type) || (ID_INA220 == m_type))
+				term.printf("brng %d\n",v & CONF_BRNG ? 32 : 16);
+			else
+				return "Operation not supported.";
 		} else if (0 == strcmp(args[0],"pg")) {
-			term.printf("gain /%d\n", 1 << ((v & CONF_PG) >> CONF_BIT_PG));
-		} else if (0 == strcmp(args[0],"badc")) {
-			uint8_t adc = (v & CONF_BADC) >> CONF_BIT_BADC;
-			if (adc & 0x8)
-				term.printf("badc %d samples\n", AdcMap[adc&0x7]);
+			if ((ID_INA260 == m_type) || (ID_INA226 == m_type))
+				term.printf("gain /%d\n", 1 << ((v & CONF_PG) >> CONF_BIT_PG));
 			else
-				term.printf("badc %d bit\n", (adc&0x3)+9);
-		} else if (0 == strcmp(args[0],"sadc")) {
-			uint8_t adc = (v & CONF_SADC) >> CONF_BIT_SADC;
-			if (adc & 0x8)
-				term.printf("sadc %d samples\n", AdcMap[adc&0x7]);
-			else
-				term.printf("sadc %d bit\n", (adc&0x3)+9);
+				return "Operation not supported.";
 		} else if (0 == strcmp(args[0],"mode")) {
-			if (v & CONF_MODE)
-				term.printf("mode%s%s%s\n",v & CONF_MODE_CONT ? " continuous" : "", CONF_MODE_BUS ? " bus" : "", CONF_MODE_SHUNT ? " shunt" : "");
-			else
-				term.printf("mode off\n");
+			printMode(term,v);
+		} else if (0 == strcmp(args[0],"shunt")) {
+			term.printf("shunt %4.3f Ohm\n",getShunt());
 		} else if (0 == strcmp(args[0],"reset")) {
-			uint8_t data[] = { m_addr, INA_REG_CONF, 0x80, 0x00 };
-			if (esp_err_t e = i2c_write(m_bus,data,sizeof(data),1,1))
-				return esp_err_to_name(e);
-			m_conf = INA_CONF_RESET_VALUE;
+			reset();
 		} else {
 			return "Invalid argument #1.";
 		}
@@ -301,6 +846,8 @@ const char *INA219::exeCmd(Terminal &term, int argc, const char **args)
 		char *e;
 		long l = strtol(args[1],&e,0);
 		if (0 == strcmp(args[0],"brng")) {
+			if ((m_type != ID_INA219) && (m_type != ID_INA220))
+				return "Operation not supported.";
 			if (l == 16) {
 				v &= ~CONF_BRNG;
 			} else if (l == 32) {
@@ -308,7 +855,13 @@ const char *INA219::exeCmd(Terminal &term, int argc, const char **args)
 			} else {
 				return "Invalid argument #2.";
 			}
+		} else if (0 == strcmp(args[0],"conf")) {
+			if ((*e) || (l < 0) || (l > UINT16_MAX))
+				return "Invalid argument #2.";
+			v = l;
 		} else if (0 == strcmp(args[0],"pg")) {
+			if ((m_type != ID_INA219) && (m_type != ID_INA220))
+				return "Operation not supported.";
 			v &= ~CONF_PG;
 			if ((l == 1) || (l == 40)) {
 				//v |= (0 << CONF_BIT_PG);
@@ -321,33 +874,45 @@ const char *INA219::exeCmd(Terminal &term, int argc, const char **args)
 			} else {
 				return "Invalid argument #2.";
 			}
-		} else if (0 == strcmp(args[0],"badc")) {
-			v &= ~CONF_BADC;
-			int x = sample_cfg(l);
-			if (x < 0)
+		} else if (0 == strcmp(args[0],"vct")) {
+			if ((m_type != ID_INA226) && (m_type != ID_INA260))
+				return "Operation not supported.";
+			int idx = conv_time_index(l);
+			if (idx < 0)
 				return "Invalid argument #2.";
-			v |= x << CONF_BIT_BADC;
-			m_badc = x;
-			updateDelay();
-		} else if (0 == strcmp(args[0],"sadc")) {
-			v &= ~CONF_SADC;
-			int x = sample_cfg(l);
-			if (x < 0)
+			v &= ~MASK_VBUSCT;
+			v |= idx << SHIFT_VBUSCT;
+			term.printf("VCT %uus\n",ConvTime[idx]);
+		} else if (0 == strcmp(args[0],"ict")) {
+			int idx = conv_time_index(l);
+			if (idx < 0)
 				return "Invalid argument #2.";
-			v |= x << CONF_BIT_SADC;
-			m_sadc = x;
-			updateDelay();
-		} else if (0 == strcmp(args[0],"cal")) {
-			if ((l < 0) || (l > UINT16_MAX)) 
+			if (m_type == ID_INA226) {
+				v &= ~MASK_VSHCT;
+				v |= idx << SHIFT_VSHCT;
+			} else if (m_type == ID_INA260) {
+				v &= ~MASK_ISHCT;
+				v |= idx << SHIFT_ISHCT;
+			} else {
+				return "Operation not supported.";
+			}
+			term.printf("ICT %uus\n",ConvTime[idx]);
+		} else if (0 == strcmp(args[0],"avg")) {
+			// number of conversions to average the result
+			// INA226, INA260
+			if (l <= 0)
 				return "Invalid argument #2.";
-			char nvsn[32]; 
-			sprintf(nvsn,"ina219@%u,%x.cal",m_bus,m_addr);
-			nvm_store_u16(nvsn,l);
-			uint8_t data[] = {m_addr,INA_REG_CALIB,(uint8_t)(l>>8),(uint8_t)(l)};
-			if (esp_err_t e = i2c_write(m_bus,data,sizeof(data),1,1))
-				return esp_err_to_name(e);
-			return 0;
+			return setNumSamples(l);
+		} else if (0 == strcmp(args[0],"shunt")) {
+			if ((m_type != ID_INA219) && (m_type != ID_INA220) && (m_type != ID_INA226))
+				return "Operation not supported.";
+			// only for devices with external shunt
+			float f = strtof(args[1],&e);
+			if ((*e) || (f <= 0))
+				return "Invalid argument #2.";
+			return setShunt(f);
 		} else if (0 == strcmp(args[0],"mode")) {
+			// same for all INA2xx
 			if (0 == strcmp(args[1],"off")) {
 				m_conf &= ~CONF_MODE;
 			} else if (0 == strcmp(args[1],"bus")) {
@@ -356,10 +921,10 @@ const char *INA219::exeCmd(Terminal &term, int argc, const char **args)
 			} else if (0 == strcmp(args[1],"bus1")) {
 				m_conf &= ~CONF_MODE;
 				m_conf |= CONF_MODE_BUS;
-			} else if (0 == strcmp(args[1],"shunt")) {
+			} else if (0 == strcmp(args[1],"current")) {
 				m_conf &= ~CONF_MODE;
 				m_conf |= CONF_MODE_CONT | CONF_MODE_SHUNT;
-			} else if (0 == strcmp(args[1],"shunt1")) {
+			} else if (0 == strcmp(args[1],"current1")) {
 				m_conf &= ~CONF_MODE;
 				m_conf |= CONF_MODE_SHUNT;
 			} else if (0 == strcmp(args[1],"both")) {
@@ -371,20 +936,22 @@ const char *INA219::exeCmd(Terminal &term, int argc, const char **args)
 			} else {
 				return "Invalid argument #3.";
 			}
-			updateDelay();
 			v = m_conf;
+		} else if (0 == strcmp(args[0],"reg")) {
+			// for debugging, read register support
+			char *e;
+			long l = strtol(args[1],&e,0);
+			if ((*e) || (l < 0) || (l > 6))
+				return "Argument out of range.";
+			uint8_t data[2];
+			if (esp_err_t e = i2c_w1rd(m_bus,m_addr,(uint8_t)l,data,sizeof(data)))
+				return esp_err_to_name(e);
+			int dec = (int)(int16_t)((data[0]<<8)|data[1]);
+			term.printf("reg %ld: %02x %02x (dec = %d)\n",l,data[0],data[1],dec);
 		} else {
 			return "Invalid argument #2.";
 		}
-		char nvsn[32]; 
-		sprintf(nvsn,"ina219@%u,%x.cfg",m_bus,m_addr);
-		nvm_store_u16(nvsn,v);
-		uint8_t data[] = {m_addr,INA_REG_CONF,(uint8_t)(v>>8),(uint8_t)v};
-		if (esp_err_t e = i2c_write(m_bus,data,sizeof(data),1,1)) {
-			term.printf("com error: %s\n",esp_err_to_name(e));
-			return "";
-		}
-		m_conf = v;
+		setConfig(v);
 	} else {
 		return "Invalid number of arguments.";
 	}
@@ -393,9 +960,9 @@ const char *INA219::exeCmd(Terminal &term, int argc, const char **args)
 #endif
 
 
-void INA219::trigger(void *arg)
+void INA2XX::trigger(void *arg)
 {
-	INA219 *dev = (INA219 *)arg;
+	INA2XX *dev = (INA2XX *)arg;
 	if (dev->m_st == st_off)
 		dev->m_st = st_trigger;
 }

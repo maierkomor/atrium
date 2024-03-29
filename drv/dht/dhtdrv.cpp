@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2022, Thomas Maier-Komor
+ *  Copyright (C) 2018-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -18,6 +18,7 @@
 
 #include <sdkconfig.h>
 
+#include "actions.h"
 #include "dhtdrv.h"
 #include "log.h"
 #include "stream.h"
@@ -125,22 +126,35 @@ uint16_t Edges[48], *Edge = Edges;
 #endif
 
 DHT::DHT()
-: m_ready(false)
+: m_temp("temperature","\u00b0C","%4.1f")
+, m_humid("humidity","%","%4.1f")
+, m_mtx(xSemaphoreCreateMutex())
+, m_ready(false)
 , m_error(true)
 {
+	m_name[0] = 0;
 
+}
+
+
+static void sample(void *arg)
+{
+	DHT *dev = (DHT*) arg;
+	dev->read();
 }
 
 
 void DHT::attach(EnvObject *root)
 {
-	log_info(TAG,"attaching DHT%u at gpio %u",m_model,m_pin);
-	char name[16];
-	sprintf(name,"dht%u@%u",m_model,m_pin);
-	EnvObject *o = root->add(name);
-	m_temp = o->add("temperature",NAN,"\u00b0C");
-	m_humid = o->add("humidity",NAN,"%");
+	if (m_name[0] == 0)
+		return;
+	log_info(TAG,"attaching %s",m_name);
+	EnvObject *o = root->add(m_name);
+	o->add(&m_temp);
+	o->add(&m_humid);
+	action_add(concat(m_name,"!sample"),sample,this,"sample measurements from DHT device");
 }
+
 
 void IRAM_ATTR DHT::fallIntr(void *arg)
 {
@@ -180,8 +194,8 @@ int DHT::init(uint8_t pin, uint16_t model)
 	}
 	m_pin = (xio_t)pin;
 	m_model = (DHTModel_t)model;
+	sprintf(m_name,"dht%u@%u",m_model,m_pin);
 	m_ready = false;
-	m_mtx = xSemaphoreCreateMutex();
 	xio_cfg_t cfg = XIOCFG_INIT;
 	cfg.cfg_io = xio_cfg_io_od;
 	cfg.cfg_intr = xio_cfg_intr_disable;
@@ -228,10 +242,8 @@ bool DHT::read(bool force)
 		return false;
 	}
 	m_error = true;
-	if (m_temp)
-		m_temp->set(NAN);
-	if (m_humid)
-		m_humid->set(NAN);
+	m_temp.set(NAN);
+	m_humid.set(NAN);
 
 	// reset lastReadTime, temperature and humidity
 	m_lastReadTime = currentTime;
@@ -309,12 +321,10 @@ bool DHT::read(bool force)
 
 	// we made it
 	m_error = false;
-	double t = getTemperature();
-	double h = getHumidity();
-	if (m_temp)
-		m_temp->set(t);
-	if (m_humid)
-		m_humid->set(h);
+	float t = getTemperature();
+	m_temp.set(t);
+	float h = getHumidity();
+	m_humid.set(h);
 	if (log_module_enabled(TAG)) {
 		char buf[8];
 		float_to_str(buf,t);

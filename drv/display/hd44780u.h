@@ -37,7 +37,7 @@ class HD44780U : public TextDisplay
 	{ return true; }
 
 	bool hasChar(char c) const override;
-	int init();
+	int init() override;
 	void write(const char *, int = -1) override;
 	int writeHex(uint8_t h, bool c) override;
 	void clear() override;

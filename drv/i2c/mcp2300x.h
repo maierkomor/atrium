@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2022, Thomas Maier-Komor
+ *  Copyright (C) 2022-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -67,7 +67,6 @@ class MCP2300X : public XioCluster, public I2CDevice
 	int getDir(uint8_t gpio);
 	static void eval_intr(void *);
 
-	static void intrHandler(void *);
 	static MCP2300X *Instances;
 
 	MCP2300X *m_next = 0;

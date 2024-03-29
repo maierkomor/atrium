@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2023, Thomas Maier-Komor
+ *  Copyright (C) 2018-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -21,7 +21,9 @@
 #include "actions.h"
 #include "console.h"
 #include "cyclic.h"
+#include "display.h"
 #include "event.h"
+#include "fonts.h"
 #include "fs.h"
 #include "globals.h"
 #include "hwcfg.h"
@@ -240,8 +242,6 @@ static void print_obj(Terminal &t, EnvObject *o, int indent)
 	unsigned c = 0;
 	while (EnvElement *e = o->getChild(c++)) {
 		const char *n = e->name();
-		if (0 == strcmp(n,"mqtt"))
-			continue;
 		for (int i = 0; i < indent; ++i)
 			t << "    ";
 		t << n;
@@ -250,15 +250,6 @@ static void print_obj(Terminal &t, EnvObject *o, int indent)
 			t << '\n';
 			print_obj(t,c,indent+1);
 		} else {
-			/*
-			t << ": ";
-			e->writeValue(t);
-			if (const char *d = e->getDimension()) {
-				t << ' ';
-				t.print(d);
-			}
-			t << '\n';
-			*/
 			print_ele(t,e);
 		}
 	}
@@ -662,13 +653,13 @@ static const char *shell_cp(Terminal &term, int argc, const char *args[])
 	from += args[1];
 	int f = open(from.c_str(),O_RDONLY);
 	if (f == -1) {
-		term.printf("could not open %s: %s\n",from.c_str(),strerror(errno));
+		term.printf("open %s: %s\n",from.c_str(),strerror(errno));
 		return "";
 	}
 	int t = open(to.c_str(),O_CREAT|O_WRONLY|O_TRUNC,0666);
 	if (t == -1) {
 		close(f);
-		term.printf("could not open %s: %s\n",to.c_str(),strerror(errno));
+		term.printf("open %s: %s\n",to.c_str(),strerror(errno));
 		return "";
 	}
 	char buf[512];
@@ -678,7 +669,7 @@ static const char *shell_cp(Terminal &term, int argc, const char *args[])
 		if (w < 0) {
 			close(t);
 			close(f);
-			term.printf("writing to %s: %s\n",to.c_str(),strerror(errno));
+			term.printf("writing %s: %s\n",to.c_str(),strerror(errno));
 			return "";
 		}
 		n = read(f,buf,sizeof(buf));
@@ -687,7 +678,7 @@ static const char *shell_cp(Terminal &term, int argc, const char *args[])
 	close(t);
 	close(f);
 	if (n < 0) {
-		term.printf("reading from %s: %s\n",from.c_str(),strerror(e));
+		term.printf("reading %s: %s\n",from.c_str(),strerror(e));
 		return "";
 	}
 	return 0;
@@ -791,7 +782,7 @@ static const char *shell_df(Terminal &term, int argc, const char *args[])
 		term.printf("SPIFFS: %ukiB of %ukB used\n",used>>10,total>>10);
 		return 0;
 	}
-	term.printf("error getting SPIFFS information: %s\n",esp_err_to_name(ret));
+	term.printf("SPIFFS error: %s\n",esp_err_to_name(ret));
 #elif defined CONFIG_FATFS
 	DWORD nc = 0;
 	FATFS *fs = 0;
@@ -1071,7 +1062,7 @@ static const char *hwconf(Terminal &term, int argc, const char *args[])
 		char arrayname[strlen(args[2])+4];
 		strcpy(arrayname,args[2]);
 		strcat(arrayname,"[+]");
-		return HWConf.setByName(arrayname,0) < 0 ? "Failed." : 0;
+		return HWConf.setByName(arrayname,3 == argc ? 0 : args[3]) < 0 ? "Failed." : 0;
 	} else if (!strcmp("set",args[1])) {
 		if (argc < 4)
 			return "Missing argument.";
@@ -1698,7 +1689,52 @@ static const char *dumpadm(Terminal &term, int argc, const char *args[])
 			return "Invalid argument #1.";
 		}
 	} else {
-		return "Invalid number of arguments";
+		return "Invalid number of arguments.";
+	}
+	return 0;
+}
+#endif
+
+
+#ifdef CONFIG_DISPLAY
+static const char *font(Terminal &term, int argc, const char *args[])
+{
+	if (argc == 1)
+		return "Invalid number of arguments.";
+	if (0 == strcmp(args[1],"ls")) {
+		if (TextDisplay *t = TextDisplay::getFirst()) {
+			unsigned x = 0;
+			term.println("miny maxy boff maxw yadv name");
+			while (const Font *f = t->getFont(x)) {
+				term.printf("%4d %4u %4u %4u %4u %s\n",f->minY,f->maxY,f->blOff,f->maxW,f->yAdvance,f->name);
+				++x;
+			}
+		} else {
+			return "No display.";
+		}
+	} else if (0 == strcmp(args[1],"print")) {
+		if (argc != 3) 
+			return "Invalid number of arguments.";
+		TextDisplay *t = TextDisplay::getFirst();
+		if (0 == t)
+			return "No display.";
+		const Font *f = t->getFont(args[2]);
+		if (0 == f)
+			return "Font not found.";
+		term.printf("first 0x%x, last 0x%x, extra %d\n",f->first,f->last,f->extra);
+		unsigned num = f->last-f->first+f->extra;
+		const glyph_t *g = &f->glyph[0];
+		for (unsigned x = 0; x <= num; ++x) {
+			uint8_t c = g->iso8859;
+			if (c < 0x80)
+				term.printf("0x%02x '%c'",c,c);
+			else
+				term.printf("0x%02x '%c%c'",c,0xc0|(c>>6),(c&0x3f)|0x80);
+			term.printf(": %2ux%2u at %+3d,%+3d adv %u\n",g->width,g->height,g->xOffset,g->yOffset,g->xAdvance);
+			++g;
+		}
+	} else {
+		return "Invalid argument #1.";
 	}
 	return 0;
 }
@@ -1885,7 +1921,7 @@ static const char *config(Terminal &term, int argc, const char *args[])
 		nvm_erase_key("node.cfg");
 	} else if (!strcmp("parsexxd",args[1])) {
 		if (parse_xxd(term,rtcfgbuf))
-			return "Invalid hex input";
+			return "Invalid hex input.";
 		term.printf("parsing %u bytes\n",rtcfgbuf.size());
 		NodeConfig nc;
 		int e = nc.fromMemory(rtcfgbuf.data(),rtcfgbuf.size());
@@ -2190,8 +2226,6 @@ static void print_thresholds(Terminal &t, EnvObject *o, int indent)
 	unsigned c = 0;
 	while (EnvElement *e = o->getChild(c++)) {
 		const char *name = e->name();
-		if (0 == strcmp(name,"mqtt"))
-			continue;
 		if (EnvObject *c = e->toObject()) {
 			for (int i = 0; i < indent; ++i)
 				t << "    ";
@@ -2204,9 +2238,7 @@ static void print_thresholds(Terminal &t, EnvObject *o, int indent)
 			t << name;
 			t << ": ";
 			float lo = n->getLow();
-			if (isnan(lo)) {
-				t << "<no thresholds>\n";
-			} else {
+			if (!isnan(lo)) {
 				t << lo;
 				t << ',';
 				t << n->getHigh();
@@ -2441,7 +2473,6 @@ extern const char *adc(Terminal &term, int argc, const char *args[]);
 extern const char *at(Terminal &term, int argc, const char *args[]);
 extern const char *bme(Terminal &term, int argc, const char *args[]);
 extern const char *buzzer(Terminal &t, int argc, const char *args[]);
-extern const char *dht(Terminal &term, int argc, const char *args[]);
 extern const char *dim(Terminal &term, int argc, const char *args[]);
 extern const char *distance(Terminal &term, int argc, const char *args[]);
 extern const char *dmesg(Terminal &term, int argc, const char *args[]);
@@ -2506,9 +2537,6 @@ ExeName ExeNames[] = {
 #if defined CONFIG_SPIFFS || defined CONFIG_FATFS
 	{"df",0,shell_df,"available storage",0},
 #endif
-#ifdef CONFIG_DHT
-	{"dht",0,dht,"DHTxx family of sensors",dht_man},
-#endif
 #ifdef CONFIG_DIMMER
 	{"dim",0,dim,"operate dimmer",dim_man},
 #endif
@@ -2526,6 +2554,9 @@ ExeName ExeNames[] = {
 #endif
 	{"env",0,env,"print variables",0},
 	{"event",0,event,"handle trigger events as actions",event_man},
+#ifdef CONFIG_DISPLAY
+	{"font",0,font,"font listing",0},
+#endif
 #if defined CONFIG_SPIFFS || defined CONFIG_FATFS
 	{"format",1,shell_format,"format storage",0},
 #endif
@@ -2663,17 +2694,21 @@ const char *help_cmd(Terminal &term, const char *arg)
 		}
 	}
 #endif
+#if defined CONFIG_ROMFS || defined HAVE_FS
 	char tmp[strlen(arg)+6];
+#endif
 #ifdef CONFIG_ROMFS
 	strcpy(tmp,arg);
 	strcat(tmp,".man");
 	if (0 == shell_cat1(term,tmp))
 		return 0;
 #endif
+#ifdef HAVE_FS
 	strcpy(tmp,"/man/");
 	strcat(tmp,arg);
 	if (0 == shell_cat1(term,tmp))
 		return 0;
+#endif
 	return "help page not found";
 }
 
@@ -2706,7 +2741,7 @@ const char *shellexe(Terminal &term, char *cmd)
 		++cmd;
 	*/
 #ifdef CONFIG_LUA
-	if ((0 == memcmp("lua",cmd,3)) && ((cmd[3] == ' ') || (cmd[3] == '\t')))
+	if ((0 == memcmp("lua",cmd,3)) && ((cmd[3] == ' ') || (cmd[3] == '\t')) && !Config.lua_disable())
 		return xlua_exe(term,cmd+4);
 #endif
 	char *at = cmd;
@@ -2770,7 +2805,7 @@ const char *shellexe(Terminal &term, char *cmd)
 	for (const auto &e : ExeNames) {
 		if (0 == strcmp(args[0],e.name)) {
 			if ((e.flags & EXEFLAG_INTERACTIVE) && !term.isInteractive()) {
-				return "Cannot execute interactive command.";
+				return "Non-interactive terminal.";
 			}
 			if (!Config.pass_hash().empty() && ((e.flags & EXEFLAG_ADMIN) > term.getPrivLevel())) {
 				return "Access denied.";

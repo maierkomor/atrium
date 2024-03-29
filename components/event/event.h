@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2023, Thomas Maier-Komor
+ *  Copyright (C) 2020-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -89,6 +89,7 @@ void event_trigger_nd(event_t id);	// no-debug version for syslog only
 void event_trigger_arg(event_t e, void *);
 void event_isr_trigger(event_t e);
 void event_isr_trigger_arg(event_t e, void *);
+void event_isr_handler(void *);		// casts arg to event and calls event_isr_trigger
 event_t event_id(const char *n);
 const char *event_name(event_t);
 uint32_t event_occur(event_t);

@@ -146,17 +146,17 @@ static void spi_init_device(spi_host_device_t host, spidrv_t drv, int8_t cs, int
 		if (SX1276 *dev = SX1276::create(host,cfg,intr,reset)) {
 			const SX1276Config &c = HWConf.sx1276();
 			if (c.has_dio0())
-				dev->setDio0(c.dio0());
+				dev->setDio(c.dio0(),0);
 			if (c.has_dio1())
-				dev->setDio1(c.dio1());
+				dev->setDio(c.dio1(),1);
 			if (c.has_dio2())
-				dev->setDio2(c.dio2());
+				dev->setDio(c.dio2(),2);
 			if (c.has_dio3())
-				dev->setDio3(c.dio3());
+				dev->setDio(c.dio3(),3);
 			if (c.has_dio4())
-				dev->setDio4(c.dio4());
+				dev->setDio(c.dio4(),4);
 			if (c.has_dio5())
-				dev->setDio5(c.dio5());
+				dev->setDio(c.dio5(),5);
 		}
 		break;
 #endif

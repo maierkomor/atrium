@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2022, Thomas Maier-Komor
+ *  Copyright (C) 2022-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -119,22 +119,6 @@ void MCP2301X::attach(class EnvObject *)
 }
 
 
-void MCP2301X::intrHandlerA(void *arg)
-{
-	MCP2301X *dev = (MCP2301X *)arg;
-	if (dev->m_iaev)
-		event_isr_trigger(dev->m_iaev);
-}
-
-
-void MCP2301X::intrHandlerB(void *arg)
-{
-	MCP2301X *dev = (MCP2301X *)arg;
-	if (dev->m_ibev)
-		event_isr_trigger(dev->m_ibev);
-}
-
-
 MCP2301X *MCP2301X::create(uint8_t bus, uint8_t addr, int8_t inta, int8_t intb)
 {
 	addr |= 0x40;
@@ -216,13 +200,12 @@ int MCP2301X::set_pullup(uint8_t io, xio_cfg_pull_t pull)
 int MCP2301X::set_intr_a(xio_t inta)
 {
 	event_t fev = xio_get_fallev(inta);
-	if (fev != 0) {
-	} else if (0 == xio_set_intr((xio_t)inta,intrHandlerA,(void*)this)) {
+	if (fev == 0) {
 		fev = event_register(m_name,"`intr_a");
-		m_iaev = fev;
-	} else {
-		log_warn(TAG,"xio%u isr hander",inta);
-		return -1;
+		if (esp_err_t e = xio_set_intr((xio_t)inta,event_isr_handler,(void*)(unsigned)fev)) {
+			log_warn(TAG,"xio%u isr hander: %s",inta,esp_err_to_name(e));
+			return -1;
+		}
 	}
 	xio_cfg_t cfg = XIOCFG_INIT;
 	cfg.cfg_io = xio_cfg_io_in;
@@ -242,13 +225,13 @@ int MCP2301X::set_intr_a(xio_t inta)
 int MCP2301X::set_intr_b(xio_t intb)
 {
 	event_t fev = xio_get_fallev(intb);
-	if (fev != 0) {
-	} else if (0 == xio_set_intr((xio_t)intb,intrHandlerB,(void*)this)) {
+	if (fev == 0) {
 		fev = event_register(m_name,"`intr_b");
+		if (esp_err_t e = xio_set_intr((xio_t)intb,event_isr_handler,(void*)(unsigned)fev)) {
+			log_warn(TAG,"xio%u isr hander: %s",intb,esp_err_to_name(e));
+			return -1;
+		}
 		m_ibev = fev;
-	} else {
-		log_warn(TAG,"xio%u isr hander",intb);
-		return -1;
 	}
 	xio_cfg_t cfg = XIOCFG_INIT;
 	cfg.cfg_io = xio_cfg_io_in;

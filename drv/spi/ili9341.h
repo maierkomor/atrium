@@ -44,6 +44,7 @@ class ILI9341 : public MatrixDisplay, public SpiDevice
 
 	typedef spi_host_device_t spi_host_t;
 	static ILI9341 *create(spi_host_t host, spi_device_interface_config_t &cfg, int8_t dc, int8_t reset);
+
 	int init(uint16_t maxx, uint16_t maxy, uint8_t options);
 
 	void fillRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, int32_t c = -1) override;
@@ -65,6 +66,9 @@ class ILI9341 : public MatrixDisplay, public SpiDevice
 
 	bool hasChar(char) const override
 	{ return true; }
+
+	pxlfmt_t pixelFormat() const override
+	{ return pxf_rowmjr; }
 
 	static ILI9341 *getInstance()
 	{ return Instance; }

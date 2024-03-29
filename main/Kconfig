@@ -372,6 +372,13 @@ config ADS1X1X
 	help
 		I2C driver for ADS1x1x series of ADC converters
 
+config AHTXX
+	depends on I2C
+	bool "AHTxx"
+	default false
+	help
+		I2C driver for AHTxx family of devices (temperature, humidity)
+
 config BMX280
 	depends on I2C
 	bool "BMx280"

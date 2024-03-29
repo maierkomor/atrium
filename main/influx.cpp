@@ -542,7 +542,7 @@ void influx_setup()
 const char *influx(Terminal &term, int argc, const char *args[])
 {
 	if (argc > 3)
-		return "Invalid nunber of arguments.";
+		return "Invalid number of arguments.";
 	if (argc == 1) {
 		if (Config.has_influx()) {
 			const Influx &i = Config.influx();

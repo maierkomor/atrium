@@ -21,6 +21,7 @@
 #ifdef CONFIG_I2C
 
 #include "hdc1000.h"
+#include "ina2xx.h"
 #include "opt3001.h"
 #include "log.h"
 
@@ -46,16 +47,28 @@ static unsigned scan_addr(uint8_t bus, uint8_t addr)
 	log_info(TAG,"found TI device 0x%04x",id);
 #ifdef CONFIG_HDC1000
 	if ((id == 0x1000) || (id == 0x1050)) {
-		if (I2CDevice *s = HDC1000::create(bus,addr,id)) {
-			s->init();
+		if (HDC1000::create(bus,addr,id)) {
 			return 1;
 		}
 	}
 #endif
 #ifdef CONFIG_OPT3001
 	if (id == 0x3001) {
-		if (I2CDevice *s = OPT3001::create(bus,addr)) {
-			s->init();
+		if (OPT3001::create(bus,addr)) {
+			return 1;
+		}
+	}
+#endif
+#ifdef CONFIG_INA2XX
+	if (id == 0x2260) {
+		// INA226
+		if (INA2XX::create(bus,addr,26)) {
+			return 1;
+		}
+	}
+	if (id == 0x2270) {
+		// INA260
+		if (INA2XX::create(bus,addr,60)) {
 			return 1;
 		}
 	}

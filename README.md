@@ -958,6 +958,42 @@ and dots for OLEDs). OLEDs based on SSD1306 may also need appropriate
 options for the individual hardware configuration as specified in the
 ssd1306.h file. Documentation for this is on the TODO list right now.
 
+Fonts:
+======
+Atrium firmware images include some basic fonts, if display support is
+included, for both row-major and byte-colum-major (for OLEDs) formats.
+As fonts require a lot of ROM, Atrium supports to load additional fonts
+at run-time. For run-time loading the font file must be either in the ROMFS
+or on a partition with FATFS/SPIFFS. Fonts on ROMFS partitions can be
+loaded on all ESP32 devices. Fonts stored on FATFS or SPIFFS parttitions
+can only be used if the device has an attached SPI RAM. ESP8266 devices
+do not support dynamic font loading, due to limited RAM and restrictions
+regarding the memory mapping of ROMFS files into the address space.
+
+Ready to use font files are distributed as part of the source tree in
+the `data/fonts` subdirectory, and in the binary distribution in the
+`fonts` subdirectory. Regular row-major fonts for TFTs such as the
+ILI9341 have the `.af1` extension, while fonts for OLEDs in
+byte-column-major format have the `.af2` extension. Fonts that include
+both formats have the `.afn` extension.
+
+The `font-tool` utitlity can be used to create font files for Atrium
+devices from regular TrueType fonts. To create font files from a `.ttf`
+file, just pass the sizes as a comma separated list and the TrueType
+font to the `font-tool`, and it will create the `.af1`, `.af2`, and
+`.afn` files for you.
+
+E.g.:
+```
+$ cd $ATRIUM_ROOT
+$ make font-tool
+$ bin/mkfonts.sh -s 8,12,18,24 courier.ttf
+```
+
+Fonts added to the ROMFS or root directory of FATFS/SPIFFS will be
+loaded when intializing a display. They can be used either when
+rendering the screen with Lua scripts or by replacing the default fonts
+using the font settings in the `screen` section of the `config` command.
 
 I/O-Extenders:
 ==============

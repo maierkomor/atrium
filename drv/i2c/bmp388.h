@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2023, Thomas Maier-Komor
+ *  Copyright (C) 2023-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -32,19 +32,18 @@ struct BMP388 : public I2CDevice
 	{ return "bmp388"; }
 
 	void addIntr(uint8_t intr) override;
-	int init() override;
 	void attach(class EnvObject *);
 #ifdef CONFIG_I2C_XCMD
 	const char *exeCmd(struct Terminal &, int argc, const char **argv) override;
 #endif
 
 	protected:
+	int init();
 	float calc_press(int32_t adc_P, int32_t t_fine);
 	void calc_tfine(uint32_t);
 	void calc_press(uint32_t);
 	int flush_fifo();
 	static void trigger(void *);
-	static void intrHandler(void *);
 	bool status();
 	virtual int sample();
 	virtual int read();
@@ -55,7 +54,6 @@ struct BMP388 : public I2CDevice
 
 	EnvNumber m_temp, m_press;
 	double D[14];
-	event_t m_irqev = 0;
 	typedef enum { st_idle, st_sample, st_measure, st_read } state_t;
 	state_t m_state = st_idle;
 };

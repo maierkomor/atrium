@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2022-2023, Thomas Maier-Komor
+ *  Copyright (C) 2022-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -22,51 +22,44 @@
 #include "env.h"
 #include "i2cdrv.h"
 
+#define ID_INA219 19
+#define ID_INA220 20
+#define ID_INA226 26
+#define ID_INA260 60
 
-struct INA219 : public I2CDevice
+
+struct INA2XX : public I2CDevice
 {
-	static INA219 *create(uint8_t port, uint8_t addr);
+	static INA2XX *create(uint8_t port, uint8_t addr, uint8_t type);
 
-	const char *drvName() const override
-	{ return "ina219"; }
-
-//	int init() override;
 	void attach(class EnvObject *) override;
 #ifdef CONFIG_I2C_XCMD
 	const char *exeCmd(struct Terminal &, int argc, const char **argv) override;
 #endif
 
 	protected:
-	INA219(uint8_t port, uint8_t addr);
+	INA2XX(uint8_t port, uint8_t addr, uint8_t type, const char *name);
 	static unsigned cyclic(void *);
 	static void trigger(void *arg);
-	void updateDelay();
 
-	private:
-	EnvNumber m_volt, m_amp, m_shunt, m_power;
+	virtual float getShunt() const
+	{ return 0; }
+	void init();
+	void updateDelay();
+	virtual void read();
+	int reset();
+	void setConfig(uint16_t cfg);
+	int setMode(bool cur, bool volt, bool cont);
+	virtual const char *setNumSamples(unsigned n);
+	virtual const char *setShunt(float r);
+//	virtual void printConfig(Terminal &term, uint16_t v);
+
+	EnvNumber m_volt, m_amp, m_power;
 	uint16_t m_conf = 0;
+	typedef enum mode_e { md_pd = 0, md_tc, md_tv, md_tcv, md_cc, md_cv, md_ccv } mode_t;
 	typedef enum state_e { st_off, st_trigger, st_read, st_cont } state_t;
 	state_t m_st;
-	uint8_t m_delay = 0, m_badc = 0, m_sadc = 0;
+	uint8_t m_type;
 };
-
-/* TODO
-struct INA226 : public I2CDevice
-{
-	INA226(uint8_t port, uint8_t addr, const char *n = 0);
-
-	const char *drvName() const
-	{ return "ina226"; }
-
-	int init();
-	void attach(class EnvObject *);
-#ifdef CONFIG_I2C_XCMD
-	const char *exeCmd(struct Terminal &, int argc, const char **argv) override;
-#endif
-
-	protected:
-
-};
-*/
 
 #endif

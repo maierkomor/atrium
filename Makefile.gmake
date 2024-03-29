@@ -102,7 +102,7 @@ settings:
 	@echo IDF_VER=$(IDF_VER)
 	@echo CPPFLAGS=$(CPPFLAGS)
 
-tools: mkromfs atriumcfg
+tools: mkromfs atriumcfg font-tool
 
 $(IDF_PATH):
 	@echo please run setupenv.sh before running make
@@ -184,6 +184,11 @@ atriumcfg: bin/atriumcfg$(EXEEXT)
 
 bin/atriumcfg$(EXEEXT): $(CFG_CXX) tools/version.h tools/pcconfig.h
 	g++ -g -DWFC_TARGET=pc -Imain -Icomponents/wfc -Itools $(CFG_CXX) -ledit -lmd -o $@
+
+font-tool: bin/font-tool$(EXEEXT)
+
+bin/font-tool$(EXEEXT): tools/font-tool.c
+	gcc -g -I/usr/include/freetype2 tools/font-tool.c -o bin/font-tool -lfreetype
 
 always:
 

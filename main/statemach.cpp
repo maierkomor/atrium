@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2022-2023, Thomas Maier-Komor
+ *  Copyright (C) 2022-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -248,16 +248,6 @@ StateMachine::StateMachine(const StateMachineConfig &cfg)
 	for (const auto &st : cfg.states())
 		addState(st);
 	First = this;
-	int numst = cfg.states_size();
-	if (numst > 0) {
-		uint8_t x = cfg.ini_st();
-		if (x >= numst)
-			x = 0;
-		if (m_persistent)
-			x = nvm_read_u8(m_name.c_str(),x);
-		if (x < cfg.states_size())
-			switch_state(cfg.states(x).name().c_str());
-	}
 }
 
 
@@ -477,7 +467,7 @@ static int luax_sm_get(lua_State *L)
 }
 
 
-static LuaFn Functions[] = {
+static const LuaFn Functions[] = {
 	{ "sm_set", luax_sm_set, "set state-machine state (sm,state)" },
 	{ "sm_get", luax_sm_get, "get state-machine state (sm)" },
 	{ 0, 0, 0 }
@@ -502,4 +492,23 @@ void sm_setup()
 #endif
 }
 
+
+void sm_start()
+{
+	for (const auto &cfg : Config.statemachs()) {
+		if (cfg.name().empty() || cfg.states().empty())
+			continue;
+		int numst = cfg.states_size();
+		uint8_t x = cfg.ini_st();
+		if (x >= numst)
+			x = 0;
+		const char *name = cfg.name().c_str();
+		if (cfg.persistent())
+			x = nvm_read_u8(name,x);
+		if (x < cfg.states_size()) {
+			if (StateMachine *m = StateMachine::get(name))
+				m->switch_state(cfg.states(x).name().c_str());
+		}
+	}
+}
 #endif

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021-2022, Thomas Maier-Komor
+ *  Copyright (C) 2021-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -23,10 +23,12 @@
 #include "actions.h"
 #include "apds9930.h"
 #include "cyclic.h"
+#include "env.h"
 #include "event.h"
 #include "log.h"
 #include "terminal.h"
-#include "env.h"
+#include "xio.h"
+
 
 #define REG_ENABLE	0x80
 #define REG_ATIME	0x81
@@ -143,8 +145,23 @@ int APDS9930::init()
 }
 
 
+void APDS9930::addIntr(uint8_t gpio)
+{
+	m_isrev = event_register(m_name,"`isr");
+	xio_cfg_t cfg = XIOCFG_INIT;
+	cfg.cfg_io = xio_cfg_io_in;
+	cfg.cfg_pull = xio_cfg_pull_up;
+	cfg.cfg_intr = xio_cfg_intr_fall;
+	if (0 > xio_config(gpio,cfg)) {
+		log_warn(TAG,"gpio %u as interrupt failed",gpio);
+	} else if (xio_set_intr(gpio,event_isr_handler,(void*)(unsigned)m_isrev)) {
+		log_warn(TAG,"add handler for gpio %u interrupt failed",gpio);
+	}
+}
+
 void APDS9930::attach(EnvObject *root)
 {
+	init();
 	log_dbug(TAG,"attach");
 	root->add(m_lux);
 	root->add(m_prox);
@@ -239,15 +256,6 @@ unsigned APDS9930::cycle(void *arg)
 	dev->m_state = st_idle;
 	return 1000;
 }
-
-
-/*
-void APDS9930::intr_handler(void *arg)
-{
-	APDS9930 *dev = (APDS9930 *) arg;
-
-}
-*/
 
 
 void APDS9930::trigger(void *arg)
@@ -347,12 +355,11 @@ int apds9930_scan(uint8_t bus)
 	log_dbug(TAG,"scan");
 	int n = 0;
 	uint8_t id;
-	if (i2c_w1rd(bus,APDS9930_ADDR, REG_ID, &id, 1))
-		return 0;
-	if (id == 0x39) {
-		APDS9930 *drv = new APDS9930(bus);
-		drv->init();
-		++n;
+	if (0 == i2c_w1rd(bus,APDS9930_ADDR, REG_ID, &id, 1)) {
+		if (id == 0x39) {
+			new APDS9930(bus);
+			++n;
+		}
 	}
 	return n;
 }

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2023, Thomas Maier-Komor
+ *  Copyright (C) 2023-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -245,6 +245,10 @@ static const uint16_t BW_dkHz[] = {
 
 
 static const char *ModeStrs[] = {
+	"SLEEP", "STDBY", "FSTX", "TX", "FSRX", "RX", "<reserved>", "<reserved>"
+};
+
+static const char *ModeStrsLora[] = {
 	"SLEEP", "STDBY", "FSTX", "TX", "FSRX", "RXCONT", "RXSINGLE", "CAD"
 };
 
@@ -260,7 +264,7 @@ static const char *RegNames[] = {
 	"SyncVal8", "PacketCfg1", "PacketCfg2", "PayloadLen", "NodeAdrs", "BcastAdrs",
 	"FifoThresh", "SeqConfig1", "SeqConfig2", "TimerRes", "Timer1Coef", "Timer2Coef",
 	"ImageCal", "Temp", "LowBat", "IrqFlags1", "IrqFlags2", "DioMap1", "DioMap2",
-	"Version", "Reserve43", "PllHop"
+	"Version", "Reserve43", "PllHop",
 };
 
 
@@ -271,7 +275,9 @@ static const char *RegNames[] = {
 // cs 18
 SX1276::SX1276(spi_host_device_t host, spi_device_interface_config_t &cfg, int8_t intr, int8_t reset)
 : SpiDevice("sx1276", cfg.spics_io_num)
+, m_env("data","")
 , m_sem(xSemaphoreCreateBinary())
+, m_mtx(xSemaphoreCreateMutex())
 , m_reset(reset)
 {
 	bzero(m_iev,sizeof(m_iev));
@@ -293,6 +299,7 @@ SX1276::SX1276(spi_host_device_t host, spi_device_interface_config_t &cfg, int8_
 	cfg.post_cb = postCallback;
 	cfg.flags = ESP_INTR_FLAG_IRAM;
 	cfg.flags = SPI_DEVICE_HALFDUPLEX;
+	event_t irqev = event_register(concat(m_name,"`irq"));
 	if (-1 != intr) {
 		xio_cfg_t cfg = XIOCFG_INIT;
 		cfg.cfg_io = xio_cfg_io_in;
@@ -300,14 +307,13 @@ SX1276::SX1276(spi_host_device_t host, spi_device_interface_config_t &cfg, int8_
 		cfg.cfg_intr = xio_cfg_intr_edges;
 		if (0 > xio_config(intr,cfg)) {
 			log_warn(TAG,"config interrupt error");
-		} else if (esp_err_t e = xio_set_intr(intr,intr_handler,this))
+		} else if (esp_err_t e = xio_set_intr(intr,event_isr_handler,(void*)(unsigned)irqev))
 			log_warn(TAG,"error attaching interrupt: %s",esp_err_to_name(e));
 		else
 			log_info(TAG,"interrupt on %u",intr);
 	}
 	Action *irqac = action_add("sx1276!irqh",intr_action,this,0);
-	m_irqev = event_register(concat(m_name,"`irq"));
-	event_callback(m_irqev,irqac);
+	event_callback(irqev,irqac);
 	if (esp_err_t e = spi_bus_add_device(host,&cfg,&m_hdl))
 		log_warn(TAG,"device add failed: %s",esp_err_to_name(e));
 	else
@@ -320,137 +326,38 @@ SX1276 *SX1276::create(spi_host_device_t host, spi_device_interface_config_t &cf
 	if (m_inst == 0) {
 		return new SX1276(host,cfg,intr,reset);
 	} else {
-		log_warn(TAG,"Only single instance supported. Cannot instanciate at CS=%u",cfg.spics_io_num);
+		log_warn(TAG,"Single instance only (CS=%u)",cfg.spics_io_num);
 		return 0;
 	}
 }
 
 
-void SX1276::setDio0(uint8_t gpio)
+void SX1276::setDio(uint8_t gpio, uint8_t dio)
 {
+	if (dio > 5)
+		return;
+	char dn[8];
+	sprintf(dn,"`dio%u",dio);
+	m_iev[dio] = event_register(concat(m_name,dn));
 	if (esp_err_t e = gpio_set_intr_type((gpio_num_t)gpio,GPIO_INTR_NEGEDGE)) {
-		log_warn(TAG,"cannot trigger on neg-edge on gpio%u: %s",gpio,esp_err_to_name(e));
-	} else if (esp_err_t e = gpio_isr_handler_add((gpio_num_t)gpio,dio0Handler,(void*)this)) {
-		log_warn(TAG,"add isr handler to gpio%u: %s",gpio,esp_err_to_name(e));
+		log_warn(TAG,"trigger on neg-edge of gpio%u: %s",gpio,esp_err_to_name(e));
+	} else if (esp_err_t e = gpio_isr_handler_add((gpio_num_t)gpio,event_isr_handler,(void*)(unsigned)m_iev[dio])) {
+		log_warn(TAG,"add ISR to gpio%u: %s",gpio,esp_err_to_name(e));
 	} else {
-		log_dbug(TAG,"attached dio0 to gpio%u",gpio);
-		m_iev[0] = event_register(concat(m_name,"`dio0"));
-		Action *ia = action_add(concat(m_name,"!intr"),intr_action,this,0);
-		event_callback(m_iev[0],ia);
+		log_dbug(TAG,"%s on gpio%u",dn,gpio);
+		char aname[64];
+		snprintf(aname,sizeof(aname),"%s!intr",m_name);
+		Action *ia = action_get(aname);
+		if (0 == ia)
+			ia = action_add(strdup(aname),intr_action,this,0);
+		event_callback(m_iev[dio],ia);
 	}
-}
-
-
-void SX1276::setDio1(uint8_t gpio)
-{
-	if (esp_err_t e = gpio_set_intr_type((gpio_num_t)gpio,GPIO_INTR_NEGEDGE)) {
-		log_warn(TAG,"cannot trigger on neg-edge on gpio%u: %s",gpio,esp_err_to_name(e));
-	} else if (esp_err_t e = gpio_isr_handler_add((gpio_num_t)gpio,dio1Handler,(void*)this)) {
-		log_warn(TAG,"add isr handler to gpio%u: %s",gpio,esp_err_to_name(e));
-	} else {
-		log_dbug(TAG,"attached dio1 to gpio%u",gpio);
-		m_iev[1] = event_register(concat(m_name,"`dio1"));
-	}
-}
-
-
-void SX1276::setDio2(uint8_t gpio)
-{
-	if (esp_err_t e = gpio_set_intr_type((gpio_num_t)gpio,GPIO_INTR_NEGEDGE)) {
-		log_warn(TAG,"cannot trigger on neg-edge on gpio%u: %s",gpio,esp_err_to_name(e));
-	} else if (esp_err_t e = gpio_isr_handler_add((gpio_num_t)gpio,dio2Handler,(void*)this)) {
-		log_warn(TAG,"add isr handler to gpio%u: %s",gpio,esp_err_to_name(e));
-	} else {
-		log_dbug(TAG,"attached dio2 to gpio%u",gpio);
-		m_iev[2] = event_register(concat(m_name,"`dio2"));
-	}
-}
-
-
-void SX1276::setDio3(uint8_t gpio)
-{
-	if (esp_err_t e = gpio_set_intr_type((gpio_num_t)gpio,GPIO_INTR_NEGEDGE)) {
-		log_warn(TAG,"cannot trigger on neg-edge on gpio%u: %s",gpio,esp_err_to_name(e));
-	} else if (esp_err_t e = gpio_isr_handler_add((gpio_num_t)gpio,dio3Handler,(void*)this)) {
-		log_warn(TAG,"add isr handler to gpio%u: %s",gpio,esp_err_to_name(e));
-	} else {
-		log_dbug(TAG,"attached dio3 to gpio%u",gpio);
-		m_iev[3] = event_register(concat(m_name,"`dio3"));
-	}
-}
-
-
-void SX1276::setDio4(uint8_t gpio)
-{
-	if (esp_err_t e = gpio_set_intr_type((gpio_num_t)gpio,GPIO_INTR_NEGEDGE)) {
-		log_warn(TAG,"cannot trigger on neg-edge on gpio%u: %s",gpio,esp_err_to_name(e));
-	} else if (esp_err_t e = gpio_isr_handler_add((gpio_num_t)gpio,dio4Handler,(void*)this)) {
-		log_warn(TAG,"add isr handler to gpio%u: %s",gpio,esp_err_to_name(e));
-	} else {
-		log_dbug(TAG,"attached dio4 to gpio%u",gpio);
-		m_iev[4] = event_register(concat(m_name,"`dio4"));
-	}
-}
-
-
-void SX1276::setDio5(uint8_t gpio)
-{
-	if (esp_err_t e = gpio_set_intr_type((gpio_num_t)gpio,GPIO_INTR_NEGEDGE)) {
-		log_warn(TAG,"cannot trigger on neg-edge on gpio%u: %s",gpio,esp_err_to_name(e));
-	} else if (esp_err_t e = gpio_isr_handler_add((gpio_num_t)gpio,dio5Handler,(void*)this)) {
-		log_warn(TAG,"add isr handler to gpio%u: %s",gpio,esp_err_to_name(e));
-	} else {
-		log_dbug(TAG,"attached dio5 to gpio%u",gpio);
-		m_iev[5] = event_register(concat(m_name,"`dio5"));
-	}
-}
-
-
-void SX1276::dio0Handler(void *arg)
-{
-	SX1276 *dev = (SX1276 *) arg;
-	event_isr_trigger(dev->m_iev[0]);
-}
-
-
-void SX1276::dio1Handler(void *arg)
-{
-	SX1276 *dev = (SX1276 *) arg;
-	event_isr_trigger(dev->m_iev[1]);
-}
-
-
-void SX1276::dio2Handler(void *arg)
-{
-	SX1276 *dev = (SX1276 *) arg;
-	event_isr_trigger(dev->m_iev[2]);
-}
-
-
-void SX1276::dio3Handler(void *arg)
-{
-	SX1276 *dev = (SX1276 *) arg;
-	event_isr_trigger(dev->m_iev[3]);
-}
-
-
-void SX1276::dio4Handler(void *arg)
-{
-	SX1276 *dev = (SX1276 *) arg;
-	event_isr_trigger(dev->m_iev[4]);
-}
-
-
-void SX1276::dio5Handler(void *arg)
-{
-	SX1276 *dev = (SX1276 *) arg;
-	event_isr_trigger(dev->m_iev[5]);
 }
 
 
 void SX1276::attach(EnvObject *root)
 {
-
+	root->add(&m_env);
 }
 
 
@@ -510,15 +417,8 @@ int SX1276::init()
 }
 
 
-void IRAM_ATTR SX1276::intr_handler(void *arg)
-{
-	SX1276 *dev = (SX1276 *) arg;
-	con_printf("intr\n");
-	event_isr_trigger(dev->m_irqev);
-}
-
-
-void IRAM_ATTR SX1276::intr_action(void *arg)
+// event handler, not ISR
+void SX1276::intr_action(void *arg)
 {
 	SX1276 *dev = (SX1276 *) arg;
 	dev->processIntr();
@@ -548,12 +448,12 @@ void SX1276::processIntr()
 	} else {
 		uint8_t r[2];
 		readRegs(FSKOOK_IRQ_FLAGS1,sizeof(r),r);
-		log_dbug(TAG,"irq flags 0x%02x 0x%02x",r[0],r[1]);
-		if (r[1] & BIT_PAYLOAD_READY) {
+		log_dbug(TAG,"irq flags1 0x%02x 0x%02x",r[0],r[1]);
+		if (r[0] & BIT_PAYLOAD_READY) {
 			log_dbug(TAG,"payload ready");
-			uint8_t data[64], st;
+			uint8_t data[64];
 			readRegs(0,sizeof(data),data);
-			// TODO: handle data
+			m_env.set((const char *)data,sizeof(data));
 		}
 	}
 }
@@ -1104,6 +1004,7 @@ int SX1276::readRegs(uint8_t reg, uint8_t num, uint8_t *data)
 	t.length = num<<3;
 	t.rxlength = num<<3;
 	t.rx_buffer = data;
+	Lock lock(m_mtx);
 	if (esp_err_t e = spi_device_queue_trans(m_hdl,&t,1)) {
 		log_warn(TAG,"error queuing read: %s",esp_err_to_name(e));
 		return -1;
@@ -1124,6 +1025,7 @@ int SX1276::readReg(uint8_t reg, uint8_t *data)
 	t.length = 1<<3;
 	t.rxlength = 1<<3;
 	t.rx_buffer = data;
+	Lock lock(m_mtx);
 	if (esp_err_t e = spi_device_queue_trans(m_hdl,&t,1)) {
 		log_warn(TAG,"error queuing read: %s",esp_err_to_name(e));
 		return -1;
@@ -1145,6 +1047,7 @@ int SX1276::writeReg(uint8_t r, uint8_t v)
 	t.length = 1<<3;
 	t.tx_data[0] = v;
 	t.flags = SPI_TRANS_USE_TXDATA;
+	Lock lock(m_mtx);
 	if (esp_err_t e = spi_device_queue_trans(m_hdl,&t,1)) {
 		log_warn(TAG,"error queuing read: %s",esp_err_to_name(e));
 		return -1;
@@ -1192,8 +1095,11 @@ int SX1276::send(const char *buf, int s)
 		return -1;
 	uint8_t mode = opm & MASK_MODE;
 	if ((mode != mode_stdb) && (mode != mode_sleep) && (mode != mode_tx)) {
-		log_warn(TAG,"cannot send from mode %s",ModeStrs[mode]);
-		return -1;
+		log_warn(TAG,"cannot send from mode %s",(isLora()?ModeStrsLora:ModeStrs)[mode]);
+		opm &= ~MASK_MODE;
+		opm |= mode_stdb;
+		writeReg(REG_OP_MODE,opm);
+//		return -1;
 	}
 	opm &= ~MASK_MODE;
 	if (isLora()) {
@@ -1236,8 +1142,8 @@ int SX1276::send(const char *buf, int s)
 		uint8_t flags[2];
 		do {
 			ets_delay_us(10000);
-			readRegs(FSKOOK_IRQ_FLAGS1,sizeof(flags),flags);
-		} while ((flags[1]& BIT_PACKET_SENT) == 0);
+			readRegs(FSKOOK_IRQ_FLAGS2,sizeof(flags),flags);
+		} while ((flags[0]& BIT_PACKET_SENT) == 0);
 		log_dbug(TAG,"send done");
 		opm &= ~MASK_MODE;
 		opm |= mode_stdb;
@@ -1367,6 +1273,10 @@ const char *SX1276::exeCmd(Terminal &t, int argc, const char **args)
 				setMode(mode_rxcont);
 			else if (0 == strcmp(args[1],"standby"))
 				setMode(mode_stdb);
+			else if (0 == strcmp(args[1],"stdb"))
+				setMode(mode_stdb);
+			else
+				return "Invalid argument #2.";
 		} else if (0 == strcmp(args[0],"freq")) {
 			char *e;
 			long l = strtol(args[1],&e,0);

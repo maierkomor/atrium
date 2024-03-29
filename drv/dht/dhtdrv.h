@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2022, Thomas Maier-Komor
+ *  Copyright (C) 2018-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -25,6 +25,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
+#include "env.h"
 #include "xio.h"
 
 class EnvObject;
@@ -33,6 +34,7 @@ class EnvNumber;
 
 // DHTModel_t
 typedef enum {
+	DHT_MODEL_INVALID = 0,
 	DHT_MODEL_DHT11 = 11,
 	DHT_MODEL_DHT21 = 21,
 	DHT_MODEL_DHT22 = 22,
@@ -80,15 +82,16 @@ class DHT
 	private:
 	static void fallIntr(void *arg);
 
-	DHTModel_t m_model;
-	EnvNumber *m_temp = 0, *m_humid = 0;
-	unsigned long m_lastReadTime;
-	long m_lastEdge;
+	unsigned long m_lastReadTime = 0;
+	long m_lastEdge = 0;
+	EnvNumber m_temp, m_humid;
 	SemaphoreHandle_t m_mtx;
+	DHTModel_t m_model = DHT_MODEL_INVALID;
+	uint16_t m_start = 0;
+	char m_name[10];
 	uint8_t m_data[5];
-	uint8_t m_bit, m_edges, m_errors;
-	uint16_t m_start;
-	bool m_ready, m_error;
+	uint8_t m_bit = 0, m_edges = 0, m_errors = 0;
+	bool m_ready = false, m_error = true;
 
 	protected:
 	xio_t m_pin;

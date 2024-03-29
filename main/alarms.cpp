@@ -130,14 +130,14 @@ static unsigned alarms_loop(void *)
 				else
 					event_trigger(e);
 			} else {
-				log_warn(TAG,"unknown event '%s'",aname);
+				log_warn(TAG,"unknown event %s",aname);
 			}
 		} else if (arg) {
 			if (action_activate_arg(aname,(void*)arg))
-				log_warn(TAG,"unknown action '%s'",aname);
+				log_warn(TAG,"unknown action %s",aname);
 		} else {
 			if (action_activate(aname))
-				log_warn(TAG,"unknown action '%s'",aname);
+				log_warn(TAG,"unknown action %s",aname);
 		}
 	}
 	return 200;

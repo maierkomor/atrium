@@ -262,7 +262,7 @@ static const char *tftp_to(Terminal &t, uri_t *uri, const char *(*sink)(Terminal
 	udp_bind(pcb,IP_ANY_TYPE,0);
 	size_t fl = strlen(uri->file);
 	char buf[128];
-	uint16_t reqsize = 1432;
+	uint16_t reqsize = 1460;
 	char *at = buf;
 	*at++ = 0;
 	*at++ = TFTP_RRQ;
@@ -614,7 +614,7 @@ const char *http_download(Terminal &t, char *addr, const char *fn)
 }
 
 
-static const char *to_part(Terminal &t, void *arg, char *buf, size_t s)
+const char *to_part(Terminal &t, void *arg, char *buf, size_t s)
 {
 	esp_partition_t *p = (esp_partition_t *)arg;
 	//t.printf("to_part %u@%x\n",s,*addr);

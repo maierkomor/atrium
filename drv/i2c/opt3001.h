@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2023, Thomas Maier-Komor
+ *  Copyright (C) 2023-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -36,17 +36,23 @@ struct OPT3001 : public I2CDevice
 #ifdef CONFIG_I2C_XCMD
 	const char *exeCmd(Terminal &term, int argc, const char **args) override;
 #endif
-	int init() override;
 
 	private:
+	typedef enum mode_e { mode_off = 0, mode_single = 1, mode_cont = 2 } mode_t;
 	OPT3001(unsigned bus, unsigned addr);
-	static void sample(void *arg);
-	static void intrHandler(void *);
+	static void read(void *arg);
+	static void single(void *arg);
+	static void cont(void *arg);
+	static void stop(void *arg);
 	static unsigned cyclic(void *arg);
-	int read();
+	int updateConfig(uint16_t);
+	int init();
+	int read(bool force = false);
+	void setMode(mode_t m);
 
 	EnvNumber m_lum;
 	event_t m_isrev = 0;
+	uint16_t m_cfg = 0;
 };
 
 #endif

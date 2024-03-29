@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2022, Thomas Maier-Komor
+ *  Copyright (C) 2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -494,6 +494,10 @@ static const LuaFn CoreFunctions[] = {
 
 int xlua_add_funcs(const char *name, const LuaFn *f)
 {
+	if (Config.lua_disable())
+		return 1;
+	if (0 == Mtx)
+		Mtx = xSemaphoreCreateMutex();
 	if (LS == 0)
 		xlua_init();
 	new LuaFns(name,f);
@@ -517,16 +521,11 @@ static int xlua_parse_file(const char *fn, const char *n = 0)
 		strcpy(vn,n);
 	if (char *d = strchr(vn,'.'))
 		*d = 0;
-#if 0 //def CONFIG_ROMFS
+#ifdef CONFIG_ROMFS
 	int rfd = romfs_open(fn);
 	if (rfd != -1) {
 		size_t s = romfs_size_fd(rfd);
-#ifdef CONFIG_IDF_TARGET_ESP32
 		const char *buf = (const char *) romfs_mmap(rfd);
-#else
-		char *buf = (char *) malloc(s);
-		romfs_read_at(rfd,buf,s,0);
-#endif
 		Lock lock(Mtx);
 		if (LS == 0)
 			xlua_init();
@@ -541,9 +540,6 @@ static int xlua_parse_file(const char *fn, const char *n = 0)
 			log_warn(TAG,"parse %s: %s",fn,lua_tostring(LS,-1));
 			lua_pop(LS,1);
 		}
-#ifndef CONFIG_IDF_TARGET_ESP32
-		free(buf);
-#endif
 		return r;
 	}
 #endif
@@ -554,7 +550,7 @@ static int xlua_parse_file(const char *fn, const char *n = 0)
 	   if (FILE *f = fopen(fn,O_RDONLY)) {
 	   }
 	   */
-#else
+#else // use open()
 	int fd = open(fn,O_RDONLY);
 	if (fd != -1) {
 		struct stat st;
@@ -593,8 +589,8 @@ static int xlua_parse_file(const char *fn, const char *n = 0)
 
 const char *xluac(Terminal &t, int argc, const char *args[])
 {
-	if (LS == 0)
-		xlua_init();
+	if (Config.lua_disable())
+		return "Disabled.";
 	if ((argc == 1) || (0 == strcmp(args[1],"-h")))
 		return help_cmd(t,args[0]);
 	if (0 == strcmp(args[1],"-i")) {
@@ -706,10 +702,7 @@ const char *xluac(Terminal &t, int argc, const char *args[])
 
 unsigned xlua_render(Screen *ctx)
 {
-	if (LS == 0) {
-		ctx->mode = (clockmode_t) (ctx->mode + 1);
-		return 100;
-	}
+//	assert(LS);
 	unsigned d = 50;
 	if (lua_getglobal(LS,"render_screen")) {
 		if (0 != lua_pcall(LS,0,1,0)) {
@@ -724,8 +717,7 @@ unsigned xlua_render(Screen *ctx)
 		lua_settop(LS,0);
 		lua_gc(LS,LUA_GCCOLLECT);
 	} else {
-		ctx->mode = (clockmode_t) (ctx->mode + 1);
-		ctx->modech = true;
+		d = 200;
 	}
 	return d;
 }
@@ -794,9 +786,9 @@ static void xlua_script(void *arg)
 {
 	if (arg == 0)
 		return;
-	Lock lock(Mtx);
 	if (LS == 0)
 		xlua_init();
+	Lock lock(Mtx);
 	PROFILE_FUNCTION();
 	const char *script = (const char *) arg;
 	log_dbug(TAG,"lua!run '%s'",script);
@@ -822,6 +814,9 @@ static void xlua_script(void *arg)
 
 static void xlua_init()
 {
+	if (Config.lua_disable())
+		return;
+	Lock lock(Mtx);
 	if (LS == 0) {
 		LS = luaL_newstate();
 		LS->term = 0;
@@ -850,7 +845,10 @@ static void xlua_init()
 
 void xlua_setup()
 {
-	Mtx = xSemaphoreCreateMutex();
+	if (Config.lua_disable())
+		return;
+	if (0 == Mtx)
+		Mtx = xSemaphoreCreateMutex();
 	action_add("lua!run",xlua_script,0,"run argument as Lua script");
 	for (const auto &fn : Config.luafiles()) {
 		const char *f = fn.c_str();

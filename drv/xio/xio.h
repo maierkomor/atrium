@@ -34,14 +34,14 @@
 
 
 typedef enum xio_lvl_e {
-	xio_lvl_0,
+	xio_lvl_0 = 0,
 	xio_lvl_1,
 	xio_lvl_hiz,
 } xio_lvl_t;
 
 
 typedef enum xio_intr_e {
-	xio_intr_none,
+	xio_intr_none = 0,
 	xio_intr_rise,
 	xio_intr_fall,
 	xio_intr_risefall,

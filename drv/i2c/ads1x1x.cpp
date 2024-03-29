@@ -114,18 +114,18 @@ ADS1x1x::ADS1x1x(uint8_t port, uint8_t addr, dev_type_t t)
 void ADS1x1x::addIntr(uint8_t gpio)
 {
 #ifdef ISR_SUPPORT
-	m_isrev = event_register(m_name,"`isr");
+	event_t isrev = event_register(m_name,"`isr");
 	xio_cfg_t cfg = XIOCFG_INIT;
 	cfg.cfg_io = xio_cfg_io_in;
 	cfg.cfg_pull = xio_cfg_pull_up;
 	cfg.cfg_intr = xio_cfg_intr_fall;
 	if (0 > xio_config(gpio,cfg)) {
 		log_warn(TAG,"gpio %u as interrupt failed",gpio);
-	} else if (xio_set_intr(gpio,intrHandler,this)) {
+	} else if (xio_set_intr(gpio,event_isr_handler,(void*)(unsigned)isrev)) {
 		log_warn(TAG,"add handler for gpio %u interrupt failed",gpio);
 	} else {
 		Action *a = action_add(concat(m_name,"!read"),readdata,this,0);
-		event_callback(m_isrev,a);
+		event_callback(isrev,a);
 		cyclic_rm_task(m_name);
 		log_info(TAG,"attached to GPIO%u for interrupts",gpio);
 	}
@@ -291,21 +291,6 @@ const char *ADS1x1x::exeCmd(Terminal &term, int argc, const char **args)
 	return 0;
 }
 #endif
-
-
-int ADS1x1x::init()
-{
-	return 0;
-}
-
-
-void ADS1x1x::intrHandler(void *arg)
-{
-#ifdef ISR_SUPPORT
-	ADS1x1x *dev = (ADS1x1x *) arg;
-	event_isr_trigger(dev->m_isrev);
-#endif
-}
 
 
 int32_t ADS1x1x::readConfig(uint8_t bus, uint8_t addr)

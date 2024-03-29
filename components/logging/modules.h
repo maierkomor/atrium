@@ -32,6 +32,7 @@ typedef enum logmod_e {
 	logmod_action,
 	logmod_adc,
 	logmod_ads1x,
+	logmod_aht,
 	logmod_alarms,
 	logmod_apds,
 	logmod_bh1750,
@@ -60,7 +61,7 @@ typedef enum logmod_e {
 	logmod_http,
 	logmod_i2c,
 	logmod_ili9341,
-	logmod_ina219,
+	logmod_ina2xx,
 	logmod_influx,
 	logmod_init,
 	logmod_led,
@@ -113,6 +114,7 @@ typedef enum logmod_e {
 #define MODULE_ACTION          logmod_action
 #define MODULE_ADC             logmod_adc
 #define MODULE_ADS1X           logmod_ads1x
+#define MODULE_AHT             logmod_aht
 #define MODULE_ALARMS          logmod_alarms
 #define MODULE_APDS            logmod_apds
 #define MODULE_BH1750          logmod_bh1750
@@ -141,7 +143,7 @@ typedef enum logmod_e {
 #define MODULE_HTTP            logmod_http
 #define MODULE_I2C             logmod_i2c
 #define MODULE_ILI9341         logmod_ili9341
-#define MODULE_INA219          logmod_ina219
+#define MODULE_INA2XX          logmod_ina2xx
 #define MODULE_INFLUX          logmod_influx
 #define MODULE_INIT            logmod_init
 #define MODULE_LED             logmod_led
@@ -188,8 +190,8 @@ typedef enum logmod_e {
 #define MODULE_WWW             logmod_www
 #define MODULE_XIO             logmod_xio
 #define MODULE_XPT2046         logmod_xpt2046
-#define MAX_MODULE_ID           78
-#define NUM_MODULES             79
+#define MAX_MODULE_ID           79
+#define NUM_MODULES             80
 
 #ifdef USE_MODULE
 #define TAG USE_MODULE

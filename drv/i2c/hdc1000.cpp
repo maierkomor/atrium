@@ -83,12 +83,6 @@ HDC1000 *HDC1000::create(uint8_t bus, uint8_t addr, uint16_t id)
 }
 
 
-int HDC1000::init()
-{
-	return 0;
-}
-
-
 void HDC1000::setSingle(bool single)
 {
 	// independet measure	[12] = 0=single, 1=both

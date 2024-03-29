@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021-2022, Thomas Maier-Komor
+ *  Copyright (C) 2021-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -44,9 +44,6 @@ class I2CDevice
 	const char *getName() const
 	{ return m_name; }
 
-	virtual int init()
-	{ return 0; }
-
 	uint8_t getBus() const
 	{ return m_bus; }
 
@@ -86,9 +83,11 @@ int i2c_read2(uint8_t port, uint8_t addr, uint8_t reg0, uint8_t reg1, uint8_t *d
 int i2c_write0(uint8_t port, uint8_t addr);
 int i2c_write1(uint8_t bus, uint8_t addr, uint8_t r);
 int i2c_write2(uint8_t bus, uint8_t addr, uint8_t r, uint8_t v);
+int i2c_write3(uint8_t bus, uint8_t addr, uint8_t r, uint8_t v0, uint8_t v1);
 int i2c_write4(uint8_t bus, uint8_t addr, uint8_t r0, uint8_t v0, uint8_t r1, uint8_t v1);
-int i2c_writen(uint8_t bus, uint8_t addr, uint8_t *d, unsigned n);
-int i2c_write(uint8_t bus, uint8_t *d, unsigned n, uint8_t stop, uint8_t start);
+int i2c_writen(uint8_t bus, uint8_t addr, const uint8_t *d, unsigned n);
+int i2c_writex(uint8_t port, const uint8_t *d, unsigned n);
+int i2c_write(uint8_t bus, const uint8_t *d, unsigned n, uint8_t stop, uint8_t start);
 int i2c_write_nack(uint8_t port, uint8_t *d, unsigned n, uint8_t stop, uint8_t start);
 int i2c_w1rd(uint8_t port, uint8_t addr, uint8_t w, uint8_t *d, uint8_t n);
 int i2c_bus_valid(uint8_t bus);

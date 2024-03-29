@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2023, Thomas Maier-Komor
+ *  Copyright (C) 2023-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -20,6 +20,7 @@
 #define SX1276_H
 
 #include "spidrv.h"
+#include "env.h"
 
 
 struct Packet
@@ -42,12 +43,7 @@ class SX1276 : public SpiDevice
 	static SX1276 *getInstance()
 	{ return m_inst; }
 
-	void setDio0(uint8_t gpio);
-	void setDio1(uint8_t gpio);
-	void setDio2(uint8_t gpio);
-	void setDio3(uint8_t gpio);
-	void setDio4(uint8_t gpio);
-	void setDio5(uint8_t gpio);
+	void setDio(uint8_t gpio,uint8_t dio);
 
 	const char *exeCmd(struct Terminal &, int argc, const char **argv) override;
 
@@ -95,12 +91,6 @@ class SX1276 : public SpiDevice
 	private:
 	SX1276(spi_host_device_t host, spi_device_interface_config_t &cfg, int8_t intr, int8_t reset);
 	static void postCallback(spi_transaction_t *);
-	static void dio0Handler(void *);
-	static void dio1Handler(void *);
-	static void dio2Handler(void *);
-	static void dio3Handler(void *);
-	static void dio4Handler(void *);
-	static void dio5Handler(void *);
 //	void readRegsSync(uint8_t reg, uint8_t num);
 	int readRegs(uint8_t reg, uint8_t num, uint8_t *);
 	int readReg(uint8_t reg, uint8_t *);
@@ -111,11 +101,10 @@ class SX1276 : public SpiDevice
 	static void intr_handler(void *);
 	void processIntr();
 
-	class EnvObject *m_env = 0;
-	SemaphoreHandle_t m_sem;
+	EnvString m_env;
+	SemaphoreHandle_t m_sem, m_mtx;
 	uint8_t m_opmode = 0;
 	int8_t m_reset = -1;
-	event_t m_irqev = 0;
 	event_t m_rev = 0;		// receive event
 	event_t m_iev[6];
 	uint8_t m_rcvbuf[64];

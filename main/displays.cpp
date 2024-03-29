@@ -31,6 +31,7 @@
 #include "sh1106.h"
 #include "ssd1306.h"
 #include "ssd1309.h"
+#include "swcfg.h"
 
 #define TAG MODULE_DISP
 
@@ -100,7 +101,44 @@ void display_setup()
 				log_warn(TAG,"no ili9341 found");
 #endif
 		} else {
-			log_warn(TAG,"display configured, but no LED cluster available");
+			log_warn(TAG,"display configured, but none available");
+			return;
+		}
+		TextDisplay *d = TextDisplay::getFirst();
+		if (0 == d)
+			return;
+		MatrixDisplay *md = d->toMatrixDisplay();
+		if (0 == md)
+			return;
+		md->init();	// to load the fonts
+		const ScreenConfig &s = Config.screen();
+		if (s.has_font_tiny()) {
+			const char *fn = s.font_tiny().c_str();
+			if (const Font *f = md->getFont(fn))
+				md->setFont(font_tiny,f);
+			else
+				log_warn(TAG,"unknown tiny font '%s'",fn);
+		}
+		if (s.has_font_small()) {
+			const char *fn = s.font_small().c_str();
+			if (const Font *f = md->getFont(fn))
+				md->setFont(font_small,f);
+			else
+				log_warn(TAG,"unknown small font '%s'",fn);
+		}
+		if (s.has_font_medium()) {
+			const char *fn = s.font_medium().c_str();
+			if (const Font *f = md->getFont(fn))
+				md->setFont(font_medium,f);
+			else
+				log_warn(TAG,"unknown medium font '%s'",fn);
+		}
+		if (s.has_font_large()) {
+			const char *fn = s.font_large().c_str();
+			if (const Font *f = md->getFont(fn))
+				md->setFont(font_large,f);
+			else
+				log_warn(TAG,"unknown large font '%s'",fn);
 		}
 	}
 }

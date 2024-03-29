@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021-2023, Thomas Maier-Komor
+ *  Copyright (C) 2021-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -268,7 +268,7 @@ int i2c_write0(uint8_t port, uint8_t addr)
 	i2c_master_stop(cmd);
 	int ret = i2c_master_cmd_begin((i2c_port_t) port, cmd, 1000 / portTICK_PERIOD_MS);
 	i2c_cmd_link_delete(cmd);
-	log_dbug(TAG,"i2c_write0(%u,0x%x)=%s",port,addr>>1,esp_err_to_name(ret));
+	log_dbug(TAG,"i2c_write0(%u,0x%x<<1)=%s",port,addr>>1,esp_err_to_name(ret));
 	return ret;
 }
 
@@ -287,7 +287,7 @@ int i2c_write1(uint8_t port, uint8_t addr, uint8_t r)
 	assert(e == 0);
 	int ret = i2c_master_cmd_begin((i2c_port_t) port, cmd, 1000 / portTICK_PERIOD_MS);
 	i2c_cmd_link_delete(cmd);
-	log_dbug(TAG,"i2c_write1(%u,0x%x,0x%x)=%s",port,addr>>1,r,esp_err_to_name(ret));
+	log_dbug(TAG,"i2c_write1(%u,0x%x<<1,0x%x)=%s",port,addr>>1,r,esp_err_to_name(ret));
 	return ret;
 }
 
@@ -302,7 +302,7 @@ int i2c_write2(uint8_t port, uint8_t addr, uint8_t r, uint8_t v)
 	i2c_master_stop(cmd);
 	int ret = i2c_master_cmd_begin((i2c_port_t) port, cmd, 1000 / portTICK_PERIOD_MS);
 	i2c_cmd_link_delete(cmd);
-	log_dbug(TAG,"i2c_write2(%u,0x%x,0x%x,0x%x)=%s",port,addr>>1,r,v,esp_err_to_name(ret));
+	log_dbug(TAG,"i2c_write2(%u,0x%x<<1,0x%x,0x%x)=%s",port,addr>>1,r,v,esp_err_to_name(ret));
 	return ret;
 }
 
@@ -323,12 +323,29 @@ int i2c_read2(uint8_t port, uint8_t addr, uint8_t reg0, uint8_t reg1, uint8_t *d
 */
 
 
+int i2c_write3(uint8_t port, uint8_t addr, uint8_t r0, uint8_t v0, uint8_t v1)
+{
+	i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+	i2c_master_start(cmd);
+	uint8_t data[] =
+		{ (uint8_t)(addr|I2C_MASTER_WRITE)
+		, r0, v0, v1
+		};
+	i2c_master_write(cmd, data, sizeof(data), I2C_MASTER_NACK);
+	i2c_master_stop(cmd);
+	int ret = i2c_master_cmd_begin((i2c_port_t) port, cmd, 1000 / portTICK_PERIOD_MS);
+	i2c_cmd_link_delete(cmd);
+	log_dbug(TAG,"i2c_write4(%u,0x%x<<1,0x%x,0x%x,0x%x)=%d",port,addr>>1,r0,v0,v1,ret);
+	return ret;
+}
+
+
 int i2c_write4(uint8_t port, uint8_t addr, uint8_t r0, uint8_t v0, uint8_t r1, uint8_t v1)
 {
 	i2c_cmd_handle_t cmd = i2c_cmd_link_create();
 	i2c_master_start(cmd);
 	uint8_t data[] =
-		{ (uint8_t)(addr|I2C_MASTER_WRITE), I2C_MASTER_NACK
+		{ (uint8_t)(addr|I2C_MASTER_WRITE)
 		, r0, v0
 		, r1, v1
 		};
@@ -336,22 +353,45 @@ int i2c_write4(uint8_t port, uint8_t addr, uint8_t r0, uint8_t v0, uint8_t r1, u
 	i2c_master_stop(cmd);
 	int ret = i2c_master_cmd_begin((i2c_port_t) port, cmd, 1000 / portTICK_PERIOD_MS);
 	i2c_cmd_link_delete(cmd);
-	log_dbug(TAG,"i2c_write4(%u,0x%x,0x%x,0x%x,0x%x,0x%x)=%d",port,addr,r0,v0,r1,v1,ret);
+	log_dbug(TAG,"i2c_write4(%u,0x%x,0x%x<<1,0x%x,0x%x,0x%x)=%d",port,addr>>1,r0,v0,r1,v1,ret);
 	return ret;
 }
 
 
-int i2c_writen(uint8_t port, uint8_t addr, uint8_t *d, unsigned n)
+int i2c_writen(uint8_t port, uint8_t addr, const uint8_t *d, unsigned n)
 {
 	i2c_cmd_handle_t cmd = i2c_cmd_link_create();
 	i2c_master_start(cmd);
 	i2c_master_write_byte(cmd, addr | I2C_MASTER_WRITE, I2C_MASTER_NACK);
+#ifdef CONFIG_IDF_TARGET_ESP8266
+	i2c_master_write(cmd, (uint8_t*)d, n, I2C_MASTER_NACK);
+#else
 	i2c_master_write(cmd, d, n, I2C_MASTER_NACK);
+#endif
 	i2c_master_stop(cmd);
 	int ret = i2c_master_cmd_begin((i2c_port_t) port, cmd, 1000 / portTICK_PERIOD_MS);
 	i2c_cmd_link_delete(cmd);
 	if (log_module_enabled(TAG)) {
-		log_hex(TAG,d,n,"i2c_writen(%u,0x%x,0x%p,%u)=%d",port,addr,d,n,ret);
+		log_hex(TAG,d,n,"i2c_writen(%u,0x%x<<1,0x%p,%u)=%d",port,addr>>1,d,n,ret);
+	}
+	return ret;
+}
+
+
+int i2c_writex(uint8_t port, const uint8_t *d, unsigned n)
+{
+	i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+	i2c_master_start(cmd);
+#ifdef CONFIG_IDF_TARGET_ESP8266
+	i2c_master_write(cmd, (uint8_t*)d, n, I2C_MASTER_NACK);
+#else
+	i2c_master_write(cmd, d, n, I2C_MASTER_NACK);
+#endif
+	i2c_master_stop(cmd);
+	int ret = i2c_master_cmd_begin((i2c_port_t) port, cmd, 1000 / portTICK_PERIOD_MS);
+	i2c_cmd_link_delete(cmd);
+	if (log_module_enabled(TAG)) {
+		log_hex(TAG,d,n,"i2c_writex(%u,0x%p,%u)=%d",port,d,n,ret);
 	}
 	return ret;
 }
@@ -376,13 +416,17 @@ int i2c_write1(uint8_t port, uint8_t d, bool stop)
 */
 
 
-int i2c_write(uint8_t port, uint8_t *d, unsigned n, uint8_t stop, uint8_t start)
+int i2c_write(uint8_t port, const uint8_t *d, unsigned n, uint8_t stop, uint8_t start)
 {
 	Lock lock(Mtx);
 	i2c_cmd_handle_t cmd = i2c_cmd_link_create();
 	if (start)
 		i2c_master_start(cmd);
+#ifdef CONFIG_IDF_TARGET_ESP8266
+	i2c_master_write(cmd, (uint8_t*)d, n, true);
+#else
 	i2c_master_write(cmd, d, n, true);
+#endif
 	if (stop)
 		i2c_master_stop(cmd);
 	int ret = i2c_master_cmd_begin((i2c_port_t) port, cmd, 1000 / portTICK_PERIOD_MS);
@@ -502,12 +546,6 @@ int i2c_init(uint8_t port, uint8_t sda, uint8_t scl, unsigned freq, uint8_t xpul
 	BQ25601D::scan(port);
 #endif
 	n += ti_scan(port);
-	/*
-#ifdef CONFIG_SSD1306
-	log_info(TAG,"search ssd1306");
-	n += ssd1306_scan(port);
-#endif
-	*/
 	return n;
 }
 

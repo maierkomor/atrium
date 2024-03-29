@@ -206,7 +206,7 @@ const char *uri_parse(char *path, uri_t *uri)
 	if (colon) {
 		long l = strtol(colon+1,0,0);
 		if ((l <= 0) || (l > UINT16_MAX))
-			return "Invalid port";
+			return "Invalid port.";
 		uri->port = l;
 		*colon = 0;
 	}

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2023, Thomas Maier-Komor
+ *  Copyright (C) 2018-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -513,7 +513,7 @@ static int luax_led_toggle(lua_State *L)
 }
 
 
-static LuaFn Functions[] = {
+static const LuaFn Functions[] = {
 	{ "led_set", luax_led_set, "turn LED on/off" },
 	{ "led_toggle", luax_led_toggle, "toggle LED" },
 	{ 0, 0, 0 }
@@ -580,9 +580,9 @@ int leds_setup()
 #endif
 		} else {
 			ctx = new LedMode(name,initlvl?ledmode_on:ledmode_off,gpio,on);
-			action_add(concat(name,"!on"), led_set_on, (void*)ctx, "led on");
-			action_add(concat(name,"!off"), led_set_off, (void*)ctx, "led off");
-			action_add(concat(name,"!toggle"), led_toggle, (void*)ctx, "toggle led");
+			action_add(concat(name,"!on"), led_set_on, (void*)ctx, "LED on");
+			action_add(concat(name,"!off"), led_set_off, (void*)ctx, "LED off");
+			action_add(concat(name,"!toggle"), led_toggle, (void*)ctx, "toggle LED");
 #ifdef ESP32
 			if (GPIO_IS_VALID_OUTPUT_GPIO(gpio)) {
 				action_add(concat(name,"!hold"), led_hold, (void*)ctx, "hold LED state over reset");

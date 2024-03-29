@@ -37,6 +37,8 @@
 #define DEV_ID 0x2
 #define NUM_REGS 12
 
+#define WD_RST	(1<<6)
+
 
 static const char *topoff_str[] = { "disabled", "15min", "30min", "45min" };
 static const char *charge_str[] = { "off", "pre", "fast", "term" };
@@ -63,23 +65,21 @@ BQ25601D::BQ25601D(uint8_t port, uint8_t addr, const char *n)
 
 void BQ25601D::addIntr(uint8_t intr)
 {
-	/*
-	m_irqev = event_register(m_name,"`irq");
-	log_info(TAG,"irqev %d",m_irqev);
+	event_t irqev = event_register(m_name,"`irq");
+	log_info(TAG,"irqev %d",irqev);
 	Action *a = action_add(concat(m_name,"!isr"),processIntr,this,0);
-	event_callback(m_irqev,a);
+	event_callback(irqev,a);
 	xio_cfg_t cfg = XIOCFG_INIT;
 	cfg.cfg_io = xio_cfg_io_in;
-	cfg.cfg_pull = xio_cfg_pull_none;
+	cfg.cfg_pull = xio_cfg_pull_up;
 	cfg.cfg_intr = xio_cfg_intr_fall;
 	if (0 > xio_config(intr,cfg)) {
 		log_warn(TAG,"config interrupt error");
-	} else if (esp_err_t e = xio_set_intr(intr,intrHandler,this)) {
+	} else if (esp_err_t e = xio_set_intr(intr,event_isr_handler,(void*)(unsigned)irqev)) {
 		log_warn(TAG,"error attaching interrupt: %s",esp_err_to_name(e));
 	} else {
 		log_info(TAG,"BQ25601D@%u,0x%x: interrupt on GPIO%u",m_bus,m_addr,intr);
 	}
-	*/
 }
 
 
@@ -111,6 +111,13 @@ unsigned BQ25601D::cyclic(void *arg)
 unsigned BQ25601D::cyclic()
 {
 	uint8_t regs[3];
+	if (0 == m_wdcnt) {
+		m_regs[1] |= WD_RST;
+		i2c_w1rd(m_bus,DEV_ADDR,0x1,&m_regs[1],sizeof(uint8_t));
+		log_dbug(TAG,"WD reset");
+		m_wdcnt = 100;
+	}
+	--m_wdcnt;
 	if (esp_err_t e = i2c_w1rd(m_bus,DEV_ADDR,0x8,regs,sizeof(regs))) {
 		log_warn(TAG,"i2c error: %s",esp_err_to_name(e));
 		return 1000;
@@ -492,16 +499,6 @@ const char *BQ25601D::exeCmd(Terminal &term, int argc, const char **args)
 #endif
 
 
-void IRAM_ATTR BQ25601D::intrHandler(void *arg)
-{
-	BQ25601D *drv = (BQ25601D *) arg;
-	if (drv != 0) {
-		++drv->m_irqcnt;
-		event_isr_trigger(drv->m_irqev);
-	}
-}
-
-
 inline void BQ25601D::processIntr()
 {
 	// read status registers 0x8..0xa
@@ -516,13 +513,16 @@ inline void BQ25601D::processIntr()
 		log_warn(TAG,"i2c error: %s",esp_err_to_name(e));
 		return;
 	}
+	log_dbug(TAG,"reg09: old 0x%02x, new 0x%02x",oldreg09,newreg09);
 	uint8_t regs[3];
 	if (esp_err_t e = i2c_w1rd(m_bus,DEV_ADDR,0x8,regs,sizeof(regs))) {
 		log_warn(TAG,"i2c error: %s",esp_err_to_name(e));
 		return;
 	}
-	if (newreg09 != m_regs[0x9])
-		log_warn(TAG,"unexpected flags update");
+	if (newreg09 != m_regs[0x9]) {
+		uint8_t delta = newreg09 ^ m_regs[0x9];
+		log_warn(TAG,"unexpected flags update: %x",delta);
+	}
 	log_hex(TAG,regs,sizeof(regs),"interrupt");
 	log_hex(TAG,m_regs+8,sizeof(regs),"old");
 	if (uint8_t reg08c = regs[0] ^ m_regs[0x8]) {
@@ -531,37 +531,37 @@ inline void BQ25601D::processIntr()
 			event_trigger((regs[0]>>5) != 0 ? m_onev : m_offev);
 		}
 		if (reg08c & 0x18)
-			log_info(TAG,"charge status: %s",charge_str[(regs[0]>>3)&0x3]);
+			log_dbug(TAG,"charge status: %s",charge_str[(regs[0]>>3)&0x3]);
 		if (reg08c & 0x4)
-			log_info(TAG,"power %s",regs[0]&0x4 ? "good" : "fault");
+			log_dbug(TAG,"power %s",regs[0]&0x4 ? "good" : "fault");
 		if (reg08c & 0x2)
-			log_info(TAG,"thermal regulation %sactive",regs[0]&0x2 ? "" : "in");
+			log_dbug(TAG,"thermal regulation %sactive",regs[0]&0x2 ? "" : "in");
 		if (reg08c & 0x1)
-			log_info(TAG,"Vsysmin regulation %sactive",regs[0]&0x1 ? "" : "in");
+			log_dbug(TAG,"Vsysmin regulation %sactive",regs[0]&0x1 ? "" : "in");
 		m_regs[0x8] = regs[0];
 	}
 	if (uint8_t reg09c = regs[1] ^ m_regs[0x9]) {
 		if (reg09c & 0x80)
-			log_info(TAG,"watchdog %s",regs[1]&0x80?"expired":"ok");
+			log_dbug(TAG,"watchdog %s",regs[1]&0x80?"expired":"ok");
 		if (reg09c & 0x40)
-			log_info(TAG,"boost %s",regs[1]&0x40?"fault":"ok");
+			log_dbug(TAG,"boost %s",regs[1]&0x40?"fault":"ok");
 		if (reg09c & 0x30)
-			log_info(TAG,"charge %s",chargeflt_str[(regs[1]>>4)&0x3]);
+			log_dbug(TAG,"charge %s",chargeflt_str[(regs[1]>>4)&0x3]);
 		if (reg09c & 0x8)
-			log_info(TAG,"BAT %s",regs[1]&0x8?"OVP":"ok");
+			log_dbug(TAG,"BAT %s",regs[1]&0x8?"OVP":"ok");
 		if (reg09c & 0x7)
-			log_info(TAG,"JEITA %s",jeita_str[regs[1]&0x7]);
+			log_dbug(TAG,"JEITA %s",jeita_str[regs[1]&0x7]);
 		m_regs[0x9] = regs[1];
 	}
 	if (uint8_t reg0ac = regs[2] ^ m_regs[0xa]) {
 		if (reg0ac & 0x80)
-			log_info(TAG,"Vbus %s",regs[2]&0x80?"attached":"off");
+			log_dbug(TAG,"Vbus %s",regs[2]&0x80?"attached":"off");
 		if (reg0ac & 0x40)
-			log_info(TAG,"VinDPM %s",regs[2]&0x40?"active":"off");
+			log_dbug(TAG,"VinDPM %s",regs[2]&0x40?"active":"off");
 		if (reg0ac & 0x20)
-			log_info(TAG,"IinDPM %s",regs[2]&0x20?"active":"off");
+			log_dbug(TAG,"IinDPM %s",regs[2]&0x20?"active":"off");
 		if (reg0ac & 0x8)
-			log_info(TAG,"top-off %s",regs[2]&0x8?"counting":"expired");
+			log_dbug(TAG,"top-off %s",regs[2]&0x8?"counting":"expired");
 		m_regs[0xa] = regs[2];
 	}
 }

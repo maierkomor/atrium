@@ -64,6 +64,7 @@ static uint16_t Interval = 0;
 static int64_t LastUpdate = 0;
 static char *Server = 0;
 static bool Queried = false;
+static int64_t KissOfDeath = 0;
 #if LWIP_TCPIP_CORE_LOCKING == 0
 static sys_sem_t LwipSem = 0;
 #endif
@@ -98,7 +99,10 @@ static void sntp_connect(const char *hn, const ip_addr_t *addr, void *arg);
 
 static unsigned sntp_cyclic(void *arg)
 {
-	if (SPCB != 0) {
+	if (KissOfDeath != 0) {
+		if (esp_timer_get_time() > KissOfDeath)
+			KissOfDeath = 0;
+	} else if (SPCB != 0) {
 #if LWIP_TCPIP_CORE_LOCKING == 1
 		LWIP_LOCK();
 		sntp_req_fn(0);
@@ -137,10 +141,7 @@ static void handle_recv(void *arg, struct udp_pcb *pcb, struct pbuf *pbuf, const
 		if (p.stratum == 0) {
 			// kiss-of-death packet
 			log_warn(TAG,"received kiss-of-death from %s",inet_ntoa(*ip));
-			if (pcb == SPCB) {
-				udp_remove(SPCB);
-				SPCB = 0;
-			}
+			KissOfDeath = esp_timer_get_time() + 60000000;
 		} else {
 			struct timeval tv;
 			tv.tv_sec = lwip_ntohl(p.txts[0]);
@@ -219,6 +220,7 @@ void sntp_mc_init()
 
 static void sntp_connect(const char *hn, const ip_addr_t *addr, void *arg)
 {
+	Queried = false;
 	if (addr == 0)
 		return;
 	udp_pcb *spcb = SPCB;

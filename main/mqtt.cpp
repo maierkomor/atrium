@@ -650,7 +650,7 @@ static err_t handle_connect(void *arg, struct tcp_pcb *pcb, err_t x)
 {
 	assert(x == ERR_OK);	// according to LWIP docu
 	assert(Client);
-	log_info(TAG,"connected %s",inet_ntoa(pcb->remote_ip));
+	log_info(TAG,"connected to %s",inet_ntoa(pcb->remote_ip));
 	tcp_recv(pcb,handle_recv);
 	uint8_t flags = 2;	// start with a clean session
 	const auto &mqtt = Config.mqtt();
@@ -1126,7 +1126,7 @@ void mqtt_start(void *arg)
 			}
 			port = l;
 		} else {
-			log_warn(TAG,"invalid port");
+			log_warn(TAG,"Invalid port.");
 			return;
 		}
 	}

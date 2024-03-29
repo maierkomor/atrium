@@ -29,7 +29,6 @@ typedef enum clockmode {
 	cm_date,
 	cm_stopwatch,
 	cm_lua,
-	CLOCK_MODE_MAX,
 } clockmode_t;
 
 struct Screen
@@ -38,9 +37,10 @@ struct Screen
 	uint32_t sw_start = 0, sw_delta = 0, sw_pause = 0, modestart = 0;
 	uint8_t display[8];
 	uint8_t digits;
+	uint16_t ypos = 0;
 	clockmode_t mode = cm_time;
 	bool modech = false;
-	estring prev;
+	estring prev, path;
 
 	void display_env();
 	void display_time();
@@ -48,6 +48,7 @@ struct Screen
 	void display_data();
 	void display_sw();
 	void display_version();
+	void display_value(const char*);
 };
 
 #endif

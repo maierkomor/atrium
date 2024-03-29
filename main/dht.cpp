@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2022, Thomas Maier-Komor
+ *  Copyright (C) 2018-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -20,73 +20,28 @@
 
 #ifdef CONFIG_DHT
 
-#include "actions.h"
 #include "dht.h"
 #include "dhtdrv.h"
 #include "globals.h"
 #include "hwcfg.h"
-#include "influx.h"
 #include "env.h"
-#include "log.h"
-#include "mqtt.h"
-#include "support.h"
-#include "terminal.h"
 
 #include <driver/gpio.h>
 
 #define TAG MODULE_DHT
-static DHT *Dht = 0;
 
 
-int dht_init(EnvObject *root)
+void dht_setup()
 {
-	if (!HWConf.has_dht())
-		return 1;
-	if (Dht)
-		return 1;
 	const DhtConfig &c = HWConf.dht();
-	Dht = new DHT;
-	if (Dht->init(c.gpio(), c.model()))
-		return 1;
-	Dht->attach(root);
-	return 0;
-}
-
-
-static void gatherData(void *)
-{
-	if (Dht != 0)
-		Dht->read();
-}
-
-
-const char *dht(Terminal &term, int argc, const char *args[])
-{
-	if (argc > 2)
-		return "Invalid number of arguments.";
-	if (argc == 2) {
-		if (!strcmp(args[1],"sample"))
-			gatherData(0);
-		else
-			return "Invalid argument #1.";
-	} else if (Dht == 0) {
-		return "No DHT found.";
-	} else {
-		char buf[12];
-		float_to_str(buf,Dht->getTemperature());
-		term.printf("temperature: %s \u00bC\n",buf);
-		float_to_str(buf,Dht->getHumidity());
-		term.printf("humidity   : %s %%\n",buf);
+	if (c.has_gpio() && c.has_model()) {
+		DHT *dev = new DHT;
+		if (0 == dev->init(c.gpio(), c.model())) {
+			dev->attach(RTData);
+		} else {
+			delete dev;
+		}
 	}
-	return 0;
-}
-
-
-void dht_setup(void)
-{
-	if (!HWConf.has_dht() || dht_init(RTData))
-		return;
-	action_add("dht!sample",gatherData,0,"poll DHT data");
 }
 
 

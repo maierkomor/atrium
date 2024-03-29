@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2023, Thomas Maier-Komor
+ *  Copyright (C) 2018-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -73,7 +73,7 @@ struct EnvLocalTime : public EnvElement
 };
 #endif
 
-const char Copyright[] = "Copyright 2019-2023, Thomas Maier-Komor";
+const char Copyright[] = "\u00a9 2019-2024, T. Maier-Komor";
 const char License[] = "License: GPLv3";
 
 const char ResetReasons[][12] = {

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2021, Thomas Maier-Komor
+ *  Copyright (C) 2018-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -52,6 +52,8 @@ void degC_to_ascii(stream &o, float f);
 void humid_to_ascii(stream &o, float f);
 void press_to_ascii(stream &o, float f);
 void min_of_day_to_ascii(stream &o, uint16_t m);
+int strendcmp(const char *str, const char *end);
+int strendcasecmp(const char *str, const char *end);
 
 
 extern "C" {

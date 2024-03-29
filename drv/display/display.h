@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021-2023, Thomas Maier-Komor
+ *  Copyright (C) 2021-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -23,6 +23,7 @@
 #include "fonts.h"
 #include "support.h"
 #include <map>
+#include <vector>
 
 class MatrixDisplay;
 class SegmentDisplay;
@@ -57,7 +58,14 @@ struct Image
 };
 
 
-uint8_t charToGlyph(char c);
+typedef enum pxlfmt_e
+{
+	pxf_invalid = 0,
+	pxf_rowmjr, pxf_bytecolmjr, pxf_colmjr,
+
+} pxlfmt_t;
+
+
 color_t color_get(const char *);
 
 struct TextDisplay
@@ -106,9 +114,6 @@ struct TextDisplay
 	uint16_t maxY() const
 	{ return m_height; }
 
-//	virtual int writeBin(uint8_t)
-//	{ return -1; }
-
 	virtual int writeHex(uint8_t h, bool comma = false)
 	{ return -1; }
 
@@ -134,11 +139,19 @@ struct TextDisplay
 	virtual void clrEol()
 	{ }
 
-	virtual int setFont(unsigned)
-	{ return -1; }
+	virtual int init()
+	{ return 0; }
 
-	virtual int setFont(const char *)
-	{ return -1; }
+	virtual const Font *getFont(unsigned f) const
+	{ return 0; }
+	virtual const Font *getFont(const char *) const
+	{ return 0; }
+	virtual const Font *setFont(unsigned)
+	{ return 0; }
+	virtual const Font *setFont(const char *)
+	{ return 0; }
+	virtual void setFont(unsigned, const Font *)
+	{ }
 
 	void initOK();
 
@@ -191,10 +204,22 @@ struct MatrixDisplay : public TextDisplay
 	}
 	*/
 
-	virtual int setFont(unsigned);
-	virtual int setFont(const char *);
-	Font *getFont() const
+	int init() override;
+
+	virtual pxlfmt_t pixelFormat() const
+	{ return pxf_invalid; }
+
+	const Font *getFont(unsigned f) const override;
+	const Font *getFont(const char *fn) const override;
+	const Font *setFont(unsigned) override;
+	const Font *setFont(const char *) override;
+	void setFont(unsigned, const Font *) override;
+
+	const Font *getFont() const
 	{ return m_font; }
+
+	const std::vector<Font> &getFonts() const
+	{ return m_xfonts; }
 
 	uint16_t charWidth(char c) const override;
 	uint16_t fontHeight() const;
@@ -207,6 +232,7 @@ struct MatrixDisplay : public TextDisplay
 	virtual void setPixel(uint16_t x, uint16_t y, int32_t color)
 	{ }
 
+	void loadFont(const char *fn);
 	virtual int setupOffScreen(uint16_t x, uint16_t y, uint16_t w, uint16_t h, int32_t bg = -1);
 	virtual void commitOffScreen();
 
@@ -226,7 +252,7 @@ struct MatrixDisplay : public TextDisplay
 	virtual unsigned drawChar(uint16_t x, uint16_t y, char c, int32_t fg, int32_t bg);
 	virtual void drawIcon(uint16_t x0, uint16_t y0, const char *fn, int32_t fg);
 
-	unsigned textWidth(const char *, int font = -1);
+	unsigned textWidth(const char *, int l = -1, fontid_t font = font_default);
 
 	virtual int setInvert(bool)
 	{ return -1; }
@@ -265,6 +291,7 @@ struct MatrixDisplay : public TextDisplay
 #endif
 
 	protected:
+	void addFont(const uint8_t *data,size_t);
 	Image *openIcon(const char *fn);
 	virtual void drawPbm(uint16_t x0, uint16_t y, uint16_t w, uint16_t h, uint8_t *data, int32_t fg);
 	virtual void drawPgm(uint16_t x0, uint16_t y, uint16_t w, uint16_t h, uint8_t *data, int32_t fg);
@@ -277,10 +304,12 @@ struct MatrixDisplay : public TextDisplay
 	// clip x/y-low/high
 	uint16_t m_clxl = 0, m_clxh = 0xffff, m_clyl = 0, m_clyh = 0xffff;
 #endif
-	Font *m_font = 0;
+	const Font *m_font = 0;
+	std::vector<Font> m_xfonts;
 	std::map<const char *,Image,CStrLess> m_images;
 	colorspace_t m_colorspace;
 	int32_t m_colfg, m_colbg;
+	uint8_t m_nfnt = 0;
 };
 
 

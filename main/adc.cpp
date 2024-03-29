@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2023, Thomas Maier-Komor
+ *  Copyright (C) 2020-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -294,7 +294,7 @@ static int luax_adc_sample(lua_State *L)
 }
 
 
-static LuaFn Functions[] = {
+static const LuaFn Functions[] = {
 	{ "adc_get_raw", luax_adc_get_raw, "get raw value of last ADC sample (name)" },
 	{ "adc_get_volt", luax_adc_get_volt, "get voltage value from last  ADC sample (name)" },
 	{ "adc_get_sample", luax_adc_sample, "get a sample from ADC (name)" },

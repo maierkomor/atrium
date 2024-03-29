@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021-2023, Thomas Maier-Komor
+ *  Copyright (C) 2021-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -22,7 +22,6 @@
 #include "log.h"
 #include "profiling.h"
 
-//#include "fonts_ssd1306.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -98,17 +97,21 @@ void SSD130X::fillRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, int32_t c
 		w = m_width - x;
 	if ((y+h) > m_height)
 		h = m_height - y;
-	uint8_t col = c ? 0xff : 0;
+	if (c == 0) {
+		clearRect(x,y,w,h);
+		return;
+	}
 	for (int i = x; i < x+w; ++i) {
 		uint16_t y0 = y;
 		uint16_t h0 = h;
 		do {
-			if (((y & 7) == 0) && (h0 >= 8)) {
-				drawByte(i,y0,col);
+//			if (((y & 7) == 0) && (h0 >= 8)) {
+			if (h0 >= 8) {
+				drawByte(i,y0,0xff);
 				y0 += 8;
 				h0 -= 8;
 			} else {
-				setPixel(i,y0,c);
+				pSetPixel(i,y0);
 				++y0;
 				--h0;
 			}
@@ -259,7 +262,7 @@ int SSD130X::drawByte(uint8_t x, uint8_t y, uint8_t b)
 		m_dirty |= 1<<pg;
 		m_disp[idx] = b;
 	}
-	log_devel(TAG,"drawByte %d,%d %x dirty %x",x,y,b,m_dirty);
+	log_devel(TAG,"drawByte %d,%d idx=%u b=%x dirty %x",x,y,idx,b,m_dirty);
 	return 0;
 }
 
@@ -267,26 +270,21 @@ int SSD130X::drawByte(uint8_t x, uint8_t y, uint8_t b)
 unsigned SSD130X::drawChar(uint16_t x, uint16_t y, char c, int32_t fg, int32_t bg)
 {
 	PROFILE_FUNCTION();
-	c = charToGlyph(c);
-	if ((c < m_font->first) || (c > m_font->last))
-		return 0;
 	if (fg == -1)
 		fg = m_colfg;
 	if (bg == -1)
 		bg = m_colbg;
-	uint8_t ch = c - m_font->first;
-	const uint8_t *data = m_font->BCMbitmap + m_font->glyph[ch].bitmapOffset;
-	uint8_t w = m_font->glyph[ch].width;
-	uint8_t h = m_font->glyph[ch].height;
-	int8_t dx = m_font->glyph[ch].xOffset;
-	int8_t dy = m_font->glyph[ch].yOffset;
-	uint8_t a = m_font->glyph[ch].xAdvance;
-	log_dbug(TAG,"drawChar(%d,%d,'%c',%d,%d) = %u",x,y,c,fg,bg,a);
-//	log_dbug(TAG,"%d/%d %+d/%+d, adv %u char '%c'",(int)w,(int)h,(int)dx,(int)dy,a,c);
-	if (bg != -2)
-		fillRect(x,y,a,m_font->yAdvance,bg);
-	drawBitmap(x+dx,y+dy,w,h,data,fg,bg);
-	return a;
+	const glyph_t *g = m_font->getGlyph(c);
+	if (0 == g)
+		return 0;
+	const uint8_t *data = m_font->BCMbitmap + g->bitmapOffset;
+	log_dbug(TAG,"drawChar(%d,%d,'%c'(0x%x)) = %u",x,y,c,c,g->xAdvance);
+	if (bg != -2) {
+		fillRect(x,y,g->xAdvance,m_font->yAdvance,bg);
+	}
+	y += m_font->blOff;
+	drawBitmap(x+g->xOffset,y+g->yOffset,g->width,g->height,data,fg,bg);
+	return g->xAdvance;
 }
 
 
@@ -409,7 +407,7 @@ void SSD130X::drawBitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const u
 
 inline void SSD130X::pClrPixel(uint16_t x, uint16_t y)
 {
-//	log_dbug(TAG,"clrPixel(%u,%u)",(unsigned)x,(unsigned)y);
+	log_devel(TAG,"pClrPixel(%u,%u)",(unsigned)x,(unsigned)y);
 	if ((x < m_width) && (y < m_height)) {
 		uint8_t pg = y >> 3;
 		uint8_t *p = m_disp + pg * m_width + x;
@@ -425,7 +423,7 @@ inline void SSD130X::pClrPixel(uint16_t x, uint16_t y)
 
 void SSD130X::pSetPixel(uint16_t x, uint16_t y)
 {
-//	log_dbug(TAG,"setPixel(%u,%u)",(unsigned)x,(unsigned)y);
+	log_devel(TAG,"pSetPixel(%u,%u)",(unsigned)x,(unsigned)y);
 	if ((x < m_width) && (y < m_height)) {
 		uint8_t pg = y >> 3;
 		uint8_t *p = m_disp + pg * m_width + x;
@@ -449,23 +447,16 @@ int SSD130X::setupOffScreen(uint16_t x, uint16_t y, uint16_t w, uint16_t h, int3
 
 void SSD130X::setPixel(uint16_t x, uint16_t y, int32_t col)
 {
-//	log_dbug(TAG,"setPixel(%u,%u)",(unsigned)x,(unsigned)y);
+	log_devel(TAG,"setPixel(%u,%u,0x%x)",(unsigned)x,(unsigned)y,col);
 	if ((x < m_width) && (y < m_height)) {
+		col &= 1;
 		uint8_t pg = y >> 3;
 		uint8_t *p = m_disp + pg * m_width + x;
-		uint8_t bit = 1 << (y & 7);
 		uint8_t b = *p;
-		if ((b & bit) == 0) {
-			if (col != 0) {
-				*p = b | bit;
-				m_dirty |= (1 << pg);
-			}
-		} else {
-			if (col == 0) {
-				b &= ~bit;
-				*p = b;
-				m_dirty |= (1 << pg);
-			}
+		uint8_t shift = y & 7;
+		if (((b >> shift) & 1) ^ col) {
+			*p = b ^ (1<<shift);
+			m_dirty |= (1 << pg);
 		}
 	}
 }
@@ -477,19 +468,41 @@ int SSD130X::clearRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h)
 	log_dbug(TAG,"clearRect(%u,%u,%u,%u)",x,y,w,h);
 	if ((x > m_width) || (y >= m_height))
 		return 1;
+	if ((x+w) > m_width)
+		w = m_width - x;
+	if ((y+h) > m_height)
+		h = m_height - y;
 	for (int i = x; i < x+w; ++i) {
 		uint16_t y0 = y;
 		uint16_t h0 = h;
 		do {
-			if (((y & 7) == 0) && (h0 >= 8)) {
+			uint8_t pg = y0 >> 3;
+			uint8_t shift = y0 & 7;
+			uint8_t *p = m_disp + pg * m_width + i;
+			if (((y0 & 7) == 0) && (h0 >= 8)) {
+#if 1
+				uint16_t m = ~(0xff << shift);
+				*p &= m;
+				if (shift == 0)
+					shift = 8;
+#else
 				drawByte(i,y0,0);
 				y0 += 8;
 				h0 -= 8;
+#endif
 			} else {
+#if 1
+				uint8_t bit = 1 << shift;
+				*p &= ~bit;
+				shift = 1;
+#else
 				pClrPixel(i,y0);
 				++y0;
 				--h0;
+#endif
 			}
+			y0 += shift;
+			h0 -= shift;
 		} while (h0 > 0);
 	}
 	return 0;

@@ -320,10 +320,20 @@ message ThresholdConfig
 }
 
 
-message LuaConfig
+message EnvConfig
 {
-	repeated string init_scripts = 1;
-	repeated string compile_files = 2;
+	string path = 1;
+	string title = 2;
+}
+
+
+message ScreenConfig
+{
+	repeated EnvConfig envs = 1;
+	string font_tiny = 4;
+	string font_small = 5;
+	string font_medium = 6;
+	string font_large = 7;
 }
 
 
@@ -360,30 +370,32 @@ message NodeConfig
 
 	repeated string debugs = 23;
 
-	FtpHttpConfig ftpd = 24			[ ifdef=CONFIG_FTP ];
-	FtpHttpConfig httpd = 25		[ ifdef=CONFIG_HTTP ];
+	FtpHttpConfig ftpd = 24				[ ifdef=CONFIG_FTP ];
+	FtpHttpConfig httpd = 25			[ ifdef=CONFIG_HTTP ];
 	string otasrv = 26;
+	ScreenConfig screen = 27			[ ifdef=CONFIG_DISPLAY ];
 
 	// event timer/timefuse
 	repeated EventTimer timefuses = 30;
-	repeated SignalConfig signals = 31	[ ifdef=CONFIG_SIGNAL_PROC, usage=obsolete ];
-	repeated FunctionConfig functions = 32	[ ifdef=CONFIG_SIGNAL_PROC, usage=obsolete ];
+	repeated SignalConfig signals = 31		[ ifdef=CONFIG_SIGNAL_PROC, usage=obsolete ];
+	repeated FunctionConfig functions = 32		[ ifdef=CONFIG_SIGNAL_PROC, usage=obsolete ];
 
 	repeated StateMachineConfig statemachs = 33	[ ifdef=CONFIG_STATEMACHINES ];
 
 	// relay control (e.g. s20)
-	unsigned max_on_time = 34	[ unset = 0, usage=deprecated ];	// in minutes
+	unsigned max_on_time = 34			[ unset = 0, usage=deprecated ];	// in minutes
 
 	// application: light sensor controlled LED
-	unsigned threshold_off = 35	[ usage=deprecated ];	// replaced by thresholds
-	unsigned threshold_on = 36	[ usage=deprecated ];
+	unsigned threshold_off = 35			[ usage=deprecated ];	// replaced by thresholds
+	unsigned threshold_on = 36			[ usage=deprecated ];
 	unsigned dim_step = 37;		// ms per 1% step
 	bool lightctrl = 38;		// true=auto, false=manual
 	unsigned pwm_freq = 39;		// base PWM frequenzy in Hz - shared for all channels
 
-	repeated AppParam app_params = 40	[ ifdef=CONFIG_APP_PARAMS ];
+	repeated AppParam app_params = 40		[ ifdef=CONFIG_APP_PARAMS ];
 	repeated ThresholdConfig thresholds = 41	[ ifdef=CONFIG_THRESHOLDS ];
-	repeated string luafiles = 42		[ ifdef=CONFIG_LUA ];
+	repeated string luafiles = 42			[ ifdef=CONFIG_LUA ];
+	bool lua_disable = 43				[ unset = false, ifdef=CONFIG_LUA ];
 
 	repeated OwDeviceConfig owdevices = 50	[ ifdef=CONFIG_ONEWIRE ];
 }

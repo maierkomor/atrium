@@ -81,7 +81,7 @@ struct SubTaskCmp
 	{ return l.nextrun < r.nextrun; }
 };
 
-#ifdef STATIC_TASK
+#if defined ESP32 && defined STATIC_TASK
 static StackType_t CyclicStack[CONFIG_CYCLIC_STACK_SIZE];
 static StaticTask_t CyclicTask;
 #endif

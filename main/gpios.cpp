@@ -639,7 +639,7 @@ static int luax_gpio_get(lua_State *L)
 }
 
 
-static LuaFn Functions[] = {
+static const LuaFn Functions[] = {
 	{ "gpio_set", luax_gpio_set, "set gpio level" },
 	{ "gpio_get", luax_gpio_get, "get gpio level" },
 	{ 0, 0, 0 }

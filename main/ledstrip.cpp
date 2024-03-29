@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2023, Thomas Maier-Komor
+ *  Copyright (C) 2018-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -324,7 +324,7 @@ int luax_rgbleds_num(lua_State *L)
 }
 
 
-static LuaFn Functions[] = {
+static const LuaFn Functions[] = {
 	{ "rgbleds_get", luax_rgbleds_get, "WS2812b: get LED value ([bus,]idx)" },
 	{ "rgbleds_set", luax_rgbleds_set, "WS2812b: set LEDs value ([[bus,]idx,]val)" },
 	{ "rgbleds_write", luax_rgbleds_write, "WS2812b: write LED values ([bus,]v,...)"  },
@@ -338,10 +338,10 @@ void rgbleds_setup()
 {
 	unsigned num = 0;
 	for (const auto &c : HWConf.ws2812b()) {
-#ifdef CONFIG_IDF_TARGET_ESP8266
-		if ((!c.has_gpio() || (0 == c.nleds())))
-#else
+#ifdef CONFIG_SOC_RMT_SUPPORTED
 		if ((!c.has_gpio() || (0 == c.nleds())) || !c.has_ch())
+#else
+		if ((!c.has_gpio() || (0 == c.nleds())))
 #endif
 		{
 			log_dbug(TAG,"incomplete config");
@@ -356,7 +356,7 @@ void rgbleds_setup()
 		log_dbug(TAG,"setup %s",name);
 		unsigned nleds = c.nleds();
 		WS2812BDrv *drv = new WS2812BDrv(name);
-#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
+#ifdef CONFIG_SOC_RMT_SUPPORTED
 		if (drv->init((gpio_num_t)c.gpio(),nleds,c.ch()))
 			continue;
 #else

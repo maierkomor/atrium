@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021-2023, Thomas Maier-Komor
+ *  Copyright (C) 2021-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -21,10 +21,12 @@
 #include "profiling.h"
 #include "romfs.h"
 
+#include <dirent.h>
+#include <errno.h>
+#include <esp_heap_caps.h>
 #include <fcntl.h>
 #include <math.h>
 #include <stdio.h>
-//#include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -163,10 +165,56 @@ color_t color_get(const char *n)
 }
 
 
+unsigned Font::getCharWidth(uint16_t ch) const
+{
+	if (const glyph_t *g = getGlyph(ch))
+		return g->width + g->xOffset;
+	return 0;
+}
+
+
+void Font::getTextDim(const char *str, uint16_t &W, int8_t &ymin, int8_t &ymax) const
+{
+	// blank upper margin not calculated
+	int8_t hiy = INT8_MIN, loy = INT8_MAX;
+	uint16_t w = 0;
+	while (char c = *str) {
+		const glyph_t *g = &glyph[c-first];
+		w += g->width;
+		w += g->xOffset;
+		if (g->yOffset < loy)
+			loy = g->yOffset;
+		if (g->height+g->yOffset > hiy)
+			hiy = g->height+g->yOffset;
+		++str;
+	}
+	W = w;
+	ymin = loy;
+	ymax = hiy;
+}
+
+
+const glyph_t *Font::getGlyph(uint16_t ch) const
+{
+	if ((ch >= first) && (ch <= last)) {
+		return glyph+ch-first;
+	}
+	unsigned n = extra;
+	const glyph_t *g = glyph+last-first+1;
+	while (n) {
+		if (g->iso8859 == ch)
+			return g;
+		++g;
+		--n;
+	}
+	return 0;
+}
+
+
 void TextDisplay::initOK()
 {
 	if (Instance) {
-		log_error(TAG,"only one display is supported");
+		log_warn(TAG,"only 1 display is supported");
 	} else {
 		Instance = this;
 	}
@@ -440,6 +488,42 @@ void SegmentDisplay::write(const char *s, int n)
 }
 
 
+int MatrixDisplay::init()
+{
+#if defined CONFIG_ROMFS && defined ESP32
+	int f = romfs_num_entries();
+	while (f) {
+		--f;
+		const char *n = romfs_name(f);
+		if (((pxf_rowmjr == pixelFormat()) && (0 == strendcmp(n,".af1")))
+			|| ((pxf_bytecolmjr == pixelFormat()) && (0 == strendcmp(n,".af2")))
+			|| ((pxf_colmjr == pixelFormat()) && (0 == strendcmp(n,".af3")))
+			|| (0 == strendcasecmp(n,".afn"))) {
+			const uint8_t *data = (const uint8_t *)romfs_mmap(f);
+			log_info(TAG,"romfs font file %s",n);
+			addFont(data,romfs_size_fd(f));
+		}
+	}
+#endif
+	if (DIR *d = opendir("/flash")) {
+		struct dirent *e = readdir(d);
+		while (e) {
+			if (((pxf_rowmjr == pixelFormat()) && (0 == strendcasecmp(e->d_name,".af1")))
+				|| ((pxf_bytecolmjr == pixelFormat()) && (0 == strendcasecmp(e->d_name,".af2")))
+				|| ((pxf_colmjr == pixelFormat()) && (0 == strendcasecmp(e->d_name,".af3")))
+				|| (0 == strendcasecmp(e->d_name,".afn"))) {
+				size_t l = strlen(e->d_name);
+				char path[8+l] = "/flash/";
+				strcpy(path+7,e->d_name);
+				loadFont(path);
+			}
+			e = readdir(d);
+		}
+	}
+	return 0;
+}
+
+
 uint16_t MatrixDisplay::fontHeight() const
 {
 	return m_font->yAdvance;
@@ -618,8 +702,6 @@ void MatrixDisplay::drawIcon(uint16_t x0, uint16_t y0, const char *fn, int32_t f
 		default:
 			return;
 		}
-	} else {
-		log_warn(TAG,"failed to open icon %s",fn);
 	}
 }
 
@@ -706,9 +788,7 @@ Image *MatrixDisplay::openIcon(const char *fn)
 	struct stat st;
 	if (-1 == fstat(fd,&st)) {
 		log_warn(TAG,"failed to stat %s",fn);
-		return 0;
-	}
-	if (uint8_t *data = (uint8_t *) malloc(st.st_size)) {
+	} else if (uint8_t *data = (uint8_t *) malloc(st.st_size)) {
 		int n = read(fd,data,st.st_size);
 		if (n == st.st_size) {
 			close(fd);
@@ -723,43 +803,10 @@ Image *MatrixDisplay::openIcon(const char *fn)
 }
 
 
-uint8_t charToGlyph(char c)
-{
-	switch ((unsigned char) c) {
-	case '\r':
-		return 0;
-	case '\n':
-		return 0;
-	case 176:	// '°'
-		return 127;
-	case 196:	// 'Ä'
-		return 129;
-	case 220:	// 'Ü'
-		return 133;
-	case 214:	// 'Ö'
-		return 131;
-	case 223:	// 'ß'
-		return 134;
-	case 228:	// 'ä'
-		return 128;
-	case 246:	// 'ö'
-		return 130;
-	case 252:	// 'ü'
-		return 132;
-	default:
-		return c;
-	}
-}
-
-
 uint16_t MatrixDisplay::charWidth(char c) const
 {
-	c = charToGlyph(c);
-	if (c >= m_font->first) {
-		uint8_t ch = c - m_font->first;
-		if (m_font->glyph != 0)
-			return m_font->glyph[ch].xAdvance;
-	}
+	if (const glyph_t *g = m_font->getGlyph(c))
+		return g->xAdvance;
 	return 0;
 }
 
@@ -776,26 +823,21 @@ void MatrixDisplay::clear()
 unsigned MatrixDisplay::drawChar(uint16_t x, uint16_t y, char c, int32_t fg, int32_t bg)
 {
 	PROFILE_FUNCTION();
-	c = charToGlyph(c);
-	if ((c < m_font->first) || (c > m_font->last))
-		return 0;
 	if (fg == -1)
 		fg = m_colfg;
 	if (bg == -1)
 		bg = m_colbg;
-	uint8_t ch = c - m_font->first;
-	const uint8_t *data = m_font->RMbitmap + m_font->glyph[ch].bitmapOffset;
-	uint8_t w = m_font->glyph[ch].width;
-	uint8_t h = m_font->glyph[ch].height;
-	int8_t dx = m_font->glyph[ch].xOffset;
-	int8_t dy = m_font->glyph[ch].yOffset;
-	uint8_t a = m_font->glyph[ch].xAdvance;
-	log_dbug(TAG,"drawChar(%d,%d,'%c') = %u",x,y,c,a);
-//	log_info(TAG,"%d/%d %+d/%+d, adv %u len %u",(int)w,(int)h,(int)dx,(int)dy,a,l);
-	if (bg != -2)
-		fillRect(x,y,a,m_font->yAdvance,bg);
-	drawBitmap(x+dx,y+dy,w,h,data,fg,bg);
-	return a;
+	const glyph_t *g = m_font->getGlyph(c);
+	if (0 == g)
+		return 0;
+	const uint8_t *data = m_font->RMbitmap + g->bitmapOffset;
+	log_dbug(TAG,"drawChar(%d,%d,'%c'(0x%x)) = %u",x,y,c,c,g->xAdvance);
+	if (bg != -2) {
+		fillRect(x,y,g->xAdvance,m_font->yAdvance,bg);
+	}
+	y += m_font->blOff;
+	drawBitmap(x+g->xOffset,y+g->yOffset,g->width,g->height,data,fg,bg);
+	return g->xAdvance;
 }
 
 
@@ -830,6 +872,7 @@ unsigned MatrixDisplay::drawText(uint16_t x, uint16_t y, const char *txt, int n,
 			continue;
 		} else {
 			uint16_t cw = charWidth(c);
+			//log_dbug(TAG,"char 0x%02x: width %u",c,cw);
 			if (x + cw > m_width)
 				break;
 			drawChar(x,y,c,fg,bg);
@@ -1066,35 +1109,164 @@ int32_t MatrixDisplay::setBgColor(color_t c)
 }
 
 
-int MatrixDisplay::setFont(unsigned f)
+const Font *MatrixDisplay::getFont(unsigned f) const
 {
-	if (f < NumFonts) {
-		m_font = Fonts+f;
-		return 0;
-	}
-	return -1;
+	if (f < NumFonts)
+		return Fonts[f];
+	f -= NumFonts;
+	if (f < m_xfonts.size())
+		return &m_xfonts[f];
+	return 0;
 }
 
 
-int MatrixDisplay::setFont(const char *fn)
+const Font *MatrixDisplay::setFont(unsigned f)
 {
-	/*
-	if (0 == strcasecmp(fn,"native")) {
-		m_font = (fontid_t)-1;
-		return 0;
+	if (f < NumFonts) {
+		m_font = Fonts[f];
+		return m_font;
 	}
-	if (0 == strcasecmp(fn,"nativedbl")) {
-		m_font = (fontid_t)-2;
-		return 0;
+	return 0;
+}
+
+
+void MatrixDisplay::addFont(const uint8_t *data, size_t s)
+{
+	FontHdr *hdr = (FontHdr *)data;
+	if (memcmp(hdr->magic,"Afnt",4)) {
+		log_warn(TAG,"invalid font magic");
+		return;
 	}
-	*/
-	for (int i = 0; i < NumFonts; ++i) {
-		if (0 == strcasecmp(Fonts[i].name,fn)) {
-			m_font = Fonts+i;
-			return 0;
+	switch (pixelFormat()) {
+	case pxf_invalid:
+		return;
+	case pxf_rowmjr:
+		if (0 == hdr->offRM)
+			return;
+		break;
+	case pxf_bytecolmjr:
+		if (0 == hdr->offBCM)
+			return;
+		break;
+	default:
+		log_warn(TAG,"unspported pixel format");
+		return;
+	}
+	Font f;
+	if (0 != hdr->offRM)
+		f.RMbitmap = data + hdr->offRM;
+	else
+		f.RMbitmap = 0;
+	if (0 != hdr->offBCM)
+		f.BCMbitmap = data + hdr->offBCM;
+	else
+		f.BCMbitmap = 0;
+	f.glyph = (const glyph_t *)(data + hdr->offGlyph);
+	f.first = hdr->first;
+	f.last = hdr->last;
+	f.extra = hdr->extra;
+	// TODO: sanyity/security checks
+//	log_dbug(TAG,"first 0x%x, last 0x%x, extra %u",f.first,f.last,f.extra);
+	f.yAdvance = hdr->yAdv;
+	f.name = hdr->name;
+	int8_t miny = 0;
+	uint8_t maxy = 0, maxw = 0;
+	unsigned n = f.last-f.first;
+	for (unsigned x = 0; x <= n; ++x) {
+		const glyph_t *g = f.glyph+x;
+		if (g->yOffset < miny)
+			miny = g->yOffset;
+		if (g->xOffset+g->width > maxw)
+			maxw = g->xOffset + g->width;
+		if (g->yOffset + g->height > maxy)
+			maxy = g->yOffset + g->height;
+		if (g->xAdvance > maxw)
+			maxw = g->xAdvance;
+	}
+	f.minY = miny;
+	f.maxY = maxy;
+	f.maxW = maxw;
+	if (('A' >= f.first) && ('A' <= f.last))
+		f.blOff = f.glyph['A'-f.first].height;
+	else if (('0' >= f.first) && ('0' <= f.last))
+		f.blOff = f.glyph['0'-f.first].height;
+	else
+		f.blOff = 0;
+	log_info(TAG,"adding font %s: miny=%d, maxy=%d, maxw=%d bloff=%d",f.name,miny,maxy,maxw,f.blOff);
+	for (Font &x : m_xfonts) {
+		if (0 == strcmp(x.name,f.name)) {
+			log_info(TAG,"updating font %s",f.name);
+			if (0 == x.RMbitmap)
+				x.RMbitmap = f.RMbitmap;
+			if (0 == x.BCMbitmap)
+				x.BCMbitmap = f.BCMbitmap;
+			return;
 		}
 	}
-	return -1;
+	m_xfonts.push_back(f);
+}
+
+
+void MatrixDisplay::loadFont(const char *fn)
+{
+	log_info(TAG,"load font file %s",fn);
+	int fd = open(fn,O_RDONLY);
+	if (fd == -1) {
+		log_warn(TAG,"open %s: %s",fn,strerror(errno));
+		return;
+	}
+	struct stat st;
+	if (-1 == fstat(fd,&st)) {
+		log_warn(TAG,"stat %s: error",fn);
+	} else if (uint8_t *data = (uint8_t *) heap_caps_malloc(st.st_size,MALLOC_CAP_SPIRAM)) {
+		int n = read(fd,data,st.st_size);
+		if (n == st.st_size) {
+			addFont(data,st.st_size);
+		} else {
+			log_warn(TAG,"%s: read error",fn);
+		}
+	} else {
+		log_warn(TAG,"%s: alloc failed",fn);
+	}
+	close(fd);
+
+}
+
+
+const Font *MatrixDisplay::getFont(const char *fn) const
+{
+	for (const auto &f : m_xfonts) {
+		log_dbug(TAG,"font %s",f.name);
+		if (0 == strcasecmp(fn,f.name)) {
+			log_dbug(TAG,"set font %s",fn);
+			return &f;
+		}
+	}
+	for (int i = 0; i < NumFonts; ++i) {
+		if (0 == strcasecmp(Fonts[i]->name,fn)) {
+			return Fonts[i];
+		}
+	}
+//	log_warn(TAG,"unknown font %s",fn);
+	return 0;
+}
+
+
+const Font *MatrixDisplay::setFont(const char *fn)
+{
+	if (const Font *f = getFont(fn)) {
+		m_font = f;
+		return f;
+	}
+	log_dbug(TAG,"font %s not found",fn);
+	return 0;
+}
+
+
+void MatrixDisplay::setFont(unsigned x, const Font *f)
+{
+	if ((x < NumFonts) && (0 != f))
+		Fonts[x] = f;
 }
 
 
@@ -1109,23 +1281,24 @@ void MatrixDisplay::commitOffScreen()
 }
 
 
-unsigned MatrixDisplay::textWidth(const char *t, int f)
+unsigned MatrixDisplay::textWidth(const char *t, int l, fontid_t f)
 {
 	// uses row-major font
 	if (f >= NumFonts)
 		return 0;
 	const Font *font;
-	if (f == -1)
+	if (font_default == f)
 		font = m_font;
 	else
-		font = &Fonts[f];
+		font = Fonts[f];
 	unsigned w = 0;
-	unsigned s = font->first;
-	unsigned e = font->last;
-	while (char c = *t) {
-		if ((c >= s) && (c <= e))
-			w += font->glyph[c-s].xAdvance;
-		++c;
+	char c = *t;
+	while ((0 != c) && (0 != l)) {
+		if (const glyph_t *g = font->getGlyph(c))
+			w += g->xAdvance;
+		++t;
+		--l;
+		c = *t;
 	}
 	return w;
 }
@@ -1165,47 +1338,7 @@ void MatrixDisplay::write(const char *txt, int n)
 		} else if (c == '\r') {
 			m_posx = 0;
 			++txt;
-		/*
-		} else {
-			unsigned w = drawChar(m_posx,m_posy,c,m_colfg,m_colbg);
-			m_posx += w;
-			if (m_posx >= m_width) {
-				m_posx = m_width - 1;
-				return;
-			}
-		*/
 		}
 	}
-#if 0
-	if (n < 0)
-		n = strlen(txt);
-	unsigned width = 0;
-	for (unsigned x = 0; x < n; ++x) {
-		width += charWidth(txt[x]);
-	}
-	if (m_posx + width > m_width)
-		return -1;
-	const Font *font = Fonts+(int)m_font;
-	uint16_t height = font->yAdvance;
-	uint16_t widht = 0;
-	uint16_t x = m_posx;
-	const char *e = txt + n;
-	const char *at = txt;
-	while (at != e) {
-		char c = *at++;
-		if ((c < font->first) || (c > font->last))
-			continue;
-		uint8_t ch = c - font->first;
-		if (x + font->glyph[ch].xAdvance > m_width)
-			break;
-		width += font->glyph[ch].xAdvance;
-	}
-	e = at;
-	at = txt;
-	while (at != e) {
-		// TODO
-		const uint8_t *data = font->bitmap + font->glyph[ch].bitmapOffset;
-	}
-#endif
 }
 

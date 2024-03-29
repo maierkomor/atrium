@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2023, Thomas Maier-Komor
+ *  Copyright (C) 2018-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -60,6 +60,7 @@ option esp32 : esp {
 	optimize=speed;
 	endian=little;		// not for esp8266, does not allow unaligned access
 	withUnequal=true;
+	/AdcConfig/adc_name:		used = false;
 	/AdcConfig/mode:		used = false;
 	/AdcConfig/clk_div:		used = false;
 }
@@ -206,7 +207,7 @@ message Tlc5947Config
 message Ws2812bConfig
 {
 	sint8 gpio = 1		[ unset = -1 ];
-	sint8 ch = 2		[ unset = -1 ];
+	sint8 ch = 2		[ unset = -1, ifdef=CONFIG_SOC_RMT_SUPPORTED ];
 	uint8 nleds = 3		[ unset = 0 ];
 	string name = 4;
 }
@@ -244,7 +245,7 @@ enum i2cdrv_t {
 	i2cdrv_pca9685_xclk_pnp = 9;
 	i2cdrv_ht16k33 = 10;
 	i2cdrv_ina219 = 11;
-	i2cdrv_si7021 = 12;
+	i2cdrv_si7021 = 12;	// also si7013,si7020,htu21
 	i2cdrv_tca9555 = 13;
 	i2cdrv_ssd1306 = 14;
 	i2cdrv_sh1106 = 15;
@@ -254,6 +255,10 @@ enum i2cdrv_t {
 	i2cdrv_ads1113 = 19;
 	i2cdrv_ads1114 = 20;
 	i2cdrv_ads1115 = 21;
+	i2cdrv_ina220 = 22;
+	i2cdrv_aht10 = 23;		// fixed address
+	i2cdrv_aht20 = 24;		// fixed address
+	i2cdrv_aht30 = 25;		// fixed address
 }
 
 
@@ -355,17 +360,18 @@ message AdcConfig
 	// esp32: not used
 	string adc_name = 1;
 
-	// adc_width_t: 0=9bit .. 3=12bit, adc is disabled if not set
+	// adc_width_t: 0=9bit .. 3=12bit
 	uint8 adc1_bits = 2	[ default = 0 ];
 	uint8 adc2_bits = 3	[ default = 0 ];
 
-	uint8 mode = 4;		// esp8266 only (adc_mode_t: TOUT_MODE=0, VDD_MODE=1)
-	uint8 clk_div = 5;	// esp8266 only
+	// esp8266 only (adc_mode_t: TOUT_MODE=0, VDD_MODE=1)
+	uint8 mode = 4;
+	uint8 clk_div = 5;
 
 	// name of hall sensor
 	string hall_name = 6	[ ifdef=CONFIG_IDF_TARGET_ESP32 ];
 
-	repeated AdcChannel channels = 7;
+	repeated AdcChannel channels = 7;	// ESP8266: used=false
 }
 
 
@@ -428,7 +434,6 @@ message DisplayConfig
 	unsigned options = 2	[ default = 0 ];
 	unsigned maxx = 3;
 	unsigned maxy = 4	[ default = 1 ];
-	repeated string skip_env = 5;
 }
 
 
@@ -507,13 +512,6 @@ message SX1276Config
 	sint8 dio3 = 4		[ unset = -1 ];
 	sint8 dio4 = 5		[ unset = -1 ];
 	sint8 dio5 = 6		[ unset = -1 ];
-}
-
-
-message Tone
-{
-	unsigned freq = 1;	// given in Hz
-	unsigned duration = 2;	// given in ms
 }
 
 

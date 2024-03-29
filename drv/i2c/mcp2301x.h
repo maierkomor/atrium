@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2022, Thomas Maier-Komor
+ *  Copyright (C) 2022-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -71,14 +71,12 @@ class MCP2301X : public XioCluster, public I2CDevice
 	static void eval_intrA(void *);
 	static void eval_intrB(void *);
 
-	static void intrHandlerA(void *);
-	static void intrHandlerB(void *);
 	static MCP2301X *Instances;
 
 	MCP2301X *m_next = 0;
 	uint8_t m_bus, m_addr;
 	uint16_t m_dir = 0;
-	event_t m_iaev = 0, m_ibev = 0;
+	event_t m_ibev = 0;
 	xio_intrhdlr_t m_hdlra = 0, m_hdlrb = 0;
 	void *m_intrarga = 0, *m_intrargb = 0;
 	event_t m_fallev[16] = {0}, m_riseev[16] = {0};

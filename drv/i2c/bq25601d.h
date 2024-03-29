@@ -58,7 +58,8 @@ struct BQ25601D : public I2CDevice
 	EnvString m_charge, m_vbus;
 	unsigned m_irqcnt = 0;
 	uint8_t m_regs[0xb];
-	event_t m_irqev = 0, m_onev = 0, m_offev = 0;
+	uint8_t m_wdcnt = 0;
+	event_t m_onev = 0, m_offev = 0;
 };
 
 

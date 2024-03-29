@@ -771,8 +771,10 @@ int coreio_lvl_set(uint8_t num, xio_lvl_t l)
 
 void coreio_register()
 {
-	if (esp_err_t e = gpio_install_isr_service(ESP_INTR_FLAG_LEVEL1 | ESP_INTR_FLAG_IRAM))
+	if (esp_err_t e = gpio_install_isr_service(ESP_INTR_FLAG_LOWMED))
 		log_warn(TAG,"install isr service: %s",esp_err_to_name(e));
+	else
+		log_info(TAG,"ISR service ready");
 	GpioCluster0.attach(0);
 	GpioCluster1.attach(32);
 }

@@ -131,6 +131,8 @@ unsigned BMP280::cyclic(void *arg)
 
 void BMP280::attach(EnvObject *root)
 {
+	if (init())
+		return;
 	root->add(&m_temp);
 	root->add(&m_press);
 	cyclic_add_task(m_name,BMP280::cyclic,this,0);
@@ -140,6 +142,8 @@ void BMP280::attach(EnvObject *root)
 
 void BME280::attach(EnvObject *root)
 {
+	if (init())
+		return;
 	BMP280::attach(root);
 	root->add(&m_humid);
 }
@@ -619,6 +623,8 @@ unsigned BME680::read()
 
 void BME680::attach(EnvObject *root)
 {
+	if (init())
+		return;
 	root->add(&m_temp);
 	root->add(&m_press);
 	root->add(&m_humid);
@@ -631,26 +637,24 @@ void BME680::attach(EnvObject *root)
 
 static int create_device(uint8_t bus, uint8_t addr, uint8_t id)
 {
-	I2CDevice *s = 0;
 	switch (id) {
 #ifdef CONFIG_BMX280
 	case 0x58:
-		s = new BMP280(bus,addr);
+		new BMP280(bus,addr);
 		break;
 	case 0x60:
-		s = new BME280(bus,addr);
+		new BME280(bus,addr);
 		break;
 #endif
 #ifdef CONFIG_BME680
 	case 0x61:
-		s = new BME680(bus,addr);
+		new BME680(bus,addr);
 		break;
 #endif
 	default:
-		log_dbug(TAG,"no driver for ID 0x%x",id);
+		log_dbug(TAG,"no driver for device id 0x%04x",id);
 		return 0;
 	}
-	s->init();
 	return 1;
 }
 

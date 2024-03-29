@@ -36,7 +36,6 @@ struct ADS1x1x : public I2CDevice
 	const char *drvName() const override
 	{ return "ads1x1x"; }
 
-	int init() override;
 	void addIntr(uint8_t intr) override;
 	void attach(class EnvObject *) override;
 #ifdef CONFIG_I2C_XCMD
@@ -47,7 +46,6 @@ struct ADS1x1x : public I2CDevice
 	ADS1x1x(uint8_t port, uint8_t addr, dev_type_t t);
 
 	static unsigned cyclic(void *);
-	static void intrHandler(void *arg);
 	static int32_t readConfig(uint8_t bus, uint8_t addr);
 	static void readdata(void *arg);
 	static void sample(void *arg);
@@ -67,7 +65,6 @@ struct ADS1x1x : public I2CDevice
 	EnvNumber m_ad0, m_v0, m_ad1, m_v1, m_ad2, m_v2, m_ad3, m_v3;
 	ADS1x1x *m_next;
 	float m_gain = 2048;
-	event_t m_isrev = 0;
 	uint16_t m_cfg;
 	dev_type_t m_type;
 	bool m_sample = false, m_wait = false;

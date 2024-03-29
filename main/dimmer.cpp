@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2019-2022, Thomas Maier-Komor
+ *  Copyright (C) 2019-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -395,7 +395,7 @@ static int luax_dimmer_set(lua_State *L)
 }
 
 
-static LuaFn Functions[] = {
+static const LuaFn Functions[] = {
 	{ "dimmer_set", luax_dimmer_set, "set dimmer value" },
 	{ 0, 0, 0 }
 };

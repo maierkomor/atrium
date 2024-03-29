@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -142,3 +142,19 @@ void press_to_ascii(stream &o, float f)
 }
 
 
+int strendcasecmp(const char *str, const char *end)
+{
+	size_t s = strlen(str), e = strlen(end);
+	if (s < e)
+		return 1;
+	return strcasecmp(str+s-e,end);
+}
+
+
+int strendcmp(const char *str, const char *end)
+{
+	size_t s = strlen(str), e = strlen(end);
+	if (s < e)
+		return 1;
+	return memcmp(str+s-e,end,e);
+}

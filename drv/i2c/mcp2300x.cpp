@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2022, Thomas Maier-Komor
+ *  Copyright (C) 2022-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -85,14 +85,6 @@ void MCP2300X::attach(class EnvObject *)
 }
 
 
-void MCP2300X::intrHandler(void *arg)
-{
-	MCP2300X *dev = (MCP2300X *)arg;
-	if (dev->m_iev)
-		event_isr_trigger(dev->m_iev);
-}
-
-
 MCP2300X *MCP2300X::create(uint8_t bus, uint8_t addr, int8_t inta)
 {
 	addr |= 0x40;
@@ -165,13 +157,14 @@ int MCP2300X::set_pullup(uint8_t io, xio_cfg_pull_t pull)
 int MCP2300X::set_intr_a(xio_t inta)
 {
 	event_t fev = xio_get_fallev(inta);
-	if (fev != 0) {
-	} else if (0 == xio_set_intr((xio_t)inta,intrHandler,(void*)this)) {
+	if (fev == 0) {
 		fev = event_register(m_name,"`intr_a");
-		m_iev = fev;
-	} else {
-		log_warn(TAG,"xio%u isr hander",inta);
-		return -1;
+		if (0 == xio_set_intr((xio_t)inta,event_isr_handler,(void*)(unsigned)m_iev)) {
+			m_iev = fev;
+		} else {
+			log_warn(TAG,"xio%u isr hander",inta);
+			return -1;
+		}
 	}
 	xio_cfg_t cfg = XIOCFG_INIT;
 	cfg.cfg_io = xio_cfg_io_in;

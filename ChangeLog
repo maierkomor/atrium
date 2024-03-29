@@ -1,3 +1,26 @@
+R2403:
+======
+- gracefully handle kiss-of-death packet of SNTP
+- updated DHTxx driver
+- added support for AHT10, AHT20
+- added support for INA226, INA260
+- added support for dynamic font loading
+- added new font-tool
+- added dynamic font loading support
+- added font customization support
+- updated fonts to include degree and copyright characters
+- updated to IDF v5.1.2
+- added display modes list to show only selected views
+- added option to suppress Lua initialization
+- screen resolution dependent font selection
+- added screen customization support
+  (change titles, select visible modes)
+- adjusted TFTP request size
+- updated OPT3001 driver: interrupts and custom configuration
+- fix BQ25601D watchdog handling
+- fix statemachine init done before all actions are registered
+- fix HT16K33 init regression
+
 R2401:
 ======
 - fix DS18B20 negative values

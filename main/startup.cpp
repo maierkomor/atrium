@@ -115,6 +115,7 @@ void ow_setup();
 void relay_setup();
 void screen_setup();
 void sm_setup();
+void sm_start();
 void spi_setup();
 void telnet_setup();
 void timefuse_setup();
@@ -166,34 +167,17 @@ static void system_info()
 #endif
 	esp_chip_info_t ci;
 	esp_chip_info(&ci);
-	log_info(TAG,"ESP%u (rev %d) with %d core%s @ %uMHz%s"
-#ifdef CHIP_FEATURE_BT
-			"%s"
-#endif
-#ifdef CHIP_FEATURE_BLE
-			"%s"
-#endif
-#ifdef CHIP_FEATURE_EMB_FLASH
-			"%s"
-#endif
+	log_info(TAG,"ESP%u (rev %d) with %d core%s @ %uMHz"
 		, ci.model ? 32 : 8266
 		, ci.revision
 		, ci.cores
 		, ci.cores > 1 ? "s" : ""
 		, mhz
-		, ci.features & CHIP_FEATURE_WIFI_BGN ? ", WiFi" : ""
-#ifdef CHIP_FEATURE_BT
-		, ci.features & CHIP_FEATURE_BT ?  ", BT" : ""
-#endif
-#ifdef CHIP_FEATURE_BLE
-		, ci.features & CHIP_FEATURE_BLE ?  ", BT/LE" : ""
-#endif
-#ifdef CHIP_FEATURE_EMB_FLASH
-		, ci.features & CHIP_FEATURE_EMB_FLASH ?  ", flash" : ""
-#endif
 		);
+#ifdef CONFIG_SOC_SPIRAM_SUPPORTED
 	if (uint32_t spiram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM))
 		log_info(TAG,"%ukB SPI RAM",spiram>>10);
+#endif
 	log_info(TAG,"%s reset",ResetReasons[(int)esp_reset_reason()]);
 
 #ifdef ESP_IF_ETH
@@ -398,6 +382,9 @@ void app_main()
 #ifdef CONFIG_CAMERA
 	webcam_setup();
 #endif
+#ifdef CONFIG_LORA
+	lora_setup();
+#endif
 	cfg_init_timers();
 
 
@@ -421,6 +408,10 @@ void app_main()
 	// here all actions and events must be initialized
 	cfg_activate_triggers();
 
+#ifdef CONFIG_STATEMACHINES
+	sm_start();
+#endif
+
 	// network listening services
 #ifdef CONFIG_UDPCTRL
 	udpctrl_setup();
@@ -437,9 +428,6 @@ void app_main()
 
 #ifdef CONFIG_SOCKET_API
 	inetd_setup();
-#endif
-#ifdef CONFIG_LORA
-	lora_setup();
 #endif
 #ifdef CONFIG_IDF_TARGET_ESP32
 	esp_ota_mark_app_valid_cancel_rollback();

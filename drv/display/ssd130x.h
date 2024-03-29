@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021-2023, Thomas Maier-Komor
+ *  Copyright (C) 2021-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -45,6 +45,9 @@ class SSD130X : public MatrixDisplay
 
 	bool hasChar(char) const override
 	{ return true; }
+
+	pxlfmt_t pixelFormat() const override
+	{ return pxf_bytecolmjr; }
 
 	protected:
 	void pClrPixel(uint16_t x, uint16_t y);

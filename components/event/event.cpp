@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2023, Thomas Maier-Komor
+ *  Copyright (C) 2020-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -83,9 +83,9 @@ static QueueHandle_t EventsQ = 0;
 static SemaphoreHandle_t EventMtx = 0;
 static vector<EventHandler> EventHandlers;
 #ifdef ESP32
-static atomic<uint32_t> Lost, Discarded, Invalid, Processed;
+static atomic<uint32_t> Lost, Discarded, Invalid, Processed, Isr;
 #else
-static uint32_t Lost = 0, Discarded = 0, Invalid = 0, Processed = 0;
+static uint32_t Lost = 0, Discarded = 0, Invalid = 0, Processed = 0, Isr = 0;
 #endif
 
 
@@ -312,6 +312,19 @@ event_t event_id(const char *n)
 }
 
 
+void IRAM_ATTR event_isr_handler(void *arg)
+{
+	event_t id = (event_t)(unsigned)arg;
+	if (id != 0) {
+		Event e(id);
+		if (pdTRUE == xQueueSendFromISR(EventsQ,&e,0))
+			++Isr;
+		else
+			++Lost;
+	}
+}
+
+
 const char *event_name(event_t e)
 {
 	const char *name;
@@ -378,8 +391,9 @@ void IRAM_ATTR event_isr_trigger(event_t id)
 	// ! don't log from ISR
 	if (id != 0) {
 		Event e(id);
-		BaseType_t r = xQueueSendFromISR(EventsQ,&e,0);
-		if (r != pdTRUE)
+		if (pdTRUE == xQueueSendFromISR(EventsQ,&e,0))
+			++Isr;
+		else
 			++Lost;
 	}
 }
@@ -390,8 +404,9 @@ void IRAM_ATTR event_isr_trigger_arg(event_t id, void *arg)
 	// ! don't log from ISR
 	if (id != 0) {
 		Event e(id,arg);
-		BaseType_t r = xQueueSendFromISR(EventsQ,&e,0);
-		if (r != pdTRUE)
+		if (pdTRUE == xQueueSendFromISR(EventsQ,&e,0))
+			++Isr;
+		else
 			++Lost;
 	}
 }
@@ -497,11 +512,11 @@ static void event_task(void *)
 void event_status(Terminal &t)
 {
 #ifdef ESP32
-	t.printf("%u processed, %u discarded, %u lost, %u invalid\n"
-			,Processed.load(),Discarded.load(),Lost.load(),Invalid.load());
+	t.printf("%u processed, %u discarded, %u lost, %u invalid, %u ISR\n"
+			,Processed.load(),Discarded.load(),Lost.load(),Invalid.load(),Isr.load());
 #else
-	t.printf("%u processed, %u discarded, %u lost, %u invalid\n"
-			,Processed,Discarded,Lost,Invalid);
+	t.printf("%u processed, %u discarded, %u lost, %u invalid, %u ISR\n"
+			,Processed,Discarded,Lost,Invalid,Isr);
 #endif
 }
 

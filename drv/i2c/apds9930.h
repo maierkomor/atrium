@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021-2022, Thomas Maier-Komor
+ *  Copyright (C) 2021-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -34,7 +34,7 @@ struct APDS9930 : public I2CDevice
 	const char *drvName() const
 	{ return "apds9930"; }
 
-	int init();
+	void addIntr(uint8_t gpio) override;
 	void attach(class EnvObject *);
 #ifdef CONFIG_I2C_XCMD
 	const char *exeCmd(struct Terminal &, int argc, const char **argv) override;
@@ -44,6 +44,7 @@ struct APDS9930 : public I2CDevice
 	static void trigger(void *);
 	static void poweroff(void *);
 	static unsigned cycle(void *);
+	int init();
 	bool status();
 	bool sample();
 	unsigned read();
@@ -57,7 +58,7 @@ struct APDS9930 : public I2CDevice
 	state_t m_state = st_idle;
 	uint8_t m_retry = 0;
 	bool m_close = false;
-	event_t m_near = 0, m_far = 0;
+	event_t m_near = 0, m_far = 0, m_isrev = 0;
 };
 
 

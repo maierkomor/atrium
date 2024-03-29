@@ -31,7 +31,7 @@ struct BMP280 : public I2CDevice
 	const char *drvName() const override
 	{ return "bmp280"; }
 
-	int init() override;
+	virtual int init();
 	void attach(class EnvObject *) override;
 #ifdef CONFIG_I2C_XCMD
 	const char *exeCmd(struct Terminal &, int argc, const char **argv) override;
@@ -99,7 +99,7 @@ struct BME680 : public I2CDevice
 	{ return "bme680"; }
 
 	int init();
-	void attach(class EnvObject *);
+	void attach(class EnvObject *) override;
 
 	protected:
 	unsigned sample();

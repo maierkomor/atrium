@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2022, Thomas Maier-Komor
+ *  Copyright (C) 2020-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -167,7 +167,7 @@ static int luax_relay_toggle(lua_State *L)
 }
 
 
-static LuaFn Functions[] = {
+static const LuaFn Functions[] = {
 	{ "relay_set", luax_relay_set, "turn relay on/off" },
 	{ "relay_toggle", luax_relay_toggle, "toggle relay state" },
 	{ 0, 0, 0 }

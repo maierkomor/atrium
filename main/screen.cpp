@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2023, Thomas Maier-Komor
+ *  Copyright (C) 2018-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -26,11 +26,12 @@
 #include "env.h"
 #include "fonts.h"
 #include "globals.h"
-#include "hwcfg.h"
 #include "log.h"
 #include "luaext.h"
+#include "mstream.h"
 #include "profiling.h"
 #include "screen.h"
+#include "swcfg.h"
 
 #ifdef CONFIG_LUA
 #include "luaext.h"
@@ -45,6 +46,18 @@ extern "C" {
 #include <time.h>
 
 extern const char Version[];
+
+static const char *Modes[] = {
+	"splash screen",
+	"local time",
+	"date",
+	"stop watch",
+#ifdef CONFIG_LUA
+	"Lua",
+#endif
+};
+
+#define CLOCK_MODE_MAX (sizeof(Modes)/sizeof(Modes[0]))
 
 #define TAG MODULE_SCREEN
 static Screen *Ctx = 0;
@@ -79,56 +92,114 @@ static void sw_pause(void *arg)
 }
 
 
+static void mode_name(clockmode_t &x, char *mode)
+{
+	if (x < CLOCK_MODE_MAX) {
+		strcpy(mode,Modes[x]);
+	} else if (EnvElement *e = RTData->getElement(x-CLOCK_MODE_MAX)) {
+		const char *n = e->name();
+		log_dbug(TAG,"getElement %d: %s",x,n);
+		mode[0] = 0;
+		if (const char *pn = e->getParent()->name()) {
+			strcpy(mode,pn);
+			strcat(mode,"/");
+		}
+		strcat(mode,n);
+	} else {
+		x = cm_version;
+		strcpy(mode,Modes[0]);
+	}
+	log_dbug(TAG,"mode_name %s",mode);
+}
+
+
+static bool mode_enabled(const char *mode)
+{
+#ifdef CONFIG_LUA
+	if ((0 == strcmp(mode,"Lua")) && Config.lua_disable())
+		return false;
+#endif
+	const auto &envs = Config.screen().envs();
+	if (envs.empty())
+		return true;
+	for (const auto &e : envs) {
+		if (0 == strcmp(mode,e.path().c_str())) {
+			log_dbug(TAG,"enabled mode %s",mode);
+			return true;
+		}
+	}
+	log_dbug(TAG,"DISABLED mode %s",mode);
+	return false;
+}
+
+
+static const char *env_title(const char *path)
+{
+	const auto &envs = Config.screen().envs();
+	for (auto e : envs) {
+		if (0 == strcmp(path,e.path().c_str())) {
+			const auto &t = e.title();
+			if (!t.empty())
+				return t.c_str();
+			return path;
+		}
+	}
+	return path;
+
+}
+
+
+static void mode_next(const char *m)
+{
+	clockmode_t mode = Ctx->mode;
+	char modename[64];
+	do {
+		if (m == 0) {
+			mode = (clockmode_t)((int)mode + 1);
+		} else if (0 == strcmp("time",m)) {
+			mode = cm_time;
+		} else if (0 == strcmp("local time",m)) {
+			mode = cm_time;
+		} else if (0 == strcmp("date",m)) {
+			mode = cm_date;
+		} else if (0 == strcmp("stopwatch",m)) {
+			mode = cm_stopwatch;
+#ifdef CONFIG_LUA
+		} else if ((0 == strcasecmp("lua",m)) && !Config.lua_disable()) {
+			mode = cm_lua;
+#endif
+		} else {
+			int idx = RTData->getIndex(m);
+			if (idx == -1) {
+				log_warn(TAG,"invalid mode request %s",m);
+				return;
+			}
+			idx += CLOCK_MODE_MAX;
+			log_dbug(TAG,"index %d",idx);
+			mode = (clockmode_t) (idx);
+		}
+		if (mode >= CLOCK_MODE_MAX+RTData->numElements())
+			mode = cm_version;
+		mode_name(mode,modename);
+		m = 0;
+	} while (!mode_enabled(modename));
+	Ctx->mode = mode;
+	Ctx->path = modename;
+	Ctx->modestart = uptime();
+	Ctx->modech = true;
+}
+
+
 static void switch_mode(void *arg)
 {
 	const char *m = (const char *) arg;
-	if (arg == 0) {
-		Ctx->mode = (clockmode_t)((int)Ctx->mode + 1);
-		if (Ctx->mode >= CLOCK_MODE_MAX) {
-			size_t x = Ctx->mode - CLOCK_MODE_MAX;
-			EnvElement *e = RTData->getElement(x);
-			while (e) {
-				const char *name = e->name();
-				if ((0 == strcmp(name,"ltime")) || (0 == strcmp(name,"uptime"))) {
-					++x;
-					e = RTData->getElement(x);
-					continue;
-				}
-				const char *pn = e->getParent()->name();
-				if ((pn != 0) && (0 == strcmp(pn,"mqtt"))) {
-					++x;
-					e = RTData->getElement(x);
-					continue;
-				} else {
-					break;
-				}
-			}
-			if (e == 0)
-				Ctx->mode = cm_version;
-			else
-				Ctx->mode = (clockmode_t) (x+CLOCK_MODE_MAX);
-		}
-	} else if (0 == strcmp("time",m)) {
-		Ctx->mode = cm_time;
-	} else if (0 == strcmp("date",m)) {
-		Ctx->mode = cm_date;
-	} else if (0 == strcmp("stopwatch",m)) {
-		Ctx->mode = cm_stopwatch;
-	} else if (0 == strcmp("lua",m)) {
-		Ctx->mode = cm_lua;
-	} else {
-		int idx = RTData->getIndex((const char *) arg);
-		if (idx == -1) {
-			log_warn(TAG,"invalid mode request %s",(const char *) arg);
-			return;
-		}
-		idx += CLOCK_MODE_MAX;
-		log_dbug(TAG,"index %d",idx);
-		Ctx->mode = (clockmode_t) (idx);
+	mode_next(m);
+	/*
+	if (0 == m) {
+		while (0 == mode_enabled(Ctx->path.c_str()))
+			mode_next(0);
 	}
-	log_dbug(TAG,"new mode %d",Ctx->mode);
-	Ctx->modestart = uptime();
-	Ctx->modech = true;
+	*/
 }
 
 
@@ -156,6 +227,26 @@ static void poweron(void *arg)
 }
 
 
+void Screen::display_value(const char *str)
+{
+	if (strcmp(str,prev.c_str())) {
+		if (MatrixDisplay *dm = disp->toMatrixDisplay()) {
+			const Font *f = dm->getFont();
+			// off-screen for digits height
+			const glyph_t *g = &f->glyph['8'-f->first];
+			uint16_t w = (g->width+g->xOffset)*8+(f->getCharWidth(':')*3);
+			uint16_t h = g->height - g->yOffset;
+			dm->setupOffScreen(5,ypos,w,h,0);
+			dm->drawText(5,ypos,str,-1,0xffff,-2);
+			dm->commitOffScreen();
+		} else {
+			disp->write(str);
+		}
+		prev = str;
+	}
+}
+
+
 void Screen::display_time()
 {
 	uint8_t h=0,m=0,s=0;
@@ -168,16 +259,7 @@ void Screen::display_time()
 		sprintf(buf,"%02u:%02u:%02u",h,m,s);
 		str = buf;
 	}
-	if (strcmp(str,prev.c_str())) {
-		if (MatrixDisplay *dm = disp->toMatrixDisplay()) {
-			dm->setupOffScreen(5,24,100,40,0);
-			dm->drawText(5,24,str,0xffff,-2);
-			dm->commitOffScreen();
-		} else {
-			disp->write(str);
-		}
-		prev = str;
-	}
+	display_value(str);
 }
 
 
@@ -193,17 +275,13 @@ void Screen::display_date()
 		sprintf(buf,"%u.%u.%u",day,mon,year);
 		str = buf;
 	}
-	if (strcmp(str,prev.c_str())) {
-		if (MatrixDisplay *dm = disp->toMatrixDisplay())
-			dm->setPos(5,24);
-		disp->write(str);
-		prev = str;
-	}
+	display_value(str);
 }
 
 
 void Screen::display_env()
 {
+	PROFILE_FUNCTION();
 	EnvElement *e = RTData->getElement(Ctx->mode-CLOCK_MODE_MAX);
 	if (e == 0)
 		return;
@@ -231,12 +309,17 @@ void Screen::display_env()
 		str = b->get() ? "on" : "off";
 	} else if (EnvString *s = e->toString()) {
 		str = s->get();
+	} else {
+		char *buf = (char*)alloca(128);
+		mstream o(buf,128);
+		e->writeValue(o);
+		str = o.c_str();	// to add terminating \0
 	}
 	if ((str != 0) && (strcmp(prev.c_str(),str))) {
 		if (MatrixDisplay *dm = disp->toMatrixDisplay()) {
 			unsigned fh = dm->fontHeight();
-			dm->setupOffScreen(5,24,dm->maxX()-10,fh,0);
-			dm->drawText(5,24,str,-1,0xffff,-2);
+			dm->setupOffScreen(5,ypos,dm->maxX()-10,fh,0);
+			dm->drawText(5,ypos,str,-1,0xffff,-2);
 			dm->commitOffScreen();
 		} else {
 			disp->write(str);
@@ -250,19 +333,43 @@ void Screen::display_version()
 {
 	const char *sp = strchr(Version,' ');
 	if (MatrixDisplay *dm = disp->toMatrixDisplay()) {
-		assert(dm->maxX());
-		dm->drawRect(4,1,dm->maxX()-5,dm->maxY()-3);
-		if (dm->setupOffScreen(10,8,100,50,0))
-			log_warn(TAG,"off screen too large");
-		dm->setFont(font_sanslight16);
-		dm->drawText(10,8,"Atrium",6,-1,-2);
-		dm->setFont(font_sanslight12);
-		dm->drawText(10,28,Version,sp-Version);
-		if (dm->maxY() >= 50) {
-			dm->setFont(font_tomthumb);
-			dm->drawText(10,45,"(C) 2021-2023, T.Maier-Komor",28,0xffff,-2);
-		}
+		uint16_t maxy = dm->maxY();
+		dm->drawRect(4,1,dm->maxX()-5,maxy-3);
+		const Font *f = dm->setFont(font_large);
+		ypos = 6;
+		dm->setupOffScreen(11,ypos,100,f->maxY-f->minY,0);
+		dm->drawText(11,ypos,"Atrium",6,-1,-2);
 		dm->commitOffScreen();
+		ypos += f->yAdvance;
+		f = dm->setFont(font_medium);
+		if (ypos + 2*f->yAdvance > maxy) {
+			f = dm->setFont(font_small);
+			if (ypos + 2*f->yAdvance > maxy) {
+				f = dm->setFont(font_tiny);
+			}
+		}
+		uint16_t tw = dm->textWidth(Version);
+		int l;
+		if (tw < (dm->maxX()-15)) {
+			l = -1;
+		} else {
+			l = sp-Version;
+			tw = dm->textWidth(Version,l);
+		}
+		dm->setupOffScreen(11,ypos,tw,f->maxY-f->minY,0);
+		dm->drawText(11,ypos,Version,l);
+		dm->commitOffScreen();
+		ypos += f->yAdvance;
+		if (maxy >= ypos+f->yAdvance) {
+			uint16_t tw = dm->textWidth(Copyright);
+			if (tw > maxy) {
+				f = dm->setFont(font_tiny);
+				tw = dm->textWidth(Copyright);
+			}
+			dm->setupOffScreen(11,ypos,tw,f->maxY-f->minY,0);
+			dm->drawText(11,ypos,Copyright,29,0xffff,-2);
+			dm->commitOffScreen();
+		}
 	} else {
 		disp->setPos(0,0);
 		unsigned cpl = disp->charsPerLine();
@@ -313,9 +420,9 @@ void Screen::display_sw()
 	dt -= m * 60;
 	uint8_t s = dt;
 	char str[16];
-	if (digits >= 8) {
-		sprintf(str,"%02u:%02u:%02u.%u%u",h,m,s,dsec,hsec);
-	} else if (digits == 6) {
+	if ((h != 0) && (digits >= 8)) {
+		sprintf(str,"%02u:%02u:%02u.%u",h,m,s,dsec);
+	} else if (digits >= 6) {
 		if (h) {
 			sprintf(str,"%02u:%02u:%02u",h,m,s);
 		} else {
@@ -331,15 +438,45 @@ void Screen::display_sw()
 	if (strcmp(str,prev.c_str())) {
 		if (MatrixDisplay *dm = disp->toMatrixDisplay()) {
 			// monospace font - i.e. all glyphs have same width
-			unsigned cw = dm->getFont()->glyph[0].xAdvance;
-			dm->setupOffScreen(5,24,12*cw,dm->fontHeight(),0);
-			dm->drawText(5,24,str);
+			const Font *f = dm->getFont();
+			unsigned tw = f->getGlyph(':')->xAdvance * 3 + f->getGlyph('8')->xAdvance * 7;
+			dm->setupOffScreen(5,ypos,tw,dm->fontHeight(),0);
+			dm->drawText(5,ypos,str);
 			dm->commitOffScreen();
 		} else {
 			Ctx->disp->write("\r");
 			disp->write(str);
 		}
 		prev = str;
+	}
+}
+
+
+static void print_title()
+{
+	const char *text = env_title(Ctx->path.c_str());
+	log_dbug(TAG,"mode %s",text);
+	if (MatrixDisplay *dm = Ctx->disp->toMatrixDisplay()) {
+		const Font *f = dm->setFont(font_medium);
+		unsigned dy = 0;
+		unsigned tw = dm->textWidth(text);
+		if ((tw + 4) >= dm->maxX()) {
+			uint16_t b0 = f->blOff;
+			f = dm->setFont(font_small);
+			tw = dm->textWidth(text);
+			if ((tw + 4) >= dm->maxX())
+				f = dm->setFont(font_tiny);
+			dy = b0 - f->blOff;
+		}
+		dm->setupOffScreen(5,4+dy,tw,f->maxY-f->minY,0);
+		dm->drawText(5,4+dy,text);
+		dm->commitOffScreen();
+		log_dbug(TAG,"header %s",text);
+		Ctx->ypos = 5 + dy + f->yAdvance;
+		dm->setFont(font_large);
+	} else {
+		Ctx->disp->setPos(0,0);
+		Ctx->disp->write(text);
 	}
 }
 
@@ -354,69 +491,15 @@ static unsigned clock_iter(void *arg)
 		Ctx->modech = false;
 		Ctx->prev.clear();
 		if (alpha) {
-			const char *text = 0;
-			uint8_t nextFont = font_sanslight16;
-			switch (Ctx->mode) {
-			case cm_time:
-				text = "local time";
-//				nextFont = 4;
-				break;
-			case cm_date:
-				text = "date";
-				break;
-			case cm_version:
+			if (cm_version == Ctx->mode) {
 				Ctx->display_version();
-				break;
-			case cm_stopwatch:
-				text = "stop-watch";
-				nextFont = font_mono9;
-				break;
-			case cm_lua:
-				break;
-			default:
-				if (EnvElement *e = RTData->getElement(Ctx->mode-CLOCK_MODE_MAX)) {
-					text = e->name();
-					log_dbug(TAG,"getElement %d: %s",Ctx->mode,text);
-					if (const char *pn = e->getParent()->name()) {
-						size_t pl = strlen(pn);
-						size_t nl = strlen(text);
-						char *tmp = (char *)alloca(pl+nl+2);
-						memcpy(tmp,pn,pl);
-						tmp[pl] = '/';
-						memcpy(tmp+pl+1,text,nl+1);
-						text = tmp;
-					}
-				}
+				Ctx->disp->flush();
+				return 50;
 			}
-			if (text) {
-				log_dbug(TAG,"mode %s",text);
-				if (dm) {
-					dm->setFont(font_sanslight12);
-					dm->setupOffScreen(5,4,100,20,0);
-					dm->drawText(5,4,text);
-					dm->commitOffScreen();
-
-				} else {
-					Ctx->disp->setPos(0,0);
-					Ctx->disp->write(text);
-				}
-				if (dm) {
-					dm->setFont(nextFont);
-				}
-			}
-			if (Ctx->disp->numLines() > 1) {
-				Ctx->disp->setPos(0,1);
-				Ctx->modestart -= 1000;
-			}
-			Ctx->disp->flush();
-			return 50;
+			print_title();
 		}
 	}
-	uint32_t now = uptime();
-	if (alpha && (now - Ctx->modestart < 800))
-		return 50;
 	unsigned d = 100;
-//	Ctx->disp->setPos(0,Ctx->disp->numLines() > 1 ? 1 : 0);
 	if (0 == dm) {
 		Ctx->disp->write("\r");
 	}
@@ -433,9 +516,8 @@ static unsigned clock_iter(void *arg)
 			uint32_t ut = uptime();
 			time_t now;
 			time(&now);
-			if ((now > 3600*24*365*30) && (ut - Ctx->modestart > 3000)) {
-				Ctx->mode = cm_time;
-				Ctx->modech = true;
+			if ((now > 3600*24*365*30) && (ut - Ctx->modestart > 4000)) {
+				mode_next(Modes[1]);
 			}
 			return 200;
 		}
@@ -446,10 +528,14 @@ static unsigned clock_iter(void *arg)
 		break;
 	case cm_lua:
 #ifdef CONFIG_LUA
-		d = xlua_render(Ctx);
+		if (!Config.lua_disable()) {
+			d = xlua_render(Ctx);
+		} else
 #else
-		Ctx->mode = (clockmode_t)((int)Ctx->mode + 1);
-		Ctx->modech = true;
+		{
+			Ctx->mode = (clockmode_t)((int)Ctx->mode + 1);
+			Ctx->modech = true;
+		}
 #endif
 		break;
 	default:
@@ -470,7 +556,7 @@ int luax_disp_max_x(lua_State *L)
 			return 1;
 		}
 	}
-	lua_pushstring(L,"no display");
+	lua_pushstring(L,"No display.");
 	lua_error(L);
 	return 0;
 }
@@ -484,7 +570,7 @@ int luax_disp_max_y(lua_State *L)
 			return 1;
 		}
 	}
-	lua_pushstring(L,"no display");
+	lua_pushstring(L,"No display.");
 	lua_error(L);
 	return 0;
 }
@@ -527,9 +613,9 @@ int luax_disp_set_font(lua_State *L)
 	const char *fn = luaL_checkstring(L,1);
 	if (TextDisplay *disp = TextDisplay::getFirst())
 		if (MatrixDisplay *md = disp->toMatrixDisplay())
-			if (-1 != md->setFont(fn))
+			if (0 != md->setFont(fn))
 				return 0;
-	lua_pushstring(L,"invalid font");
+	lua_pushstring(L,"Invalid font.");
 	lua_error(L);
 	return 0;
 }
@@ -573,16 +659,18 @@ static const LuaFn Functions[] = {
 int luax_fb_drawicon(lua_State *L)
 {
 	if (MatrixDisplay *md = Ctx->disp->toMatrixDisplay()) {
-		const char *fn = luaL_checkstring(L,1);
-		int x = luaL_checkinteger(L,2);
-		int y = luaL_checkinteger(L,3);
+		int x = luaL_checkinteger(L,1);
+		int y = luaL_checkinteger(L,2);
+		const char *fn = luaL_checkstring(L,3);
 		int col = 0;
-		if (lua_isinteger(L,4))
+		if (lua_isstring(L,4))
+			col = color_get(lua_tostring(L,4));
+		else if (lua_isinteger(L,4))
 			col = lua_tointeger(L,4);
 		md->drawIcon(x,y,fn,col);
 		return 0;
 	}
-	lua_pushliteral(L,"fb_drawicon: no display.");
+	lua_pushliteral(L,"No display.");
 	lua_error(L);
 	return 0;
 }
@@ -597,7 +685,7 @@ static int luax_fb_setbgcol(lua_State *L)
 			md->setBgColor(color_get(lua_tostring(L,1)));
 		return 0;
 	}
-	lua_pushliteral(L,"fb_setbgcol: no display.");
+	lua_pushliteral(L,"No display.");
 	lua_error(L);
 	return 0;
 }
@@ -612,7 +700,7 @@ static int luax_fb_setfgcol(lua_State *L)
 			md->setFgColor(color_get(lua_tostring(L,1)));
 		return 0;
 	}
-	lua_pushliteral(L,"fb_setfgcol: no display.");
+	lua_pushliteral(L,"No display.");
 	lua_error(L);
 	return 0;
 }
@@ -628,7 +716,7 @@ static int luax_fb_setfont(lua_State *L)
 		}
 		return 0;
 	}
-	lua_pushliteral(L,"fb_setfgcol: no display.");
+	lua_pushliteral(L,"No display.");
 	lua_error(L);
 	return 0;
 }
@@ -649,7 +737,7 @@ static int luax_fb_drawrect(lua_State *L)
 		md->drawRect(x,y,w,h,fgc);
 		return 0;
 	}
-	lua_pushliteral(L,"fb_drawrect: no display.");
+	lua_pushliteral(L,"No display.");
 	lua_error(L);
 	return 0;
 }
@@ -670,7 +758,7 @@ static int luax_fb_drawline(lua_State *L)
 		md->drawLine(x,y,w,h,fgc);
 		return 0;
 	}
-	lua_pushliteral(L,"fb_drawrect: no display.");
+	lua_pushliteral(L,"No display.");
 	lua_error(L);
 	return 0;
 }
@@ -690,7 +778,7 @@ static int luax_fb_drawhline(lua_State *L)
 		md->drawHLine(x,y,l,fgc);
 		return 0;
 	}
-	lua_pushliteral(L,"fb_drawrect: no display.");
+	lua_pushliteral(L,"No display.");
 	lua_error(L);
 	return 0;
 }
@@ -710,7 +798,7 @@ static int luax_fb_drawvline(lua_State *L)
 		md->drawVLine(x,y,l,fgc);
 		return 0;
 	}
-	lua_pushliteral(L,"fb_drawrect: no display.");
+	lua_pushliteral(L,"No display.");
 	lua_error(L);
 	return 0;
 }
@@ -736,7 +824,7 @@ static int luax_fb_drawtext(lua_State *L)
 		md->drawText(x,y,text,-1,fgc,bgc);
 		return 0;
 	}
-	lua_pushliteral(L,"fb_drawtext: no display.");
+	lua_pushliteral(L,"No display.");
 	lua_error(L);
 	return 0;
 }
@@ -757,7 +845,7 @@ static int luax_fb_fillrect(lua_State *L)
 		md->fillRect(x,y,w,h,col);
 		return 0;
 	}
-	lua_pushliteral(L,"fb_drawrect: no display.");
+	lua_pushliteral(L,"No display.");
 	lua_error(L);
 	return 0;
 }
@@ -769,7 +857,7 @@ static int luax_fb_flush(lua_State *L)
 		md->flush();
 		return 0;
 	}
-	lua_pushliteral(L,"fb_drawrect: no display.");
+	lua_pushliteral(L,"No display.");
 	lua_error(L);
 	return 0;
 }
@@ -788,7 +876,7 @@ static int luax_fb_offscreen(lua_State *L)
 		md->setupOffScreen(x,y,w,h,bg);
 		return 0;
 	}
-	lua_pushliteral(L,"fb_drawrect: no display.");
+	lua_pushliteral(L,"No display.");
 	lua_error(L);
 	return 0;
 }
@@ -800,7 +888,7 @@ static int luax_fb_commit(lua_State *L)
 		md->commitOffScreen();
 		return 0;
 	}
-	lua_pushliteral(L,"fb_drawrect: no display.");
+	lua_pushliteral(L,"No display.");
 	lua_error(L);
 	return 0;
 }
@@ -815,8 +903,8 @@ static const LuaFn FbFunctions[] = {
 	{ "fb_fillrect", luax_fb_fillrect, "fill rectangle" },
 	{ "fb_setbgcol", luax_fb_setbgcol, "set background color" },
 	{ "fb_setfgcol", luax_fb_setfgcol, "set foreground color" },
-	{ "fb_setfont", luax_fb_setfont, "set font" },
-	{ "fb_drawicon", luax_fb_drawicon, "draw icon" },
+	{ "fb_setfont", luax_fb_setfont, "set font (fontname)" },
+	{ "fb_drawicon", luax_fb_drawicon, "draw icon (x,y,file[,color])" },
 	{ "fb_flush", luax_fb_flush, "flush to display" },
 	{ "fb_offscreen", luax_fb_offscreen, "setup off-screen area" },
 	{ "fb_commit", luax_fb_commit, "commit off-screen area" },
@@ -855,9 +943,11 @@ void screen_setup()
 	d->clear();
 	cyclic_add_task("display", clock_iter, Ctx);
 #ifdef CONFIG_LUA
-	xlua_add_funcs("screen",Functions);
-	if (Ctx->disp->toMatrixDisplay())
-		xlua_add_funcs("fb",FbFunctions);
+	if (!Config.lua_disable()) {
+		xlua_add_funcs("screen",Functions);
+		if (d->toMatrixDisplay())
+			xlua_add_funcs("fb",FbFunctions);
+	}
 #endif
 	log_info(TAG,"ready");
 }

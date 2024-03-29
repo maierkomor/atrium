@@ -338,7 +338,7 @@ int SGP30::read_version()
 			log_warn(TAG,"version CRC error: calc %02x, got %02x",crc,version[2]);
 			e = ESP_ERR_INVALID_CRC;
 		} else {
-			if (version[1] & 0xf0) {
+			if (version[1] & 0xd0) {
 				log_warn(TAG,"unexpected product id 0x%x",version[1]>>4);
 			} else {
 				m_ver = (version[1] << 8) | version[0];

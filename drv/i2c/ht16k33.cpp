@@ -41,8 +41,8 @@
 
 #define CMD_DIM		0xe0
 
-#define DEV_ADDR_MIN	0x70
-#define DEV_ADDR_MAX	0x77
+#define DEV_ADDR_MIN	(0x70<<1)
+#define DEV_ADDR_MAX	(0x77<<1)
 
 #define TAG MODULE_HT16K33
 
@@ -53,7 +53,7 @@ typedef enum { disp_off, disp_on, blink_05hz, blink_1hz, blink_2hz } disp_t;
 void HT16K33::create(uint8_t bus, uint8_t addr)
 {
 	if (addr == 0) {
-		for (uint8_t a = DEV_ADDR_MIN; a <= DEV_ADDR_MAX; ++a)
+		for (uint8_t a = DEV_ADDR_MIN; a <= DEV_ADDR_MAX; a += 2)
 			create(bus,a);
 	} else if ((addr < DEV_ADDR_MIN) || (addr > DEV_ADDR_MAX)) {
 		log_warn(TAG,"invalid address 0x%x",(unsigned)addr);

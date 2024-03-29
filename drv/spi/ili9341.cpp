@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2023, Thomas Maier-Komor
+ *  Copyright (C) 2023-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -299,17 +299,17 @@ ILI9341 *ILI9341::create(spi_host_device_t host, spi_device_interface_config_t &
 		return 0;
 	log_dbug(TAG,"create with cs=%d, dc=%d, reset=%d",cfg.spics_io_num,dc,reset);
 	if (esp_err_t e = gpio_set_direction((gpio_num_t)dc,GPIO_MODE_OUTPUT)) {
-		log_warn(TAG,"cannot set gpio%d to output: %s",dc,esp_err_to_name(e));
+		log_warn(TAG,"set gpio%d to output: %s",dc,esp_err_to_name(e));
 		return 0;
 	}
 	gpio_set_level((gpio_num_t)dc,0);
 	if (esp_err_t e = gpio_set_direction((gpio_num_t)cfg.spics_io_num,GPIO_MODE_OUTPUT)) {
-		log_warn(TAG,"cannot set gpio%d to output: %s",cfg.spics_io_num,esp_err_to_name(e));
+		log_warn(TAG,"set gpio%d to output: %s",cfg.spics_io_num,esp_err_to_name(e));
 		return 0;
 	}
 	if (reset >= 0) {
 		if (esp_err_t e = gpio_set_direction((gpio_num_t)reset,GPIO_MODE_OUTPUT)) {
-			log_warn(TAG,"cannot set gpio%d to output: %s",reset,esp_err_to_name(e));
+			log_warn(TAG,"set gpio%d to output: %s",reset,esp_err_to_name(e));
 			return 0;
 		}
 		log_dbug(TAG,"reset triggered");
@@ -329,7 +329,7 @@ ILI9341 *ILI9341::create(spi_host_device_t host, spi_device_interface_config_t &
 	cfg.post_cb = ili9341_post_cb;
 	spi_device_handle_t hdl;
 	if (esp_err_t e = spi_bus_add_device(host,&cfg,&hdl)) {
-		log_warn(TAG,"device add failed: %s",esp_err_to_name(e));
+		log_warn(TAG,"add device: %s",esp_err_to_name(e));
 		return 0;
 	}
 	Instance = new ILI9341(cfg.spics_io_num, dc, reset, sem, hdl);
@@ -339,7 +339,7 @@ ILI9341 *ILI9341::create(spi_host_device_t host, spi_device_interface_config_t &
 
 void ILI9341::reset()
 {
-	log_dbug(TAG,"reset triggered");
+	log_dbug(TAG,"reset()");
 	gpio_set_level(m_reset,0);
 	ets_delay_us(15);	// reset-pulse >= 10us
 	gpio_set_level(m_reset,1);
@@ -365,14 +365,14 @@ void ILI9341::sleepOut()
 
 int ILI9341::init(uint16_t maxx, uint16_t maxy, uint8_t options)
 {
-	log_info(TAG,"init(%u,%u): %u size",maxx,maxy);
+	log_info(TAG,"init(%u,%u)",maxx,maxy);
 	if (maxx < maxy)
 		writeCmdArg(CMD_MADCTL,0x48);
 	else
 		writeCmdArg(CMD_MADCTL,0x28);
 	uint8_t madctl[2];
 	readRegs(CMD_RDMADCTL,madctl,sizeof(madctl));
-	log_info(TAG,"madctl: 0x%02x",madctl[1]);
+	log_dbug(TAG,"madctl: 0x%02x",madctl[1]);
 	m_width = maxx;
 	m_height = maxy;
 	unsigned foss = maxx*maxy<<1;
@@ -381,33 +381,26 @@ int ILI9341::init(uint16_t maxx, uint16_t maxy, uint8_t options)
 		log_error(TAG,"Out of memory.");
 		return 1;
 	}
-	m_oss = 32 << 10;
+	m_oss = heap_caps_get_largest_free_block(MALLOC_CAP_DMA);
+	log_dbug(TAG,"max DMA block is %u",m_oss);
+	if (foss < m_oss)
+		m_oss = foss;
 	m_os = (uint16_t *) heap_caps_malloc(m_oss, MALLOC_CAP_DMA);
 	if (m_os == 0) {
-		m_oss = heap_caps_get_largest_free_block(MALLOC_CAP_DMA);
-		log_info(TAG,"largest available DMA block is %u",m_oss);
+		m_oss >>= 1;
 		m_os = (uint16_t *) heap_caps_malloc(m_oss, MALLOC_CAP_DMA);
 		if (m_os == 0) {
-			m_oss = 16 << 10;
-			m_os = (uint16_t *) malloc(m_oss);
-			if (m_os == 0) {
-				m_oss = 8 << 10;
-				m_os = (uint16_t *) malloc(m_oss);
-				if (m_os == 0) {
-					log_warn(TAG,"No memory for off-screen rendering.");
-					m_oss = 0;
-				}
-			}
+			return 1;
 		}
-	} else if (m_oss == foss) {
-		log_info(TAG,"full off-screen buffer");
+	}
+	if (m_oss == foss) {
 		m_fos = true;
 		m_osx = 0;
 		m_osy = 0;
 		m_osw = maxx;
 		m_osh = maxy;
 	}
-	log_info(TAG,"off-screen buffer: %u Bytes",m_oss);
+	log_info(TAG,"off-screen: %u Bytes",m_oss);
 	checkPowerMode();
 	writeCmd(CMD_IDMOFF);
 	initOK();
@@ -450,20 +443,30 @@ void ILI9341::flush()
  */
 int ILI9341::setupOffScreen(uint16_t x, uint16_t y, uint16_t w, uint16_t h, int32_t bg)
 {
-	log_dbug(TAG,"setupOffScreen(%u,%u,%u,%u,%x)",x,y,w,h,bg);
-	if ((x+w > m_width) || (y+h > m_height) || (w*h<<1 > m_oss))
-		return -1;
 	if (m_fos)
 		return 0;
+	log_dbug(TAG,"setupOffScreen(%u,%u,%u,%u,%x)",x,y,w,h,bg);
+	if ((x > m_width) || (y > m_height) || (w*h<<1 > m_oss)) {
+		log_warn(TAG,"setupOffScreen(%u,%u,%u,%u,%x): too big %u > %u",x,y,w,h,bg,w*h<<1,m_oss);
+		return -1;
+	}
+	if ((x+w) > m_width)
+		w = m_width - x;
+	if ((y+h) > m_height)
+		h = m_height - y;
 	m_osx = x;
 	m_osy = y;
 	m_osw = w;
 	m_osh = h;
-	if (bg >= 0) {	// bg == -2 is keep content, bg == -1 => bg = m_bgcol
-		wchar_t f = bg;
-		wmemset((wchar_t*)m_os,f,w*h);
-		if ((w*h) & 1)
-			m_os[(w*h<<1)-1] = (uint16_t)(bg & 0xffff);
+	if (bg >= -1) {	// bg == -2 is keep content, bg == -1 => bg = m_colbg
+		uint16_t f = bg < 0 ? m_colbg : bg;
+		size_t s = w*h;
+		uint16_t *at = m_os, *end = at+s;
+		while (at != end)
+			*at++ = f;
+//		wmemset((wchar_t*)m_os,f,w*h);
+//		if ((w*h) & 1)
+//			m_os[(w*h<<1)-1] = (uint16_t)(bg & 0xffff);
 	} else {
 		// read screen content
 		uint8_t caset[] = { (uint8_t)(x>>8), (uint8_t)(x&0xff), (uint8_t)((x+w-1)>>8), (uint8_t)((x+w-1)&0xff) };
@@ -517,7 +520,7 @@ void ILI9341::drawBitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const u
 	unsigned len = w*h;
 	unsigned idx = 0;
 	uint8_t b = 0;
-	if ((x >= m_osx) && (x+w < m_osx+m_osw) && (y >= m_osy) && (y < m_osy+m_osh)) {
+	if ((x >= m_osx) && (x+w < m_osx+m_osw) && (y >= m_osy) && (y+h < m_osy+m_osh)) {
 		if (bg == -2) {
 			while (idx != len) {
 				if ((idx & 7) == 0)
@@ -619,14 +622,16 @@ void ILI9341::drawPpm(uint16_t x0, uint16_t y, uint16_t w, uint16_t h, uint8_t *
 
 void ILI9341::setPixel(uint16_t x, uint16_t y, int32_t col)
 {
-//	log_devel(TAG,"setPixel(%u,%u,%x) temp %u/%u+%u/%u",(unsigned)x,(unsigned)y,col,m_osx,m_osy,m_osw,m_osh);
-	if ((x >= m_width) || (y >= m_height) || (col < 0) || (col > UINT16_MAX))
+	if ((x >= m_width) || (y >= m_height) || (col < -1) || (col > UINT16_MAX)) {
+		log_devel(TAG,"setPixel(%u,%u,%x) temp %u/%u+%u/%u: out of range",(unsigned)x,(unsigned)y,col,m_osx,m_osy,m_osw,m_osh);
 		return;
+	}
 	uint16_t c = col >= 0 ? (uint16_t)(col & 0xffff) : m_colfg;
 	if ((x >= m_osx) && (x < m_osx+m_osw) && (y >= m_osy) && (y < m_osy+m_osh)) {
+		log_devel(TAG,"setPixel(%u,%u,%x) offscreen",(unsigned)x,(unsigned)y,col);
 		m_os[(x-m_osx)+(y-m_osy)*m_osw] = c;
 	} else {
-		log_devel(TAG,"setPixel(%u,%u,%x) offscreen temp %u/%u+%u/%u",(unsigned)x,(unsigned)y,col,m_osx,m_osy,m_osw,m_osh);
+		log_devel(TAG,"setPixel(%u,%u,%x) direct draw %u/%u+%u/%u",(unsigned)x,(unsigned)y,col,m_osx,m_osy,m_osw,m_osh);
 		uint8_t caset[] = { (uint8_t)(x>>8), (uint8_t)(x&0xff), (uint8_t)((x+1)>>8), (uint8_t)((x+1)&0xff) };
 		writeCmdArg(CMD_CASET,caset,sizeof(caset));
 		uint8_t paset[] = { (uint8_t)(y>>8), (uint8_t)(y&0xff), (uint8_t)((y+1)>>8), (uint8_t)((y+1)&0xff) };
@@ -696,9 +701,8 @@ void ILI9341::fillRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, int32_t c
 		writeCmd(CMD_RAMWR);
 		unsigned n = w*h;
 		unsigned b = (n*2 > SPI_MAX_TX) ? (SPI_MAX_TX>>1) : n;
-		log_dbug(TAG,"n=%u, b=%u",n,b);
+//		log_dbug(TAG,"n=%u, b=%u",n,b);
 		wmemset((wchar_t*)m_temp,col,b);
-//		setD();
 		preop_t pre = pre_d;
 		do {
 			unsigned s = ((n<<1) > SPI_MAX_TX) ? SPI_MAX_TX : n<<1;
@@ -739,7 +743,7 @@ int ILI9341::readRegs(uint8_t reg, uint8_t *data, uint8_t num)
 	t->length = num << 3;
 	t->rxlength = num << 3;
 	if (esp_err_t e = spi_device_queue_trans(m_hdl,t,portMAX_DELAY)) {
-		log_warn(TAG,"error queuing read: %s",esp_err_to_name(e));
+		log_warn(TAG,"queue read: %s",esp_err_to_name(e));
 		return -1;
 	}
 	if (pdTRUE != xSemaphoreTake(m_sem,MUTEX_ABORT_TIMEOUT))
@@ -910,7 +914,7 @@ int ILI9341::readData(uint8_t *v, unsigned len)
 
 int ILI9341::readBytes(uint8_t *data, unsigned len, preop_t pre)
 {
-	log_devel(TAG,"readBytes %p: %u",data,len);
+	log_devel(TAG,"readBytes %d@%p",len,data);
 	assert(data);
 	esp_err_t e = 0;
 	spi_device_acquire_bus(m_hdl,portMAX_DELAY);
@@ -933,7 +937,7 @@ int ILI9341::readBytes(uint8_t *data, unsigned len, preop_t pre)
 		log_devel(TAG,"readBytes %d@%p",t->length>>3,t->tx_buffer);
 		e = spi_device_queue_trans(m_hdl,t,portMAX_DELAY);
 		if (e) {
-			log_warn(TAG,"error queuing readBytes: %s",esp_err_to_name(e));
+			log_warn(TAG,"readBytes: %s",esp_err_to_name(e));
 			return -1;
 		}
 	}
@@ -952,7 +956,7 @@ int ILI9341::writeByte(uint8_t v, preop_t pre)
 	t->flags = SPI_TRANS_USE_TXDATA;
 	t->tx_data[0] = v;
 	if (esp_err_t e = spi_device_queue_trans(m_hdl,t,portMAX_DELAY)) {
-		log_warn(TAG,"error queuing writeByte: %s",esp_err_to_name(e));
+		log_warn(TAG,"writeByte: %s",esp_err_to_name(e));
 		return -1;
 	}
 //	log_dbug(TAG,"writeB 0x%02x",v);
@@ -1022,7 +1026,7 @@ int ILI9341::writeBytes(uint8_t *data, unsigned len, preop_t pre)
 		if (pdTRUE != xSemaphoreTake(m_sem,MUTEX_ABORT_TIMEOUT*4))
 			abort_on_mutex(m_sem,"ili9341");
 	} else {
-		log_warn(TAG,"error queuing writeBytes: %s",esp_err_to_name(e));
+		log_warn(TAG,"writeBytes: %s",esp_err_to_name(e));
 	}
 	return 0;
 }
@@ -1045,13 +1049,22 @@ const char *ILI9341::exeCmd(struct Terminal &t, int argc, const char **argv)
 	} else if (!strcmp(argv[0],"status")) {
 		uint8_t v[5];
 		readRegs(CMD_RDDST,v,sizeof(v));
-		t.printf("booster is %s\n",v[2]&128?"on":"off");
-		t.printf("row is %s\n",v[2]&64?"bottom-to-top":"top-to-bottom");
-		t.printf("column is %s\n",v[2]&32?"right-to-left":"left-to-right");
-		t.printf("reverse is %s\n",v[2]&16?"on":"off");
-		t.printf("refresh is %s\n",v[2]&8?"bottom-to-top":"top-to-bottom");
-		t.printf("refresh is %s\n",v[2]&2?"right-to-left":"left-to-right");
-		t.printf("color is %s\n",v[2]&4?"BGR":"RGB");
+		t.printf(
+			"booster is %s\n"
+			"row is %s\n"
+			"column is %s\n"
+			"reverse is %s\n"
+			"refresh is %s\n"
+			"refresh is %s\n"
+			"color is %s\n"
+			,v[2]&128?"on":"off"
+			,v[2]&64?"bottom-to-top":"top-to-bottom"
+			,v[2]&32?"right-to-left":"left-to-right"
+			,v[2]&16?"on":"off"
+			,v[2]&8?"bottom-to-top":"top-to-bottom"
+			,v[2]&2?"right-to-left":"left-to-right"
+			,v[2]&4?"BGR":"RGB"
+			);
 	} else if (!strcmp(argv[0],"bright")) {
 		if ((argc == 1) || (arg2 == 0x100)) {
 			uint8_t v[2];
@@ -1064,10 +1077,16 @@ const char *ILI9341::exeCmd(struct Terminal &t, int argc, const char **argv)
 	} else if (!strcmp(argv[0],"mode")) {
 		uint8_t v[2];
 		readRegs(CMD_RDDPM,v,sizeof(v));
-		t.printf("display is %s\n",v[1]&4?"on":"off");
-		t.printf("sleep is %s\n",v[1]&16?"on":"off");
-		t.printf("idle is %s\n",v[1]&64?"on":"off");
-		t.printf("booster is %s\n",v[1]&128?"on":"off");
+		t.printf(
+			"display is %s\n"
+			"sleep is %s\n"
+			"idle is %s\n"
+			"booster is %s\n"
+			,v[1]&4?"on":"off"
+			,v[1]&16?"on":"off"
+			,v[1]&64?"on":"off"
+			,v[1]&128?"on":"off"
+			);
 	} else if (!strcmp(argv[0],"madctl")) {
 		if ((argc == 1) || (arg2 == 0x100)) {
 			uint8_t v[2];
