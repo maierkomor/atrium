@@ -267,7 +267,7 @@ if [ "$IDF_ESP32" == "" ]; then
 fi
 pushd $IDF_ESP32
 git pull --recurse-submodule
-git reset --hard v5.1.2
+git reset --hard v5.1.1
 git submodule deinit -f --all
 git submodule update --init
 IDF_PATH="$IDF_ESP32" bash install.sh
