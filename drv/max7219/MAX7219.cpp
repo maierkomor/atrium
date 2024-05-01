@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2021, Thomas Maier-Komor
+ *  Copyright (C) 2018-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -51,16 +51,16 @@ MAX7219Drv *MAX7219Drv::create(xio_t clk, xio_t dout, xio_t cs, bool odrain)
 	xio_cfg_t cfg = XIOCFG_INIT;
 	cfg.cfg_io = odrain ? xio_cfg_io_od : xio_cfg_io_out;
 	if (0 > xio_config(clk,cfg)) {
-		log_error(TAG,"cannot set direction of clock gpio %d",clk);
+		log_warn(TAG,"config CLOCK failed");
 		return 0;
 	}
 	if (0 > xio_config(dout,cfg)) {
-		log_error(TAG,"cannot set direction of dout gpio %d",dout);
+		log_warn(TAG,"config DOUT failed");
 		return 0;
 	}
 	cfg.cfg_io = xio_cfg_io_out;
 	if (0 > xio_config(cs,cfg)) {
-		log_error(TAG,"cannot set direction of cs gpio %d",cs);
+		log_warn(TAG,"config CS failed");
 		return 0;
 	}
 	log_info(TAG,"ready");

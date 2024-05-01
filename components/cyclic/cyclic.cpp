@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2017-2022, Thomas Maier-Komor
+ *  Copyright (C) 2017-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -33,7 +33,6 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <freertos/task.h>
-//#include <driver/gpio.h>
 
 #include <vector>
 
@@ -43,14 +42,10 @@
 #define CYCLIC_CPU_NUM APP_CPU_NUM
 #endif
 
-#ifndef CONFIG_CYCLIC_STACK_SIZE
-#define CONFIG_CYCLIC_STACK_SIZE 4096
-#endif
-
 using namespace std;
 
 #define TAG MODULE_CYCLIC
-#define STATIC_TASK
+
 
 struct SubTask
 {
@@ -81,11 +76,6 @@ struct SubTaskCmp
 	{ return l.nextrun < r.nextrun; }
 };
 
-#if defined ESP32 && defined STATIC_TASK
-static StackType_t CyclicStack[CONFIG_CYCLIC_STACK_SIZE];
-static StaticTask_t CyclicTask;
-#endif
-
 static SubTask *SubTasks = 0;
 static SemaphoreHandle_t Mtx = 0;
 static uint64_t TimeSpent = 0;
@@ -109,7 +99,7 @@ int cyclic_add_task(const char *name, unsigned (*loop)(void*), void *arg, unsign
 		if (0 == strcmp(s->name,name)) {
 			xSemaphoreGive(Mtx);
 			delete n;
-			log_error(TAG,"subtask %s already exists",name);
+			log_warn(TAG,"subtask %s already exists",name);
 			return 1;
 		}
 		s = s->next;
@@ -182,31 +172,10 @@ unsigned cyclic_execute()
 }
 
 
-#ifdef ESP32
-static void cyclic_task(void *)
-{
-	for (;;) {
-		unsigned d = cyclic_execute();
-		vTaskDelay(d / portTICK_PERIOD_MS);
-	}
-}
-#endif
-
-
 void cyclic_setup()
 {
 	Mtx = xSemaphoreCreateMutex();
-#ifdef ESP32
-#ifdef STATIC_TASK
-	xTaskCreateStaticPinnedToCore(cyclic_task, "cyclic", sizeof(CyclicStack), (void*)0, 20, CyclicStack, &CyclicTask, CYCLIC_CPU_NUM);
-#else
-	BaseType_t r = xTaskCreatePinnedToCore(cyclic_task, "cyclic", 8192, (void*)0, 20, NULL, 1);
-	if (r != pdPASS)
-		log_error(TAG,"create task: %d",r);
-#endif // STATIC_TASK
-#else
-	// cyclic_execute is called from the event task
-#endif
+	// cyclic_execute is called from the event or startup task
 }
 
 

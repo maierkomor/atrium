@@ -66,7 +66,7 @@ HttpServer::HttpServer(const char *wwwroot, const char *rootmap)
 {
 	if (rootmap == 0)
 		rootmap = "/index.html";
-	assert((rootmap == 0) || (rootmap[0] == '/'));
+	assert(rootmap[0] == '/');
 }
 
 

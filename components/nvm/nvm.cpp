@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2017-2021, Thomas Maier-Komor
+ *  Copyright (C) 2017-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -16,6 +16,8 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <sdkconfig.h>
+
 #include "log.h"
 #include "nvm.h"
 #include "profiling.h"
@@ -27,6 +29,9 @@
 
 #define TAG MODULE_NVM
 
+#ifdef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
+#define log_dbug(...)
+#endif
 
 static nvs_handle NVS;
 
@@ -56,16 +61,22 @@ uint8_t nvm_read_u8(const char *id, uint8_t d)
 		log_warn(TAG,"get %s: %s",id,esp_err_to_name(e));
 		return d;
 	}
+	log_dbug(TAG,"read %s: %u",id,v);
 	return v;
 }
 
 
 void nvm_store_u8(const char *id, uint8_t v)
 {
+	uint8_t s;
 	if (esp_err_t e = nvs_set_u8(NVS,id,v))
 		log_warn(TAG,"set %s to %u: %s",id,(unsigned)v,esp_err_to_name(e));
 	else if (esp_err_t e = nvs_commit(NVS))
 		log_warn(TAG,"commit %s: %s",id,esp_err_to_name(e));
+	else if (esp_err_t e = nvs_get_u8(NVS,id,&s))
+		log_warn(TAG,"readback %s: %s",id,esp_err_to_name(e));
+	else
+		log_info(TAG,"stored %s: %u",id,s);
 }
 
 
@@ -76,6 +87,7 @@ uint16_t nvm_read_u16(const char *id, uint16_t d)
 		log_warn(TAG,"get %s: %s",id,esp_err_to_name(e));
 		return d;
 	}
+	log_dbug(TAG,"read %s: %u",id,v);
 	return v;
 }
 
@@ -86,6 +98,8 @@ void nvm_store_u16(const char *id, uint16_t v)
 		log_warn(TAG,"set %s to %u: %s",id,(unsigned)v,esp_err_to_name(e));
 	else if (esp_err_t e = nvs_commit(NVS))
 		log_warn(TAG,"commit %s: %s",id,esp_err_to_name(e));
+	else
+		log_dbug(TAG,"stored %s: %u",id,v);
 }
 
 
@@ -96,6 +110,7 @@ uint32_t nvm_read_u32(const char *id, uint32_t d)
 		log_warn(TAG,"get %s: %s",id,esp_err_to_name(e));
 		return d;
 	}
+	log_dbug(TAG,"read %s: %u",id,v);
 	return v;
 }
 
@@ -106,6 +121,8 @@ void nvm_store_u32(const char *id, uint32_t v)
                 log_warn(TAG,"set %s to %u: %s",id,(unsigned)v,esp_err_to_name(e));
         else if (esp_err_t e = nvs_commit(NVS))
                 log_warn(TAG,"commit %s: %s",id,esp_err_to_name(e));
+	else
+		log_dbug(TAG,"stored %s: %u",id,v);
 }
 
 
@@ -116,6 +133,7 @@ float nvm_read_float(const char *id, float d)
                 log_warn(TAG,"get %s: %s",id,esp_err_to_name(e));
                 return d;
         }
+	log_dbug(TAG,"read %s: %g",id,v);
         return v;
 }
 
@@ -131,6 +149,8 @@ void nvm_store_float(const char *id, float v)
                 log_warn(TAG,"set %s to %f: %s",id,v,esp_err_to_name(e));
         else if (esp_err_t e = nvs_commit(NVS))
                 log_warn(TAG,"commit %s: %s",id,esp_err_to_name(e));
+	else
+		log_dbug(TAG,"stored %s: %u",id,v);
 }
 
 
@@ -194,6 +214,8 @@ void nvm_erase_key(const char *k)
 {
 	if (esp_err_t e = nvs_erase_key(NVS,k))
 		log_warn(TAG,"erase %s: %s",k,esp_err_to_name(e));
+	else
+		log_dbug(TAG,"erased %s",k);
 }
 
 
@@ -201,6 +223,8 @@ void nvm_erase_all()
 {
 	if (esp_err_t e = nvs_erase_all(NVS))
 		log_warn(TAG,"erase all: %s",esp_err_to_name(e));
+	else
+		log_dbug(TAG,"reset NVM");
 }
 
 

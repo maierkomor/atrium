@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2023, Thomas Maier-Komor
+ *  Copyright (C) 2018-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -74,6 +74,16 @@ extern "C" {
 #include <driver/usb_serial_jtag.h>
 #endif
 
+#ifndef CONFIG_CYCLIC_STACK_SIZE
+#define CONFIG_CYCLIC_STACK_SIZE 8192
+#endif
+
+#if CONFIG_SOC_CPU_CORES_NUM > 1
+#define CYCLIC_CPU_NUM 1
+static StackType_t CyclicStack[CONFIG_CYCLIC_STACK_SIZE];
+static StaticTask_t CyclicTask;
+#endif
+
 #ifdef CONFIG_VERIFY_HEAP
 #define verify_heap() if (!heap_caps_check_integrity_all(true)){printf("corrupt heap\n");heap_caps_dump_all();abort();}
 #else
@@ -109,7 +119,6 @@ void i2c_setup();
 void inetd_setup();
 void influx_setup();
 void rgbleds_setup();
-int lightctrl_setup();
 void lora_setup();
 void ow_setup();
 void relay_setup();
@@ -253,6 +262,16 @@ unsigned cyclic_check_heap(void *)
 }
 #endif
 
+
+void cyclic_task(void*)
+{
+	for (;;) {
+		unsigned d = cyclic_execute();
+		vTaskDelay(d / portTICK_PERIOD_MS);
+	}
+}
+
+
 extern "C"
 void app_main()
 {
@@ -264,7 +283,7 @@ void app_main()
 #endif
 	globals_setup();	// init HWConf, Config, RTData with defaults
 	if (0 == nvm_setup())		// read HWConf
-		cfg_read_hwcfg();
+		cfg_init_hwcfg();
 	verify_heap();
 
 	log_info(TAG,"Atrium Firmware for ESP based systems");
@@ -376,9 +395,6 @@ void app_main()
 #ifdef CONFIG_RGBLEDS
 	rgbleds_setup();
 #endif
-#ifdef CONFIG_LIGHTCTRL
-	lightctrl_setup();
-#endif
 #ifdef CONFIG_CAMERA
 	webcam_setup();
 #endif
@@ -425,13 +441,22 @@ void app_main()
 #ifdef CONFIG_FTP
 	ftpd_setup();
 #endif
-
 #ifdef CONFIG_SOCKET_API
 	inetd_setup();
 #endif
-#ifdef CONFIG_IDF_TARGET_ESP32
-	esp_ota_mark_app_valid_cancel_rollback();
-#endif
 	log_info(TAG,"Atrium Version %s",Version);
 	event_trigger(event_id("init`done"));
+
+#ifdef ESP32
+	esp_ota_mark_app_valid_cancel_rollback();
+	// ESP8266 has cyclic integrated into event
+#if CONFIG_SOC_CPU_CORES_NUM > 1
+	// multi-core, more RAM
+	xTaskCreateStaticPinnedToCore(&cyclic_task, "cyclic", sizeof(CyclicStack), (void*)0, 9, CyclicStack, &CyclicTask, CYCLIC_CPU_NUM);
+#else
+	// single core with limited RAM ESP32
+	vTaskPrioritySet(0,21);
+	cyclic_task(0);
+#endif // CONFIG_SOC_CPU_CORES_NUM
+#endif // ESP32
 }

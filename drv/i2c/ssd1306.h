@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021-2023, Thomas Maier-Komor
+ *  Copyright (C) 2021-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -34,8 +34,7 @@ class SSD1306 : public SSD130X, public I2CDevice
 	SSD1306(uint8_t bus, uint8_t addr);
 
 	static SSD1306 *create(uint8_t bus, uint8_t addr);
-	int init(uint8_t maxx, uint8_t maxy, uint8_t options);
-//	void drawBitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t *data, int32_t fg, int32_t bg) override;
+	int init(uint16_t maxx, uint16_t maxy, uint8_t options) override;
 
 	void flush() override;
 	int setBrightness(uint8_t contrast) override;
@@ -52,12 +51,6 @@ class SSD1306 : public SSD130X, public I2CDevice
 	{ return 255; }
 
 	private:
-//	int drawByte(uint8_t x, uint8_t y, uint8_t b);
-//	int drawBits(uint8_t x, uint8_t y, uint8_t b, uint8_t n);
-//	int drawChar(char c);
-//	int readByte(uint8_t x, uint8_t y, uint8_t *b);
-//	int drawMasked(uint8_t x, uint8_t y, uint8_t b, uint8_t m);
-
 	static SSD1306 *Instance;
 };
 

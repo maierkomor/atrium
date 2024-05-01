@@ -66,27 +66,27 @@ Relay::Relay(const char *name, xio_t gpio, uint32_t minitv, bool onlvl, bool ini
 , m_envlon("laston","")
 , m_envloff("lastoff","")
 , m_envst("state","init")
-, m_minitv(minitv + 1) // must not be 0, interval should be at least minitv - so+1
+, m_minitv(minitv) // disable minitv for 0
 , m_gpio(gpio)
 , m_onev(event_register(name,"`on"))
 , m_offev(event_register(name,"`off"))
 , m_changedev(event_register(name,"`changed"))
+, m_persistent(pers)
 , m_onlvl(onlvl)
 {
-	m_tmr = xTimerCreate(name,pdMS_TO_TICKS(m_minitv),false,(void*)this,timerCallback);
+	if (minitv)
+		m_tmr = xTimerCreate(name,pdMS_TO_TICKS(m_minitv),false,(void*)this,timerCallback);
 	action_add(concat(name,"!on"),relay_turn_on,this,"turn on");
 	action_add(concat(name,"!off"),relay_turn_off,this,"turn off");
 	action_add(concat(name,"!toggle"),relay_toggle,this,"toggle relay");
 	Relays = this;
 	if (pers) {
 		initv = nvm_read_u8(m_name,initv);
-		xio_unhold(m_gpio);
+		log_dbug(TAG,"persistent value %u",initv);
 	}
-	m_state = initv;
-	xio_set_lvl(m_gpio,(m_state^m_onlvl)?xio_lvl_0:xio_lvl_1);
-	if (pers) {
-		xio_hold(m_gpio);
-	}
+	m_set = initv;
+	m_state = m_set^1;
+	sync();
 }
 
 
@@ -146,25 +146,30 @@ void Relay::set(bool o)
 		log_dbug(TAG,"%s: set blocked, interlocked",m_name);
 		return;
 	}
-	uint32_t now = esp_timer_get_time() / 1000;
-	m_set = o;
-	int dt = m_minitv - (now - m_tlt);
 	const char *mode = 0;
-	if (dt > 0) {
-		if (pdTRUE != xTimerIsTimerActive(m_tmr)) {
-			if ((pdFAIL == xTimerChangePeriod(m_tmr,dt,dt))
-				|| (pdFAIL == xTimerStart(m_tmr,dt))) {
-				now = esp_timer_get_time() / 1000;
-				mode = "failed timer";
+	m_set = o;
+	if (m_minitv) {
+		uint32_t now = esp_timer_get_time() / 1000;
+		int dt = m_minitv - (now - m_tlt);
+		if (dt > 0) {
+			if (pdTRUE != xTimerIsTimerActive(m_tmr)) {
+				if ((pdFAIL == xTimerChangePeriod(m_tmr,dt,dt))
+					|| (pdFAIL == xTimerStart(m_tmr,dt))) {
+					now = esp_timer_get_time() / 1000;
+					mode = "failed timer";
+				} else
+					mode = "timed";
 			} else
-				mode = "timed";
-		} else
-			mode = "in-timer";
-	}
-	// test again to retry after timer failure
-	if ((now - m_tlt) >= m_minitv) {
-		if (mode == 0)
-			mode = "sync";
+				mode = "in-timer";
+		}
+		// test again to retry after timer failure
+		if ((now - m_tlt) >= m_minitv) {
+			if (mode == 0)
+				mode = "sync";
+			sync();
+		}
+	} else {
+		mode = "sync";
 		sync();
 	}
 	xSemaphoreGive(Mtx);
@@ -202,7 +207,8 @@ void Relay::sync()
 			m_envloff.set(ltime);
 		}
 		m_tlt = esp_timer_get_time() / 1000;
-		m_cb(this);
+		if (m_cb)
+			m_cb(this);
 		event_trigger(m_state ? m_onev : m_offev);
 		event_trigger(m_changedev);
 	}

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2017-2022, Thomas Maier-Komor
+ *  Copyright (C) 2017-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -466,7 +466,7 @@ bool isValidBaudrate(long l)
 }
 
 
-static void set_cfg_err(uint8_t v)
+void set_cfg_err(uint8_t v)
 {
 	nvm_store_u8(cfg_err,v);
 }
@@ -591,13 +591,6 @@ int cfg_read_nodecfg()
 int cfg_read_hwcfg()
 {
 	PROFILE_FUNCTION();
-	uint8_t setup = nvm_read_u8("hwconf",0);
-//	log_info(TAG,"hwconf inhibit: %d",setup);
-	if (setup) {
-		log_warn(TAG,"%s: %u: last boot failed - skipping hwconf",cfg_err,setup);
-		return 1;
-	}
-	nvm_store_u8("hwconf",1);
 	size_t s = 0;
 	uint8_t *buf = 0;
 	const char *name = "hw.cfg";
@@ -614,6 +607,18 @@ int cfg_read_hwcfg()
 	}
 	log_info(TAG,"%s: %u bytes",name,s);
 	return 0;
+}
+
+
+int cfg_init_hwcfg()
+{
+	uint8_t setup = nvm_read_u8("hwconf",0);
+	if (setup) {
+		log_warn(TAG,"%s: %u: last boot failed - skipping hwconf",cfg_err,setup);
+		return 1;
+	}
+	nvm_store_u8("hwconf",1);
+	return cfg_read_hwcfg();
 }
 
 

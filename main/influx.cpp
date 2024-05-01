@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2022, Thomas Maier-Komor
+ *  Copyright (C) 2020-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -60,11 +60,11 @@ using namespace std;
 #define TAG MODULE_INFLUX
 
 typedef enum state {
-	offline = 0, connecting, running, error, stopped, bug
+	offline = 0, connecting, running, error, stopped, term, bug
 } state_t;
 
-const char *States[] = {
-	"offline", "connecting", "running", "error", "stopped", "bug"
+static const char *States[] = {
+	"offline", "connecting", "running", "error", "stopped", "terminate", "bug"
 };
 
 static struct udp_pcb *UPCB = 0;
@@ -138,8 +138,10 @@ static void influx_connect(const char *hn, const ip_addr_t *addr, void *arg);
 
 static inline void term_fn(void *)
 {
-	log_info(TAG,"terminating");
+	log_dbug(TAG,"terminating");
+#ifdef CONFIG_IDF_TARGET_ESP8266
 	LWIP_LOCK();
+#endif
 	if (struct udp_pcb *pcb = UPCB) {
 		UPCB = 0;
 		udp_remove(pcb);
@@ -148,17 +150,22 @@ static inline void term_fn(void *)
 		TPCB = 0;
 		tcp_close(pcb);
 	}
-	LWIP_UNLOCK();
-	if (State != stopped)
+	if (term == State)
+		State = stopped;
+	else if (stopped != State)
 		State = offline;
-#ifndef CONFIG_IDF_TARGET_ESP8266
+#ifdef CONFIG_IDF_TARGET_ESP8266
+	LWIP_UNLOCK();
+#else
 	xSemaphoreGive(LwipSem);
 #endif
+	log_info(TAG,"terminated");
 }
 
 
 static void influx_term(void * = 0)
 {
+	Lock lock(Mtx,__FUNCTION__);
 #ifdef CONFIG_IDF_TARGET_ESP8266
 	term_fn(0);
 #else
@@ -169,23 +176,22 @@ static void influx_term(void * = 0)
 
 static void influx_init(void * = 0)
 {
-	log_dbug(TAG,"init");
 	if ((StationMode != station_connected) || !Config.has_influx() || !Config.has_nodename())
 		return;
 	const Influx &influx = Config.influx();
 	if (!influx.has_hostname() || !influx.has_port() || !influx.has_measurement())
 		return;
+	log_dbug(TAG,"init");
 	if (State == error) {
-		if (TPCB) {
-			tcp_close(TPCB);
-			TPCB = 0;
-		}
+		influx_term();
 	}
-	if (((State == offline) || (State == error)) && (StationMode == station_connected)) {
+	if (State == offline) {
 		const char *host = influx.hostname().c_str();
 		int e = query_host(host,0,influx_connect,0);
 		if (e < 0)
 			log_warn(TAG,"query host: %d",e);
+	} else {
+		log_dbug(TAG,"no init, state %s",States[State]);
 	}
 }
 
@@ -193,8 +199,12 @@ static void influx_init(void * = 0)
 static void influx_connect(const char *hn, const ip_addr_t *addr, void *arg)
 {
 	// connect is called from tcpip_task as callback
-	if (addr == 0)
+	if (0 == addr)
 		return;
+	if ((0 != UPCB) || (0 != TPCB)) {
+		State = running;
+		return;
+	}
 	Lock lock(Mtx,__FUNCTION__);
 	if ((State == connecting) || (State == running)) {
 		log_dbug(TAG,"invalid state %d",State);
@@ -224,34 +234,22 @@ static void influx_connect(const char *hn, const ip_addr_t *addr, void *arg)
 	}
 	Header[hl] = 0;
 	HL = hl;
-	if (TPCB) {
-		tcp_close(TPCB);
-		TPCB = 0;
-	}
 	char addrstr[32];
 	inet_ntoa_r(*addr,addrstr,sizeof(addrstr));
+	assert((0 == UPCB) && (0 == TPCB));
 	log_info(TAG,"connect %s:%u",addrstr,port);
+	err_t e;
 	if (influx.database().empty()) {
-		if (UPCB == 0) {
-			UPCB = udp_new();
-			if (err_t e = udp_connect(UPCB,addr,port)) {
-				log_warn(TAG,"use UDP %s: %s",addrstr,strlwiperr(e));
-				State = error;
-			} else {
-				State = running;
-			}
+		UPCB = udp_new();
+		e = udp_connect(UPCB,addr,port);
+		if (0 == e) {
+			State = running;
 		}
 	} else {
-		if (UPCB) {
-			udp_remove(UPCB);
-			UPCB = 0;
-		}
 		TPCB = tcp_new();
 		tcp_err(TPCB,handle_err);
-		if (err_t e = tcp_connect(TPCB,addr,port,handle_connect)) {
-			log_warn(TAG,"connect: %s",strlwiperr(e));
-			State = error;
-		} else {
+		e = tcp_connect(TPCB,addr,port,handle_connect);
+		if (0 == e) {
 			State = connecting;
 			astream str(128,true);
 			const auto &i = Config.influx();
@@ -266,6 +264,33 @@ static void influx_connect(const char *hn, const ip_addr_t *addr, void *arg)
 			TcpHdr = str.take();
 		}
 	}
+	if (e) {
+		log_warn(TAG,"connect: %s",strlwiperr(e));
+		State = error;
+	}
+}
+
+
+static int influx_send_check()
+{
+	switch (State) {
+	case offline:
+		influx_init();
+		return 1;
+	case stopped:
+	case connecting:
+	case bug:
+		return 1;
+	case term:
+	case error:
+		influx_term();
+		return 1;
+	case running:
+		return 0;
+	default:
+		break;
+	}
+	return 1;
 }
 
 
@@ -282,7 +307,7 @@ int influx_header(char *h, size_t l)
 
 void influx_sendf(const char *fmt, ...)
 {
-	if (Header == 0)
+	if (influx_send_check())
 		return;
 	char buf[128], *b;
 	va_list val;
@@ -353,12 +378,6 @@ static void send_fn(void *arg)
 
 int influx_send(const char *data, size_t l)
 {
-	if (State != running) {
-		log_dbug(TAG,"send: not running");
-		if (State != connecting)
-			influx_init();
-		return 0;
-	}
 	Lock lock(Mtx,__FUNCTION__);
 #ifdef CONFIG_IDF_TARGET_ESP8266
 	err_t e;
@@ -397,7 +416,7 @@ int influx_send(const char *data, size_t l)
 }
 
 
-static void send_element(EnvNumber *e, stream &str, char extra)
+static void add_element(EnvNumber *e, stream &str, char extra)
 {
 	if (extra)
 		str << extra;
@@ -415,7 +434,7 @@ static char send_elements(EnvObject *o, stream &str, char comma)
 		if (n && n->isValid()) {
 			str << comma;
 			str << name;
-			send_element(n,str,'_');
+			add_element(n,str,'_');
 			comma = ',';
 		}
 	}
@@ -425,13 +444,8 @@ static char send_elements(EnvObject *o, stream &str, char comma)
 
 static void send_rtdata(void *)
 {
-	if (State != running) {
-		log_dbug(TAG,"rtdata: state %d",State);
-		if (State != connecting) {
-			influx_init();
-		}
+	if (influx_send_check())
 		return;
-	}
 	astream str;
 	{
 		Lock lock(Mtx,__FUNCTION__);
@@ -444,7 +458,7 @@ static void send_rtdata(void *)
 			comma = send_elements(o,str,comma);
 		} else if (EnvNumber *n = e->toNumber()) {
 			if (n->isValid()) {
-				send_element(n,str,comma);
+				add_element(n,str,comma);
 				comma = ',';
 			}
 		}
@@ -504,12 +518,8 @@ static void proc_mon(stream &s)
 
 static void send_sys_info(void *)
 {
-	if (State != running) {
-		log_dbug(TAG,"sysinfo: state %d",State);
-		if (State != connecting)
-			influx_init();
+	if (influx_send_check())
 		return;
-	}
 	astream str;
 	str.write(Header,HL);
 	str.printf(" mem32=%u,mem8=%u,memd=%u"
@@ -539,7 +549,7 @@ void influx_setup()
 }
 
 
-const char *influx(Terminal &term, int argc, const char *args[])
+const char *influx(Terminal &t, int argc, const char *args[])
 {
 	if (argc > 3)
 		return "Invalid number of arguments.";
@@ -547,15 +557,15 @@ const char *influx(Terminal &term, int argc, const char *args[])
 		if (Config.has_influx()) {
 			const Influx &i = Config.influx();
 			if (i.has_hostname())
-				term.printf("hostname   : %s\n",i.hostname().c_str());
+				t.printf("hostname   : %s\n",i.hostname().c_str());
 			if (i.has_port())
-				term.printf("port       : %u (%s)\n",i.port(),i.has_database()?"TCP":"UDP");
+				t.printf("port       : %u (%s)\n",i.port(),i.has_database()?"TCP":"UDP");
 			if (i.has_database())
-				term.printf("database   : %s\n",i.database().c_str());
+				t.printf("database   : %s\n",i.database().c_str());
 			if (i.has_measurement())
-				term.printf("measurement: %s\n",i.measurement().c_str());
+				t.printf("measurement: %s\n",i.measurement().c_str());
 			if (Header)
-				term.printf("header     : '%s'\n",Header);
+				t.printf("header     : '%s'\n",Header);
 			const char *mode;
 			if (State == running) {
 				if (UPCB)
@@ -567,24 +577,22 @@ const char *influx(Terminal &term, int argc, const char *args[])
 			} else {
 				mode = States[State];
 			}
-			term.println(mode);
+			t.println(mode);
 		} else {
 			return "Not configured.";
 		}
 	} else if (argc == 2) {
 		if (!strcmp("init",args[1])) {
-			if (State == stopped)
-				State = offline;
 			action_dispatch("influx!init",0);
-			return 0;
 		} else if (0 == strcmp(args[1],"clear")) {
 			Config.clear_influx();
 		} else if (0 == strcmp(args[1],"stop")) {
 			State = stopped;
-			return 0;
 		} else if (0 == strcmp(args[1],"start")) {
-			State = stopped;
-			return 0;
+			if (State == stopped)
+				State = offline;
+		} else if (0 == strcmp(args[1],"term")) {
+			State = term;
 		} else {
 			return "Invalid argument #1.";
 		}
@@ -595,12 +603,12 @@ const char *influx(Terminal &term, int argc, const char *args[])
 		if (0 == strcmp(args[1],"config")) {
 			const char *c = strchr(args[2],':');
 			if (c == 0) {
-				term.printf("'%c' missing\n",':');
+				t.printf("'%c' missing\n",':');
 				return "";
 			}
 			const char *s = strchr(c+1,'/');
 			if (s == 0) {
-				term.printf("'%c' missing\n",'/');
+				t.printf("'%c' missing\n",'/');
 				return "";
 			}
 			long l = strtol(c+1,0,0);

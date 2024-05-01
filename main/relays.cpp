@@ -211,8 +211,7 @@ void relay_setup()
 			r->setCallback(relay_callback);
 #endif
 			r->attach(RTData);
-			log_info(TAG,"relay '%s' at gpio%d init %d",n,gpio,(int)iv);
-			r->set(iv);
+			log_info(TAG,"relay '%s' at gpio%d init %d, interval %u, %spersistent",n,gpio,(int)iv,itv,p?"":"not ");
 		} else {
 			log_warn(TAG,"%s at %u: error",n,gpio);
 		}

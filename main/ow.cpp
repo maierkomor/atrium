@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2022, Thomas Maier-Komor
+ *  Copyright (C) 2020-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -78,7 +78,8 @@ void ow_setup()
 				OwDevice::create(cfg.id(),cfg.name().c_str());
 				d = OwDevice::getDevice(cfg.id());
 			}
-			d->attach(RTData);
+			if (d)
+				d->attach(RTData);
 		}
 	}
 	log_dbug(TAG,"setup done");

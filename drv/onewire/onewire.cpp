@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2023, Thomas Maier-Komor
+ *  Copyright (C) 2020-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -30,6 +30,12 @@
 #include <freertos/task.h>
 #include <freertos/portmacro.h>
 
+#if 0
+#define log_devel log_dbug
+#else
+#define log_devel(...)
+#endif
+
 #if IDF_VERSION >= 50
 #define ets_delay_us esp_rom_delay_us
 #endif
@@ -43,6 +49,8 @@
 #include <esp_crc.h>
 #define ENTER_CRITICAL() portENTER_CRITICAL()
 #define EXIT_CRITICAL() portEXIT_CRITICAL()
+#else
+#error unknown target
 #endif
 
 using namespace std;
@@ -163,7 +171,7 @@ int OneWire::scanBus()
 	vector<uint64_t> collisions;
 	uint64_t id = 0;
 	do {
-		log_dbug(TAG,"searchRom(" IDFMT ",%d)",IDARG(id),collisions.size());
+		log_devel(TAG,"searchRom(" IDFMT ",%d)",IDARG(id),collisions.size());
 		int e = searchRom(id,collisions);
 		if (e > 0) {
 			log_warn(TAG,"searchRom(" IDFMT ",%d):%d",IDARG(id),collisions.size(),e);
@@ -171,7 +179,6 @@ int OneWire::scanBus()
 		}
 		if (e < 0)
 			log_dbug(TAG,"no response");
-		log_dbug(TAG,"searchRom(): " IDFMT,IDARG(id));
 		if (id)
 			addDevice(id);
 		if (collisions.empty()) {
@@ -192,16 +199,16 @@ static IRAM_ATTR unsigned xmitBit(uint8_t bus, uint8_t b)
 	// idle bus is input pull-up
 	unsigned d,r;
 	ets_delay_us(2);
-	xio_set_lvl(bus,xio_lvl_0);
+	xio_set_lo(bus);
 	if (b) {
 		ets_delay_us(3);
-		xio_set_lvl(bus,xio_lvl_hiz);
+		xio_set_hiz(bus);
 		ets_delay_us(10);
 		r = xio_get_lvl(bus);
 		d = 65;
 	} else {
 		ets_delay_us(70);
-		xio_set_lvl(bus,xio_lvl_hiz);
+		xio_set_hiz(bus);
 		d = 10;
 		r = 0;
 	}
@@ -243,7 +250,8 @@ static IRAM_ATTR uint64_t searchId(uint8_t bus, uint64_t &xid, vector<uint64_t> 
 		x1 |= (uint64_t)t1 << b;
 		if (t0) {
 			id |= 1LL<<b;
-		} else if ((t1|t0) == 0) {
+		}
+		if ((t1|t0) == 0) {
 			// collision
 //			log_dbug(TAG,"collision id %x",id|1<<b);
 			if ((id >> b) & 1) {	// collision seen before
@@ -252,8 +260,9 @@ static IRAM_ATTR uint64_t searchId(uint8_t bus, uint64_t &xid, vector<uint64_t> 
 				coll.push_back(id|1<<b);
 				xmitBit(bus, 0);
 			}
-		} else
+		} else {
 			xmitBit(bus, t0);
+		}
 	}
 	EXIT_CRITICAL();
 	xid = id;
@@ -292,12 +301,12 @@ int OneWire::searchRom(uint64_t &id, vector<uint64_t> &coll)
 int OneWire::readRom()
 {
 	if (resetBus()) {
-		log_error(TAG,"reset failed");
+		log_warn(TAG,"reset failed");
 		return OW_PRESENCE_ERR;
 	}
 	uint8_t r = writeBits(m_bus,OW_READ_ROM);
 	if (OW_READ_ROM != r) {
-		log_error(TAG,"search ROM command failed: %02x",r);
+		log_warn(TAG,"search ROM error: %02x",r);
 		return 1;
 	}
 	uint8_t id[8];
@@ -307,7 +316,7 @@ int OneWire::readRom()
 	if (crc == id[7])
 		log_dbug(TAG,"CRC ok");
 	else
-		log_warn(TAG,"crc mismatch: expected %02x, got %02x",id[7],crc);
+		log_warn(TAG,"CRC mismatch: expected %02x, got %02x",id[7],crc);
 	uint64_t id64 = 0;
 	for (int i = 0; i < sizeof(id); ++i)
 		id64 |= id[i] << (i<<3);
@@ -319,12 +328,11 @@ int OneWire::readRom()
 
 int OneWire::resetBus(void)
 {
-	log_dbug(TAG,"reset");
 	assert((m_pwr == XIO_INVALID) || (m_pwron == true));
 	ENTER_CRITICAL();
-	xio_set_lvl(m_bus,xio_lvl_0);
+	xio_set_lo(m_bus);
 	ets_delay_us(500);
-	xio_set_lvl(m_bus,xio_lvl_hiz);
+	xio_set_hiz(m_bus);
 	ets_delay_us(20);
 	int r = 1;
 	for (int i = 0; i < 26; ++i) {
@@ -337,6 +345,8 @@ int OneWire::resetBus(void)
 	EXIT_CRITICAL();
 	if (r)
 		log_warn(TAG,"reset: no response");
+	else
+		log_dbug(TAG,"reset ok");
 	return r;
 }
 

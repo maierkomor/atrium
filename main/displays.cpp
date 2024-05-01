@@ -58,59 +58,51 @@ void display_setup()
 		disp_t t = c.type();
 		uint16_t maxx = c.maxx();
 		uint16_t maxy = c.maxy();
+		MatrixDisplay *md = 0;
 		if (LedCluster *l = LedCluster::getInstance()) {
 			new SegmentDisplay(l,(SegmentDisplay::addrmode_t)t,maxx,maxy);
 #ifdef CONFIG_PCF8574
 		} else if (t == dt_pcf8574_hd44780u) {
 			bool ok = false;
 			if (PCF8574 *dev = PCF8574::getInstance()) {
-				if (HD44780U *hd = new HD44780U(dev,maxx,maxy)) {
-					hd->init();
+				if (0 != HD44780U::create(dev,maxx,maxy))
 					ok = true;
-				}
 			}
 			if (!ok)
 				log_warn(TAG,"no pcf8574/hd44780u found");
 #endif
 #ifdef CONFIG_SH1106
 		} else if (t == dt_sh1106) {
-			if (SH1106 *dev = SH1106::getInstance())
-				dev->init(maxx,maxy,c.options());
-			else
+			md = SH1106::getInstance();
+			if (0 == md)
 				log_warn(TAG,"no ssd1306 found");
 #endif
 #ifdef CONFIG_SSD1306
 		} else if (t == dt_ssd1306) {
-			if (SSD1306 *dev = SSD1306::getInstance())
-				dev->init(maxx,maxy,c.options());
-			else
+			md = SSD1306::getInstance();
+			if (0 == md)
 				log_warn(TAG,"no ssd1306 found");
 #endif
 #ifdef CONFIG_SSD1309
 		} else if (t == dt_ssd1309) {
-			if (SSD1309 *dev = SSD1309::getInstance())
-				dev->init(maxx,maxy,c.options());
-			else
+			md = SSD1309::getInstance();
+			if (0 == md)
 				log_warn(TAG,"no ssd1309 found");
 #endif
 #ifdef CONFIG_ILI9341
 		} else if (t == dt_ili9341) {
-			if (ILI9341 *dev = ILI9341::getInstance())
-				dev->init(maxx,maxy,c.options());
-			else
+			md = ILI9341::getInstance();
+			if (0 == md)
 				log_warn(TAG,"no ili9341 found");
 #endif
 		} else {
 			log_warn(TAG,"display configured, but none available");
 			return;
 		}
-		TextDisplay *d = TextDisplay::getFirst();
-		if (0 == d)
-			return;
-		MatrixDisplay *md = d->toMatrixDisplay();
 		if (0 == md)
 			return;
-		md->init();	// to load the fonts
+		md->init(maxx,maxy,c.options());
+		md->initFonts();	// to load the fonts
 		const ScreenConfig &s = Config.screen();
 		if (s.has_font_tiny()) {
 			const char *fn = s.font_tiny().c_str();

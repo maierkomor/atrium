@@ -546,9 +546,16 @@ static const char *shell_ls(Terminal &term, int argc, const char *args[])
 	if (argc == 1)
 		return ls_print_dir(term,term.getPwd().c_str());
 	int a = 1;
+	char dir[128];
 	const char *r = 0;
+	const char *pwd = term.getPwd().c_str();
 	while (a < argc) {
-		if (ls_print_dir(term,args[a]))
+		if ('/' == args[a][0])
+			dir[0] = 0;
+		else
+			strcpy(dir,pwd);
+		strcat(dir,args[a]);
+		if (ls_print_dir(term,dir))
 			r = "Had errors.";
 		++a;
 	}
@@ -637,16 +644,11 @@ static const char *shell_cp(Terminal &term, int argc, const char *args[])
 {
 	if (argc != 3)
 		return "Invalid number of arguments.";
-	estring pwd = term.getPwd();
-	term.setPwd(args[2]);
-	estring to = term.getPwd();
-	term.setPwd(pwd.c_str());
 	const char *bn = strrchr(args[1],'/');
 	if (bn)
 		++bn;
 	else
 		bn = args[1];
-	to += bn;
 	estring from;
 	if (args[1][0] != '/')
 		from = term.getPwd();
@@ -656,10 +658,25 @@ static const char *shell_cp(Terminal &term, int argc, const char *args[])
 		term.printf("open %s: %s\n",from.c_str(),strerror(errno));
 		return "";
 	}
-	int t = open(to.c_str(),O_CREAT|O_WRONLY|O_TRUNC,0666);
+	const estring &pwd = term.getPwd();
+	size_t ps = pwd.size();
+	size_t l2 = strlen(args[2]);
+	char *to = (char *) alloca(l2+strlen(bn)+ps+2);
+	char *at = to;
+	if ('/' != args[2][0]) {
+		memcpy(to,pwd.data(),ps);
+		at += ps;
+	}
+	memcpy(at,args[2],l2+1);
+	struct stat st;
+	if ((0 == stat(to,&st)) && (S_IFDIR == (st.st_mode & S_IFMT))) {
+		strcat(at,"/");
+		strcat(at,bn);
+	}
+	int t = open(to,O_CREAT|O_WRONLY|O_TRUNC,0666);
 	if (t == -1) {
 		close(f);
-		term.printf("open %s: %s\n",to.c_str(),strerror(errno));
+		term.printf("create %s: %s\n",to,strerror(errno));
 		return "";
 	}
 	char buf[512];
@@ -669,7 +686,7 @@ static const char *shell_cp(Terminal &term, int argc, const char *args[])
 		if (w < 0) {
 			close(t);
 			close(f);
-			term.printf("writing %s: %s\n",to.c_str(),strerror(errno));
+			term.printf("writing %s: %s\n",args[2],strerror(errno));
 			return "";
 		}
 		n = read(f,buf,sizeof(buf));
@@ -1702,15 +1719,19 @@ static const char *font(Terminal &term, int argc, const char *args[])
 	if (argc == 1)
 		return "Invalid number of arguments.";
 	if (0 == strcmp(args[1],"ls")) {
-		if (TextDisplay *t = TextDisplay::getFirst()) {
-			unsigned x = 0;
-			term.println("miny maxy boff maxw yadv name");
-			while (const Font *f = t->getFont(x)) {
-				term.printf("%4d %4u %4u %4u %4u %s\n",f->minY,f->maxY,f->blOff,f->maxW,f->yAdvance,f->name);
-				++x;
-			}
-		} else {
+		TextDisplay *t = TextDisplay::getFirst();
+		if (0 == t)
 			return "No display.";
+		unsigned x = 0;
+		term.println("default fonts:");
+		term.printf("tiny  : %s\n",DefaultFonts[0]->name);
+		term.printf("small : %s\n",DefaultFonts[1]->name);
+		term.printf("medium: %s\n",DefaultFonts[2]->name);
+		term.printf("large : %s\n",DefaultFonts[3]->name);
+		term.println("\nid miny maxy boff maxw yadv nchr name");
+		while (const Font *f = t->getFont(x)) {
+			term.printf("%2u %4d %4u %4u %4u %4u %4u %s\n",x,f->minY,f->maxY,f->blOff,f->maxW,f->yAdvance,f->extra+f->last-f->first+1,f->name);
+			++x;
 		}
 	} else if (0 == strcmp(args[1],"print")) {
 		if (argc != 3) 
@@ -1719,8 +1740,13 @@ static const char *font(Terminal &term, int argc, const char *args[])
 		if (0 == t)
 			return "No display.";
 		const Font *f = t->getFont(args[2]);
-		if (0 == f)
-			return "Font not found.";
+		if (0 == f) {
+			char *e;
+			long id = strtol(args[2],&e,0);
+			f = t->getFont(id);
+			if ((*e) || (0 == f))
+				return "Font not found.";
+		}
 		term.printf("first 0x%x, last 0x%x, extra %d\n",f->first,f->last,f->extra);
 		unsigned num = f->last-f->first+f->extra;
 		const glyph_t *g = &f->glyph[0];
@@ -2233,12 +2259,12 @@ static void print_thresholds(Terminal &t, EnvObject *o, int indent)
 			t << ":\n";
 			print_thresholds(t,c,indent+1);
 		} else if (EnvNumber *n = e->toNumber()) {
-			for (int i = 0; i < indent; ++i)
-				t << "    ";
-			t << name;
-			t << ": ";
 			float lo = n->getLow();
 			if (!isnan(lo)) {
+				for (int i = 0; i < indent; ++i)
+					t << "    ";
+				t << name;
+				t << ": ";
 				t << lo;
 				t << ',';
 				t << n->getHigh();
@@ -2483,7 +2509,6 @@ extern const char *i2c(Terminal &term, int argc, const char *args[]);
 extern const char *inetadm(Terminal &term, int argc, const char *args[]);
 extern const char *influx(Terminal &term, int argc, const char *args[]);
 extern const char *led_set(Terminal &term, int argc, const char *args[]);
-extern const char *lightctrl(Terminal &term, int argc, const char *args[]);
 extern const char *mqtt(Terminal &term, int argc, const char *args[]);
 extern const char *nightsky(Terminal &term, int argc, const char *args[]);
 extern const char *ping(Terminal &t, int argc, const char *args[]);
@@ -2540,9 +2565,6 @@ ExeName ExeNames[] = {
 #ifdef CONFIG_DIMMER
 	{"dim",0,dim,"operate dimmer",dim_man},
 #endif
-#ifdef CONFIG_DIST
-	{"dist",0,distance,"hc_sr04 distance measurement",0},
-#endif
 #if CONFIG_SYSLOG
 	{"dmesg",0,dmesg,"system log",dmesg_man},
 #endif
@@ -2555,7 +2577,7 @@ ExeName ExeNames[] = {
 	{"env",0,env,"print variables",0},
 	{"event",0,event,"handle trigger events as actions",event_man},
 #ifdef CONFIG_DISPLAY
-	{"font",0,font,"font listing",0},
+	{"font",0,font,"font listing",font_man},
 #endif
 #if defined CONFIG_SPIFFS || defined CONFIG_FATFS
 	{"format",1,shell_format,"format storage",0},
@@ -2571,7 +2593,7 @@ ExeName ExeNames[] = {
 #endif
 	{"hwconf",1,hwconf,"hardware configuration",hwconf_man},
 #ifdef CONFIG_I2C
-	{"i2c",0,i2c,"list/configure/operate I2C devices",0},
+	{"i2c",0,i2c,"list/configure/operate I2C devices",i2c_man},
 #endif
 	{"inetadm",1,inetadm,"manage network services",inetadm_man},
 #ifdef CONFIG_INFLUX
@@ -2580,9 +2602,6 @@ ExeName ExeNames[] = {
 	{"ip",0,ifconfig,"network IP and interface settings",ip_man},
 #ifdef CONFIG_LEDS
 	{"led",0,led_set,"status LED",status_man},
-#endif
-#ifdef CONFIG_LIGHTCTRL
-	{"lightctrl",0,lightctrl,"light control APP settings",0},
 #endif
 	{"ls",0,shell_ls,"list storage",0},
 #ifdef CONFIG_LUA

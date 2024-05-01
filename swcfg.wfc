@@ -17,7 +17,7 @@
  */
 
 option author="Thomas Maier-Komor";
-option copyright="2018-2023";
+option copyright="2018-2024";
 
 option common {
 	BaseClass=Message;
@@ -72,8 +72,11 @@ option esp8266 : esp {
 option esp8285 : esp8266 {
 	BaseClass="";
 	getMember="";
-	/MQTT/keepalive : used = false;
-//	/NodeConfig/otasrv : used = false;
+	/MQTT/keepalive		: used = false;
+	/NodeConfig/signals	: used = false;
+	/NodeConfig/functions	: used = false;
+	/NodeConfig/screen	: used = false;
+	/NodeConfig/statemachs	: used = false;
 }
 
 
@@ -324,6 +327,7 @@ message EnvConfig
 {
 	string path = 1;
 	string title = 2;
+	string action = 3;
 }
 
 
@@ -383,13 +387,13 @@ message NodeConfig
 	repeated StateMachineConfig statemachs = 33	[ ifdef=CONFIG_STATEMACHINES ];
 
 	// relay control (e.g. s20)
-	unsigned max_on_time = 34			[ unset = 0, usage=deprecated ];	// in minutes
+	unsigned max_on_time = 34			[ unset = 0, usage=obsolete ];	// in minutes
 
 	// application: light sensor controlled LED
-	unsigned threshold_off = 35			[ usage=deprecated ];	// replaced by thresholds
-	unsigned threshold_on = 36			[ usage=deprecated ];
+	unsigned threshold_off = 35			[ usage=obsolete ];	// replaced by thresholds
+	unsigned threshold_on = 36			[ usage=obsolete ];
 	unsigned dim_step = 37;		// ms per 1% step
-	bool lightctrl = 38;		// true=auto, false=manual
+	bool lightctrl = 38				[ usage=obsolete ];
 	unsigned pwm_freq = 39;		// base PWM frequenzy in Hz - shared for all channels
 
 	repeated AppParam app_params = 40		[ ifdef=CONFIG_APP_PARAMS ];

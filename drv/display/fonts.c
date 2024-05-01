@@ -7202,60 +7202,52 @@ static const uint8_t futura_lt_18_BCM[] = {
 	0x00, 0x02, 0x10, 0x00,
 };
 
-const font_t futura_lt_6 = {
-	futura_lt_6_Glyphs,
-	futura_lt_6_RM,
-	futura_lt_6_BCM,
-	32, 126,	// ASCII range
-	13,	// extra chars
-	10,	// yAdvance
-	-1,14,	// minY, maxY
-	6,7,	// blOff, maxW
-	"futura-lt-6"
+const font_t Fonts[] = {
+	{
+		futura_lt_6_Glyphs,
+		futura_lt_6_RM,
+		futura_lt_6_BCM,
+		32, 126,	// ASCII range
+		13,	// extra chars
+		10,	// yAdvance
+		-6,0,	// minY, maxY
+		6,7,	// blOff, maxW
+		"futura-lt-6"
+	},
+	{
+		futura_lt_9_Glyphs,
+		futura_lt_9_RM,
+		futura_lt_9_BCM,
+		32, 126,	// ASCII range
+		13,	// extra chars
+		15,	// yAdvance
+		-9,0,	// minY, maxY
+		9,12,	// blOff, maxW
+		"futura-lt-9"
+	},
+	{
+		futura_lt_12_Glyphs,
+		futura_lt_12_RM,
+		futura_lt_12_BCM,
+		32, 126,	// ASCII range
+		13,	// extra chars
+		20,	// yAdvance
+		-12,0,	// minY, maxY
+		12,16,	// blOff, maxW
+		"futura-lt-12"
+	},
+	{
+		futura_lt_18_Glyphs,
+		futura_lt_18_RM,
+		futura_lt_18_BCM,
+		32, 126,	// ASCII range
+		13,	// extra chars
+		30,	// yAdvance
+		-17,0,	// minY, maxY
+		18,23,	// blOff, maxW
+		"futura-lt-18"
+	},
 };
 
-const font_t futura_lt_9 = {
-	futura_lt_9_Glyphs,
-	futura_lt_9_RM,
-	futura_lt_9_BCM,
-	32, 126,	// ASCII range
-	13,	// extra chars
-	15,	// yAdvance
-	-2,23,	// minY, maxY
-	9,12,	// blOff, maxW
-	"futura-lt-9"
-};
-
-const font_t futura_lt_12 = {
-	futura_lt_12_Glyphs,
-	futura_lt_12_RM,
-	futura_lt_12_BCM,
-	32, 126,	// ASCII range
-	13,	// extra chars
-	20,	// yAdvance
-	-3,30,	// minY, maxY
-	12,16,	// blOff, maxW
-	"futura-lt-12"
-};
-
-const font_t futura_lt_18 = {
-	futura_lt_18_Glyphs,
-	futura_lt_18_RM,
-	futura_lt_18_BCM,
-	32, 126,	// ASCII range
-	13,	// extra chars
-	30,	// yAdvance
-	-5,44,	// minY, maxY
-	18,23,	// blOff, maxW
-	"futura-lt-18"
-};
-
-const font_t *Fonts[] = {
-	&futura_lt_6,
-	&futura_lt_9,
-	&futura_lt_12,
-	&futura_lt_18,
-};
-
-size_t NumFonts = sizeof(Fonts)/sizeof(Fonts[0]);
+const uint8_t NumFonts = 4;
 

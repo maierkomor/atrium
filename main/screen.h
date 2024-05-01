@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2023, Thomas Maier-Komor
+ *  Copyright (C) 2018-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -37,7 +37,7 @@ struct Screen
 	uint32_t sw_start = 0, sw_delta = 0, sw_pause = 0, modestart = 0;
 	uint8_t display[8];
 	uint8_t digits;
-	uint16_t ypos = 0;
+	uint16_t ypos = 0, lw = 0;
 	clockmode_t mode = cm_time;
 	bool modech = false;
 	estring prev, path;
@@ -49,6 +49,8 @@ struct Screen
 	void display_sw();
 	void display_version();
 	void display_value(const char*);
+
+	static void exeEnvAction(void *);
 };
 
 #endif

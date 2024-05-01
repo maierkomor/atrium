@@ -1,8 +1,10 @@
 components/memfiles/*.cpp
 components/memfiles/memfiles.h
+components/memfiles/CMakeLists.txt
 main/binformats.cpp
 main/binformats.h
 main/version.h
+main/versions.h
 data/version.txt
 settings.mk
 bin/mkromfs

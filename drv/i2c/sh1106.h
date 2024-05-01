@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2023, Thomas Maier-Komor
+ *  Copyright (C) 2023-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -34,7 +34,7 @@ class SH1106 : public SSD130X, public I2CDevice
 	SH1106(uint8_t bus, uint8_t addr);
 
 	static SH1106 *create(uint8_t bus, uint8_t addr);
-	int init(uint8_t maxx, uint8_t maxy, uint8_t options);
+	int init(uint16_t maxx, uint16_t maxy, uint8_t options) override;
 
 	void flush() override;
 	int setBrightness(uint8_t contrast) override;

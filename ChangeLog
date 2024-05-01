@@ -1,3 +1,13 @@
+R2404:
+======
+- revert to IDF v5.1.1 (ESP32), due to console hang
+- added support for full Latin1 character set
+- fix SSD130x fillRect does not set dirty bits
+- fix influx reinit
+- fix relay persistency
+- 1-wire updates
+- more bugfixes
+
 R2403:
 ======
 - gracefully handle kiss-of-death packet of SNTP

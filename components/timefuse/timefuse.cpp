@@ -357,7 +357,7 @@ timefuse_t timefuse_create(const char *n, unsigned d_ms, bool repeat)
 		t = ++NumTimers;
 		Timers[t].start = event_register(n,"`started");
 		Timers[t].stop = event_register(n,"`stopped");
-		timer_t timeout = event_register(n,"`timeout");
+		event_t timeout = event_register(n,"`timeout");
 		Timers[t].timeout = timeout;
 		Timers[t].id = xTimerCreate(0,pdMS_TO_TICKS(d_ms),repeat,(void*)(int)timeout,trigger_timeout);
 		memcpy(Timers[t].name,n,nl+1);

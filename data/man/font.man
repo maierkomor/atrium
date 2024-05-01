@@ -1,0 +1,4 @@
+synopsis: font <command>
+where command is:
+ls    : list available fonts
+print : print available characters and dimensions

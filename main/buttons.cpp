@@ -68,8 +68,7 @@ void button_setup()
 			RotaryEncoder::create(n,(xio_t)clk,(xio_t)dt,gpio == -1 ? XIO_INVALID : (xio_t)gpio);
 		} else
 #endif
-		{
-			Button *b = Button::create(n,(xio_t)gpio,pullmode,al);
+		if (Button *b = Button::create(n,(xio_t)gpio,pullmode,al)) {
 			b->attach(RTData);
 		}
 	}

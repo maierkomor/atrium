@@ -82,10 +82,11 @@ typedef struct Font {
 	, name(0)
 	{ }
 
-	unsigned getCharWidth(uint16_t ch) const;
-	int8_t charMinY(uint16_t c) const;	// todo
-	void getTextDim(const char *str, uint16_t &W, int8_t &ymin, int8_t &ymax) const;
-	const glyph_t *getGlyph(uint16_t c) const;
+	unsigned getCharWidth(uint32_t ch) const;
+	int8_t charMinY(uint32_t c) const;	// todo
+//	void getTextDim(const char *str, uint16_t &W, int8_t &ymin, int8_t &ymax) const;
+	unsigned textWidth(const char *, int l = -1) const;
+	const glyph_t *getGlyph(uint32_t c) const;
 #endif
 } font_t;
 
@@ -103,12 +104,11 @@ typedef struct FontHdr
 //typedef struct Font Font;
 
 typedef enum {
-	font_default = -1,
-	font_tiny = 0,
-	font_small,
-	font_medium,
-	font_large,
-	font_numfonts
+	font_default = 0,
+	font_tiny = -1,
+	font_small = -2,
+	font_medium = -3,
+	font_large = -4,
 } fontid_t;
 
 #endif // _GFXFONT_H_

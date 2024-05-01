@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2022, Thomas Maier-Komor
+ *  Copyright (C) 2022-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -21,9 +21,12 @@
 #ifdef CONFIG_USB_CONSOLE
 
 #include "jtag_terminal.h"
-#include <driver/usb_serial_jtag.h>
+#include "log.h"
 
+#include <driver/usb_serial_jtag.h>
 #include <freertos/FreeRTOS.h>
+
+#define TAG MODULE_CON
 
 using namespace std;
 
@@ -35,7 +38,8 @@ JtagTerminal::JtagTerminal(bool crnl)
 	usb_serial_jtag_driver_config_t cfg = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
 	cfg.rx_buffer_size = 256;
 	cfg.tx_buffer_size = 256;
-	usb_serial_jtag_driver_install(&cfg);
+	if (esp_err_t e = usb_serial_jtag_driver_install(&cfg))
+		log_warn(TAG,"JTAG driver install: %s",esp_err_to_name(e));
 }
 
 

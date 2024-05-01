@@ -36,7 +36,10 @@
 #define ASCII_FIRST	0x20
 #define ASCII_LAST	0x7e
 
-static uint8_t ExtCharSet[] = {
+// currently 
+//#define POINTER_ARRAY 
+
+static uint8_t SymbolCharSet[] = {
 	0xa7,		// paragraph
 	0xa9,		// copyright
 	0xb0,		// degree
@@ -52,6 +55,32 @@ static uint8_t ExtCharSet[] = {
 	0xf7,		// division
 };
 
+static uint8_t DeCharSet[] = {
+	0xa7,		// paragraph
+	0xa9,		// copyright
+	0xb0,		// degree
+	0xb1,		// plus/minus
+	0xb2,		// square
+	0xb3,		// raise-3
+	0xb5,		// micro
+	0xbc,		// quarter
+	0xbd,		// half
+	0xbe,		// three-quarter
+	0xb7,		// times dot
+	0xc4,		// Umlaut A
+	0xd6,		// Umlaut O
+	0xdc,		// Umlaut U
+	0xdf,		// scharfes S
+	0xd7,		// times cross
+	0xe4,		// Umlaut a
+	0xf6,		// Umlaut o
+	0xfc,		// Umlaut u
+	0xf7,		// division
+};
+
+static uint8_t *ExtCharSet = 0;
+static size_t NumExtChars = 0;
+
 //static uint8_t DefaultSizes[] = { 6,8,10,12,14,16,18,20,24,28,32,36,40 };
 static uint8_t DefaultSizes[] = { 9,12,18 };
 static uint8_t *Sizes = 0;
@@ -62,7 +91,7 @@ static unsigned NumNames = 0;
 
 static FT_Library FTL;
 static unsigned DPI = 100;
-static uint8_t Debug = 0, Mode = 3, GenLib = 0, TomThumb = 0;
+static uint8_t Debug = 0, GenLib = 0, TomThumb = 0;
 static FILE *Out = 0;
 
 
@@ -364,15 +393,19 @@ static void process_font_size(FT_Face face, char *name, uint8_t size)
 		bs += calc_char_bitmapsize(face,ch);
 		++numch;
 	}
-	for (uint8_t xch = 0; xch < sizeof(ExtCharSet)/sizeof(ExtCharSet[0]); ++xch) {
+	for (uint8_t xch = 0; xch < NumExtChars; ++xch) {
 		bs += calc_char_bitmapsize(face,ExtCharSet[xch]);
 		++numch;
 	}
 	unsigned rmoff = numch*sizeof(glyph_t)+sizeof(fonthdr_t);
+	if (rmoff & 0x1f) {
+		rmoff &= ~0x1f;
+		rmoff += 0x20;
+	}
 	unsigned bcmoff = rmoff+bs;
-	if (bcmoff & 0xf) {
-		bcmoff &= ~0xf;
-		bcmoff += 0x10;
+	if (bcmoff & 0x1f) {
+		bcmoff &= ~0x1f;
+		bcmoff += 0x20;
 	}
 	if (0 == GenLib) {
 		fprintf(Out,
@@ -406,7 +439,7 @@ static void process_font_size(FT_Face face, char *name, uint8_t size)
 			, rmoff
 			, rmoff
 			, bcmoff
-			, sizeof(ExtCharSet)/sizeof(ExtCharSet[0])
+			, NumExtChars
 			);
 		fprintf(Out,"\n\nstatic const glyph_t Glyphs[] = {\n");
 	} else {
@@ -416,7 +449,7 @@ static void process_font_size(FT_Face face, char *name, uint8_t size)
 	for (uint8_t ch = ASCII_FIRST; ch <= ASCII_LAST; ++ch) {
 		offset = output_char_glyph(face,ch,offset);
 	}
-	for (uint8_t xch = 0; xch < sizeof(ExtCharSet)/sizeof(ExtCharSet[0]); ++xch) {
+	for (uint8_t xch = 0; xch < NumExtChars; ++xch) {
 		offset = output_char_glyph(face,ExtCharSet[xch],offset);
 	}
 	if (0 == GenLib) {
@@ -430,7 +463,7 @@ static void process_font_size(FT_Face face, char *name, uint8_t size)
 	for (uint8_t ch = ASCII_FIRST; ch <= ASCII_LAST; ++ch) {
 		output_char_bitmap_rm(face,ch);
 	}
-	for (uint8_t xch = 0; xch < sizeof(ExtCharSet)/sizeof(ExtCharSet[0]); ++xch) {
+	for (uint8_t xch = 0; xch < NumExtChars; ++xch) {
 		output_char_bitmap_rm(face,ExtCharSet[xch]);
 	}
 	if (0 == GenLib) {
@@ -444,7 +477,7 @@ static void process_font_size(FT_Face face, char *name, uint8_t size)
 	for (uint8_t ch = ASCII_FIRST; ch <= ASCII_LAST; ++ch) {
 		output_char_bitmap_bcm(face,ch);
 	}
-	for (uint8_t xch = 0; xch < sizeof(ExtCharSet)/sizeof(ExtCharSet[0]); ++xch) {
+	for (uint8_t xch = 0; xch < NumExtChars; ++xch) {
 		output_char_bitmap_bcm(face,ExtCharSet[xch]);
 	}
 	if (0 == GenLib) {
@@ -463,7 +496,7 @@ static void process_font_size(FT_Face face, char *name, uint8_t size)
 				"};\n\n"
 				, id, size, id, id, id
 				, ASCII_FIRST, ASCII_LAST
-				, sizeof(ExtCharSet)/sizeof(ExtCharSet[0])
+				, NumExtChars
 				, face->size->metrics.height >> 6	// yAdvance
 				, 0, 0, 0, 0
 				*/
@@ -521,16 +554,17 @@ static void glyph_metrics(FT_Face face, unsigned ch, int8_t *minY, int8_t *maxY,
 	}
 	FT_BitmapGlyphRec *grec = (FT_BitmapGlyphRec *)glyph;
 	FT_Bitmap *bitmap = &face->glyph->bitmap;
+	int8_t miny = -grec->top;
 	uint8_t w = grec->left+bitmap->width;
-	uint8_t maxy = grec->top+bitmap->rows;
-	if (grec->top < *minY)
-		*minY = grec->top;
+	uint8_t maxy = bitmap->rows+miny;
+	if (miny < *minY)
+		*minY = miny;
 	if (maxy > *maxY)
 		*maxY = maxy;
 	if (w > *maxW)
 		*maxW = w;
 	if ('0' == ch)
-		*blOff = maxy-grec->top;
+		*blOff = maxy-miny;
 	FT_Done_Glyph(glyph);
 }
 
@@ -565,27 +599,30 @@ static char *gen_font_info(const char *font)
 		for (uint8_t ch = ASCII_FIRST; ch <= ASCII_LAST; ++ch) {
 			glyph_metrics(face,ch,&minY,&maxY,&maxW,&blOff);
 		}
-		for (uint8_t xch = 0; xch < sizeof(ExtCharSet)/sizeof(ExtCharSet[0]); ++xch) {
+		for (uint8_t xch = 0; xch < NumExtChars; ++xch) {
 			glyph_metrics(face,ExtCharSet[xch],&minY,&maxY,&maxW,&blOff);
 		}
+		if (maxY < 0) {
+			minY -= maxY;
+			maxY = 0;
+		}
 		fprintf(Out,
-			"const font_t %s_%u = {\n"
-			"\t%s_%u_Glyphs,\n"
-			"\t%s_%u_RM,\n"
-			"\t%s_%u_BCM,\n"
-			"\t%u, %u,	// ASCII range\n"
-			"\t%lu,	// extra chars\n"
-			"\t%lu,	// yAdvance\n"
-			"\t%d,%d,	// minY, maxY\n"
-			"\t%u,%u,	// blOff, maxW\n"
-			"\t\"%s-%u\"\n"
-			"};\n\n"
-			, id, size
+			"\t{\n"
+			"\t\t%s_%u_Glyphs,\n"
+			"\t\t%s_%u_RM,\n"
+			"\t\t%s_%u_BCM,\n"
+			"\t\t%u, %u,	// ASCII range\n"
+			"\t\t%lu,	// extra chars\n"
+			"\t\t%lu,	// yAdvance\n"
+			"\t\t%d,%d,	// minY, maxY\n"
+			"\t\t%u,%u,	// blOff, maxW\n"
+			"\t\t\"%s-%u\"\n"
+			"\t},\n"
 			, id, size
 			, id, size
 			, id, size
 			, ASCII_FIRST, ASCII_LAST
-			, sizeof(ExtCharSet)/sizeof(ExtCharSet[0])
+			, NumExtChars
 			, face->size->metrics.height >> 6	// yAdvance
 			, minY, maxY, blOff, maxW
 			, name, size
@@ -692,9 +729,9 @@ void printFontFile(const char *ff)
 		for (uint8_t xch = 0; xch < font.extra; ++xch) {
 			unsigned off = g->bitmapOffset;
 			if (font.RMbitmap)
-				printCharRM(font.RMbitmap,off,g->width,g->height,xch);
+				printCharRM(font.RMbitmap,off,g->width,g->height,g->iso8859);
 			if (font.BCMbitmap)
-				printCharBCM(font.BCMbitmap,off,g->width,g->height,xch);
+				printCharBCM(font.BCMbitmap,off,g->width,g->height,g->iso8859);
 			++g;
 		}
 	}
@@ -720,6 +757,7 @@ static void addSize(const char *str)
 }
 
 
+#if 0
 static void addName(const char *name)
 {
 	if (name) {
@@ -728,6 +766,7 @@ static void addName(const char *name)
 		Names[NumNames-1] = name;
 	}
 }
+#endif
 
 
 void usage()
@@ -739,8 +778,37 @@ void usage()
 		"-2 : to generate only byte-column-major data\n"
 		"-l : to generate a library source file\n"
 		"-t : to include TomThumb font in the library\n"
+		"-c : to set the charset (ascii,sym,de,latin1)\n"
 	       );
 	exit(EXIT_SUCCESS);
+}
+
+
+static void setExtCharSet(const char *cs)
+{
+	if (0 == strcmp(cs,"de")) {
+		ExtCharSet = DeCharSet;
+		NumExtChars = sizeof(DeCharSet)/sizeof(DeCharSet[0]);
+	} else if (0 == strcmp(cs,"sym")) {
+		ExtCharSet = SymbolCharSet;
+		NumExtChars = sizeof(SymbolCharSet)/sizeof(SymbolCharSet[0]);
+	} else if (0 == strcmp(cs,"latin1")) {
+		unsigned nc = 6*16-2;
+		NumExtChars = nc;
+		char *cs = (char *)malloc(nc);
+		ExtCharSet = cs;
+		for (uint8_t c = 0xa1; c; ++c) {
+			if (0xad == c)	// SHY control character
+				continue;
+			*cs++ = c;
+		}
+	} else if (0 == strcmp(cs,"ascii")) {
+		ExtCharSet = 0;
+		NumExtChars = 0;
+	} else {
+		fprintf(stderr,"unknown char-set %s\n",cs);
+		exit(EXIT_FAILURE);
+	}
 }
 
 
@@ -756,13 +824,10 @@ int main(int argc, char *argv[])
 	FT_UInt vers = TT_INTERPRETER_VERSION_35;
 	FT_Property_Set(FTL,"truetype","interpret-version",&vers);
 	do {
-		err = getopt(argc,argv,"12hlp:s:tv");
+		err = getopt(argc,argv,"c:hlp:s:tv");
 		switch (err) {
-		case '1':
-			Mode = 1;
-			break;
-		case '2':
-			Mode = 2;
+		case 'c':
+			setExtCharSet(optarg);
 			break;
 		case 'h':
 			usage();
@@ -810,13 +875,21 @@ int main(int argc, char *argv[])
 		process_font(argv[c]);
 	}
 	if (GenLib) {
+		fprintf(Out,"const font_t Fonts[] = {\n");
+		unsigned num = 0;
 		if (TomThumb) {
-			fprintf(Out,"const font_t TomThumb ={\nTOM_THUMB_FONT_DEF\n};\n\n");
+			fprintf(Out,"\t{\n\t\tTOM_THUMB_FONT_DEF\n\t},\n");
+			++num;
 		}
 		for (int c = optind; c < argc; ++c) {
+#ifdef POINTER_ARRAY
 			addName(gen_font_info(argv[c]));
+#else
+			gen_font_info(argv[c]);
+			num += NumSizes;
+#endif
 		}
-		fprintf(Out,"const font_t *Fonts[] = {\n");
+#ifdef POINTER_ARRAY
 		for (int n = 0; n < NumNames; ++n) {
 			for (unsigned s = 0; s < NumSizes; ++s) {
 				unsigned size = Sizes[s];
@@ -824,6 +897,9 @@ int main(int argc, char *argv[])
 			}
 		}
 		fprintf(Out,"};\n\nsize_t NumFonts = sizeof(Fonts)/sizeof(Fonts[0]);\n\n");
+#else
+		fprintf(Out,"};\n\nconst uint8_t NumFonts = %u;\n\n",num);
+#endif
 	}
 	exit(EXIT_SUCCESS);
 }

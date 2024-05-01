@@ -3,7 +3,7 @@
 
 #include "font.h"
 
-extern const Font *Fonts[];
+extern const Font Fonts[];
 extern uint8_t NumFonts;
 
 #endif

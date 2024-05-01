@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2022, Thomas Maier-Komor
+ *  Copyright (C) 2018-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -94,9 +94,9 @@ extern void log_usb(const char *, size_t n);
 uint8_t UsbDiag = 1;
 static SemaphoreHandle_t UartLock;
 #if CONFIG_CONSOLE_UART_NONE != 1
-static uart_port_t LogUart = (uart_port_t) CONFIG_CONSOLE_UART_NUM;
+static int LogUart = CONFIG_CONSOLE_UART_NUM;
 #else
-static uart_port_t LogUart = (uart_port_t) -1;
+static int LogUart = -1;
 #endif
 
 #ifdef HAVE_FS
@@ -126,9 +126,12 @@ void con_print(const char *str)
 	if ((LogUart != -1) && (s != 0)) {
 		if (pdFALSE == xSemaphoreTake(UartLock,MUTEX_ABORT_TIMEOUT))
 			abort_on_mutex(UartLock,__FUNCTION__);
-		uart_write_bytes(LogUart,str,s);
-		uart_write_bytes(LogUart,"\r\n",2);
-		uart_wait_tx_done((uart_port_t)LogUart,portMAX_DELAY);
+		if (0 <= uart_write_bytes(LogUart,str,s)) {
+			uart_write_bytes(LogUart,"\r\n",2);
+			uart_wait_tx_done((uart_port_t)LogUart,portMAX_DELAY);
+		} else {
+			LogUart = -1;
+		}
 		xSemaphoreGive(UartLock);
 	}
 #endif
@@ -161,9 +164,12 @@ void con_printv(const char *f, va_list val)
 		if (LogUart != -1) {
 			if (pdFALSE == xSemaphoreTake(UartLock,MUTEX_ABORT_TIMEOUT))
 				abort_on_mutex(UartLock,__FUNCTION__);
-			uart_write_bytes(LogUart,buf,n);
-			uart_write_bytes(LogUart,"\r\n",2);
-			uart_wait_tx_done((uart_port_t)LogUart,portMAX_DELAY);
+			if (0 <= uart_write_bytes(LogUart,buf,n)) {
+				uart_write_bytes(LogUart,"\r\n",2);
+				uart_wait_tx_done((uart_port_t)LogUart,portMAX_DELAY);
+			} else {
+				LogUart = -1;
+			}
 			xSemaphoreGive(UartLock);
 		}
 #endif
@@ -179,7 +185,8 @@ void con_write(const char *str, ssize_t s)
 #if CONFIG_CONSOLE_UART_NONE != 1
 	if ((LogUart != -1) && (s > 0)) {
 		xSemaphoreTake(UartLock,portMAX_DELAY);
-		uart_write_bytes(LogUart,str,s);
+		if (0 < uart_write_bytes(LogUart,str,s))
+			LogUart = -1;
 		xSemaphoreGive(UartLock);
 	}
 #endif
@@ -199,12 +206,14 @@ void log_setup()
 #endif
 
 	UartLock = xSemaphoreCreateMutex();
+	if (LogUart >= 0) {
 #if CONFIG_UART_CONSOLE_NONE != 1 && CONFIG_CONSOLE_UART_NUM != -1
-	uart_driver_install((uart_port_t)CONFIG_CONSOLE_UART_NUM,UART_FIFO_LEN*2,UART_FIFO_LEN*2,0,DRIVER_ARG);
+		uart_driver_install((uart_port_t)LogUart,UART_FIFO_LEN*2,UART_FIFO_LEN*2,0,DRIVER_ARG);
 #if (CONFIG_CONSOLE_UART_RX != -1) || (CONFIG_CONSOLE_UART_TX != -1)
-	uart_set_pin((uart_port_t)CONFIG_CONSOLE_UART_NUM, CONFIG_CONSOLE_UART_TX, CONFIG_CONSOLE_UART_RX , -1, -1);
+		uart_set_pin((uart_port_t)LogUart, CONFIG_CONSOLE_UART_TX, CONFIG_CONSOLE_UART_RX , -1, -1);
 #endif
 #endif
+	}
 
 #if defined CONFIG_USB_DIAGLOG || defined CONFIG_USB_CONSOLE
 	usb_serial_jtag_driver_config_t cfg;
@@ -301,11 +310,14 @@ void log_common(log_level_t l, logmod_t m, const char *f, va_list val)
 	if (LogUart >= 0) {
 		if (pdTRUE != xSemaphoreTake(UartLock,MUTEX_ABORT_TIMEOUT))
 			abort_on_mutex(UartLock,__BASE_FILE__);
-		uart_write_bytes((uart_port_t)LogUart,buf,s);
+		if (0 <= uart_write_bytes((uart_port_t)LogUart,buf,s)) {
 #ifndef CONFIG_DEVEL
-		if (l <= ll_warn)
+			if (l <= ll_warn)
 #endif
-			uart_wait_tx_done((uart_port_t)LogUart,portMAX_DELAY);
+				uart_wait_tx_done((uart_port_t)LogUart,portMAX_DELAY);
+		} else {
+			LogUart = -1;
+		}
 		xSemaphoreGive(UartLock);
 	}
 #ifdef HAVE_FS
@@ -316,7 +328,7 @@ void log_common(log_level_t l, logmod_t m, const char *f, va_list val)
 	}
 #endif
 #ifdef CONFIG_SYSLOG
-	if ((l != ll_local) && (m != MODULE_LOG) && (m != MODULE_LWTCP))
+	if ((m != MODULE_LOG) && (m != MODULE_LWTCP))
 		log_syslog(l,m,buf+p,s-p-2,&tv);
 #endif
 #ifdef CONFIG_USB_DIAGLOG
@@ -398,8 +410,12 @@ void log_info(logmod_t m, const char *f, ...)
 
 void uart_print(const char *str)
 {
-	uart_write_bytes(LogUart,str,strlen(str));
-	uart_write_bytes(LogUart,"\r\n",2);
+	if (LogUart >= 0) {
+		if (0 <= uart_write_bytes(LogUart,str,strlen(str)))
+			uart_write_bytes(LogUart,"\r\n",2);
+		else
+			LogUart = -1;
+	}
 }
 
 

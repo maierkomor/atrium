@@ -17,7 +17,7 @@
  */
 
 option author="Thomas Maier-Komor";
-option copyright="2018-2023";
+option copyright="2018-2024";
 
 option common {
 	BaseClass=Message;
@@ -85,11 +85,16 @@ option esp8266 : esp {
 	/AdcConfig/hall_name:		used = false;
 	/AdcConfig/channels:		used = false;
 	/Ws2812bConfig/ch:		used = false;
+	/SX1276Config:			used = false;
 }
 
 option esp8285 : esp8266 {
 	BaseClass="";
 	getMember="";
+	/HardwareConfig/max7129:	used = false;
+	/HardwareConfig/display:	used = false;
+	/DisplayConfig:			used = false;
+	/Max7219Config:			used = false;
 }
 
 

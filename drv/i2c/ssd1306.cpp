@@ -58,7 +58,7 @@ SSD1306::SSD1306(uint8_t bus, uint8_t addr)
 }
 
 
-int SSD1306::init(uint8_t maxx, uint8_t maxy, uint8_t hwcfg)
+int SSD1306::init(uint16_t maxx, uint16_t maxy, uint8_t hwcfg)
 {
 	log_info(TAG,"init(%u,%u)",maxx,maxy);
 	m_width = maxx;

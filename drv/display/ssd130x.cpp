@@ -97,6 +97,8 @@ void SSD130X::fillRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, int32_t c
 		w = m_width - x;
 	if ((y+h) > m_height)
 		h = m_height - y;
+	for (uint8_t lpg = y/8, upg = (y+h)/8; lpg <= upg; ++lpg)
+		m_dirty |= 1<<lpg;
 	if (c == 0) {
 		clearRect(x,y,w,h);
 		return;
@@ -267,7 +269,7 @@ int SSD130X::drawByte(uint8_t x, uint8_t y, uint8_t b)
 }
 
 
-unsigned SSD130X::drawChar(uint16_t x, uint16_t y, char c, int32_t fg, int32_t bg)
+unsigned SSD130X::drawChar(uint16_t x, uint16_t y, uint32_t c, int32_t fg, int32_t bg)
 {
 	PROFILE_FUNCTION();
 	if (fg == -1)
@@ -278,7 +280,7 @@ unsigned SSD130X::drawChar(uint16_t x, uint16_t y, char c, int32_t fg, int32_t b
 	if (0 == g)
 		return 0;
 	const uint8_t *data = m_font->BCMbitmap + g->bitmapOffset;
-	log_dbug(TAG,"drawChar(%d,%d,'%c'(0x%x)) = %u",x,y,c,c,g->xAdvance);
+	log_dbug(TAG,"drawChar(%d,%d,'%c'(0x%x)) = %u",x,y,(uint8_t)c,c,g->xAdvance);
 	if (bg != -2) {
 		fillRect(x,y,g->xAdvance,m_font->yAdvance,bg);
 	}
@@ -439,6 +441,7 @@ void SSD130X::pSetPixel(uint16_t x, uint16_t y)
 
 int SSD130X::setupOffScreen(uint16_t x, uint16_t y, uint16_t w, uint16_t h, int32_t bg)
 {
+	log_dbug(TAG,"setupOffScreen(%u,%u,%u,%u,0x%x)",x,y,w,h,bg);
 	if (bg != -2)
 		fillRect(x,y,w,h,bg);
 	return 0;

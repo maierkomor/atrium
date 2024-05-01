@@ -152,6 +152,13 @@ static struct { const char *name; color_t color; } Colors[] = {
 };
 
 
+const font_t *DefaultFonts[] = {
+	Fonts+0,
+	Fonts+1,
+	Fonts+2,
+	Fonts+3,
+};
+
 TextDisplay *TextDisplay::Instance = 0;
 
 
@@ -165,7 +172,7 @@ color_t color_get(const char *n)
 }
 
 
-unsigned Font::getCharWidth(uint16_t ch) const
+unsigned Font::getCharWidth(uint32_t ch) const
 {
 	if (const glyph_t *g = getGlyph(ch))
 		return g->width + g->xOffset;
@@ -173,6 +180,8 @@ unsigned Font::getCharWidth(uint16_t ch) const
 }
 
 
+/*
+ * obsolete, no UTF-* support
 void Font::getTextDim(const char *str, uint16_t &W, int8_t &ymin, int8_t &ymax) const
 {
 	// blank upper margin not calculated
@@ -192,9 +201,82 @@ void Font::getTextDim(const char *str, uint16_t &W, int8_t &ymin, int8_t &ymax) 
 	ymin = loy;
 	ymax = hiy;
 }
+*/
+
+unsigned Font::textWidth(const char *t, int l) const
+{
+	unsigned width = 0;
+	if (-1 == l)
+		l = strlen(t);
+	bool err = false;
+	const char *e = t + l;
+	char c = *t++;
+	while ((t <= e) && (0 != c)) {
+		uint32_t w;
+		if (0 == (c & 0x80)) {
+			// single byte char
+			w = c;
+		} else if (0xc0 == (c & 0xe0)) {
+			// two byte char
+			w = ((uint32_t)(c & 0x1f)) << 6;
+			c = *t++;
+			if (0x80 != (c & 0xc0)) {
+				err = true;
+				break;
+			}
+			w |= c & 0x3f;
+		} else if (0xe0 == (c & 0xf0)) {
+			// three byte char
+			w = ((uint32_t)(c & 0x0f)) << 12;
+			c = *t++;
+			if (0x80 != (c & 0xc0)) {
+				err = true;
+				break;
+			}
+			w |= ((uint32_t)(c & 0x3f)) << 6;
+			c = *t++;
+			if (0x80 != (c & 0xc0)) {
+				err = true;
+				break;
+			}
+			w |= (uint32_t)(c & 0x3f);
+		} else if (0xf0 == (c & 0xf8)) {
+			// four byte char
+			w = ((uint32_t)(c & 0x7)) << 18;
+			c = *t++;
+			if (0x80 != (c & 0xc0)) {
+				err = true;
+				break;
+			}
+			w |= ((uint32_t)(c & 0x0f)) << 12;
+			c = *t++;
+			if (0x80 != (c & 0xc0)) {
+				err = true;
+				break;
+			}
+			w |= ((uint32_t)(c & 0x3f)) << 6;
+			c = *t++;
+			if (0x80 != (c & 0xc0)) {
+				err = true;
+				break;
+			}
+			w |= (uint32_t)(c & 0x3f);
+		} else {
+			log_warn(TAG,"UTF-8 encoding error");
+			break;
+		}
+		if (const glyph_t *g = getGlyph(c))
+			width += g->xAdvance;
+		--l;
+		c = *t++;
+	}
+	if (err)
+		log_warn(TAG,"UTF-8 encoding error");
+	return width;
+}
 
 
-const glyph_t *Font::getGlyph(uint16_t ch) const
+const glyph_t *Font::getGlyph(uint32_t ch) const
 {
 	if ((ch >= first) && (ch <= last)) {
 		return glyph+ch-first;
@@ -488,7 +570,7 @@ void SegmentDisplay::write(const char *s, int n)
 }
 
 
-int MatrixDisplay::init()
+void MatrixDisplay::initFonts()
 {
 #if defined CONFIG_ROMFS && defined ESP32
 	int f = romfs_num_entries();
@@ -520,7 +602,6 @@ int MatrixDisplay::init()
 			e = readdir(d);
 		}
 	}
-	return 0;
 }
 
 
@@ -803,10 +884,11 @@ Image *MatrixDisplay::openIcon(const char *fn)
 }
 
 
-uint16_t MatrixDisplay::charWidth(char c) const
+uint16_t MatrixDisplay::charWidth(uint32_t c) const
 {
 	if (const glyph_t *g = m_font->getGlyph(c))
 		return g->xAdvance;
+	log_warn(TAG,"unknown glyph 0x%x",c);
 	return 0;
 }
 
@@ -820,7 +902,7 @@ void MatrixDisplay::clear()
 }
 
 
-unsigned MatrixDisplay::drawChar(uint16_t x, uint16_t y, char c, int32_t fg, int32_t bg)
+unsigned MatrixDisplay::drawChar(uint16_t x, uint16_t y, uint32_t c, int32_t fg, int32_t bg)
 {
 	PROFILE_FUNCTION();
 	if (fg == -1)
@@ -831,7 +913,7 @@ unsigned MatrixDisplay::drawChar(uint16_t x, uint16_t y, char c, int32_t fg, int
 	if (0 == g)
 		return 0;
 	const uint8_t *data = m_font->RMbitmap + g->bitmapOffset;
-	log_dbug(TAG,"drawChar(%d,%d,'%c'(0x%x)) = %u",x,y,c,c,g->xAdvance);
+	log_dbug(TAG,"drawChar(%d,%d,'%c'(0x%x)) = %u",x,y,(uint8_t)c,c,g->xAdvance);
 	if (bg != -2) {
 		fillRect(x,y,g->xAdvance,m_font->yAdvance,bg);
 	}
@@ -852,6 +934,7 @@ unsigned MatrixDisplay::drawText(uint16_t x, uint16_t y, const char *txt, int n,
 		char c = *txt++;
 		if (c == 0)
 			break;
+		uint32_t w;
 		if (c == '\n') {
 			x = 0;
 			y += m_font->yAdvance;
@@ -860,25 +943,59 @@ unsigned MatrixDisplay::drawText(uint16_t x, uint16_t y, const char *txt, int n,
 			if (a > amax)
 				amax = a;
 			a = 0;
+			continue;
 		} else if (c == '\r') {
 			if (a > amax)
 				amax = a;
 			a = 0;
 			x = 0;
-		} else if (c == 0xc2) {
-			// first byte of a 2-byte utf-8
+			continue;
+		} else if (0 == (c & 0x80)) {
+			w = c;
+		} else if (0xc0 == (c & 0xe0)) {
+			// UTF-8 2-byte sequence signature
 			// used for degree symbol \u00b0 i.e.
 			// 0xc2 0xb0
-			continue;
-		} else {
-			uint16_t cw = charWidth(c);
-			//log_dbug(TAG,"char 0x%02x: width %u",c,cw);
-			if (x + cw > m_width)
+			w = ((uint32_t)(c & 0x1f)) << 6;
+			c = *txt++;
+			if (0x80 != (c & 0xc0))	// 2nd byte requirement
 				break;
-			drawChar(x,y,c,fg,bg);
-			a += cw;
-			x += cw;
+			w |= c & 0x3f;
+		} else if (0xe0 == (c & 0xf0)) {
+			// UTF-8 3-byte sequence signature
+			w = ((uint32_t)(c & 0xf)) << 12;
+			c = *txt++;
+			if (0x80 != (c & 0xc0))	// 2nd byte requirement
+				break;
+			w |= (c & 0x3f) << 6;
+			c = *txt++;
+			if (0x80 != (c & 0xc0))	// 3rd byte requirement
+				break;
+			w |= (c & 0x3f);
+		} else if (0xf0 == (c & 0xf8)) {
+			// UTF-8 4-byte sequence signature
+			w = 0x100000 | (((uint32_t)(c & 0x7)) << 18);
+			if (0x80 != (c & 0xc0))	// 2nd byte requirement
+				break;
+			w |= (c & 0x3f) << 12;
+			c = *txt++;
+			if (0x80 != (c & 0xc0))	// 3rd byte requirement
+				break;
+			w |= (c & 0x3f) << 6;
+			if (0x80 != (c & 0xc0))	// 4th byte requirement
+				break;
+			w |= (c & 0x3f);
+		} else {
+			// invalid code sequence
+			break;
 		}
+		uint16_t cw = charWidth(w);
+		//log_dbug(TAG,"char 0x%02x: width %u",c,cw);
+		if (x + cw > m_width)
+			break;
+		drawChar(x,y,w,fg,bg);
+		a += cw;
+		x += cw;
 	}
 	return a > amax ? a : amax;
 }
@@ -1109,24 +1226,27 @@ int32_t MatrixDisplay::setBgColor(color_t c)
 }
 
 
-const Font *MatrixDisplay::getFont(unsigned f) const
+const Font *MatrixDisplay::getFont(int f) const
 {
-	if (f < NumFonts)
-		return Fonts[f];
-	f -= NumFonts;
-	if (f < m_xfonts.size())
-		return &m_xfonts[f];
+	if (f < 0) {
+		f = -f - 1;
+		if (f < sizeof(DefaultFonts)/sizeof(DefaultFonts[0]))
+			return DefaultFonts[f];
+	} else if (f < NumFonts) {
+		return &Fonts[f];
+	} else if (f - NumFonts < m_xfonts.size()) {
+		return &m_xfonts[f-NumFonts];
+	}
 	return 0;
 }
 
 
-const Font *MatrixDisplay::setFont(unsigned f)
+const Font *MatrixDisplay::setFont(int id)
 {
-	if (f < NumFonts) {
-		m_font = Fonts[f];
-		return m_font;
-	}
-	return 0;
+	const Font *f = getFont(id);
+	if (f)
+		m_font = f;
+	return f;
 }
 
 
@@ -1169,8 +1289,8 @@ void MatrixDisplay::addFont(const uint8_t *data, size_t s)
 //	log_dbug(TAG,"first 0x%x, last 0x%x, extra %u",f.first,f.last,f.extra);
 	f.yAdvance = hdr->yAdv;
 	f.name = hdr->name;
-	int8_t miny = 0;
-	uint8_t maxy = 0, maxw = 0;
+	int8_t miny = INT8_MAX;
+	int8_t maxy = INT8_MIN, maxw = 0;
 	unsigned n = f.last-f.first;
 	for (unsigned x = 0; x <= n; ++x) {
 		const glyph_t *g = f.glyph+x;
@@ -1238,16 +1358,17 @@ const Font *MatrixDisplay::getFont(const char *fn) const
 	for (const auto &f : m_xfonts) {
 		log_dbug(TAG,"font %s",f.name);
 		if (0 == strcasecmp(fn,f.name)) {
-			log_dbug(TAG,"set font %s",fn);
+			log_dbug(TAG,"set xfont %s",fn);
 			return &f;
 		}
 	}
 	for (int i = 0; i < NumFonts; ++i) {
-		if (0 == strcasecmp(Fonts[i]->name,fn)) {
-			return Fonts[i];
+		if (0 == strcasecmp(Fonts[i].name,fn)) {
+			log_dbug(TAG,"set font %s",fn);
+			return &Fonts[i];
 		}
 	}
-//	log_warn(TAG,"unknown font %s",fn);
+	log_dbug(TAG,"unknown font %s",fn);
 	return 0;
 }
 
@@ -1263,10 +1384,13 @@ const Font *MatrixDisplay::setFont(const char *fn)
 }
 
 
-void MatrixDisplay::setFont(unsigned x, const Font *f)
+void MatrixDisplay::setFont(int x, const Font *f)
 {
-	if ((x < NumFonts) && (0 != f))
-		Fonts[x] = f;
+	if (x >= 0)
+		return;
+	x = -x - 1;
+	if ((x < sizeof(DefaultFonts)/sizeof(DefaultFonts[0])) && (0 != f))
+		DefaultFonts[x] = f;
 }
 
 
@@ -1281,26 +1405,19 @@ void MatrixDisplay::commitOffScreen()
 }
 
 
-unsigned MatrixDisplay::textWidth(const char *t, int l, fontid_t f)
+unsigned MatrixDisplay::textWidth(const char *t, int l, int f) const
 {
 	// uses row-major font
-	if (f >= NumFonts)
-		return 0;
 	const Font *font;
-	if (font_default == f)
+	if (0 == f)	// default font
 		font = m_font;
+	else if (f < 0)
+		font = &Fonts[-f-1];
+	else if (f <= m_xfonts.size())
+		font = &m_xfonts[f-1];
 	else
-		font = Fonts[f];
-	unsigned w = 0;
-	char c = *t;
-	while ((0 != c) && (0 != l)) {
-		if (const glyph_t *g = font->getGlyph(c))
-			w += g->xAdvance;
-		++t;
-		--l;
-		c = *t;
-	}
-	return w;
+		return 0;
+	return font->textWidth(t,l);
 }
 
 

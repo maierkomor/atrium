@@ -227,6 +227,7 @@ int xio_config(xio_t x, xio_cfg_t c);
 int xio_get_lvl(xio_t x);
 int xio_get_dir(xio_t x);
 int xio_set_hi(xio_t x);
+int xio_set_hiz(xio_t x);
 int xio_set_lo(xio_t x);
 int xio_set_lvl(xio_t x, xio_lvl_t l);
 int xio_set_intr(xio_t x, xio_intrhdlr_t h, void *arg);

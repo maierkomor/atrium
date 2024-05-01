@@ -5,6 +5,7 @@ Command 'send' sends an arbitrary argument to the influx server.
 Command 'clear' clears the configuration or specified field.
 Command 'stop' stops the influx service.
 command 'start' to start influx service.
+command 'term' to terminate existing connections.
 Valid <arg> are:
 host     : to set the influx database server host
 port     : to set the port on which influx is listening

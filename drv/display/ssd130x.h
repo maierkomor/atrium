@@ -32,7 +32,7 @@ class SSD130X : public MatrixDisplay
 	void clear();
 	uint16_t numLines() const;
 	void drawBitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t *data, int32_t fg = -1, int32_t bg = -1) override;
-	unsigned drawChar(uint16_t x, uint16_t y, char c, int32_t fg, int32_t bg) override;
+	unsigned drawChar(uint16_t x, uint16_t y, uint32_t c, int32_t fg, int32_t bg) override;
 	void drawHLine(uint16_t x, uint16_t y, uint16_t n, int32_t col = -1) override;
 	void drawVLine(uint16_t x, uint16_t y, uint16_t n, int32_t col = -1) override;
 	int32_t getColor(color_t) const override;

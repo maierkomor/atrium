@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2022, Thomas Maier-Komor
+ *  Copyright (C) 2022-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -26,6 +26,12 @@
 #include <strings.h>
 
 #define TAG MODULE_XIO
+
+#if 0
+#define log_devel log_dbug
+#else
+#define log_devel(...)
+#endif
 
 
 const char *GpioDirStr[] = {
@@ -123,7 +129,6 @@ int XioCluster::attach(uint8_t base)
 	TotalIOs = nmax;
 	log_info(TAG,"%s %u..%u",name,base,e-1);
 	m_base = base;
-//	memset(IdMap + base,numio,m_id);
 	return 0;
 }
 
@@ -140,9 +145,10 @@ int XioCluster::getBase() const
 
 int xio_config(xio_t x, xio_cfg_t cfg)
 {
-	log_dbug(TAG,"config %d,0x%x",x,cfg);
-	if (XioCluster *c = XioCluster::getCluster(x))
+	if (XioCluster *c = XioCluster::getCluster(x)) {
+		log_dbug(TAG,"config %d,0x%x",x,cfg);
 		return c->config(x-c->getBase(),cfg);
+	}
 	log_warn(TAG,"xio_config: invalid io %u",x);
 	return -1;
 }
@@ -150,8 +156,10 @@ int xio_config(xio_t x, xio_cfg_t cfg)
 
 int xio_get_dir(xio_t x)
 {
-	if (XioCluster *c = XioCluster::getCluster(x))
+	if (XioCluster *c = XioCluster::getCluster(x)) {
+		log_devel(TAG,"get_dir %u",x);
 		return c->get_dir(x-c->getBase());
+	}
 	log_warn(TAG,"get_dir: invalid io %u",x);
 	return -1;
 }
@@ -159,8 +167,10 @@ int xio_get_dir(xio_t x)
 
 int xio_get_lvl(xio_t x)
 {
-	if (XioCluster *c = XioCluster::getCluster(x))
+	if (XioCluster *c = XioCluster::getCluster(x)) {
+		log_devel(TAG,"get_lvl %u",x);
 		return c->get_lvl(x-c->getBase());
+	}
 	log_warn(TAG,"get_lvl: invalid io %u",x);
 	return -1;
 }
@@ -168,19 +178,35 @@ int xio_get_lvl(xio_t x)
 
 int xio_set_hi(xio_t x)
 {
-//	log_dbug(TAG,"set_hi %u",x);
-	if (XioCluster *c = XioCluster::getCluster(x))
+//	log_dbug here causes problem in timing critical functions like onewire xmitBit
+	if (XioCluster *c = XioCluster::getCluster(x)) {
+		log_devel(TAG,"set_hi %u",x);
 		return c->set_hi(x-c->getBase());
+	}
 	log_warn(TAG,"set_hi: invalid io %u",x);
+	return -1;
+}
+
+
+int xio_set_hiz(xio_t x)
+{
+//	log_dbug here causes problem in timing critical functions like onewire xmitBit
+	if (XioCluster *c = XioCluster::getCluster(x)) {
+		log_devel(TAG,"set_hiz %u",x);
+		return c->set_hiz(x-c->getBase());
+	}
+	log_warn(TAG,"set_hiz: invalid io %u",x);
 	return -1;
 }
 
 
 int xio_set_lo(xio_t x)
 {
-//	log_dbug(TAG,"set_lo %u",x);
-	if (XioCluster *c = XioCluster::getCluster(x))
+//	log_dbug here causes problem in timing critical functions like onewire xmitBit
+	if (XioCluster *c = XioCluster::getCluster(x)) {
+		log_devel(TAG,"set_lo %u",x);
 		return c->set_lo(x-c->getBase());
+	}
 	log_warn(TAG,"set_lo: invalid io %u",x);
 	return -1;
 }
@@ -189,9 +215,10 @@ int xio_set_lo(xio_t x)
 int xio_set_lvl(xio_t x, xio_lvl_t l)
 {
 //	log_dbug here causes problem in timing critical functions like onewire xmitBit
-//	log_dbug(TAG,"set_lvl %u,%u",x,l);
-	if (XioCluster *c = XioCluster::getCluster(x))
+	if (XioCluster *c = XioCluster::getCluster(x)) {
+		log_devel(TAG,"set_lvl %u,%u",x,l);
 		return c->set_lvl(x-c->getBase(),l);
+	}
 	log_warn(TAG,"set_lvl: invalid io %u",x);
 	return -1;
 }
@@ -199,9 +226,10 @@ int xio_set_lvl(xio_t x, xio_lvl_t l)
 
 int xio_hold(xio_t x)
 {
-//	log_dbug(TAG,"set_lo %u",x);
-	if (XioCluster *c = XioCluster::getCluster(x))
+	if (XioCluster *c = XioCluster::getCluster(x)) {
+		log_dbug(TAG,"set_hold %u",x);
 		return c->hold(x-c->getBase());
+	}
 	log_warn(TAG,"hold: invalid io %u",x);
 	return -1;
 }

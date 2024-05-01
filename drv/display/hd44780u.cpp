@@ -74,12 +74,10 @@
 extern const char Version[];
 
 
-int HD44780U::init()
+HD44780U *HD44780U::create(PCF8574 *drv, uint8_t maxx, uint8_t maxy)
 {
-	m_drv = PCF8574::getInstance();
-	if (m_drv == 0)
-		return 1;
-	log_dbug(TAG,"init");
+	if (drv == 0)
+		return 0;
 	// 8-bit init is required for 4-bit setup to work after reboot not
 	// only power-up
 	uint8_t setup[] = {
@@ -90,12 +88,13 @@ int HD44780U::init()
 		HIGH4(FUNC4BIT)|ON|EN,
 		HIGH4(FUNC4BIT)|ON,
 	};
-	m_drv->write(setup,sizeof(setup));
-	writeCmd(CMD_FUNC|CA_FUNC_NUML2);
-	writeCmd(CMD_SET_MODE|CA_AUTOINC);
-	clear();
-	initOK();
-	return 0;
+	drv->write(setup,sizeof(setup));
+	HD44780U *dev = new HD44780U(drv,maxx,maxy);
+	dev->writeCmd(CMD_FUNC|CA_FUNC_NUML2);
+	dev->writeCmd(CMD_SET_MODE|CA_AUTOINC);
+	dev->clear();
+	dev->initOK();
+	return dev;
 }
 
 

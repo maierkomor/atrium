@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2023, Thomas Maier-Komor
+ *  Copyright (C) 2018-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -49,6 +49,7 @@
 #include "env.h"
 #include "wifi.h"
 
+#include <alloca.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
@@ -83,7 +84,7 @@ extern "C" {
 
 using namespace std;
 
-static int mqtt_pub_int(const char *t, const char *v, int len, int retain, int qos, bool needlock);
+static int mqtt_pub_int(const char *t, const char *v, int len, int retain, int qos, bool needlock, bool withHost = true);
 
 #if 0
 #define log_devel log_dbug
@@ -539,8 +540,8 @@ static err_t handle_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *pbuf, err_
 	assert(pcb);
 	if (0 == pbuf) {
 		log_devel(TAG,"recv: pbuf=0, err=%d",e);
-		if (e == ERR_OK) {
-			log_devel(TAG,"connection closed");
+		if (ERR_OK != e) {
+			log_dbug(TAG,"connection closed");
 			// connection has been closed
 			tcp_close(pcb);
 			Client->pcb = 0;
@@ -763,7 +764,7 @@ static unsigned mqtt_cyclic(void *)
 		return 1000;
 	if (Client->state == offline) {
 		log_devel(TAG,"ts=0, state=%s, %sabled",States[Client->state],Config.mqtt().enable()?"en":"dis");
-		if (Config.mqtt().enable() && (Client->recv_ts == 0))
+		if (Config.mqtt().enable())
 			mqtt_start();
 		return 1000;
 	}
@@ -785,7 +786,7 @@ static unsigned mqtt_cyclic(void *)
 #endif	// FEATURE_KEEPALIVE
 
 
-static int mqtt_pub_int(const char *t, const char *v, int len, int retain, int qos, bool needlock)
+static int mqtt_pub_int(const char *t, const char *v, int len, int retain, int qos, bool needlock, bool withHost)
 {
 	if ((Client == 0) || (Client->state != running))
 		return 1;
@@ -794,15 +795,19 @@ static int mqtt_pub_int(const char *t, const char *v, int len, int retain, int q
 	bool more = (qos & 0x4) != 0;
 	qos &= 0x3;
 	size_t tl = strlen(t);
-	char request[len+HostnameLen+tl+5+(qos?2:0)];
+	char request[len+(withHost?HostnameLen+1:0)+tl+4+(qos?2:0)];
 	char *b = request;
 	*b++ = PUBLISH | (qos << 1) | retain;
 	*b++ = sizeof(request)-2;
 	*b++ = 0;
-	*b++ = HostnameLen+tl+1;
-	memcpy(b,Hostname,HostnameLen);
-	b += HostnameLen;
-	*b++ = '/';
+	if (withHost) {
+		*b++ = HostnameLen+tl+1;
+		memcpy(b,Hostname,HostnameLen);
+		b += HostnameLen;
+		*b++ = '/';
+	} else {
+		*b++ = tl;
+	}
 	memcpy(b,t,tl);
 	b += tl;
 	if (qos) {
@@ -972,6 +977,34 @@ static void mqtt_pub_rtdata(void *)
 		LWIP_LOCK();
 		if (Client->pcb)
 			tcp_output(Client->pcb);
+		LWIP_UNLOCK();
+#else
+		tcpip_send_msg_wait_sem(mqtt_tcpout_fn,0,&LwipSem);
+#endif
+	}
+}
+
+
+static void mqtt_publish(void *arg)
+{
+	const char *str = (const char *)arg;
+	RLock lock(Client->mtx,__FUNCTION__);
+	if (Client->pcb != 0) {
+		log_dbug(TAG,"publish %s",str);
+		char *topic = (char*)str;
+		const char *value = 0;
+		if (const char *sp = strchr(str,' ')) {
+			topic = (char *)alloca(sp-str+1);
+			memcpy(topic,str,sp-str);
+			topic[sp-str] = 0;
+			value = sp + 1;
+		}
+#if LWIP_TCPIP_CORE_LOCKING == 1
+		LWIP_LOCK();
+#endif
+		mqtt_pub_int(topic,value,strlen(value),0,4,false,false);
+#if LWIP_TCPIP_CORE_LOCKING == 1
+		tcp_output(Client->pcb);
 		LWIP_UNLOCK();
 #else
 		tcpip_send_msg_wait_sem(mqtt_tcpout_fn,0,&LwipSem);
@@ -1160,6 +1193,7 @@ void mqtt_setup(void)
 	action_add("mqtt!start",mqtt_start,0,"mqtt start");
 	action_add("mqtt!stop",mqtt_stop,0,"mqtt stop");
 	action_add("mqtt!pub_rtdata",mqtt_pub_rtdata,0,"mqtt publish data");
+	action_add("mqtt!publish",mqtt_publish,0,"publish MQTT a space separated topic/data pair");
 	if (0 == event_callback("wifi`station_up","mqtt!start"))
 		abort();
 	if (!Config.has_mqtt())

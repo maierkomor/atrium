@@ -136,12 +136,18 @@ static bool mode_enabled(const char *mode)
 static const char *env_title(const char *path)
 {
 	const auto &envs = Config.screen().envs();
+#if 0	// compiler bug on ESP32-S3
 	for (auto e : envs) {
+#else
+	size_t n = envs.size();
+	for (int i = 0; i < n; ++i) {
+#endif
+		const auto &e = envs[i];
 		if (0 == strcmp(path,e.path().c_str())) {
 			const auto &t = e.title();
 			if (!t.empty())
-				return t.c_str();
-			return path;
+				path = t.c_str();
+			break;
 		}
 	}
 	return path;
@@ -227,18 +233,53 @@ static void poweron(void *arg)
 }
 
 
+void Screen::exeEnvAction(void *arg)
+{
+	Screen *Ctx = (Screen *) arg;
+	const auto &envs = Config.screen().envs();
+	if (envs.empty())
+		return;
+	char modename[64];
+	mode_name(Ctx->mode,modename);
+	for (const auto &e : envs) {
+		if (strcmp(modename,e.path().c_str()))
+			continue;
+		log_dbug(TAG,"action of mode %s",modename);
+		const char *ac = e.action().c_str();
+		if (const char *s = strchr(ac,' ')) {
+			char name[s-ac+1];
+			memcpy(name,ac,s-ac);
+			name[s-ac] = 0;
+			action_activate_arg(name,(void *)(s+1));
+		} else {
+			action_activate(ac);
+		}
+		return;
+	}
+}
+
+
 void Screen::display_value(const char *str)
 {
 	if (strcmp(str,prev.c_str())) {
 		if (MatrixDisplay *dm = disp->toMatrixDisplay()) {
-			const Font *f = dm->getFont();
-			// off-screen for digits height
-			const glyph_t *g = &f->glyph['8'-f->first];
-			uint16_t w = (g->width+g->xOffset)*8+(f->getCharWidth(':')*3);
-			uint16_t h = g->height - g->yOffset;
-			dm->setupOffScreen(5,ypos,w,h,0);
+			uint16_t maxx = dm->maxX()-6;
+			int f = font_large;
+			const Font *font;
+			unsigned tw;
+			do {
+				font = dm->getFont(f);
+				tw = font->textWidth(str);
+				++f;
+			} while ((tw > maxx) && (0 != f));
+			unsigned fh = font->maxY-font->minY;
+			dm->setupOffScreen(5,ypos,lw>tw?lw:tw,fh,0);
+			const Font *of = dm->getFont();
+			dm->setFont(font);
 			dm->drawText(5,ypos,str,-1,0xffff,-2);
+			dm->setFont(of);
 			dm->commitOffScreen();
+			lw = tw;
 		} else {
 			disp->write(str);
 		}
@@ -315,17 +356,7 @@ void Screen::display_env()
 		e->writeValue(o);
 		str = o.c_str();	// to add terminating \0
 	}
-	if ((str != 0) && (strcmp(prev.c_str(),str))) {
-		if (MatrixDisplay *dm = disp->toMatrixDisplay()) {
-			unsigned fh = dm->fontHeight();
-			dm->setupOffScreen(5,ypos,dm->maxX()-10,fh,0);
-			dm->drawText(5,ypos,str,-1,0xffff,-2);
-			dm->commitOffScreen();
-		} else {
-			disp->write(str);
-		}
-		prev = str;
-	}
+	display_value(str);
 }
 
 
@@ -333,8 +364,9 @@ void Screen::display_version()
 {
 	const char *sp = strchr(Version,' ');
 	if (MatrixDisplay *dm = disp->toMatrixDisplay()) {
+		uint16_t maxx = dm->maxX();
 		uint16_t maxy = dm->maxY();
-		dm->drawRect(4,1,dm->maxX()-5,maxy-3);
+		dm->drawRect(4,1,maxx-5,maxy-3);
 		const Font *f = dm->setFont(font_large);
 		ypos = 6;
 		dm->setupOffScreen(11,ypos,100,f->maxY-f->minY,0);
@@ -350,7 +382,7 @@ void Screen::display_version()
 		}
 		uint16_t tw = dm->textWidth(Version);
 		int l;
-		if (tw < (dm->maxX()-15)) {
+		if (tw < (maxx-19)) {
 			l = -1;
 		} else {
 			l = sp-Version;
@@ -362,7 +394,7 @@ void Screen::display_version()
 		ypos += f->yAdvance;
 		if (maxy >= ypos+f->yAdvance) {
 			uint16_t tw = dm->textWidth(Copyright);
-			if (tw > maxy) {
+			if (tw > maxx) {
 				f = dm->setFont(font_tiny);
 				tw = dm->textWidth(Copyright);
 			}
@@ -440,7 +472,7 @@ void Screen::display_sw()
 			// monospace font - i.e. all glyphs have same width
 			const Font *f = dm->getFont();
 			unsigned tw = f->getGlyph(':')->xAdvance * 3 + f->getGlyph('8')->xAdvance * 7;
-			dm->setupOffScreen(5,ypos,tw,dm->fontHeight(),0);
+			dm->setupOffScreen(5,ypos,tw,f->maxY-f->minY,0);
 			dm->drawText(5,ypos,str);
 			dm->commitOffScreen();
 		} else {
@@ -935,6 +967,7 @@ void screen_setup()
 	action_add("sw!startstop",sw_startstop,Ctx,"stopwatch start/stop");
 	action_add("sw!reset",sw_clear,Ctx,"stopwatch reset");
 	action_add("sw!pause",sw_pause,Ctx,"stopwatch pause/resume");
+	action_add("screen!action",Screen::exeEnvAction,Ctx,"activate screen mode specific action");
 	shutdown(Ctx);
 	poweron(Ctx);
 	d->setBrightness(d->maxBrightness());

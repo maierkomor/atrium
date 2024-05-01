@@ -26,18 +26,12 @@ class PCF8574;
 class HD44780U : public TextDisplay
 {
 	public:
-	explicit HD44780U(PCF8574 *drv, uint8_t maxx, uint8_t maxy)
-	: TextDisplay()
-	, m_drv(drv)
-	, m_maxx(maxx)
-	, m_maxy(maxy)
-	{ }
+	static HD44780U *create(PCF8574 *drv, uint8_t maxx, uint8_t maxy);
 	
 	bool hasAlpha() const override
 	{ return true; }
 
 	bool hasChar(char c) const override;
-	int init() override;
 	void write(const char *, int = -1) override;
 	int writeHex(uint8_t h, bool c) override;
 	void clear() override;
@@ -56,6 +50,13 @@ class HD44780U : public TextDisplay
 	{ return m_maxy; }
 
 	private:
+	HD44780U(PCF8574 *drv, uint8_t maxx, uint8_t maxy)
+	: TextDisplay()
+	, m_drv(drv)
+	, m_maxx(maxx)
+	, m_maxy(maxy)
+	{ }
+
 	int writeCmd(uint8_t);
 	int writeData(uint8_t);
 	uint8_t readBusy();

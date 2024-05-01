@@ -45,7 +45,7 @@ class ILI9341 : public MatrixDisplay, public SpiDevice
 	typedef spi_host_device_t spi_host_t;
 	static ILI9341 *create(spi_host_t host, spi_device_interface_config_t &cfg, int8_t dc, int8_t reset);
 
-	int init(uint16_t maxx, uint16_t maxy, uint8_t options);
+	int init(uint16_t maxx, uint16_t maxy, uint8_t options) override;
 
 	void fillRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, int32_t c = -1) override;
 	void drawBitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t *data, int32_t fg = -1, int32_t bg = -1) override;

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2022, Thomas Maier-Komor
+ *  Copyright (C) 2020-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -85,27 +85,11 @@ DS18B20::DS18B20(uint64_t id, const char *name)
 : OwDevice(id,name)
 {
 	++NumDev;
-	OneWire *ow = OneWire::getInstance();
-	bool ready = false;
-	if (0 == ow->sendCommand(getId(),DS18B20_READ)) {	// read scratchpad
-		uint8_t sp[5];
-		for (int i = 0; i < sizeof(sp); ++i)
-			sp[i] = ow->readByte();
-		if ((sp[4] & 0x9f) == 0x1f) {
-			m_res = (res_t)((sp[4] >> 5 ) & 3);
-			log_dbug(TAG,"resolution is %ubits",m_res+9);
-			ready = true;
-		}
-	}
-	if (ready) {
-		action_add(concat(name,"!sample"),sample,this,"trigger DS18B20 convertion/sampling");
-		action_add(concat(name,"!setres9b"),set_res9b,this,"set conversion resolution to 9bit");
-		action_add(concat(name,"!setres10b"),set_res10b,this,"set conversion resolution to 10bit");
-		action_add(concat(name,"!setres11b"),set_res11b,this,"set conversion resolution to 11bit");
-		action_add(concat(name,"!setres12b"),set_res12b,this,"set conversion resolution to 12bit");
-	} else {
-		log_warn(TAG,"device %s is not ready",name);
-	}
+	action_add(concat(name,"!sample"),sample,this,"trigger DS18B20 convertion/sampling");
+	action_add(concat(name,"!setres9b"),set_res9b,this,"set conversion resolution to 9bit");
+	action_add(concat(name,"!setres10b"),set_res10b,this,"set conversion resolution to 10bit");
+	action_add(concat(name,"!setres11b"),set_res11b,this,"set conversion resolution to 11bit");
+	action_add(concat(name,"!setres12b"),set_res12b,this,"set conversion resolution to 12bit");
 }
 
 
@@ -113,14 +97,28 @@ int DS18B20::create(uint64_t id, const char *n)
 {
 	if ((id & 0xff) != 0x28)
 		return 1;
-	log_dbug(TAG,"device id " IDFMT,IDARG(id));
 	if (n == 0) {
 		char name[32];
 		sprintf(name,"ds18b20_%u",NumDev);
 		n = strdup(name);
 	}
-	new DS18B20(id,n);
-	return 0;
+	OneWire *ow = OneWire::getInstance();
+	if (0 == ow)
+		return 1;
+	res_t res = res_12b;
+	if (0 == ow->sendCommand(id,DS18B20_READ)) {	// read scratchpad
+		uint8_t sp[5];
+		for (int i = 0; i < sizeof(sp); ++i)
+			sp[i] = ow->readByte();
+		if ((sp[4] & 0x9f) == 0x1f) {
+			res = (res_t)((sp[4] >> 5 ) & 3);
+			log_dbug(TAG,"add device " IDFMT ", resolution %ubits",IDARG(id),res+9);
+			new DS18B20(id,n);
+			return 0;
+		}
+	}
+	log_warn(TAG,"device " IDFMT " is not ready",IDARG(id));
+	return 1;
 }
 
 
@@ -209,9 +207,10 @@ void DS18B20::set_resolution(res_t r)
 
 void DS18B20::attach(EnvObject *o)
 {
-	cyclic_add_task(m_name,cyclic,this,0);
-	if (m_json == 0)
-		m_json = o->add(m_name,NAN,"\u00b0C");
+	if (m_json == 0) {
+		if (0 == cyclic_add_task(m_name,cyclic,this,0))
+			m_json = o->add(m_name,NAN,"\u00b0C");
+	}
 }
 
 #endif // CONFIG_ONEWIRE

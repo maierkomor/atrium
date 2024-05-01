@@ -449,27 +449,6 @@ const char *led_set(Terminal &term, int argc, const char *args[])
 			return "Invalid argument #2.";
 		return 0;
 	}
-	/*
-	if (argc == 3) {
-		if (m->mode < sizeof(ModeNames)/sizeof(ModeNames[0]))
-			term.printf("%s mode %s\n",Status->mode != 0 ? "auto" : "manual",ModeNames[Status->mode]);
-		else
-			term.printf("invalid mode %d\n",Status->mode);
-		return 0;
-	}
-	if (0 == strcmp(args[2],"auto")) {
-		Status->mode = ledmode_on;
-		Status->state = MODEOFF_ON;
-		return 0;
-	}
-	for (size_t i = 0; i < sizeof(ModeNames)/sizeof(ModeNames[0]); ++i) {
-		if (!strcmp(args[1],ModeNames[i])) {
-			Status->state = ModeOffset[i];
-			Status->mode = ledmode_auto;
-			return 0;
-		}
-	}
-	*/
 	return "Invalid argument #1.";
 }
 

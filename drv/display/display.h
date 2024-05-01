@@ -95,7 +95,7 @@ struct TextDisplay
 	virtual uint16_t charsPerLine() const
 	{ return 0; }
 
-	virtual uint16_t charWidth(char c) const
+	virtual uint16_t charWidth(uint32_t c) const
 	{ return 1; }
 
 	// may change after changing the font
@@ -139,18 +139,17 @@ struct TextDisplay
 	virtual void clrEol()
 	{ }
 
-	virtual int init()
-	{ return 0; }
-
-	virtual const Font *getFont(unsigned f) const
+	virtual const Font *getFont(int f) const
 	{ return 0; }
 	virtual const Font *getFont(const char *) const
 	{ return 0; }
-	virtual const Font *setFont(unsigned)
+	virtual const Font *setFont(int)
 	{ return 0; }
 	virtual const Font *setFont(const char *)
 	{ return 0; }
-	virtual void setFont(unsigned, const Font *)
+	virtual void setFont(int, const Font *)
+	{ }
+	virtual void setFont(const Font *)
 	{ }
 
 	void initOK();
@@ -204,16 +203,20 @@ struct MatrixDisplay : public TextDisplay
 	}
 	*/
 
-	int init() override;
+	void initFonts();
+	virtual int init(uint16_t maxx, uint16_t maxy, uint8_t options)
+	{ return 0; }
 
 	virtual pxlfmt_t pixelFormat() const
 	{ return pxf_invalid; }
 
-	const Font *getFont(unsigned f) const override;
+	const Font *getFont(int f) const override;
 	const Font *getFont(const char *fn) const override;
-	const Font *setFont(unsigned) override;
+	const Font *setFont(int) override;
 	const Font *setFont(const char *) override;
-	void setFont(unsigned, const Font *) override;
+	void setFont(int , const Font *) override;
+	void setFont(const Font *f) override
+	{ m_font = f; }
 
 	const Font *getFont() const
 	{ return m_font; }
@@ -221,7 +224,7 @@ struct MatrixDisplay : public TextDisplay
 	const std::vector<Font> &getFonts() const
 	{ return m_xfonts; }
 
-	uint16_t charWidth(char c) const override;
+	uint16_t charWidth(uint32_t c) const override;
 	uint16_t fontHeight() const;
 	void clrEol() override;
 	uint16_t charsPerLine() const override
@@ -249,10 +252,10 @@ struct MatrixDisplay : public TextDisplay
 	virtual void drawHLine(uint16_t x0, uint16_t y0, uint16_t len, int32_t col = -1);
 	virtual void drawVLine(uint16_t x0, uint16_t y0, uint16_t len, int32_t col = -1);
 	virtual unsigned drawText(uint16_t x, uint16_t y, const char *txt, int n = -1, int32_t fg = -1, int32_t bg = -1);
-	virtual unsigned drawChar(uint16_t x, uint16_t y, char c, int32_t fg, int32_t bg);
+	virtual unsigned drawChar(uint16_t x, uint16_t y, uint32_t c, int32_t fg, int32_t bg);
 	virtual void drawIcon(uint16_t x0, uint16_t y0, const char *fn, int32_t fg);
 
-	unsigned textWidth(const char *, int l = -1, fontid_t font = font_default);
+	unsigned textWidth(const char *, int l = -1, int font = 0) const;
 
 	virtual int setInvert(bool)
 	{ return -1; }
@@ -368,5 +371,6 @@ struct SegmentDisplay : public TextDisplay
 	addrmode_t m_addrmode;
 };
 
+extern const font_t *DefaultFonts[];
 
 #endif

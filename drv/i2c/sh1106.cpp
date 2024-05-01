@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2023, Thomas Maier-Komor
+ *  Copyright (C) 2023-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -62,7 +62,7 @@ SH1106::SH1106(uint8_t bus, uint8_t addr)
 }
 
 
-int SH1106::init(uint8_t maxx, uint8_t maxy, uint8_t hwcfg)
+int SH1106::init(uint16_t maxx, uint16_t maxy, uint8_t hwcfg)
 {
 	log_info(TAG,"init(%u,%u)",maxx,maxy);
 	m_width = maxx;

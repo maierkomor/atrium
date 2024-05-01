@@ -38,7 +38,7 @@ using namespace std;
 #define TAG MODULE_EVENT
 #define STATIC_TASK
 
-#if!defined APP_CPU_NUM || defined CONFIG_FREERTOS_UNICORE
+#if !defined APP_CPU_NUM || defined CONFIG_FREERTOS_UNICORE
 #define EVENT_CPU_NUM 0
 #else
 #define EVENT_CPU_NUM APP_CPU_NUM
@@ -535,11 +535,12 @@ void event_init(void)
 int event_start(void)
 {
 #ifdef CONFIG_IDF_TARGET_ESP8266
+	// static task allocation support is missing
 	xTaskCreate(&event_task, "events", CONFIG_EVENT_STACK_SIZE, (void*)0, 9, 0);
 #elif defined STATIC_TASK
-	xTaskCreateStaticPinnedToCore(&event_task, "events", sizeof(EventStack), (void*)0, 9, EventStack, &EventTask, EVENT_CPU_NUM);
+	xTaskCreateStatic(&event_task, "events", sizeof(EventStack), (void*)0, 9, EventStack, &EventTask);
 #else
-	BaseType_t r = xTaskCreatePinnedToCore(&event_task, "events", 8*1024, (void*)0, 9, NULL, 1);
+	BaseType_t r = xTaskCreatePinnedToCore(&event_task, "events", 8*1024, (void*)0, 9, NULL, EVENT_CPU_NUM);
 	if (r != pdPASS) {
 		log_error(TAG,"create task: %d",r);
 		return 1;
