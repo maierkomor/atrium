@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021-2023, Thomas Maier-Komor
+ *  Copyright (C) 2021-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -44,6 +44,7 @@
 #include <lwip/priv/tcpip_priv.h>
 
 #include <esp_event.h>
+#include <esp_netif.h>
 
 #include <string.h>
 #include <stdlib.h>
@@ -67,6 +68,7 @@
 #define TYPE_HINFO	13
 #define TYPE_TXT	16
 #define TYPE_ADDR6	28
+#define CACHE_FLUSH	0x8000
 
 #define SIZEOF_ANSWER	10
 #define SIZEOF_HEADER	12
@@ -455,18 +457,16 @@ static int parseAnswer(struct pbuf *p, size_t off, const ip_addr_t *sender)
 	}
 	ip_addr_t ip = IPADDR4_INIT(0);
 	char ipstr[64];
-	// why mask bit 15?
-//	if (((a.rr_class & 0x7fff) == TYPE_ADDR) && (a.rdlen == 4)) {
-	if ((a.rr_class == TYPE_ADDR) && (a.rdlen == 4)) {
+	// mask bit 15, as it is the cache-flush-flag
+	if (((a.rr_class & 0x7fff) == TYPE_ADDR) && (a.rdlen == 4)) {
 		if (4 != pbuf_copy_partial(p,ip_2_ip4(&ip),a.rdlen,off)) {
 			log_devel(TAG,"copy1 failed");
 			return -off;
 		}
 		log_devel(TAG,"IPv4 %s",ip2str_r(&ip,ipstr,sizeof(ipstr)));
-#if defined CONFIG_LWIP_IPV6 //|| defined ESP32
-	// why mask bit 15?
-//	} else if (((a.rr_class & 0x7fff) == TYPE_ADDR) && (a.rdlen == 16)) {
-	} else if ((a.rr_class == TYPE_ADDR) && (a.rdlen == 16)) {
+#if defined CONFIG_LWIP_IPV6
+	// mask bit 15, as it is the cache-flush-flag
+	} else if (((a.rr_class & 0x7fff) == TYPE_ADDR) && (a.rdlen == 16)) {
 		if (16 != pbuf_copy_partial(p,ip_2_ip6(&ip),a.rdlen,off)) {
 			log_devel(TAG,"copy2 %d@0x%x failed",a.rdlen,off);
 			return -off;
@@ -477,7 +477,7 @@ static int parseAnswer(struct pbuf *p, size_t off, const ip_addr_t *sender)
 		log_dbug(TAG,"ignoring PTR");
 		return off+a.rdlen;
 	} else {
-		log_hex(TAG,&a,sizeof(a),"ignoring class 0x%x, len %d",a.rr_class,a.rdlen);
+		log_hex(TAG,&a,sizeof(a),"ignoring class 0x%x, len %d",a.rr_class&0x7fff,a.rdlen);
 		return off+a.rdlen;
 	}
 	off += a.rdlen;
@@ -518,8 +518,8 @@ static inline void sendOwnIp(uint8_t *q, uint16_t ql, uint16_t id, const ip_addr
 	pkt += 7;
 	Answert a;
 	a.rr_type = htons(TYPE_ADDR);
-	a.rr_class = htons(CLASS_INET);
-	a.ttl = htonl(10000);
+	a.rr_class = htons(CLASS_INET|CACHE_FLUSH);
+	a.ttl = htonl(120);
 	a.rdlen = htons(4);
 	memcpy(pkt,&a,SIZEOF_ANSWER);
 	pkt += SIZEOF_ANSWER;
@@ -555,7 +555,7 @@ static inline void sendOwnIp(uint8_t *q, uint16_t ql, uint16_t id, const ip_addr
 
 static inline void sendOwnIp6(uint8_t *q, uint16_t ql, uint16_t id, const ip_addr_t *qip, uint16_t port)
 {
-#if defined CONFIG_LWIP_IPV6 || defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
+#if defined CONFIG_LWIP_IPV6
 	// caller ensures: Ctx != 0, State == mdns_up
 	if (ip6_addr_isany_val(IP6G))
 		return;
@@ -741,6 +741,8 @@ static int parseQuestion(struct pbuf *p, size_t qoff, uint16_t id, const ip_addr
 	qtype = ntohs(qtype);
 	qclass = ntohs(qclass);
 	log_devel(TAG,"question %d/%d: %s",qtype,qclass,hname);
+	if (0 == id)
+		id = ++Id;
 	if (	((qclass == CLASS_INET) && (0 == strcmp(hname,Hostname)))
 		|| ((0 == memcmp(hname,Hostname,HostnameLen)) && (0 == memcmp(hname+HostnameLen,".local",7)))) {
 		log_devel(TAG,"question for this host");
@@ -779,12 +781,12 @@ static int skipQuestion(struct pbuf *p, size_t off)
 
 static void recv_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *ip, u16_t port)
 {
-//	log_hex(TAG,p->payload,p->len,"packet from %s",ip2str(ip));
 	if (Modules[0] || Modules[TAG]) {
 		char ipstr[40];
 		if (ip)
 			ip2str_r(ip,ipstr,sizeof(ipstr));
 		log_direct(ll_debug,TAG,"packet from %s",ip ? ipstr : "<unknwon>");
+		//log_hex(TAG,p->payload,p->len,"packet from %s",ipstr);
 	}
 	Header h;
 	if (p->len < sizeof(h)) {
@@ -1030,6 +1032,7 @@ static err_t sendSelfQuery()
 	assert(p->len == p->tot_len);
 	bzero(p->payload,SIZEOF_HEADER);
 	Header *hdr = (Header *)p->payload;
+	hdr->id = Id++;
 	hdr->qcnt = htons(1);
 	uint8_t *pkt = (uint8_t*)p->payload;
 	size_t off = SIZEOF_HEADER;
@@ -1165,13 +1168,22 @@ static void wifi_down(void *)
 
 static inline void mdns_init_fn(void *)
 {
-#if 0
+#if IDF_VERSION >= 50
+	esp_netif_t *nif = 0;
+	while (0 != (nif = esp_netif_next(nif))) {
+		esp_netif_ip_info_t ipconfig;
+		if (esp_err_t e = esp_netif_get_ip_info(nif,&ipconfig)) {
+			log_warn(TAG,"unable to get ip info for interface %p: %s",nif,esp_err_to_name(e));
+		} else {
+			IP4.addr = ipconfig.ip.addr;
+		}
+	}
+#else
 	tcpip_adapter_ip_info_t ipconfig;
 	assert(Mtx);
-	if (ESP_OK == tcpip_adapter_get_ip_info(TCPIP_ADAPTER_IF_STA, &ipconfig)) {
+	if (ESP_OK == tcpip_adapter_get_ip_info(TCPIP_ADAPTER_IF_STA, &ipconfig))
 		if (0 != ipconfig.ip.addr)
 			IP4 = ipconfig.ip;
-	}
 #endif
 #if LWIP_IPV6
 	if (MPCB6 == 0) {
@@ -1197,7 +1209,18 @@ static inline void mdns_init_fn(void *)
 		IP_ADDR4(&mdns,224,0,0,251);
 		if (err_t e = udp_connect(MPCB,&mdns,MDNS_PORT))
 			log_warn(TAG,"connect 224.0.0.251: %s",strlwiperr(e));
-#if 0
+#if IDF_VERSION >= 50
+		esp_netif_t *nif = 0;
+		while (0 != (nif = esp_netif_next(nif))) {
+			esp_netif_ip_info_t ipconfig;
+			if (esp_err_t e = esp_netif_get_ip_info(nif,&ipconfig)) {
+				log_warn(TAG,"unable to get ip info for interface %p: %s",nif,esp_err_to_name(e));
+			} else if (err_t e = igmp_joingroup((const ip4_addr_t*)&ipconfig.ip,ip_2_ip4(&mdns)))
+				log_warn(TAG,"unable to join MDNS group: %d",e);
+			else
+				log_dbug(TAG,"initialized MDNS");
+		}
+#else
 		if (err_t e = igmp_joingroup(&ipconfig.ip,ip_2_ip4(&mdns)))
 			log_warn(TAG,"unable to join MDNS group: %d",e);
 		else

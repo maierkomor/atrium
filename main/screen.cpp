@@ -133,7 +133,7 @@ static bool mode_enabled(const char *mode)
 }
 
 
-static const char *env_title(const char *path)
+static inline const char *env_title(const char *path)
 {
 	const auto &envs = Config.screen().envs();
 #if 0	// compiler bug on ESP32-S3
@@ -141,8 +141,8 @@ static const char *env_title(const char *path)
 #else
 	size_t n = envs.size();
 	for (int i = 0; i < n; ++i) {
-#endif
 		const auto &e = envs[i];
+#endif
 		if (0 == strcmp(path,e.path().c_str())) {
 			const auto &t = e.title();
 			if (!t.empty())

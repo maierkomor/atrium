@@ -2398,12 +2398,9 @@ static void print_ipinfo(Terminal &t, esp_netif_t *itf, esp_netif_ip_info_t *i)
 	if (ESP_OK == esp_netif_get_mac(itf,mac))
 		t.printf("\tmac       : %02x:%02x:%02x:%02x:%02x:%02x\n",
 			mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
-	esp_netif_ip_info_t ipconfig;
-	if (ESP_OK == esp_netif_get_ip_info(itf,&ipconfig)) {
-		ip4addr_ntoa_r((ip4_addr_t *)&i->ip.addr,ipstr,sizeof(ipstr));
-		ip4addr_ntoa_r((ip4_addr_t *)&i->gw.addr,gwstr,sizeof(gwstr));
-		t.printf("\tipv4      : %s/%d, gw: %s, %s\n",ipstr,m,gwstr,esp_netif_is_netif_up(itf) ? "up":"down");
-	}
+	ip4addr_ntoa_r((ip4_addr_t *)&i->ip.addr,ipstr,sizeof(ipstr));
+	ip4addr_ntoa_r((ip4_addr_t *)&i->gw.addr,gwstr,sizeof(gwstr));
+	t.printf("\tipv4      : %s/%d, gw: %s, %s\n",ipstr,m,gwstr,esp_netif_is_netif_up(itf) ? "up":"down");
 #if defined CONFIG_LWIP_IPV6
 	esp_ip6_addr_t ip6;
 	if (ESP_OK == esp_netif_get_ip6_linklocal(itf,&ip6)) {
@@ -2437,12 +2434,11 @@ static const char *ifconfig(Terminal &term, int argc, const char *args[])
 		return "Invalid number of arguments.";
 	}
 #if IDF_VERSION >= 50
-	esp_netif_t *nif = esp_netif_next(0);
-	while (nif) {
+	esp_netif_t *nif = 0;
+	while (0 != (nif = esp_netif_next(nif))) {
 		esp_netif_ip_info_t ipconfig;
 		if (ESP_OK == esp_netif_get_ip_info(nif,&ipconfig))
 			print_ipinfo(term, nif, &ipconfig);
-		nif = esp_netif_next(nif);
 	} 
 #else
 	tcpip_adapter_ip_info_t ipconfig;

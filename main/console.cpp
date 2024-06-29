@@ -123,8 +123,7 @@ extern "C" {
 void console_setup()
 {
 #ifdef CONFIG_USB_DIAGLOG
-	if (!HWConf.system().usb_diag())
-		UsbDiag = 0;
+	UsbDiag = HWConf.system().usb_diag();
 #endif
 	uart_console_setup();
 	jtag_console_setup();

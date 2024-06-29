@@ -334,9 +334,7 @@ void app_main()
 #endif
 	fs_init();
 
-#ifdef CONFIG_UART_CONSOLE
 	console_setup();
-#endif
 	verify_heap();
 
 	event_start();
