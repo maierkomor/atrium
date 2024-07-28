@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2023, Thomas Maier-Komor
+ *  Copyright (C) 2018-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -411,18 +411,16 @@ const char *romfs_setup()
 	log_dbug(TAG,"looking for " ROMFS_MAGIC);
 	while (pi != 0) {
 		p = esp_partition_get(pi);
-		uint8_t magic[8];
-#if IDF_VERSION >= 50
-		esp_partition_read_raw(p,0,(char *)magic,sizeof(magic));
-#else
-		spi_flash_read(p->address,magic,sizeof(magic));
-#endif
-		log_hex(TAG,magic,sizeof(magic),"partition %s",p->label);
-		if (0 == memcmp(magic,ROMFS_MAGIC,sizeof(magic))) {
-			log_info(TAG,"%s has ROMFS",p->label);
-			break;
+		uint8_t magic[8] = { 0 };
+		if (esp_err_t e = esp_partition_read(p,0,(char *)magic,sizeof(magic))) {
+			log_warn(TAG,"read partition %s: %s",p->label,esp_err_to_name(e));
+		} else {
+			log_hex(TAG,magic,sizeof(magic),"partition %s",p->label);
+			if (0 == memcmp(magic,ROMFS_MAGIC,sizeof(magic))) {
+				break;
+			}
+			log_dbug(TAG,"%s has no ROMFS",p->label);
 		}
-		log_dbug(TAG,"%s has no ROMFS",p->label);
 		pi = esp_partition_next(pi);
 		p = 0;
 	}
@@ -446,10 +444,10 @@ const char *romfs_setup()
 	}
 #endif
 	if (p == 0) {
-		log_dbug(TAG,"no romfs found");
+		log_info(TAG,"no romfs found");
 		return 0;
 	}
-	log_dbug(TAG,"using partition %s",p->label);
+	log_info(TAG,"ROMFS on partition %s",p->label);
 
 	RomfsBaseAddr = p->address;
 	RomfsSpace = p->size;

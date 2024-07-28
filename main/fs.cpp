@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2023, Thomas Maier-Komor
+ *  Copyright (C) 2018-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -118,6 +118,34 @@ static struct dirent *rootfs_vfs_readdir(DIR *d)
 		return r;
 	return 0;
 }
+
+
+#if 0 // not needed, as stat is directed to child filesystem
+static int rootfs_vfs_stat(const char *fn, struct stat *st)
+{
+	log_dbug(TAG,"rootfs_vfs_stat(%s,...)",fn);
+	if ((0 == fn) || (0 == st))
+		return EINVAL;
+	for (int e = 0; e < (sizeof(RootEntr)/sizeof(RootEntr[0])); ++e) {
+		if ((0 != RootEntr[e]) && (0 == strcmp(fn,RootEntr[e]))) {
+			st->st_mode = S_IFDIR;
+			return 0;
+		}
+	}
+	return -1;
+}
+
+
+static int rootfs_vfs_fstat(int fd, struct stat *st)
+{
+	log_dbug(TAG,"rootfs_vfs_fstat(%d,...)",fd);
+	if (0 == st)
+		return EINVAL;
+	abort();
+	// TODO
+	return 0;
+}
+#endif // no stat/fstat
 #endif
 
 
@@ -147,6 +175,10 @@ void rootfs_init()
 	vfs.opendir = rootfs_vfs_opendir;
 	vfs.readdir = rootfs_vfs_readdir;
 	vfs.readdir_r = rootfs_vfs_readdir_r;
+#if 0 // not needed, as stat is directed to child filesystem
+	vfs.fstat = rootfs_vfs_fstat;
+	vfs.stat = rootfs_vfs_stat;
+#endif
 	if (esp_err_t e = esp_vfs_register("",&vfs,0))
 		log_warn(TAG,"VFS register rootfs: %s",esp_err_to_name(e));
 	else
@@ -287,7 +319,9 @@ static void init_hwconf()
 
 static void romfs_init()
 {
-#ifndef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
+#ifdef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
+	romfs_setup();
+#else
 	if (const char *r = romfs_setup()) {
 		rootfs_add(r);
 	}
@@ -315,7 +349,7 @@ const char *shell_format(Terminal &term, int argc, const char *args[])
 	}
 #else
 	if (argc != 2)
-		return "Missing argument.";
+		return "Invalid number of arguments.";
 #if defined CONFIG_SPIFFS
 	return shell_format_spiffs(term,args[1]) ? "Failed." : 0;
 #endif

@@ -1,3 +1,7 @@
+R2407:
+======
+- fix ROMFS missing on 1MB builds
+
 R2406:
 ======
 - fix mDNS regression caused by IDF update
