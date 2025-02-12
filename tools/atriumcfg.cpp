@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2023, Thomas Maier-Komor
+ *  Copyright (C) 2020-2025, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -195,9 +195,11 @@ int read_file(const char *fn, vector<char> &b)
 }
 
 
-int parse_buffer(char *buf, size_t n)
+int parse_buffer(char *buf, size_t n, Message *m = 0)
 {
 	int r;
+	if (0 != m)
+		return m->fromMemory(buf,n) < 0;
 	if (n > 4) {
 		uint8_t hwmagic[] = {0x5,0xcb,0xed,0x54,0xae};
 		uint8_t swmagic[] = {0x5,0xc0,0xed,0x54,0xae};
@@ -229,11 +231,33 @@ static int parse_xxd(const char *fn)
 {
 	// accepted format:
 	// <offset>: <byte> <byte> <byte>
+	Message *m = 0;
 	vector<char> in;
 	if (fn) {
-		if (read_file(fn,in))
-			return -1;
-	} else {
+		m = Software ? NodeCfg.getMember(fn) : HwCfg.getMember(fn);
+		if ((0 == m) && (0 != read_file(fn,in))) {
+			return 1;
+		}
+		// WORKAROUND:
+		// the following is a hack to tell the parent that this
+		// element is now valid. Otherwise an element that
+		// had the p_validbit in its parent not set, would not
+		// be visible in the tree, as the member would be seen
+		// as invalid/unset.
+		// The correct solution would be to have the getMember
+		// function set the validbit implicitly, but this would
+		// require duplicating getMember to getMember()const as
+		// this would cause different problems otherwise.
+		// Errors above are deliberately ignored here, as
+		// fromMemory could have filled the member partly.
+		size_t l = strlen(fn);
+		char member[l+2];
+		memcpy(member,fn,l);
+		member[l] = '.';
+		member[l+1] = 0;
+		m->setByName(member,"0");	// this gives an error, but also sets the validbit
+	}
+	if (in.empty()) {
 		char line[128], *l;
 		do {
 			l = fgets(line,sizeof(line),stdin);
@@ -276,7 +300,7 @@ static int parse_xxd(const char *fn)
 			valid = true;
 		}
 	}
-	return parse_buffer(out.data(),out.size());
+	return parse_buffer(out.data(),out.size(),m);
 }
 
 
@@ -760,6 +784,10 @@ int set_config(const char *key)
 	// The rest of the line is the argument.
 	// e.g. system.board_name may have spaces
 	const char *value = strtok(0,"");
+	if (0 == value) {
+		printf("missing argument");
+		return 1;
+	}
 	if (Software)
 		return NodeCfg.setByName(key,value) < 0;
 	else
@@ -1042,18 +1070,29 @@ void print_hex(uint8_t *b, size_t s, size_t off = 0)
 }
 
 
-int print_hex(const char *ignored)
+int print_hex(const char *subtree)
 {
-	size_t s;
-	if (Software)
-		s = NodeCfg.calcSize();
-	else
-		s = HwCfg.calcSize();
+	Message *tree = 0;
+	if (0 == subtree) {
+		if (Software) {
+			tree = &NodeCfg;
+		} else {
+			tree = &HwCfg;
+		}
+	} else {
+		if (Software) {
+			tree = NodeCfg.getMember(subtree);
+		} else {
+			tree = HwCfg.getMember(subtree);
+		}
+	}
+	if (0 == tree) {
+		printf("invald element\n");
+		return 1;
+	}
+	size_t s = tree->calcSize();
 	uint8_t *b = (uint8_t*)malloc(s);
-	if (Software)
-		NodeCfg.toMemory(b,s);
-	else
-		HwCfg.toMemory(b,s);
+	tree->toMemory(b,s);
 	print_hex(b,s);
 	free(b);
 	return 0;

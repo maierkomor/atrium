@@ -858,6 +858,7 @@ void xlua_setup()
 			char tmp[fn.size()+8];
 			memcpy(tmp,"/flash/",7);
 			memcpy(tmp+7,f,fn.size()+1);
+			log_info(TAG,"parsing file %s",tmp);
 			xlua_parse_file(tmp);
 		}
 	}

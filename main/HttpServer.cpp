@@ -109,14 +109,16 @@ bool HttpServer::runDirectory(HttpRequest *req)
 	memcpy(fn,m_wwwroot,rl);
 	memcpy(fn+rl,uri,ul+1);
 	HttpResponse ans;
+	const char *res;
 	int fd = open(fn,O_RDONLY);
 	if (fd == -1) {
 		log_warn(TAG,"open of %s failed",fn);
-		ans.setResult(HTTP_NOT_FOUND);
+		res = HTTP_NOT_FOUND;
 	} else {
 		log_info(TAG,"sending file %s",fn);
-		ans.setResult(HTTP_OK);
+		res = HTTP_OK;
 	}
+	ans.setResult(res);
 	ans.senddata(req->getConnection(),fd);
 	return true;
 #else
@@ -227,14 +229,16 @@ void HttpServer::addMemory(const char *name, const char *contents)
 bool HttpServer::runMemory(HttpRequest *req)
 {
 	auto m = m_memfiles.find(req->getURI());
-	if (m == m_memfiles.end())
-		return false;
-	log_dbug(TAG,"memfile %s",req->getURI());
-	HttpResponse ans;
-	ans.setResult(HTTP_OK);
-	ans.addContent(m->second);
-	ans.senddata(req->getConnection());
-	return true;
+	bool r = false;
+	if (m != m_memfiles.end()) {
+		log_dbug(TAG,"memfile %s",req->getURI());
+		HttpResponse ans;
+		ans.setResult(HTTP_OK);
+		ans.addContent(m->second);
+		ans.senddata(req->getConnection());
+		r = true;
+	}
+	return r;
 }
 #endif
 

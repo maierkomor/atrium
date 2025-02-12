@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #
-#  Copyright (C) 2018-2023, Thomas Maier-Komor
+#  Copyright (C) 2018-2025, Thomas Maier-Komor
 #  Atrium Distribution for ESP
 #
 #  This program is free software: you can redistribute it and/or modify
@@ -56,7 +56,7 @@ while getopts "d:fnh" opt; do
 	esac
 done
 
-cmds="git make wget g++ flex bison gperf pip"
+cmds="git " #make wget g++ flex bison gperf pip"
 
 #echo $cmds
 IFS=' '
@@ -71,10 +71,10 @@ do
 	fi
 done
 
-if [ ! -e /usr/include/md5.h ]; then
-	echo please install libmd-dev package with md5.h and libmd
-	exit 1
-fi
+#if [ ! -e /usr/include/md5.h ]; then
+#	echo please install libmd-dev package with md5.h and libmd
+#	exit 1
+#fi
 
 if [ "$interactive" != "0" ]; then
 	echo This script will download crosstools, SDKs and WFC to a directory given with option -d, if needed.
@@ -90,96 +90,10 @@ if [ -e settings.mk ]; then
 	fi
 fi
 
-#if [ "$XTOOLS_ESP32" != "" ]; then
-#	PATH=$PATH:$XTOOLS_ESP32/bin
-#fi
-#
-#if [ "$XTOOLS_ESP8266" != "" ]; then
-#	PATH=$PATH:$XTOOLS_ESP8266/bin
-#fi
-
 if [ ! -d $installdir ]; then
 	echo creating install direcotry $installdir
 	mkdir -p $installdir
 fi
-
-## esp8266 crosstools
-#ESP8266_GCC=`which xtensa-lx106-elf-gcc`
-#if [ "$?" == "1" ]; then
-#	# look if it is already installed
-#	ESP8266_GCC="$installdir/xtensa-lx106-elf/bin/xtensa-lx106-elf-gcc"
-#	if [ ! -x "$ESP8266_GCC" ]; then
-#		ESP8266_GCC=""
-#	fi
-#fi
-#if [ "" == "$ESP8266_GCC" ]; then
-#	if [ "$installdir" == "" ]; then
-#		echo ESP8266 crosstools missing: xtensa-lx106-elf-gcc could not be found.
-#		echo Please download, install, and adjust path manually or use option -d to trigger download.
-#		exit 1
-#	fi
-#	pushd $installdir
-#	if [ `uname -m` == "x86_64" ]; then
-#		xtools=xtensa-lx106-elf-linux64-1.22.0-100-ge567ec7-5.2.0.tar.gz
-#	else
-#		xtools=xtensa-lx106-elf-linux32-1.22.0-100-ge567ec7-5.2.0.tar.gz
-#	fi
-#	if [ "1" == "$interactive" ]; then
-#		echo OK to start download of esp8266 xtools? Press CTRL-C to cancel.
-#		read
-#	else
-#		echo starting download of $xtools
-#	fi
-#	wget https://dl.espressif.com/dl/$xtools || exit 1
-#	tar xf $xtools || exit 1
-#	rm $xtools
-#	popd > /dev/null
-#	XTOOLS_ESP8266="$installdir/xtensa-lx106-elf/bin"
-#else
-#	XTOOLS_ESP8266=`dirname $ESP8266_GCC`
-#	echo ESP8266 xtools found at $XTOOLS_ESP8266
-#fi
-#XTOOLS_ESP8266=`dirname $XTOOLS_ESP8266`
-#echo "# xtools for esp8266" >> $settings
-#echo "XTOOLS_ESP8266=$XTOOLS_ESP8266" >> $settings
-#PATH=$PATH:$XTOOLS_ESP8266
-
-## esp8266 crosstools
-#ESP32_GCC=`which xtensa-esp32-elf-gcc`
-#if [ "$?" == "1" ]; then
-#	ESP32_GCC="$installdir/xtensa-esp32-elf/bin/xtensa-esp32-elf-gcc"
-#	if [ ! -x "$ESP32_GCC" ]; then
-#		ESP32_GCC=""
-#	fi
-#fi
-#if [ "" == "$ESP32_GCC" ]; then
-#	if [ "$installdir" == "" ]; then
-#		echo ESP32 crosstools missing: xtensa-esp32-elf-gcc could not be found.
-#		echo Please download, install, and adjust path manually or use option -d to trigger download.
-#		exit 1
-#	fi
-#	pushd $installdir
-#	if [ `uname -m` == "x86_64" ]; then
-#		xtools=xtensa-esp32-elf-linux64-1.22.0-96-g2852398-5.2.0.tar.gz
-#	else
-#		xtools=xtensa-esp32-elf-linux32-1.22.0-96-g2852398-5.2.0.tar.gz
-#	fi
-#	if [ "1" == "$interactive" ]; then
-#		echo OK to start download of esp32 xtools? Press CTRL-C to cancel.
-#		read
-#	else
-#		echo starting download of $xtools
-#	fi
-#	wget https://dl.espressif.com/dl/$xtools || exit 1
-#	tar xf $xtools || exit 1
-#	rm $xtools
-#	popd > /dev/null
-#	XTOOLS_ESP32="$installdir/xtensa-esp32-elf/bin"
-#else
-#	XTOOLS_ESP32=`dirname $ESP32_GCC`
-#	echo ESP32 xtools found at $XTOOLS_ESP32
-#fi
-
 
 echo =======
 echo ESP8266
@@ -190,6 +104,19 @@ if [ "$IDF_ESP8266" == "" ]; then
 	if [ -d "$installdir/idf-esp8266" ]; then
 		IDF_ESP8266="$installdir/idf-esp8266"
 	fi
+fi
+VENVDIR="$installdir/esp8266-venv"
+PATH=$VENVDIR/bin:$PATH
+export PATH
+if [ ! -d "$VENVDIR" ]; then
+	python3 -m venv "$VENVDIR" || exit 1
+	$VENVDIR/bin/pip install virtualenv
+fi
+if [ ! -d "$HOME/.espressif/python_env/idf3.3_py3.12_env" ]; then
+	python3 -m venv "$HOME/.espressif/python_env/idf3.3_py3.12_env" || exit 1
+fi
+if [ ! -d "$HOME/.espressif/python_env/rtos3.3_py3.12_env" ]; then
+	python3 -m venv "$HOME/.espressif/python_env/rtos3.3_py3.12_env" || exit 1
 fi
 if [ "$IDF_ESP8266" == "" ]; then
 	if [ "$installdir" == "" ]; then
@@ -215,20 +142,17 @@ git reset --hard v3.3 || exit 1
 git submodule deinit -f --all
 git switch release/v3.3
 git submodule update --init
-echo install tools
-python2 -m pip install --upgrade pip
-IDF_PATH="$IDF_ESP8266" python2 tools/check_python_dependencies.py
-IDF_PATH=`pwd` python2 tools/idf_tools.py install-python-env || exit 1
-IDF_PATH=`pwd` python2 tools/idf_tools.py install || exit 1
+#patch -p1 < ../../patches/esp8266_python.diff
+echo install tools with $VENVDIR/bin
+PATH="$VENVDIR/bin:$PATH" IDF_PATH=`pwd` python3 tools/idf_tools.py install || exit 1
+PATH="$VENVDIR/bin:$PATH" IDF_PATH=`pwd` python3 tools/idf_tools.py install-python-env || exit 1
 popd > /dev/null
 
 echo settings for $IDF_ESP8266
 pushd "$IDF_ESP8266"
 echo IDF_ESP8266=$IDF_ESP8266 >> $settings
-IDF_PATH="$IDF_ESP8266" python2 "tools/idf_tools.py" export | sed "s/export //g;s/=/_ESP8266=/g;s/;/\n/g;s/\"//g" >> $settings
+IDF_PATH="$IDF_ESP8266" python3 "tools/idf_tools.py" export | sed "s/export //g;s/=/_ESP8266=/g;s/;/\n/g;s/\"//g" >> $settings
 popd > /dev/null
-echo checking requirements of ESP8266 IDF in $IDF_ESP8266
-#IDF_PATH=$IDF_ESP8266 python2 -m pip install --user -r requirements.txt
 
 echo ===================
 cat $settings
@@ -267,11 +191,11 @@ if [ "$IDF_ESP32" == "" ]; then
 fi
 pushd $IDF_ESP32
 git pull --recurse-submodule
-git reset --hard v5.1.1
+git reset --hard v5.1.5
 git submodule deinit -f --all
 git submodule update --init
 IDF_PATH="$IDF_ESP32" bash install.sh
-IDF_PATH="$IDF_ESP32" python3 tools/idf_tools.py install
+IDF_PATH="$IDF_ESP32" python3 tools/idf_tools.py install || exit 1
 #echo patching IDF for ESP32
 #patch -t -p1 < $patchdir/idf-esp32-v5.1.diff || echo PATCHING FAILED!
 echo patching lwip of ESP32

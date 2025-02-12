@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2023, Thomas Maier-Komor
+ *  Copyright (C) 2018-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -36,8 +36,12 @@
 #define TAG MODULE_BUTTON
 
 
+Button *Button::First = 0;
+
+
 Button::Button(const char *name, xio_t gpio, xio_cfg_pull_t mode, bool active_high)
-: m_name(name)
+: m_next(First)
+, m_name(name)
 , m_pressed("pressed",false)
 , m_ptime("ptime",0.0,"ms")
 , m_gpio(gpio)
@@ -48,6 +52,7 @@ Button::Button(const char *name, xio_t gpio, xio_cfg_pull_t mode, bool active_hi
 , m_mev(event_register(name,"`med"))
 , m_lev(event_register(name,"`long"))
 { 
+	First = this;
 	log_info(TAG,"button %s at gpio %u",name,gpio);
 }
 
@@ -91,6 +96,18 @@ Button *Button::create(const char *name, xio_t gpio, xio_cfg_pull_t mode, bool a
 		return b;
 	}
 	return 0;
+}
+
+
+Button *Button::find(const char *name)
+{
+	Button *b = First;
+	while (b) {
+		if (0 == strcmp(b->m_name,name))
+			break;
+		b = b->m_next;
+	}
+	return b;
 }
 
 

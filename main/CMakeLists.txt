@@ -44,6 +44,7 @@ idf_component_register(
 	usb.cpp
 	webcam.cpp
 	wifi.cpp
+	xplane.cpp
 
 	REQUIRES
 	actions app_update button cyclic event dht display event fatfs

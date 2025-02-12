@@ -620,7 +620,7 @@ void INA226::read()
 	}
 	m_shunt.set(fshnt);
 	m_volt.set(fvlt);
-	float fcur = fshnt * m_res;
+	float fcur = fshnt / m_res;
 	m_amp.set(fcur);
 	float fpwr = fcur * fvlt;
 	m_power.set(fpwr);

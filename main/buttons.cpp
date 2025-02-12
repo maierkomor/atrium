@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2022, Thomas Maier-Komor
+ *  Copyright (C) 2018-2025, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -46,14 +46,20 @@ void button_setup()
 		if (!c.has_name())
 			continue;
 		int8_t gpio = c.gpio();
+#ifndef CONFIG_ROTARYENCODER
 		if (gpio < 0)
 			continue;
+#endif
 		const char *n = c.name().c_str();
 		if (*n == 0) {
 			char name[12];
 			sprintf(name,"button@%u",gpio);
 			c.set_name(name);
 			n = c.name().c_str();
+		}
+		if (Button::find(n)) {
+			log_warn(TAG,"button %s already exists: ignoring additional config",n);
+			continue;
 		}
 		bool al = c.presslvl();
 		xio_cfg_pull_t pullmode = xio_cfg_pull_none;

@@ -127,7 +127,6 @@ int log_module_disable(const char *m)
 
 void log_hex(logmod_t m, const void *data, unsigned n, const char *f, ...)
 {
-	const char *hex = "0123456789abcdef";
 	if (!Modules[0]&& !Modules[m])
 		return;
 	const uint8_t *d = (const uint8_t *) data;
@@ -137,6 +136,7 @@ void log_hex(logmod_t m, const void *data, unsigned n, const char *f, ...)
 	char line[80], *at = line;
 	char ascii[20], *a = ascii;
 	unsigned x = 0;
+	const char *hex = "0123456789abcdef";
 	*line = 0;
 	while (x != n) {
 		if (*line == 0) {

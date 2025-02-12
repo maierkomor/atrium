@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2023, Thomas Maier-Komor
+ *  Copyright (C) 2020-2025, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -42,6 +42,28 @@ EnvElement::~EnvElement()
 	free(m_name);
 	if (m_dim)
 		free(m_dim);
+}
+
+
+size_t EnvElement::getPath(char *path, char sep)
+{
+	size_t n = 0;
+	if (m_parent) {
+		n = m_parent->getPath(path,sep);
+		if (n) {
+			if (path)
+				path[n] = sep;
+			++n;
+		}
+	}
+	size_t nl = 0;
+	if (m_name) {
+		// root has no name
+		nl = strlen(m_name);
+		if (path)
+			memcpy(path+n,m_name,nl+1);
+	}
+	return n + nl;
 }
 
 
@@ -113,8 +135,12 @@ int EnvNumber::setThresholds(float l, float h, const char *n)
 	if (l+FLT_EPSILON >= h)
 		return 1;
 	if (m_evhi == 0) {
-		if (n == 0)
-			n = concat(getParent()->name(),m_name);
+		if (0 == n) {
+			size_t l = getPath(0,'.');
+			char *path = (char*)alloca(l+1);
+			getPath(path,'.');
+			n = path;
+		}
 		m_evhi = event_register(n,"`high");
 		m_evlo = event_register(n,"`low");
 	}
@@ -294,12 +320,20 @@ EnvElement *EnvObject::get(const char *n) const
 
 EnvElement *EnvObject::getChild(const char *n) const
 {
-	for (EnvElement *e : m_childs) {
+	const EnvObject *obj = this;
+	while (const char *dot = strchr(n,'.')) {
+		size_t l = dot-n;
+		char name[l+1];
+		memcpy(name,n,l);
+		name[l] = 0;
+		if (const EnvObject *o = obj->getObject(name)) {
+			obj = o;
+			n = dot+1;
+		}
+	}
+	for (EnvElement *e : obj->m_childs) {
 		if (0 == strcmp(e->name(),n)) {
 			return e;
-		} else if (EnvObject *o = e->toObject()) {
-			if (EnvElement *c = o->getChild(n))
-				return c;
 		}
 	}
 	return 0;

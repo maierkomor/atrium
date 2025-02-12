@@ -107,6 +107,7 @@ typedef enum logmod_e {
 	logmod_ws2812,
 	logmod_www,
 	logmod_xio,
+	logmod_xplane,
 	logmod_xpt2046,
 } logmod_t;
 
@@ -189,9 +190,10 @@ typedef enum logmod_e {
 #define MODULE_WS2812          logmod_ws2812
 #define MODULE_WWW             logmod_www
 #define MODULE_XIO             logmod_xio
+#define MODULE_XPLANE          logmod_xplane
 #define MODULE_XPT2046         logmod_xpt2046
-#define MAX_MODULE_ID           79
-#define NUM_MODULES             80
+#define MAX_MODULE_ID           80
+#define NUM_MODULES             81
 
 #ifdef USE_MODULE
 #define TAG USE_MODULE

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2022, Thomas Maier-Komor
+ *  Copyright (C) 2018-2025, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -28,7 +28,11 @@
 
 #include "modules.h"
 
+#ifdef CONFIG_IDF_TARGET_ESP8266
 #define LOG_MAXLEN 95
+#else
+#define LOG_MAXLEN 130
+#endif
 
 //#define MUTEX_ABORT_TIMEOUT portMAX_DELAY
 #define MUTEX_ABORT_TIMEOUT (10000/portTICK_PERIOD_MS)

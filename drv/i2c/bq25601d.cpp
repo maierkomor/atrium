@@ -508,7 +508,7 @@ inline void BQ25601D::processIntr()
 		return;
 	}
 	if (oldreg09 != m_regs[0x9])
-		log_warn(TAG,"missed flags update");
+		log_dbug(TAG,"missed flags update");
 	if (esp_err_t e = i2c_w1rd(m_bus,DEV_ADDR,0x9,&newreg09,sizeof(newreg09))) {
 		log_warn(TAG,"i2c error: %s",esp_err_to_name(e));
 		return;
@@ -521,7 +521,7 @@ inline void BQ25601D::processIntr()
 	}
 	if (newreg09 != m_regs[0x9]) {
 		uint8_t delta = newreg09 ^ m_regs[0x9];
-		log_warn(TAG,"unexpected flags update: %x",delta);
+		log_dbug(TAG,"unexpected flags update: %x",delta);
 	}
 	log_hex(TAG,regs,sizeof(regs),"interrupt");
 	log_hex(TAG,m_regs+8,sizeof(regs),"old");

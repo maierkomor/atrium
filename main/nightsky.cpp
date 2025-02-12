@@ -52,6 +52,9 @@ static TLC5947 *Drv = 0;
 
 
 #if 0
+#ifndef CONFIG_APP_PARAMS 
+#error app parameter support needed
+#endif
 static uint16_t NumLed, *Values;
 static uint8_t *Slope;
 static unsigned Interval, LastUpdate;

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2024, Thomas Maier-Komor
+ *  Copyright (C) 2018-2025, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -1050,6 +1050,21 @@ static const char *parse_xxd(Terminal &term, vector<uint8_t> &buf)
 }
 
 
+#ifdef HAVE_GET_MEMBER
+static const char *xxdMessage(Terminal &t, Message *m)
+{
+	size_t s = m->calcSize();
+	uint8_t *buf = (uint8_t *)malloc(s);
+	if (buf == 0)
+		return "Out of memory.";
+	m->toMemory(buf,s);
+	t.print_hex(buf,s);
+	free(buf);
+	return 0;
+}
+#endif
+
+
 static const char *hwconf(Terminal &term, int argc, const char *args[])
 {
 	static vector<uint8_t> hwcfgbuf;
@@ -1099,11 +1114,25 @@ static const char *hwconf(Terminal &term, int argc, const char *args[])
 		HWConf.clear();
 		HWConf.set_magic(0xAE54EDCB);
 	} else if (!strcmp("xxd",args[1])) {
+#ifdef HAVE_GET_MEMBER
+		Message *m;
+		if (argc > 2) {
+			m = HWConf.getMember(args[2]);
+		} else {
+			m = &HWConf;
+		}
+		if (m)
+			return xxdMessage(term,m);
+		return "Invalid argument #2.";
+#else
 		size_t s = HWConf.calcSize();
 		uint8_t *buf = (uint8_t *) malloc(s);
+		if (0 == buf)
+			return "Out of memory.";
 		HWConf.toMemory(buf,s);
 		term.print_hex(buf,s);
 		free(buf);
+#endif
 	} else if ((!strcmp("show",args[1])) || !strcmp("print",args[1])) {
 		if (argc == 2)
 			HWConf.toASCII(term);
@@ -1150,9 +1179,34 @@ static const char *hwconf(Terminal &term, int argc, const char *args[])
 		if (parse_xxd(term,hwcfgbuf))
 			return "Invalid hex input.";
 		term.printf("parsing %u bytes\n",hwcfgbuf.size());
-		HardwareConfig nc;
+		HardwareConfig nc = HWConf;
+#ifdef HAVE_GET_MEMBER
+		Message *m = (2 == argc) ? &nc : nc.getMember(args[2]);
+		if (0 == m)
+			return "Invalid argument #2.";
+		int e = m->fromMemory(hwcfgbuf.data(),hwcfgbuf.size());
+		// WORKAROUND:
+		// the following is a hack to tell the parent that this
+		// element is now valid. Otherwise an element that
+		// had the p_validbit in its parent not set, would not
+		// be visible in the tree, as the member would be seen
+		// as invalid/unset. 
+		// The correct solution would be to have the getMember
+		// function set the validbit implicitly, but this would
+		// require duplicating getMember to getMember()const as
+		// this would cause different problems otherwise.
+		// Errors above are deliberately ignored here, as
+		// fromMemory could have filled the member partly.
+		size_t l = strlen(args[2]);
+		char member[l+2];
+		memcpy(member,args[2],l);
+		member[l] = '.';
+		member[l+1] = 0;
+		nc.setByName(member,"0");	// this gives an error, but also sets the validbit
+#else
 		int e = nc.fromMemory(hwcfgbuf.data(),hwcfgbuf.size());
-		if (0 >= e) {
+#endif
+		if (0 > e) {
 			term.printf("parser error: %d\n",e);
 			return "";
 		}
@@ -1846,19 +1900,6 @@ static const char *timezone(Terminal &term, int argc, const char *args[])
 }
 
 
-static const char *xxdSettings(Terminal &t)
-{
-	size_t s = Config.calcSize();
-	uint8_t *buf = (uint8_t *)malloc(s);
-	if (buf == 0)
-		return "Out of memory.";
-	Config.toMemory(buf,s);
-	t.print_hex(buf,s);
-	free(buf);
-	return 0;
-}
-
-
 static const char *config(Terminal &term, int argc, const char *args[])
 {
 	static vector<uint8_t> rtcfgbuf;
@@ -1949,9 +1990,34 @@ static const char *config(Terminal &term, int argc, const char *args[])
 		if (parse_xxd(term,rtcfgbuf))
 			return "Invalid hex input.";
 		term.printf("parsing %u bytes\n",rtcfgbuf.size());
-		NodeConfig nc;
+		NodeConfig nc = Config;
+#ifdef HAVE_GET_MEMBER
+		Message *m = (2 == argc) ? &nc : nc.getMember(args[2]);
+		if (0 == m)
+			return "Invalid argument #2.";
+		int e = m->fromMemory(rtcfgbuf.data(),rtcfgbuf.size());
+		// WORKAROUND:
+		// the following is a hack to tell the parent that this
+		// element is now valid. Otherwise an element that
+		// had the p_validbit in its parent not set, would not
+		// be visible in the tree, as the member would be seen
+		// as invalid/unset. 
+		// The correct solution would be to have the getMember
+		// function set the validbit implicitly, but this would
+		// require duplicating getMember to getMember()const as
+		// this would cause different problems otherwise.
+		// Errors above are deliberately ignored here, as
+		// fromMemory could have filled the member partly.
+		size_t l = strlen(args[2]);
+		char member[l+2];
+		memcpy(member,args[2],l);
+		member[l] = '.';
+		member[l+1] = 0;
+		nc.setByName(member,"0");	// this gives an error, but also sets the validbit
+#else
 		int e = nc.fromMemory(rtcfgbuf.data(),rtcfgbuf.size());
-		if (0 >= e) {
+#endif
+		if (0 > e) {
 			term.printf("parser error: %d\n",e);
 			return "";
 		}
@@ -1963,7 +2029,25 @@ static const char *config(Terminal &term, int argc, const char *args[])
 	} else if (!strcmp("xxdbuf",args[1])) {
 		term.print_hex(rtcfgbuf.data(),rtcfgbuf.size());
 	} else if (!strcmp(args[1],"xxd")) {
-		return xxdSettings(term);
+#ifdef HAVE_GET_MEMBER
+		Message *m;
+		if (argc > 2) {
+			m = Config.getMember(args[2]);
+		} else {
+			m = &Config;
+		}
+		if (m)
+			return xxdMessage(term,m);
+		return "Invalid argument #2.";
+#else
+		size_t s = Config.calcSize();
+		uint8_t *buf = (uint8_t *) malloc(s);
+		if (0 == buf)
+			return "Out of memory.";
+		Config.toMemory(buf,s);
+		term.print_hex(buf,s);
+		free(buf);
+#endif
 	} else if (!strcmp(args[1],"nvxxd")) {
 		size_t s = 0;
 		uint8_t *buf = 0;
@@ -2302,30 +2386,29 @@ static const char *thresholds(Terminal &term, int argc, const char *args[])
 			return "Invalid argument #3.";
 		if (hi <= lo + FLT_EPSILON)
 			return "Invalid arguments.";
-		EnvNumber *n = 0;
-		if (EnvElement *e = RTData->getByPath(args[1])) {
-			n = e->toNumber();
-		} else if (EnvElement *e = RTData->find(args[1])) {
-			n = e->toNumber();
+		EnvElement *e = RTData->getByPath(args[1]);
+		if (0 == e) {
+			e = RTData->find(args[1]);
+			if (0 == e)
+				return "Invalid argument #1.";
 		}
+		EnvNumber *n = e->toNumber();
 		if (n == 0)
 			return "Invalid argument #1.";
 		n->setThresholds(lo,hi);
-		bool updated = false;
+		ThresholdConfig *c = 0;
 		for (ThresholdConfig &t : *Config.mutable_thresholds()) {
 			if (t.name() == args[1]) {
-				t.set_low(lo);
-				t.set_high(hi);
-				updated = true;
+				c = &t;
 				break;
 			}
 		}
-		if (!updated) {
-			ThresholdConfig *t = Config.add_thresholds();
-			t->set_name(args[1]);
-			t->set_high(hi);
-			t->set_low(lo);
+		if (0 == c) {
+			c = Config.add_thresholds();
+			c->set_name(args[1]);
 		}
+		c->set_high(hi);
+		c->set_low(lo);
 	} else {
 		return "Invalid number of arguments.";
 	}

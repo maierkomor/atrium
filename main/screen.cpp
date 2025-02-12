@@ -653,6 +653,14 @@ int luax_disp_set_font(lua_State *L)
 }
 
 
+int luax_disp_set_mode(lua_State *L)
+{
+	const char *m = lua_tostring(L,1);
+	mode_next(m);
+	return 0;
+}
+
+
 int luax_disp_write(lua_State *L)
 {
 	const char *txt = luaL_checkstring(L,1);
@@ -682,6 +690,7 @@ static const LuaFn Functions[] = {
 	{ "disp_draw_rect", luax_disp_draw_rect, "draw recangle (x,y,w,h)" },
 	{ "disp_set_cursor", luax_disp_set_cursor, "set cursor position (x,y)" },
 	{ "disp_set_font", luax_disp_set_font, "set font (fontname)" },
+	{ "disp_set_mode", luax_disp_set_mode, "set mode (mode or empty for next)" },
 	{ "disp_write", luax_disp_write, "write text at cursor position with font" },
 	{ "disp_clear", luax_disp_clear , "clear the screen" },
 	{ 0, 0, 0 }

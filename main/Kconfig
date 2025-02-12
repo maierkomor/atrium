@@ -91,6 +91,12 @@ config STATEMACHINES
 	help
 		State-machine based event/action triggering.
 
+config XPLANE
+	bool "X-Plane support"
+	default true
+	help
+		network driver for X-Plane support
+
 config APP_PARAMS
 	bool "Application specific parameters (normally not needed, deprecated)"
 	default false

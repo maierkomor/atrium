@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #
-#  Copyright (C) 2018-2023, Thomas Maier-Komor
+#  Copyright (C) 2018-2024, Thomas Maier-Komor
 #  Atrium Firmware Package for ESP
 #
 #  This program is free software: you can redistribute it and/or modify
@@ -66,7 +66,7 @@ elif  [ "$CONFIG_IDF_TARGET_ESP32C6" == "y" ]; then
 	export ESP_FAM=32
 	export IDF_TARGET=esp32c6
 elif  [ "$CONFIG_IDF_TARGET_ESP8266" == "y" ]; then
-	make PROJECT=$1 $2
+	PATH="$IDF_PATH/../esp8266-venv:$PATH" make PROJECT=$1 $2
 	exit
 else
 	echo Unknown or invalid IDF_TARGET.

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021, Thomas Maier-Komor
+ *  Copyright (C) 2021-2025, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -27,7 +27,9 @@ class HT16K33 : public LedCluster, public I2CDevice
 	public:
 	static void create(uint8_t,uint8_t);
 
-	int setOn(bool);
+	int cfgIntr(bool on, bool act_high = false);
+	int setPower(bool);
+	int setDisplay(bool);
 	int setOffset(unsigned);
 	int setNumDigits(unsigned);
 	int write(uint8_t) override;
@@ -36,11 +38,13 @@ class HT16K33 : public LedCluster, public I2CDevice
 
 	int setDim(uint8_t) override;
 	int setPos(uint8_t x, uint8_t y) override;
-//	int write(char);
-//	int write(const char *);
 	int init();
 	const char *drvName() const override;
 	int setBlink(uint8_t);
+
+#ifdef CONFIG_I2C_XCMD
+	const char *exeCmd(struct Terminal &, int argc, const char **argv) override;
+#endif
 
 	private:
 	HT16K33(uint8_t bus, uint8_t addr)
@@ -52,7 +56,8 @@ class HT16K33 : public LedCluster, public I2CDevice
 
 	uint8_t m_data[16];
 	uint8_t m_pos = 0;
-	uint8_t m_digits = 0;
+	uint8_t m_digits = 8;
+	bool m_disp = 0;	// bit0: off/on, bits2..1: blink 0..3
 };
 
 

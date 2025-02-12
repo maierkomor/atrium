@@ -802,19 +802,19 @@ void cfg_activate_triggers()
 }
 
 
+#ifdef CONFIG_APP_PARAMS
 AppParam *cfg_get_param(const char *name)
 {
-#ifdef CONFIG_APP_PARAMS 
 	for (auto &p : *Config.mutable_app_params()) {
 		if (p.key() == name)
 			return &p;
 	}
-#endif
 	return 0;
 }
+#endif
 
 
-#ifdef CONFIG_APP_PARAMS 
+#ifdef CONFIG_APP_PARAMS
 AppParam *cfg_add_param(const char *name)
 {
 	AppParam *x = cfg_get_param(name);
@@ -827,7 +827,7 @@ AppParam *cfg_add_param(const char *name)
 #endif
 
 
-#ifdef CONFIG_APP_PARAMS 
+#ifdef CONFIG_APP_PARAMS
 static int cfg_set_param(const char *name, const char *value)
 {
 	PROFILE_FUNCTION();
@@ -863,46 +863,46 @@ static int cfg_set_param(const char *name, const char *value)
 #endif
 
 
+#ifdef CONFIG_APP_PARAMS
 int cfg_get_uvalue(const char *name, unsigned *u, unsigned def)
 {
-#ifdef CONFIG_APP_PARAMS 
 	if (AppParam *p = cfg_get_param(name))  {
 		*u = p->uValue();
 		return 0;
 	}
 	*u = def;
-#endif
 	return 1;
 }
+#endif
 
 
+#ifdef CONFIG_APP_PARAMS
 int cfg_get_dvalue(const char *name, signed *u, signed def)
 {
-#ifdef CONFIG_APP_PARAMS 
 	if (AppParam *p = cfg_get_param(name))  {
 		*u = p->dValue();
 		return 0;
 	}
 	*u = def;
-#endif
 	return 1;
 }
+#endif
 
 
+#ifdef CONFIG_APP_PARAMS
 int cfg_get_fvalue(const char *name, double *u, double def)
 {
-#ifdef CONFIG_APP_PARAMS 
 	if (AppParam *p = cfg_get_param(name))  {
 		*u = p->fValue();
 		return 0;
 	}
 	*u = def;
-#endif
 	return 1;
 }
+#endif
 
 
-#ifdef CONFIG_APP_PARAMS 
+#ifdef CONFIG_APP_PARAMS
 void cfg_set_uvalue(const char *name, unsigned u)
 {
 	cfg_add_param(name)->set_uValue(u);

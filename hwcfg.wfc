@@ -53,7 +53,6 @@ option esp : common {
 	bytestype=estring;
 	SortMembers=size;
 	enumnames=true;
-	enummap="!CONFIG_ESPTOOLPY_FLASHSIZE_1MB";
 }
 
 option esp32 : esp {
@@ -91,6 +90,7 @@ option esp8266 : esp {
 option esp8285 : esp8266 {
 	BaseClass="";
 	getMember="";
+	enummap=false;
 	/HardwareConfig/max7129:	used = false;
 	/HardwareConfig/display:	used = false;
 	/DisplayConfig:			used = false;

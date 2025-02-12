@@ -136,6 +136,7 @@ void xlua_setup();
 void udpctrl_setup();
 int webcam_setup();
 void xio_setup();
+void xplane_setup();
 
 void settings_setup();
 
@@ -378,6 +379,9 @@ void app_main()
 #endif
 #ifdef CONFIG_INFLUX
 	influx_setup();
+#endif
+#ifdef CONFIG_XPLANE
+	xplane_setup();
 #endif
 	verify_heap();
 	env_setup();

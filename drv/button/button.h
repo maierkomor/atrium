@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2022, Thomas Maier-Komor
+ *  Copyright (C) 2018-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -35,6 +35,7 @@ class Button
 {
 	public:
 	static Button *create(const char *name, xio_t gpio, xio_cfg_pull_t mode, bool active_high);
+	static Button *find(const char *name);
 
 	void attach(class EnvObject *);
 
@@ -67,6 +68,7 @@ class Button
 
 	typedef enum btnst_e { btn_unknown = 0, btn_pressed, btn_released } btnst_t;
 
+	Button *m_next = 0;
 	const char *m_name;
 	EnvBool m_pressed;
 	EnvNumber m_ptime;
@@ -76,6 +78,8 @@ class Button
 	bool m_intr = false;
 	btnst_t m_st = btn_unknown;
 	event_t m_rev, m_pev, m_sev, m_mev, m_lev, m_lastev = 0;
+
+	static Button *First;
 };
 
 

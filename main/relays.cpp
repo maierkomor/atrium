@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2024, Thomas Maier-Komor
+ *  Copyright (C) 2020-2025, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -86,17 +86,15 @@ static void relay_set_state(void *arg)
 	if (Relay *r = Relay::get(a)) {
 		++sp;
 		log_dbug(TAG,"mqtt: %s: %s",a,sp);
-		if (0 == strcmp(sp,"toggle"))
+		bool b;
+		if (0 == strcmp(sp,"toggle")) {
 			r->toggle();
-		else if (0 == strcmp(sp,"on"))
-			r->turn_on();
-		else if (0 == strcmp(sp,"off"))
-			r->turn_off();
-		else if (0 == strcmp(sp,"1"))
-			r->turn_on();
-		else if (0 == strcmp(sp,"0"))
-			r->turn_off();
-		else
+		} else if (0 == arg_bool(sp,&b)) {
+			if (b)
+				r->turn_on();
+			else
+				r->turn_off();
+		} else
 			log_warn(TAG,"invalid mqtt request: %s: %s",a,sp);
 	}
 }
@@ -254,11 +252,7 @@ const char *relay(Terminal &term, int argc, const char *args[])
 		return 0;
 	} else if (argc == 3) {
 		bool v;
-		if (0 == strcmp("on",args[2]))
-			v = true;
-		else if (0 == strcmp("off",args[2]))
-			v = false;
-		else
+		if (0 != arg_bool(args[2],&v))
 			return "Invalid argument #1.";
 		return relay_set(args[1],v) ? "Failed." : 0;
 	} else {

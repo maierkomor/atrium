@@ -451,9 +451,14 @@ static const char *adc_print(Terminal &t, const char *arg)
 		}
 		t.printf("%-16s: %5d (%gmV)\n",s->name(),(int)s->raw.get(),s->volt.get());
 	} else for (unsigned i = 0; i < NumAdc; ++i) {
-		if (Adcs[i])
-			t.printf("%-16s: %5d (%gmV)\n",Adcs[i]->name(),(int)Adcs[i]->raw.get(),Adcs[i]->volt.get());
-		else
+		if (Adcs[i]) {
+			const char *name = Adcs[i]->name();
+			float raw = Adcs[i]->raw.get();
+			if (isnan(raw))
+				t.printf("%-16s: <no sample>\n",name);
+			else
+				t.printf("%-16s: %5d (%gmV)\n",name,(int)raw,Adcs[i]->volt.get());
+		} else
 			t.printf("%u not initialized\n",i);
 	}
 	return 0;

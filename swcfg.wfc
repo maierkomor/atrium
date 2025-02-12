@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2023, Thomas Maier-Komor
+ *  Copyright (C) 2018-2025, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -17,7 +17,7 @@
  */
 
 option author="Thomas Maier-Komor";
-option copyright="2018-2024";
+option copyright="2018-2025";
 
 option common {
 	BaseClass=Message;
@@ -25,6 +25,8 @@ option common {
 	id0=true;
 	wfclib=extern;
 	SortMembers=size;
+	enumnames=true;
+	enummap=true;
 }
 
 option pc : common {
@@ -33,8 +35,6 @@ option pc : common {
 	optimize=speed;
 	//header="pcconfig.h";
 	header="support.h";
-	enumnames=true;
-	enummap=true;
 	cfgdefs=all;
 }
 
@@ -53,8 +53,6 @@ option esp : common {
 	streamtype=stream;
 	stringtype=estring;
 	bytestype=estring;
-	enumnames=true;
-	enummap="!CONFIG_ESPTOOLPY_FLASHSIZE_1MB";
 }
 
 option esp32 : esp {
@@ -72,11 +70,20 @@ option esp8266 : esp {
 option esp8285 : esp8266 {
 	BaseClass="";
 	getMember="";
+	enumnames=false;
+	enummap=false;
 	/MQTT/keepalive		: used = false;
 	/NodeConfig/signals	: used = false;
 	/NodeConfig/functions	: used = false;
 	/NodeConfig/screen	: used = false;
 	/NodeConfig/statemachs	: used = false;
+	/EnvConfig		: used = false;
+	/ScreenConfig		: used = false;
+	/FunctionConfig		: used = false;
+	/SignalConfig		: used = false;
+	/AppParam		: used = false;
+	/StateMachineConfig	: used = false;
+	/XPlaneConfig 		: used = false;
 }
 
 
@@ -341,6 +348,33 @@ message ScreenConfig
 }
 
 
+message Dref
+{
+	string name = 1;
+	string alias = 2;	// leave unset for no env alias
+	// sampling frequency in Hz requested from x-plane
+	unsigned freq = 3	[ default = 10 ];
+}
+
+
+message DataIdVar
+{
+	unsigned id = 1;
+	unsigned idx = 2	[ default = 0, unset = 0 ];
+	string varname = 3;
+}
+
+
+message XPlaneConfig
+{
+	fixed32 ip4addr = 1	[ to_ascii=ip4_to_ascii, to_json=ip4_to_ascii, parse_ascii=parse_ipv4 ];
+	fixed16 refport = 2	[ unset = 0 ];
+	fixed16 dataport = 3	[ unset = 0 ];
+	repeated DataIdVar dataids = 4;
+	repeated Dref drefs = 5;
+}
+
+
 message NodeConfig
 {
 	fixed32 magic = 0;	// should always be set to 0xAE54EDC0
@@ -401,7 +435,9 @@ message NodeConfig
 	repeated string luafiles = 42			[ ifdef=CONFIG_LUA ];
 	bool lua_disable = 43				[ unset = false, ifdef=CONFIG_LUA ];
 
-	repeated OwDeviceConfig owdevices = 50	[ ifdef=CONFIG_ONEWIRE ];
+	repeated OwDeviceConfig owdevices = 50		[ ifdef=CONFIG_ONEWIRE ];
+
+	XPlaneConfig xplane = 60			[ ifdef=CONFIG_XPLANE ];
 }
 
 

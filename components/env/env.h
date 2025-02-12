@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2022, Thomas Maier-Komor
+ *  Copyright (C) 2020-2024, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -90,6 +90,8 @@ class EnvElement
 
 	void setSkip(bool s = true)
 	{ m_skip = s; }
+
+	size_t getPath(char *path, char sep);
 
 	protected:
 	explicit EnvElement(const char *n, const char *dim = 0);

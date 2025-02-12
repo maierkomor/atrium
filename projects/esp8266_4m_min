@@ -258,6 +258,7 @@ CONFIG_WFC_TARGET="esp8266"
 # CONFIG_AT_ACTIONS is not set
 # CONFIG_TERMSERV is not set
 # CONFIG_STATEMACHINES is not set
+# CONFIG_XPLANE is not set
 # CONFIG_APP_PARAMS is not set
 # CONFIG_OTA is not set
 # CONFIG_UDNS is not set
