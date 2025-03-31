@@ -260,7 +260,7 @@ const char *trigger_get_arg(trigger_t t)
 
 const EventHandler *event_handler(event_t e)
 {
-	if (e < EventHandlers.size())
+	if ((0 < e) && (e < EventHandlers.size()))
 		return &EventHandlers[e];
 	return 0;
 }
@@ -341,6 +341,7 @@ void event_trigger(event_t id)
 {
 	if ((id == 0) || (id >= EventHandlers.size())) {
 		++Invalid;
+		log_warn(TAG,"invalid id %d",id);
 	} else if (EventHandlers[id].callbacks.empty()) {
 		++Discarded;
 		++EventHandlers[id].occur;
@@ -380,6 +381,7 @@ void event_trigger_arg(event_t id, void *arg)
 		++Discarded;
 		++EventHandlers[id].occur;
 	} else {
+		log_warn(TAG,"invalid id %d",id);
 		++Invalid;
 	}
 	free(arg);

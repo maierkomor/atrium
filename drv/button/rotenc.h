@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2022, Thomas Maier-Komor
+ *  Copyright (C) 2022-2025, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -26,7 +26,7 @@
 class RotaryEncoder
 {
 	public:
-	static RotaryEncoder *create(const char *name, xio_t clk, xio_t dt, xio_t sw = XIO_INVALID);
+	static RotaryEncoder *create(const char *name, xio_t clk, xio_t dt, xio_t sw = XIO_INVALID, xio_cfg_pull_t = xio_cfg_pull_none);
 
 	event_t pressed_event() const
 	{ return m_pev; }

@@ -70,6 +70,9 @@ option esp8266 : esp {
 option esp8285 : esp8266 {
 	BaseClass="";
 	getMember="";
+	toPbt="";
+	toASCII="";
+	// toJSON is needed for web configuration support
 	enumnames=false;
 	enummap=false;
 	/MQTT/keepalive		: used = false;
@@ -377,10 +380,10 @@ message XPlaneConfig
 
 message NodeConfig
 {
-	fixed32 magic = 0;	// should always be set to 0xAE54EDC0
+	fixed32 magic = 0		[ default = 0xAE54EDC0 ];
 	string nodename = 1;
 	bytes pass_hash = 2;
-	unsigned cpu_freq = 3;
+	unsigned cpu_freq = 3		[ unset = 0 ];
 	WifiConfig station = 4;
 	WifiConfig softap = 5;
 	repeated string dns_server = 6;
@@ -426,9 +429,13 @@ message NodeConfig
 	// application: light sensor controlled LED
 	unsigned threshold_off = 35			[ usage=obsolete ];	// replaced by thresholds
 	unsigned threshold_on = 36			[ usage=obsolete ];
-	unsigned dim_step = 37;		// ms per 1% step
+
+	// ms per 1% step
+	unsigned dim_step = 37				[ unset = 0 ];
 	bool lightctrl = 38				[ usage=obsolete ];
-	unsigned pwm_freq = 39;		// base PWM frequenzy in Hz - shared for all channels
+
+	// base PWM frequenzy in Hz - shared for all channels
+	unsigned pwm_freq = 39				[ unset = 0 ];
 
 	repeated AppParam app_params = 40		[ ifdef=CONFIG_APP_PARAMS ];
 	repeated ThresholdConfig thresholds = 41	[ ifdef=CONFIG_THRESHOLDS ];

@@ -53,6 +53,13 @@ config LUA
 	help
 		Lua language and scripting support
 
+config NVSCMD
+	depends on !IDF_TARGET_ESP8266
+	bool "NVS shell commands"
+	default true
+	help
+		support NVS access from command line
+
 config THRESHOLDS
 	bool "support high/low schmitt-trigger thresholds on float variables"
 	default true

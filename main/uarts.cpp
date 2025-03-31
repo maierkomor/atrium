@@ -46,6 +46,10 @@
 #endif
 #endif
 
+#ifndef UART_HW_FIFO_LEN
+#define UART_HW_FIFO_LEN(x) UART_FIFO_LEN
+#endif
+
 // CONFIG_IDF_TARGET_ESP8266
 // uart0/rx: gpio3/pin25
 // uart0/tx: gpio1/pin26
@@ -204,16 +208,16 @@ void uart_setup()
 			log_warn(TAG,"set uart%d to tx=%d,rx=%d,rtx=%d,cts=%d: %s",p,tx,rx,rts,cts,esp_err_to_name(e));
 		else
 			log_info(TAG,"uart%d at tx=%d,rx=%d,rtx=%d,cts=%d",p,tx,rx,rts,cts);
-		if (esp_err_t e = uart_driver_install((uart_port_t)p,UART_FIFO_LEN*2,UART_FIFO_LEN*2,0,DRIVER_ARG))
+		if (esp_err_t e = uart_driver_install((uart_port_t)p,UART_HW_FIFO_LEN(p)*2,UART_HW_FIFO_LEN(p)*2,0,DRIVER_ARG))
 			log_warn(TAG,"uart%d driver: %s",p,esp_err_to_name(e));
 		uarts |= 1<<p;
 	}
 	for (const UartSettings &c : Config.uart()) {
 		uart_port_t port = (uart_port_t) c.port();
-		unsigned rx_buf = c.has_rx_bufsize() ? c.rx_bufsize() : UART_FIFO_LEN*2;
+		unsigned rx_buf = c.has_rx_bufsize() ? c.rx_bufsize() : UART_HW_FIFO_LEN(port)*2;
 		if (rx_buf <= 128)
 			log_warn(TAG,"rx buf size must be >=128");
-		unsigned tx_buf = c.has_tx_bufsize() ? c.tx_bufsize() : UART_FIFO_LEN*2;
+		unsigned tx_buf = c.has_tx_bufsize() ? c.tx_bufsize() : UART_HW_FIFO_LEN(port)*2;
 		if (uarts & (1<<port))
 			uart_driver_delete((uart_port_t)port);
 		if (esp_err_t e = uart_driver_install(port,rx_buf,tx_buf,0,DRIVER_ARG))

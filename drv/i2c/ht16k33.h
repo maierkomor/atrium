@@ -34,6 +34,7 @@ class HT16K33 : public LedCluster, public I2CDevice
 	int setNumDigits(unsigned);
 	int write(uint8_t) override;
 	int write(uint8_t *d, unsigned n) override;
+	int writeHex(char *h);
 	int clear();
 
 	int setDim(uint8_t) override;
@@ -46,6 +47,9 @@ class HT16K33 : public LedCluster, public I2CDevice
 	const char *exeCmd(struct Terminal &, int argc, const char **argv) override;
 #endif
 
+	HT16K33 *next() const
+	{ return m_next; }
+
 	private:
 	HT16K33(uint8_t bus, uint8_t addr)
 	: LedCluster()
@@ -54,6 +58,7 @@ class HT16K33 : public LedCluster, public I2CDevice
 
 	~HT16K33() = default;
 
+	HT16K33 *m_next = 0;
 	uint8_t m_data[16];
 	uint8_t m_pos = 0;
 	uint8_t m_digits = 8;

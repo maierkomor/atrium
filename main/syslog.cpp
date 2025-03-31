@@ -456,7 +456,7 @@ void syslog_setup(void)
 {
 	log_local(TAG,"setup");
 	action_add("syslog!start",syslog_start,0,0);	// do not advertise - not needed to call manually
-	event_callback("wifi`station_up","syslog!start");
+	event_callback("wifi`got_ip","syslog!start");
 	Action *a = action_add("syslog!send",sendall,0,"trigger sendind dmesg to syslog");
 	event_t e = event_id("syslog`msg");
 	assert(e);

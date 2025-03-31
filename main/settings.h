@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2017-2024, Thomas Maier-Komor
+ *  Copyright (C) 2017-2025, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -54,7 +54,7 @@ const char *cfg_get_domainname();
 void initDns();
 int setPassword(const char *p);
 int cfg_read_nodecfg();
-int cfg_init_hwcfg();
+void cfg_init_hwcfg();
 int cfg_read_hwcfg();
 void startWPS();
 void cfg_init_defaults();

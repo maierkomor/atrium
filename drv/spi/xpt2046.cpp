@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2023, Thomas Maier-Komor
+ *  Copyright (C) 2023-2025, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -77,7 +77,7 @@ XPT2046::XPT2046(uint8_t cs, int8_t intr, spi_device_handle_t hdl)
 	}
 	char tag[16];
 	sprintf(tag,"xpt2046@%u",cs);
-	uint16_t *data = 0;
+	uint16_t data[6];
 	size_t n = sizeof(data);
 	if (0 == nvm_read_blob(tag,(uint8_t**)&data,&n)) {
 		m_lx = data[0];

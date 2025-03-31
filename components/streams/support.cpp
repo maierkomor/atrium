@@ -158,3 +158,25 @@ int strendcmp(const char *str, const char *end)
 		return 1;
 	return memcmp(str+s-e,end,e);
 }
+
+
+int is_id(const char *str)
+{
+	char c = *str++;
+	if (('a' <= c) && (c <= 'z')) {
+	} else if (('A' <= c) && (c <= 'Z')) {
+	} else {
+		return 0;
+	}
+	while ((c = *str++)) {
+		if (('a' <= c) && (c <= 'z')) {
+		} else if (('A' <= c) && (c <= 'Z')) {
+		} else if (('0' <= c) && (c <= '9')) {
+		} else if ('_' == c) {
+		} else {
+			return 0;
+		}
+	}
+	return 1;
+
+}

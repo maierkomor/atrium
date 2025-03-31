@@ -5,8 +5,8 @@ writebuf: write parsed xxd buffer to NVS
 parsexxd: parse xxd input to RAM
 nvxxd   : create xxd output of NVS
 Following commands are only available with CONFIG_HWCONF_DYNAMIC
-show    : show complete configuration including unset values
-json    : create json output of config
+print   : print configuration (-t for terse mode)
+json    : create json output of config (-t for terse mode)
 set     : set <param> to <value>, where <param> can be field[idx].element
 clear   : clear <param>
 add     : add element to array <param>

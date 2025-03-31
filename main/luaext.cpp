@@ -88,12 +88,12 @@ static int f_event_attach(lua_State *L)
 	log_dbug(TAG,"event_attach(%s,%s,...)",e,a);
 	event_t eid = event_id(e);
 	if (eid == 0) {
-		lua_pushliteral(L,"Invalid argument #1.");
+		lua_pushliteral(L,"event_attach: Invalid argument #1.");
 		lua_error(L);
 	}
 	Action *x = action_get(a);
 	if (x == 0) {
-		lua_pushliteral(L,"Invalid argument #2.");
+		lua_pushliteral(L,"event_attach: Invalid argument #2.");
 		lua_error(L);
 	}
 	const char *arg = lua_tostring(L,3);

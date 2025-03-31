@@ -227,7 +227,7 @@ int parse_buffer(char *buf, size_t n, Message *m = 0)
 }
 
 
-static int parse_xxd(const char *fn)
+static int parse_xxd(char *fn)
 {
 	// accepted format:
 	// <offset>: <byte> <byte> <byte>
@@ -304,7 +304,7 @@ static int parse_xxd(const char *fn)
 }
 
 
-int set_filename(const char *arg)
+int set_filename(char *arg)
 {
 	if (arg == 0) {
 		const char *f = Software ? SwFilename : HwFilename;
@@ -322,7 +322,7 @@ int set_filename(const char *arg)
 }
 
 
-int read_config(const char *arg)
+int read_config(char *arg)
 {
 	const char *fn = arg;
 	if (fn == 0) { 
@@ -355,7 +355,7 @@ done:
 }
 
 
-int write_config(const char *arg)
+int write_config(char *arg)
 {
 	const char *fn = arg;
 	size_t s;
@@ -404,7 +404,7 @@ int write_config(const char *arg)
 }
 
 
-int clear_config(const char *arg)
+int clear_config(char *arg)
 {
 	if (arg) {
 		if (Software)
@@ -667,7 +667,7 @@ int verify_hw()
 }
 
 
-int set_password(const char *arg)
+int set_password(char *arg)
 {
 	if (!strcmp(arg,"-c")) {
 		NodeCfg.clear_pass_hash();
@@ -694,7 +694,7 @@ int set_password(const char *arg)
 }
 
 
-int verify_config(const char *arg)
+int verify_config(char *arg)
 {
 	if (arg == 0) {
 		if (Software) {
@@ -713,38 +713,46 @@ int verify_config(const char *arg)
 }
 
 
-int to_hw(const char *arg)
+int to_hw(char *arg)
 {
 	Software = false;
 	return 0;
 }
 
 
-int to_sw(const char *arg)
+int to_sw(char *arg)
 {
 	Software = true;
 	return 0;
 }
 
 
-int show_config(const char *arg)
+int show_config(char *args)
 {
-	stringstream ss;
-	if (Software) {
-		if (arg == 0)
-			NodeCfg.toASCII(ss);
-		else if (Message *m = NodeCfg.getMember(arg))
-			m->toASCII(ss);
-		else
-			return 1;
-	} else {
-		if (arg == 0)
-			HwCfg.toASCII(ss);
-		else if (Message *m = HwCfg.getMember(arg))
-			m->toASCII(ss);
-		else
-			return 1;
+	Message *m = 0;
+	bool full = true;
+	if (args) {
+		char *save = 0;
+		char *arg = strtok_r(args," \t",&save);
+		while (arg) {
+			if (0 == strcmp(arg,"-t")) {
+				full = false;
+			} else if (0 == strcmp(arg,"hw")) {
+				m = &HwCfg;
+			} else if (0 == strcmp(arg,"sw")) {
+				m = &NodeCfg;
+			} else if (Software) {
+				m = NodeCfg.getMember(arg);
+			} else {
+				m = HwCfg.getMember(arg);
+			}
+			arg = strtok_r(0," \t",&save);
+		}
 	}
+	if (0 == m)
+		m = Software ? (Message*)&NodeCfg : (Message*)&HwCfg;
+	stringstream ss;
+	m->toASCII(ss,full);
 	string s = ss.str();
 	write(STDOUT_FILENO,s.data(),s.size());
 	write(STDOUT_FILENO,"\n",1);
@@ -752,24 +760,32 @@ int show_config(const char *arg)
 }
 
 
-int json_config(const char *arg)
+int write_pbt(char *args)
 {
-	stringstream ss;
-	if (Software) {
-		if (arg == 0)
-			NodeCfg.toJSON(ss);
-		else if (Message *m = NodeCfg.getMember(arg))
-			m->toJSON(ss);
-		else
-			return 1;
-	} else {
-		if (arg == 0)
-			HwCfg.toJSON(ss);
-		else if (Message *m = HwCfg.getMember(arg))
-			m->toJSON(ss);
-		else
-			return 1;
+	Message *m = 0;
+	bool full = true;
+	if (args) {
+		char *save = 0;
+		char *arg = strtok_r(args," \t",&save);
+		while (arg) {
+			if (0 == strcmp(arg,"-t")) {
+				full = false;
+			} else if (0 == strcmp(arg,"hw")) {
+				m = &HwCfg;
+			} else if (0 == strcmp(arg,"sw")) {
+				m = &NodeCfg;
+			} else if (Software) {
+				m = NodeCfg.getMember(arg);
+			} else {
+				m = HwCfg.getMember(arg);
+			}
+			arg = strtok_r(0," \t",&save);
+		}
 	}
+	if (0 == m)
+		m = Software ? (Message*)&NodeCfg : (Message*)&HwCfg;
+	stringstream ss;
+	m->toPbt(ss,full);
 	string s = ss.str();
 	write(STDOUT_FILENO,s.data(),s.size());
 	write(STDOUT_FILENO,"\n",1);
@@ -777,7 +793,40 @@ int json_config(const char *arg)
 }
 
 
-int set_config(const char *key)
+int json_config(char *args)
+{
+	Message *m = 0;
+	bool full = true;
+	if (args) {
+		char *save = 0;
+		char *arg = strtok_r(args," \t",&save);
+		while (arg) {
+			if (0 == strcmp(arg,"-t")) {
+				full = false;
+			} else if (0 == strcmp(arg,"hw")) {
+				m = &HwCfg;
+			} else if (0 == strcmp(arg,"sw")) {
+				m = &NodeCfg;
+			} else if (Software) {
+				m = NodeCfg.getMember(arg);
+			} else {
+				m = HwCfg.getMember(arg);
+			}
+			arg = strtok_r(0," \t",&save);
+		}
+	}
+	if (0 == m)
+		m = Software ? (Message*)&NodeCfg : (Message*)&HwCfg;
+	stringstream ss;
+	m->toJSON(ss,full);
+	string s = ss.str();
+	write(STDOUT_FILENO,s.data(),s.size());
+	write(STDOUT_FILENO,"\n",1);
+	return 0;
+}
+
+
+int set_config(char *key)
 {
 	if (key == 0)
 		return 1;
@@ -795,7 +844,7 @@ int set_config(const char *key)
 }
 
 
-int add_field(const char *f)
+int add_field(char *f)
 {
 	if (f == 0) {
 		printf("missing argument");
@@ -812,7 +861,7 @@ int add_field(const char *f)
 }
 
 
-int genpart(const char *pname)
+int genpart(char *pname)
 {
 	const char header[] = "key,type,encoding,value\ncfg,namespace,,\n";
 	char *csvfile = 0, *swfile = 0, *hwfile = 0, *buf = 0, *cmd = 0;
@@ -913,7 +962,7 @@ done:
 }
 
 
-int flashnvs(const char *pfile)
+int flashnvs(char *pfile)
 {
 	char *cmd;
 	if (0 == IdfPath) {
@@ -943,7 +992,7 @@ int flashnvs(const char *pfile)
 }
 
 
-int updatenvs(const char *ignored)
+int updatenvs(char *ignored)
 {
 	char *pfile;
 	asprintf(&pfile,"%s/nvs-part-XXXXXX",Tmpdir);
@@ -961,7 +1010,7 @@ int updatenvs(const char *ignored)
 }
 
 
-int setport(const char *name)
+int setport(char *name)
 {
 	if (name == 0) {
 		printf("port is %s\n", Port ? Port : "<not set>");
@@ -978,7 +1027,7 @@ int setport(const char *name)
 }
 
 
-int isDir(const char *d)
+int isDir(char *d)
 {
 	if (d == 0)
 		return 1;
@@ -993,7 +1042,7 @@ int isDir(const char *d)
 }
 
 
-int set_idf(const char *path)
+int set_idf(char *path)
 {
 	if (path == 0) {
 		printf("IDF_PATH=%s\n",IdfPath);
@@ -1026,13 +1075,13 @@ int set_idf(const char *path)
 }
 
 
-int term(const char *)
+int term(char *)
 {
 	exit(0);
 }
 
 
-int nvsaddr(const char *a)
+int nvsaddr(char *a)
 {
 	char *e;
 	if (a == 0) {
@@ -1070,7 +1119,7 @@ void print_hex(uint8_t *b, size_t s, size_t off = 0)
 }
 
 
-int print_hex(const char *subtree)
+int print_hex(char *subtree)
 {
 	Message *tree = 0;
 	if (0 == subtree) {
@@ -1099,19 +1148,19 @@ int print_hex(const char *subtree)
 }
 
 
-int print_size(const char *ignored)
+int print_size(char *ignored)
 {
 	printf("node.cfg has %zu bytes\n",NodeCfg.calcSize());
 	printf("hw.cfg has %zu bytes\n",HwCfg.calcSize());
 	return 0;
 }
 
-int print_help(const char *arg);
+int print_help(char *arg);
 
 struct FuncDesc
 {
 	const char *name;
-	int (*func)(const char *);
+	int (*func)(char *);
 	const char *help;
 };
 
@@ -1132,7 +1181,8 @@ FuncDesc Functions[] = {
 	{ "parsexxd",	parse_xxd,	"parse xxd file" },
 	{ "passwd",	set_password,	"-c to clear password hash, otherwise calc hash from <pass>" },
 	{ "port",	setport,	"set port for flash programming (default: /dev/ttyUSB0)" },
-	{ "print",	show_config,	"print currecnt configuration" },
+	{ "print",	show_config,	"print current configuration" },
+	{ "pbt",	write_pbt,	"write current configuration as protobuf text" },
 	{ "q",		term,		"alias to exit" },
 	{ "quit",	term,		"alias to exit" },
 	{ "read",	read_config,	"read config from file <filename>" },
@@ -1147,7 +1197,7 @@ FuncDesc Functions[] = {
 };
 
 
-int print_help(const char *arg)
+int print_help(char *arg)
 {
 	for (const auto &p : Functions)
 		printf("%-10s: %s\n",p.name,p.help);

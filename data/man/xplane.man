@@ -1,0 +1,4 @@
+synopsis: xplane [command]
+valid commands are:
+drefs                      : print configured drefs
+dref <alias> <dref> <freq> : adds dref to environment

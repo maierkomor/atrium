@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2022, Thomas Maier-Komor
+ *  Copyright (C) 2022-2025, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -25,7 +25,7 @@
 #include "log.h"
 #include "rotenc.h"
 #include <esp_timer.h>
-//#include <driver/uart.h>	// for debugging, if needed
+//#include <rom/uart.h>	// for debugging, if needed
 
 #define TAG MODULE_BUTTON
 
@@ -41,16 +41,16 @@ RotaryEncoder::RotaryEncoder(const char *name, xio_t clk, xio_t dt, xio_t sw)
 , m_rlev(event_register(name,"`left"))
 , m_rrev(event_register(name,"`right"))
 { 
-	log_info(TAG,"rotary encoder %s at clk=%u,dt=%u,sw=%u",name,clk,dt,sw);
+	log_info(TAG,"rotary encoder %s at clk=%d,dt=%d,sw=%d",name,clk,dt,sw);
 }
 
 
-RotaryEncoder *RotaryEncoder::create(const char *name, xio_t clk, xio_t dt, xio_t sw)
+RotaryEncoder *RotaryEncoder::create(const char *name, xio_t clk, xio_t dt, xio_t sw, xio_cfg_pull_t pull)
 {
 	xio_cfg_t cfg = XIOCFG_INIT;
 	cfg.cfg_io = xio_cfg_io_in;
 	cfg.cfg_intr = xio_cfg_intr_edges;
-	cfg.cfg_pull = xio_cfg_pull_up;
+	cfg.cfg_pull = pull;
 	if (0 > xio_config(clk,cfg)) {
 		log_warn(TAG,"config clk@%u failed",clk);
 		return 0;
@@ -131,7 +131,7 @@ void RotaryEncoder::sw_ev(void *arg)
 
 
 // this is an ISR!
-void IRAM_ATTR RotaryEncoder::swIntr(void *arg)
+void RotaryEncoder::swIntr(void *arg)
 {
 	// no log_* from ISRs!
 	int32_t now = esp_timer_get_time() / 1000;
@@ -225,6 +225,7 @@ void RotaryEncoder::clkIntr(void *arg)
 	// no log_* from ISRs!
 	RotaryEncoder *dev = static_cast<RotaryEncoder*>(arg);
 	int dt = xio_get_lvl(dev->m_dt);
+//	int clk = xio_get_lvl(dev->m_clk);
 	uint8_t nst = (dev->m_lc << 1) | dt;
 //	uart_tx_one_char(Hex[(dev->m_lst>>3)&1]);
 //	uart_tx_one_char(Hex[(dev->m_lst>>2)&1]);
@@ -271,11 +272,12 @@ void RotaryEncoder::clk_ev(void *arg)
 }
 
 
-void IRAM_ATTR RotaryEncoder::dtIntr(void *arg)
+void RotaryEncoder::dtIntr(void *arg)
 {
 	// no log_* from ISRs!
 	RotaryEncoder *dev = static_cast<RotaryEncoder*>(arg);
-	dev->m_lc = xio_get_lvl(dev->m_clk);
+	int clk = xio_get_lvl(dev->m_clk);
+	dev->m_lc = clk;
 //	uart_tx_one_char('d');
 //	uart_tx_one_char(Hex[clk]);
 //	uart_tx_one_char('\n');

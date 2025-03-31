@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2017-2024, Thomas Maier-Komor
+ *  Copyright (C) 2017-2025, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -478,7 +478,7 @@ static void initNodename()
 	esp_err_t e;
 #if IDF_VERSION >= 50
 	e = ESP_ERR_NOT_FOUND;
-	if (esp_netif_t *nif = esp_netif_next(0))
+	if (esp_netif_t *nif = esp_netif_next_unsafe(0))
 		e = esp_netif_get_mac(nif,mac);
 #else
 	e = esp_wifi_get_mac(WIFI_IF_STA,mac);
@@ -532,25 +532,30 @@ void cfg_factory_reset(void *)
 
 int cfg_store_hwcfg()
 {
-	HWConf.set_magic(0xAE54EDCB);
+	int r;
 	size_t s = HWConf.calcSize();
-	uint8_t *buf = (uint8_t *) malloc(s);
-	assert(buf);
-	HWConf.toMemory(buf,s);
-	int r = nvm_store_blob("hw.cfg",buf,s);
-	free(buf);
+	if (uint8_t *buf = (uint8_t *) malloc(s)) {
+		HWConf.toMemory(buf,s);
+		r = nvm_store_blob("hw.cfg",buf,s);
+		free(buf);
+	} else {
+		r = ESP_ERR_NO_MEM;
+	}
 	return r;
 }
 
 
 int cfg_store_nodecfg()
 {
+	int r;
 	size_t s = Config.calcSize();
-	uint8_t *buf = (uint8_t *) malloc(s);
-	assert(buf);
-	Config.toMemory(buf,s);
-	int r = nvm_store_blob("node.cfg",buf,s);
-	free(buf);
+	if (uint8_t *buf = (uint8_t *) malloc(s)) {
+		Config.toMemory(buf,s);
+		nvm_store_blob("node.cfg",buf,s);
+		free(buf);
+	} else {
+		r = ESP_ERR_NO_MEM;
+	}
 	return r;
 }
 
@@ -610,15 +615,15 @@ int cfg_read_hwcfg()
 }
 
 
-int cfg_init_hwcfg()
+void cfg_init_hwcfg()
 {
 	uint8_t setup = nvm_read_u8("hwconf",0);
 	if (setup) {
 		log_warn(TAG,"%s: %u: last boot failed - skipping hwconf",cfg_err,setup);
-		return 1;
+	} else {
+		nvm_store_u8("hwconf",1);
+		cfg_read_hwcfg();
 	}
-	nvm_store_u8("hwconf",1);
-	return cfg_read_hwcfg();
 }
 
 

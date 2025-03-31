@@ -29,6 +29,15 @@
 
 #include <string.h>
 
+#ifdef CONFIG_LUA
+#include "luaext.h"
+extern "C" {
+#include "lua.h"
+#include "lualib.h"
+#include "lauxlib.h"
+}
+#endif
+
 
 #define CMD_SYSTEM	0x20
 #define CMD_SYS_OFF	0x20
@@ -51,6 +60,7 @@
 #define BIT_ON		0x1
 #define BITS_BLINK	0x6
 
+#define DIGITS_MAX	16
 #define DIM_MAX		15
 #define BLINK_MAX	3
 
@@ -58,6 +68,32 @@
 
 
 typedef enum { disp_off, disp_on, blink_05hz, blink_1hz, blink_2hz } disp_t;
+
+
+static HT16K33 *Instances = 0;
+
+#ifdef CONFIG_LUA
+static void ht16k33_init_lua();
+#endif
+
+static uint8_t HexMap[] = {
+	0x3f,	// 0
+	0x06,	// 1
+	0x5b,	// 2
+	0x4f,	// 3
+	0x66,	// 4
+	0x6d,	// 5
+	0x7d,	// 6
+	0x07,	// 7
+	0x7f,	// 8
+	0x6f,	// 9
+	0x77,	// A
+	0x7c,	// b
+	0x58,	// c
+	0x5e,	// d
+	0x79,	// e
+	0x71,	// f
+};
 
 
 void HT16K33::create(uint8_t bus, uint8_t addr)
@@ -71,8 +107,16 @@ void HT16K33::create(uint8_t bus, uint8_t addr)
 		log_dbug(TAG,"power up");
 		if (i2c_write1(bus,addr,CMD_SYS_ON))
 			log_warn(TAG,"HT16k33 at %u,0x%x did not answer",bus,(unsigned)addr);
-		if (HT16K33 *dev = new HT16K33(bus,addr))
+		if (HT16K33 *dev = new HT16K33(bus,addr)) {
 			dev->init();
+			dev->m_next = Instances;
+#ifdef CONFIG_LUA
+			if (0 == Instances) {
+				ht16k33_init_lua();
+			}
+#endif
+			Instances = dev;
+		}
 	}
 }
 
@@ -113,6 +157,21 @@ static void ht16k33_standby(void *arg)
 }
 
 
+static void ht16k33_write(void *arg)
+{
+	if (arg) {
+		const char *str = (const char *) arg;
+		uint8_t data[8];
+		int n = sscanf(str,"%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx"
+			, data+0, data+1, data+2, data +3
+			, data+4, data+5, data+6, data +7
+			);
+		log_info(TAG,"write %d bytes",n);
+		Instances->write(data,n);
+	}
+}
+
+
 int HT16K33::setPower(bool on)
 {
 	int r = i2c_write1(m_bus,m_addr,CMD_SYSTEM|on);
@@ -145,10 +204,11 @@ int HT16K33::init()
 	clear();
 	// power/standby needs additional testing
 	// resume from standby needs reinitialization
-//	action_add(concat(getName(),"!power"),ht16k33_power,this,"power device on");
-//	action_add(concat(getName(),"!standby"),ht16k33_standby,this,"put device in standby mode");
+	action_add(concat(getName(),"!power"),ht16k33_power,this,"power device on");
+	action_add(concat(getName(),"!standby"),ht16k33_standby,this,"put device in standby mode");
 	action_add(concat(getName(),"!on"),ht16k33_on,this,"turn display on");
 	action_add(concat(getName(),"!off"),ht16k33_off,this,"turn display off");
+	action_add(concat(getName(),"!write"),ht16k33_write,0,"write to display");
 	return 0;
 }
 
@@ -221,13 +281,10 @@ int HT16K33::write(uint8_t *v, unsigned n)
 	if (n + off >= m_digits)
 		n = m_digits - off;
 	if (0 != memcmp(m_data+off,v,n)) {
-		uint8_t data[] = { m_addr , (uint8_t)off };
-		int r = i2c_write(m_bus,data,sizeof(data),false,true);
+		uint8_t data[n+2] = { m_addr , (uint8_t)off };
+		memcpy(data+2,v,n);
+		int r = i2c_write(m_bus,data,sizeof(data),true,true);
 		log_hex(TAG,v,n,"write %d",r);
-		if (r)
-			return -1;
-		r = i2c_write(m_bus,v,n,true,false);
-		log_dbug(TAG,"write %d",r);
 		if (r)
 			return -1;
 		memcpy(m_data+off,v,n);
@@ -235,6 +292,27 @@ int HT16K33::write(uint8_t *v, unsigned n)
 	off += n;
 	m_pos = off;
 	return 0;
+}
+
+
+int HT16K33::writeHex(char *h)
+{
+	uint8_t data[DIGITS_MAX];
+	int n = 0;
+	char d = *h;
+	while (((d >= '0') && (d <= '9')) || ((d >= 'a') && (d <= 'f')) || ((d >= 'A') && (d <= 'F'))) {
+		if (d >= 'a') {
+			data[n] = HexMap[d-'a'+10];
+		} else if (d >= 'A') {
+			data[n] = HexMap[d-'A'+10];
+		} else {
+			data[n] = HexMap[d-'0'];
+		}
+		++n;
+		++h;
+		d = *h;
+	}
+	return write(data,n);
 }
 
 
@@ -299,6 +377,7 @@ const char *HT16K33::exeCmd(Terminal &term, int argc, const char **args)
 			"off      : display off\n"
 			"dim <d>  : set dim, range 0..15\n"
 			"blink <b>: range 0..3\n"
+			"write <x>: write hex\n"
 			);
 		return 0;
 	}
@@ -307,10 +386,30 @@ const char *HT16K33::exeCmd(Terminal &term, int argc, const char **args)
 			setDisplay(true);
 		} else if (0 == strcmp(args[0],"off")) {
 			setDisplay(false);
+		} else if (0 == strcmp(args[0],"blank")) {
+			m_pos = 0;
+			uint8_t data[] = {0xff,0xff,0xff,0xff,0xff,0xff};
+			this->write(data,sizeof(data));
+		} else if (0 == strcmp(args[0],"unblank")) {
+			m_pos = 0;
+			uint8_t data[] = {0,0,0,0,0,0,0};
+			this->write(data,sizeof(data));
 		} else {
 			return "Invalid argument #2.";
 		}
 	} else if (2 == argc) {
+		if (0 == strcmp(args[0],"write")) {
+			uint8_t data[16];
+			int n = sscanf(args[1],"%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx"
+					, data+0, data+1, data+2, data+3, data+4, data+5, data+6, data+7
+					, data+8, data+9, data+10, data+11, data+12, data+13, data+14, data+15
+				      );
+			m_pos = 0;
+			if (n < 0)
+				return "Invalid argument #2.";
+			this->write(data,n);
+			return 0;
+		}
 		char *e;
 		long v = strtol(args[1],&e,0);
 		if (*e)
@@ -319,6 +418,10 @@ const char *HT16K33::exeCmd(Terminal &term, int argc, const char **args)
 			if ((v < 0) || (v > DIM_MAX))
 				return "Invalid argument #3.";
 			setDim(v);
+		} else if (0 == strcmp(args[0],"num")) {
+			if ((v < 0) || (v > DIGITS_MAX))
+				return "Invalid argument #3.";
+			setNumDigits(v);
 		} else if (0 == strcmp(args[0],"blink")) {
 			if ((v < 0) || (v > BLINK_MAX))
 				return "Invalid argument #3.";
@@ -332,5 +435,138 @@ const char *HT16K33::exeCmd(Terminal &term, int argc, const char **args)
 	return 0;
 }
 #endif // CONFIG_I2C_XCMD
+
+
+#ifdef CONFIG_LUA
+static HT16K33 *get_device(int i, lua_State *L)
+{
+	if (i >= 0)  {
+		HT16K33 *drv = Instances;
+		while (drv) {
+			if (0 == i)
+				return drv;
+			--i;
+			drv = drv->next();
+		}
+	}
+	lua_pushliteral(L,"Invalid device index.");
+	lua_error(L);
+	return 0;
+}
+
+
+static int luax_onoff(lua_State *L)
+{
+	HT16K33 *drv = get_device(luaL_checkinteger(L,1),L);
+	bool on = false;
+	if (lua_isinteger(L,2)) {
+		on = lua_tointeger(L,2) != 0;
+	} else if (lua_isboolean(L,2)) {
+		on = lua_toboolean(L,2);
+	} else {
+		//lua_pushliteral(L,"Invalid power argument.");
+		lua_pushstring(L,lua_typename(L,2));
+		lua_error(L);
+	}
+	drv->setDisplay(on);
+	return 0;
+}
+
+
+static int luax_setnum(lua_State *L)
+{
+	HT16K33 *drv = get_device(luaL_checkinteger(L,1),L);
+	int num = luaL_checkinteger(L,2);
+	drv->setNumDigits(num);
+	return 0;
+}
+
+
+static int luax_setpos(lua_State *L)
+{
+	HT16K33 *drv = get_device(luaL_checkinteger(L,1),L);
+	int pos = luaL_checkinteger(L,2);
+	drv->setPos(pos,0);
+	return 0;
+}
+
+
+static int luax_write(lua_State *L)
+{
+	HT16K33 *drv = get_device(luaL_checkinteger(L,1),L);
+	const char *arg = luaL_checkstring(L,2);
+	uint8_t data[16];
+	int n = sscanf(arg,"%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx"
+		, data+0, data+1, data+2, data+3, data+4, data+5, data+6, data+7
+		, data+8, data+9, data+10, data+11, data+12, data+13, data+14, data+15
+		);
+	drv->setPos(0,0);
+	drv->write(data,n);
+	return 0;
+}
+
+
+static int luax_printhex(lua_State *L)
+{
+	HT16K33 *drv = get_device(luaL_checkinteger(L,1),L);
+	unsigned idx = 2;
+	uint8_t data[16];
+	unsigned n = 0;
+	while (lua_isinteger(L,idx)) {
+		int v = lua_tointeger(L,idx);
+		if ((0 <= v) && (v < 16)) {
+			data[n] = HexMap[v];
+			++n;
+			if (sizeof(data) == n)
+				break;
+		}
+		++idx;
+	}
+	drv->write(data,n);
+	return 0;
+}
+
+
+static int luax_print(lua_State *L)
+{
+	HT16K33 *drv = get_device(luaL_checkinteger(L,1),L);
+	const char *str = luaL_checkstring(L,2);
+	uint8_t data[16];
+	unsigned n = 0;
+	do {
+		char c = *str++;
+		if ((c >= '0') && (c <= '9'))
+			data[n] = HexMap[c-'0'];
+		else if ((c >= 'a') && (c <= 'f'))
+			data[n] = HexMap[c-'a'+10];
+		else if ((c >= 'A') && (c <= 'F'))
+			data[n] = HexMap[c-'A'+10];
+		else if ((c == '.') && (n > 0))
+			data[--n] |= 0x80;
+		else
+			data[n] = 0;
+		++n;
+	} while (n < sizeof(data));
+	drv->write(data,n);
+	return 0;
+}
+
+
+static const LuaFn Functions[] = {
+	{ "ht16k33_onoff", luax_onoff, "turn display on=1/off=0" },
+	{ "ht16k33_setnum", luax_setnum, "set number of digits" },
+	{ "ht16k33_setpos", luax_setpos, "set x position" },
+	{ "ht16k33_write", luax_write, "write data" },
+	{ "ht16k33_printhex", luax_printhex, "write hex" },
+	{ "ht16k33_print", luax_print, "write string" },
+	{ 0, 0, 0 }
+};
+
+
+static void ht16k33_init_lua()
+{
+	xlua_add_funcs("ht16k33",Functions);
+}
+#endif // CONFIG_LUA
 
 #endif

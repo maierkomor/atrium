@@ -96,6 +96,9 @@ GUI. In that case make sure that you erase the whole flash before
 flashing the first time, and that the files in the directory are flashed
 to the address given in their name.
 
+On Ubuntu, you should uninstall `brltty`, otherwise CH340 based boards
+will not be accessible as `/dev/ttyUSB*`.
+
 For ESP32 app images no address is given, as they can be flashed to any
 partition. The default ESP32 partition layout has partition `ota_0` at
 0x100000. The bootloader address is dependent on the conroller type. The

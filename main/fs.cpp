@@ -306,14 +306,11 @@ static void init_hwconf()
 	}
 	if (char *buf = (char*)malloc(s)) {
 		romfs_read_at(fd,buf,s,0);
-		int w = nvm_store_blob("hw.cfg",(uint8_t*)buf,s);
+		nvm_store_blob("hw.cfg",(uint8_t*)buf,s);
 		free(buf);
-		if (w == 0) {
-			log_info(TAG,"wrote hw.cfg to NVM");
-			return;
-		}
+		return;
 	}
-	log_error(TAG,"read hw.cfg: failed");
+	log_warn(TAG,"read hw.cfg: failed");
 }
 
 

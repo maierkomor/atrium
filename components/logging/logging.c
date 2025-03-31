@@ -80,6 +80,10 @@
 #define CONFIG_CONSOLE_UART_TX -1
 #endif
 
+#ifndef UART_HW_FIFO_LEN
+#define UART_HW_FIFO_LEN(x) UART_FIFO_LEN
+#endif
+
 
 #define ANSI_RED	"\033[0;31m"
 #define ANSI_GREEN  	"\033[0;32m"
@@ -208,7 +212,7 @@ void log_setup()
 	UartLock = xSemaphoreCreateMutex();
 	if (LogUart >= 0) {
 #if CONFIG_UART_CONSOLE_NONE != 1 && CONFIG_CONSOLE_UART_NUM != -1
-		uart_driver_install((uart_port_t)LogUart,UART_FIFO_LEN*2,UART_FIFO_LEN*2,0,DRIVER_ARG);
+		uart_driver_install((uart_port_t)LogUart,UART_HW_FIFO_LEN(LogUart)*2,UART_HW_FIFO_LEN(LogUart)*2,0,DRIVER_ARG);
 #if (CONFIG_CONSOLE_UART_RX != -1) || (CONFIG_CONSOLE_UART_TX != -1)
 		uart_set_pin((uart_port_t)LogUart, CONFIG_CONSOLE_UART_TX, CONFIG_CONSOLE_UART_RX , -1, -1);
 #endif

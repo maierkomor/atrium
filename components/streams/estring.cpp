@@ -86,13 +86,13 @@ void log_str(size_t l, const char *s)
 #endif
 #endif
 
-estring::estring()
-: str(0) //: str((char*)malloc(8))
-, len(0)
-, alloc(0) //, alloc(8)
-{
-	con_print("estring() %p",this);
-}
+//estring::estring()
+//: str(0) //: str((char*)malloc(8))
+//, len(0)
+//, alloc(0) //, alloc(8)
+//{
+//	con_print("estring() %p",this);
+//}
 
 
 estring::estring(size_t l, char c)
@@ -261,10 +261,8 @@ bool estring::operator == (const char *s) const
 	assert(this);
 	return (str == 0) ? (*s == 0) : (0 == strcmp(str,s));
 }
-*/
 
 
-/*
 const char *estring::c_str() const
 {
 	if (str == 0) {

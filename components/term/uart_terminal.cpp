@@ -48,6 +48,10 @@ using namespace std;
 
 #define TAG MODULE_UART
 
+#ifndef UART_HW_FIFO_LEN
+#define UART_HW_FIFO_LEN(x) UART_FIFO_LEN
+#endif
+
 #if IDF_VERSION > 32
 #define DRIVER_ARG 0,0
 #else
@@ -85,7 +89,7 @@ void UartTerminal::init(uint8_t uart)
 #if CONFIG_UART_CONSOLE_NONE != 1 && CONFIG_CONSOLE_UART_NUM != -1
 	if ((int)uart != CONFIG_CONSOLE_UART_NUM)
 #endif
-		uart_driver_install((uart_port_t)uart,UART_FIFO_LEN*2,UART_FIFO_LEN*2,0,DRIVER_ARG);
+		uart_driver_install((uart_port_t)uart,UART_HW_FIFO_LEN(uart)*2,UART_HW_FIFO_LEN(uart)*2,0,DRIVER_ARG);
 	snprintf(m_name,sizeof(m_name),"uart@%d",uart);
 }
 
@@ -99,9 +103,9 @@ void UartTerminal::init(uint8_t rx, uint8_t tx)
 #if CONFIG_UART_CONSOLE_NONE != 1 && CONFIG_CONSOLE_UART_NUM != -1
 	if ((int)rx != CONFIG_CONSOLE_UART_NUM)
 #endif
-		uart_driver_install((uart_port_t)rx,UART_FIFO_LEN*2,UART_FIFO_LEN*2,0,DRIVER_ARG);
+		uart_driver_install((uart_port_t)rx,UART_HW_FIFO_LEN(rx)*2,UART_HW_FIFO_LEN(rx)*2,0,DRIVER_ARG);
 	if (rx != tx)
-		uart_driver_install((uart_port_t)tx,UART_FIFO_LEN*2,UART_FIFO_LEN*2,0,DRIVER_ARG);
+		uart_driver_install((uart_port_t)tx,UART_HW_FIFO_LEN(tx)*2,UART_HW_FIFO_LEN(tx)*2,0,DRIVER_ARG);
 }
 
 

@@ -95,6 +95,49 @@ if [ ! -d $installdir ]; then
 	mkdir -p $installdir
 fi
 
+
+## ESP32 IDF
+echo =====
+echo ESP32
+echo =====
+if [ "$IDF_ESP32" == "" ]; then
+	if [ -d "$installdir/idf-esp32" ]; then
+		IDF_ESP32="$installdir/idf-esp32"
+	fi
+fi
+if [ "$IDF_ESP32" == "" ]; then
+	if [ "$installdir" == "" ]; then
+		echo unable to find ESP32 IDF
+		exit 1
+	fi
+	if [ "1" == "$interactive" ]; then
+		echo OK to start download of esp32 IDF? Press CTRL-C to cancel.
+		read
+	else
+		echo starting download of esp32 IDF
+	fi
+	pushd $installdir > /dev/null
+	git clone https://github.com/espressif/esp-idf.git idf-esp32 || exit 1
+	cd idf-esp32
+	IDF_ESP32=`pwd`
+	popd > /dev/null
+fi
+pushd $IDF_ESP32
+git pull --recurse-submodule
+git reset --hard v5.2.5
+git submodule deinit -f --all
+git submodule update --init
+IDF_PATH="$IDF_ESP32" bash install.sh
+IDF_PATH="$IDF_ESP32" python3 tools/idf_tools.py install || exit 1
+IDF_PATH="$IDF_ESP32" python3 tools/idf_tools.py install-python-env || exit 1
+#echo patching IDF for ESP32
+#patch -t -p1 < $patchdir/idf-esp32-v5.1.diff || echo PATCHING FAILED!
+echo patching lwip of ESP32
+cd components/lwip/lwip
+patch -t -p1 < $patchdir/esp32-lwip-v5.1.diff || echo PATCHING FAILED!
+popd > /dev/null
+
+
 echo =======
 echo ESP8266
 echo =======
@@ -166,42 +209,7 @@ echo patching IDF for ESP8266
 patch -t -p1 < $patchdir/idf-esp8266-v3.3.diff || echo PATCHING FAILED!
 popd
 
-## ESP32 IDF
-if [ "$IDF_ESP32" == "" ]; then
-	if [ -d "$installdir/idf-esp32" ]; then
-		IDF_ESP32="$installdir/idf-esp32"
-	fi
-fi
-if [ "$IDF_ESP32" == "" ]; then
-	if [ "$installdir" == "" ]; then
-		echo unable to find ESP32 IDF
-		exit 1
-	fi
-	if [ "1" == "$interactive" ]; then
-		echo OK to start download of esp32 IDF? Press CTRL-C to cancel.
-		read
-	else
-		echo starting download of esp32 IDF
-	fi
-	pushd $installdir > /dev/null
-	git clone https://github.com/espressif/esp-idf.git idf-esp32 || exit 1
-	cd idf-esp32
-	IDF_ESP32=`pwd`
-	popd > /dev/null
-fi
-pushd $IDF_ESP32
-git pull --recurse-submodule
-git reset --hard v5.1.5
-git submodule deinit -f --all
-git submodule update --init
-IDF_PATH="$IDF_ESP32" bash install.sh
-IDF_PATH="$IDF_ESP32" python3 tools/idf_tools.py install || exit 1
-#echo patching IDF for ESP32
-#patch -t -p1 < $patchdir/idf-esp32-v5.1.diff || echo PATCHING FAILED!
-echo patching lwip of ESP32
-cd components/lwip/lwip
-patch -t -p1 < $patchdir/esp32-lwip-v5.1.diff || echo PATCHING FAILED!
-popd > /dev/null
+
 
 echo ===================
 cat $settings
@@ -214,78 +222,6 @@ source export.sh
 IDF_PATH="$IDF_ESP32" python3 "$IDF_ESP32/tools/idf_tools.py" export | sed "s/export //g;s/=/_ESP32=/g;s/;/\n/g;s/\"//g" >> $settings
 echo >> $settings
 popd > /dev/null
-
-#
-# WFC is still used, but files are generated with a private version
-#
-### WFC - wire format compiler
-#WFC=`which wfc`
-#if [ "$?" != "0" ]; then
-#	if [ -x "$installdir/wfc/bin/wfc" ]; then
-#		WFC="$installdir/wfc/bin/wfc"
-#	fi
-#fi
-#if [ "$WFC" == "" ]; then
-#	if [ "1" == "$interactive" ]; then
-#		echo OK to start download of WFC? Press CTRL-C to cancel.
-#		read
-#	else
-#		echo starting download of WFC
-#	fi
-#	pushd $installdir
-#	git clone https://github.com/maierkomor/wfc.git wfc || exit 1
-#	cd wfc
-#	./configure || exit 1
-#	make || exit 1
-#	WFC=`pwd`/bin/wfc
-#	popd > /dev/null
-#	echo "PATH=`basename wfc`:\$PATH" >> $settings
-#fi
-#if [ -x $WFC ]; then
-#	WFCDIR=`dirname $WFC`/..
-#	WFCDIR=`readlink -f $WFCDIR`
-#else
-#	echo failed to find or install WFC
-#	exit 1
-#fi
-#	
-#echo found WFC at $WFCDIR
-#PATH=$PATH:$WFCDIR/bin
-#
-#echo "# WFC" >> $settings
-#echo "WFCDIR=$WFCDIR" >> $settings
-#echo "WFC=$WFC" >> $settings
-
-#echo "# PATH"
-#echo PATH=$PATH >> $settings
-
-## Webcam sources
-#if [ ! -e "esp32/camera/.git/config" ]; then
-#	mkdir -p esp32
-#	pushd esp32
-#	echo $interactive
-#	if [ "1" == "$interactive" ]; then
-#		echo OK to start download of esp32-camera? Press CTRL-C to cancel.
-#		read
-#	else
-#		echo starting download of esp32 camera package
-#	fi
-#	git clone https://github.com/espressif/esp32-camera camera
-#else
-#	echo updating camera package
-#	pushd esp32/camera
-#	git pull || exit 1
-#fi
-#popd > /dev/null
-
-
-# python modules
-#echo checking requirements of ESP32 IDF in $IDF_ESP32
-#IDF_PATH=$IDF_ESP32 pip install -r $IDF_ESP32/requirements.txt
-#
-#pip install -U pip
-#echo checking requirements of ESP8266 IDF in $IDF_ESP8266
-#IDF_PATH=$IDF_ESP8266 pip install -r $IDF_ESP8266/requirements.txt
 
 
 cp $settings settings.sh || exit 1

@@ -170,12 +170,13 @@ void i2c_setup(void)
 	for (const I2CConfig &c : HWConf.i2c()) {
 		if (c.has_sda() && c.has_scl()) {
 			uint8_t bus = c.port();
-			log_info(TAG,"bus%d: sda=%d, scl=%d",bus,c.sda(),c.scl());
+			bool xpullup = c.xpullup();
+			log_info(TAG,"bus%d: sda=%d, scl=%d, %sternal pull-up",bus,c.sda(),c.scl(),xpullup?"ex":"in");
 			// i2c_init performs a bus scan of known devices
 #ifdef CONFIG_IDF_TARGET_ESP8266
-			int r = i2c_init(bus,c.sda(),c.scl(),0,c.xpullup());
+			int r = i2c_init(bus,c.sda(),c.scl(),0,xpullup);
 #else
-			int r = i2c_init(bus,c.sda(),c.scl(),c.freq(),c.xpullup());
+			int r = i2c_init(bus,c.sda(),c.scl(),c.freq(),xpullup);
 #endif
 			if (r < 0) 
 				log_warn(TAG,"error %d",r);

@@ -30,6 +30,7 @@
 #include "shell.h"
 #include "support.h"
 #include "swcfg.h"
+#include "terminal.h"
 #include "timefuse.h"
 #include "wifi.h"
 
@@ -59,6 +60,8 @@ extern "C" {
 using namespace std;
 
 struct XPlaneCtrl {
+	int addDref(const char *alias, const char *dref, unsigned freq);
+
 	EnvObject *env;
 	ip_addr_t ip;
 	uint16_t data_port, dref_port;
@@ -76,20 +79,24 @@ struct iddata_t {
 
 
 static XPlaneCtrl *Ctx = 0;
+static event_t XpRdyEv = 0, XpUpdEv  = 0;
+static bool Ready = false;
 
 
 static void sendout(uint16_t port, uint8_t *data, size_t s)
 {
+	if ((0 == Ctx) || (0 == Ctx->dref_pcb))
+		return;
 	LWIP_LOCK();
 	struct pbuf *r = pbuf_alloc(PBUF_TRANSPORT,s,PBUF_RAM);
 	pbuf_take(r,data,s);
 	int e = udp_sendto(Ctx->dref_pcb,r,&Ctx->ip,port);
 	pbuf_free(r);
 	LWIP_UNLOCK();
-	if (e)
-		log_warn(TAG,"send packet: %s",strlwiperr(e));
-	else
+	if (e) {
 		log_hex(TAG,data,s,"send packet");
+		log_warn(TAG,"send %.*s: %s",s,data,strlwiperr(e));
+	}
 }
 
 
@@ -142,34 +149,10 @@ static void send_dref0_cb(void *arg)
 		log_warn(TAG,"invalid argument for send_dref0: %s",(const char *)arg);
 		return;
 	}
-	log_info(TAG,"dref %s %f",dref,val);
+	log_dbug(TAG,"dref %s %f",dref,val);
 	send_dref0(dref,val);
 }
 
-
-
-/*
-static void xplane_session(void *arg)
-{
-	UdpCmd *c = (UdpCmd *) arg;
-	char ipstr[64];
-	ip2str_r(&c->ip,ipstr,sizeof(ipstr));
-	log_dbug(TAG,"%d bytes from %s:%u", c->pbuf->len, ipstr, (unsigned)c->port);
-	size_t s = term.getSize();
-	log_dbug(TAG,"response: '%s'",term.getBuffer());
-	LWIP_LOCK();
-	struct pbuf *r = pbuf_alloc(PBUF_TRANSPORT,s,PBUF_RAM);
-	pbuf_take(r,term.getBuffer(),s);
-	int e = udp_sendto(Ctx->PCB,r,&c->ip,Ctx->Port);
-	pbuf_free(r);
-	pbuf_free(c->pbuf);
-	LWIP_UNLOCK();
-	if (e)
-		log_warn(TAG,"send=%d",e);
-	delete c;
-	vTaskDelete(0);
-}
-*/
 
 
 static void update_id(iddata_t *d)
@@ -179,7 +162,10 @@ static void update_id(iddata_t *d)
 		auto i = Ctx->varids.find(d->id<<8|idx);
 		if (i != e) {
 			EnvNumber *n = i->second;
-			n->set(d->value[idx]);
+			if (d->value[idx] != n->get()) {
+				n->set(d->value[idx]);
+				event_trigger(XpUpdEv);
+			}
 		}
 	}
 }
@@ -194,10 +180,14 @@ static void data_recv_cb(void *arg, struct udp_pcb *pcb, struct pbuf *buf, const
 		size_t size = buf->len-5;
 		while (size >= 36) {
 			iddata_t *f = (iddata_t *)data;
-			//log_dbug(TAG,"id %3u: %f, %f, %f, %f, %f",f->id,f->value[0],f->value[1],f->value[2],f->value[3],f->value[4]);
+			log_dbug(TAG,"id %3u: %f, %f, %f, %f, %f",f->id,f->value[0],f->value[1],f->value[2],f->value[3],f->value[4]);
 			update_id(f);
 			data += 36;
 			size -= 36;
+		}
+		if (!Ready) {
+			Ready = true;
+			event_trigger(XpRdyEv);
 		}
 	} else {
 		log_warn(TAG,"unhandled packet type %.4s",(const char *)buf);
@@ -206,25 +196,60 @@ static void data_recv_cb(void *arg, struct udp_pcb *pcb, struct pbuf *buf, const
 }
 
 
-static void dref_recv_cb(void *arg, struct udp_pcb *pcb, struct pbuf *buf, const ip_addr_t *ip, u16_t port)
+static void rref_update(struct pbuf *buf)
 {
-	if (0 == memcmp(buf->payload,"DREF+",5)) {
-		// ignore for now
-	} else if (0 == memcmp(buf->payload,"RREF",4)) {
-		//log_hex(TAG,buf->payload,buf->len,"rref update, len %d",buf->len);
-		struct RREF {
-			uint32_t id;
-			float val;
-		};
-		//RREF *r = (RREF *) buf->payload+5;
+	unsigned at = 5;
+	log_hex(TAG,buf->payload,buf->len,"rref update, len %d",buf->len);
+	struct RREF {
+		uint32_t id;
+		float val;
+	};
+	//RREF *r = (RREF *) buf->payload+5;
+	while (at + sizeof(RREF) <= buf->len) {
 		RREF ref, *r = &ref;
-		memcpy(r,(char*)buf->payload+5,sizeof(ref));
+		memcpy(r,(char*)buf->payload+at,sizeof(ref));
 		if (Ctx->dreqs.size() > r->id) {
-			log_dbug(TAG,"rref update for %u: %f",r->id,(double)r->val);
-			Ctx->dreqs[r->id]->set(r->val);
+			EnvNumber *e = Ctx->dreqs[r->id];
+			log_dbug(TAG,"rref update for %s: %f",e->name(),(double)r->val);
+			if (e->get() != r->val) {
+				e->set(r->val);
+				event_trigger(XpUpdEv);
+			}
+			if (!Ready) {
+				Ready = true;
+				event_trigger(XpRdyEv);
+			}
 		} else {
 			log_warn(TAG,"rref id 0x%x is out of range",r->id);
 		}
+		at += sizeof(ref);
+	}
+}
+
+
+static void dref_recv_cb(void *arg, struct udp_pcb *pcb, struct pbuf *buf, const ip_addr_t *ip, u16_t port)
+{
+	if (0 == memcmp(buf->payload,"DREF+",5)) {
+		//log_hex(TAG,buf->payload,buf->len,"dref+ update, len %d",buf->len);
+		const char *dname = (const char *) buf->payload+9;
+		float f;
+		memcpy(&f,(char*)buf->payload+5,sizeof(float));
+		auto i = Ctx->drefs.find(dname);
+		if (i != Ctx->drefs.end()) {
+			if (i->second->get() != f) {
+				log_dbug(TAG,"dref+ %f '%s' updated",f,dname);
+				i->second->set(f);
+				event_trigger(XpUpdEv);
+			}
+			if (!Ready) {
+				Ready = true;
+				event_trigger(XpRdyEv);
+			}
+		} else {
+			log_dbug(TAG,"dref+ %f '%s' not found",f,dname);
+		}
+	} else if (0 == memcmp(buf->payload,"RREF",4)) {
+		rref_update(buf);
 	} else {
 		log_hex(TAG,buf->payload,buf->len,"unhandled packet type %.4s",(const char *)buf);
 	}
@@ -246,7 +271,7 @@ static void req_dref(unsigned id, unsigned freq, const char *dref)
 	char buf[413];
 	memset(buf,sizeof(buf),' ');
 	char *at = buf;
-	memcpy(at,"RREF",5);
+	memcpy(at,"RREF",5);	// including \0!
 	at += 5;
 	memcpy(at,&freq,sizeof(uint32_t));
 	at += sizeof(uint32_t);
@@ -257,8 +282,29 @@ static void req_dref(unsigned id, unsigned freq, const char *dref)
 }
 
 
+int XPlaneCtrl::addDref(const char *alias, const char *dref, unsigned freq)
+{
+	if (0 == is_id(alias)) {
+		log_warn(TAG,"invalid alias '%s'",alias);
+		return 1;
+	}
+	EnvElement *e = env->getChild(alias);
+	EnvNumber *n;
+	if (0 == e) {
+		n = env->add(alias,0.0);
+	} else {
+		n = e->toNumber();
+		assert(n);
+	}
+	drefs.insert(pair<estring,EnvNumber*>(dref,n));
+	dreqs.push_back(n);
+	return 0;
+}
+
+
 void connect(void *)
 {
+	log_info(TAG,"connect");
 	const XPlaneConfig &c = Config.xplane();
 	unsigned id = 0;
 	for (auto dref : c.drefs()) {
@@ -273,7 +319,7 @@ void connect(void *)
 static int luax_xplane_command(lua_State *L)
 {
 	const char *c = luaL_checkstring(L,1);
-	log_info(TAG,"send command %s",c);
+	log_dbug(TAG,"send command %s",c);
 	send_cmd(c);
 	return 0;
 }
@@ -281,35 +327,69 @@ static int luax_xplane_command(lua_State *L)
 
 static int luax_xplane_send_dref(lua_State *L)
 {
-	const char *a1 = lua_tostring(L,1);
-	const char *a2 = lua_tostring(L,2);
-	log_info(TAG,"send dref arg1: %s, arg2: %s",a1?a1:"<null>",a2?a2:"<null>");
 	const char *n = luaL_checkstring(L,1);
 	float v = luaL_checknumber(L,2);
-	log_info(TAG,"send dref %s %f",n,v);
+	log_dbug(TAG,"send dref %s %f",n,v);
 	send_dref0(n,v);
 	return 0;
 }
 
 
 static const LuaFn Functions[] = {
-	{ "xplane_dref", luax_xplane_send_dref, "set dimmer value" },
-	{ "xplane_command", luax_xplane_command, "set dimmer value" },
+	{ "xplane_dref", luax_xplane_send_dref, "set dref value" },
+	{ "xplane_command", luax_xplane_command, "execute xplane command" },
 	{ 0, 0, 0 }
 };
 #endif
 
 
+const char *xplane(Terminal &term, int argc, const char *args[])
+{
+	if (0 == Ctx) {
+		return "Not initilized.";
+	}
+	if (argc == 1) {
+		return "Invalid number of arguments.";
+	} else if (argc == 2) {
+		if (0 == strcmp(args[1],"drefs")) {
+			for (auto d : Ctx->drefs) {
+				term.println(d.first.c_str());
+			}
+		} else if (0 == strcmp(args[1],"dref")) {
+			return "Missing argument.";
+		} else {
+			return "Invalid arguments #1.";
+		}
+	} else if (argc == 5) {
+		if (0 == strcmp(args[1],"dref")) {
+			char *e;
+			long l = strtol(args[4],&e,0);
+			if ((*e) || (l <= 0))
+				return "Invalid arguments #4.";
+			if (Ctx->addDref(args[2],args[3],l))
+				return "Invalid arguments #2.";
+		}
+	} else {
+		return "Invalid number of arguments.";
+	}
+	return 0;
+}
+
+
 void xplane_setup()
 {
+	if (!Config.has_xplane())
+		return;
 	const XPlaneConfig &c = Config.xplane();
 	if (!c.has_dataport() && !c.has_refport() && c.dataids().empty() && !c.drefs().empty())
 		return;
-	log_info(TAG,"starting");
+	log_info(TAG,"setup");
 	Ctx = new XPlaneCtrl;
 	EnvObject *env = new EnvObject("xplane");
 	RTData->add(env);
 	Ctx->env = env;
+	XpRdyEv = event_register("xplane`ready");
+	XpUpdEv = event_register("xplane`update");
 	uint32_t ip4 = c.ip4addr();
 	Ctx->ip = IPADDR4_INIT(ip4);
 	if (c.has_dataport()) {
@@ -325,8 +405,8 @@ void xplane_setup()
 		LWIP_LOCK();
 		Ctx->dref_pcb = udp_new();
 		Ctx->dref_port = c.refport();
-		udp_recv(Ctx->dref_pcb,dref_recv_cb,0);
 		udp_bind(Ctx->dref_pcb,IP_ANY_TYPE,Ctx->dref_port);
+		udp_recv(Ctx->dref_pcb,dref_recv_cb,0);
 		LWIP_UNLOCK();
 		action_add("xplane!dref",send_dref0_cb,0,"X-plane: send dref");
 		action_add("xplane!cmd",send_cmd_cb,0,"X-plane: send command");
@@ -344,27 +424,15 @@ void xplane_setup()
 
 	if (!c.drefs().empty()) {
 		for (auto dref : c.drefs()) {
-			const estring &name = dref.name();
-			const estring &alias = dref.alias();
-			EnvElement *e = env->getChild(alias.c_str());
-			EnvNumber *n;
-			if (0 == e) {
-				n = env->add(alias.c_str(),0.0);
-			} else {
-				n = e->toNumber();
-				assert(n);
-			}
-			Ctx->drefs.insert(make_pair(name,n));
-			unsigned id = Ctx->dreqs.size();
-			Ctx->dreqs.push_back(n);
-			req_dref(id,dref.freq(),name.c_str());
+			Ctx->addDref(dref.alias().c_str(),dref.name().c_str(),dref.freq());
 		}
 	}
 	Action *a = action_add("xplane!connect",connect,0,"request data from server");
-	event_callback(event_id("wifi`station_up"),a);
+	event_callback(event_id("wifi`got_ip"),a);
 	timefuse_t t = timefuse_create("xplanetmr",1000,true);
 	event_t e = timefuse_timeout_event(t);
 	event_callback(e,a);
+	event_callback("wifi`got_ip","xplanetmr!start");
 #ifdef CONFIG_LUA
 	xlua_add_funcs("xplane",Functions);
 #endif

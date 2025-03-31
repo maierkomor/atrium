@@ -1,0 +1,5 @@
+synopsis: nvs <cmd> [<arg>]
+where cmd is:
+ls        : list list NVS objects
+cat <arg> : to print an NVS object
+rm <arg>  : to remove an NVS object

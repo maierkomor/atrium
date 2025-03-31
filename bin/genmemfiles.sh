@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #
-#  Copyright (C) 2018-2023, Thomas Maier-Komor
+#  Copyright (C) 2018-2025, Thomas Maier-Komor
 #  Atrium Firmware Package for ESP
 #
 #  This program is free software: you can redistribute it and/or modify
@@ -17,6 +17,11 @@
 #  You should have received a copy of the GNU General Public License
 #  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #  
+
+if [ "$BATCHBUILD" == "1" ]; then
+	echo BATCHBUILD set - skipping generation
+	exit
+fi
 
 ldir=`pwd`/components/memfiles
 

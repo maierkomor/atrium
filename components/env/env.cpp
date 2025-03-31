@@ -329,6 +329,8 @@ EnvElement *EnvObject::getChild(const char *n) const
 		if (const EnvObject *o = obj->getObject(name)) {
 			obj = o;
 			n = dot+1;
+		} else {
+			break;
 		}
 	}
 	for (EnvElement *e : obj->m_childs) {

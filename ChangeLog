@@ -1,3 +1,13 @@
+R2503:
+======
+- fixes for setupenv.sh
+- HT16K33 driver update
+- update to IDF v5.2.5
+- xplane update
+- XPT2046 fix
+- IDF compatibility updates
+- added command for NVS operations
+
 R2501:
 ======
 - update to IDF v5.1.5

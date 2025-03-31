@@ -29,7 +29,9 @@
 class estring
 {
 	public:
-	estring();
+	estring()
+	{ }
+
 	estring(const char *s);
 	estring(size_t l, char c);
 	estring(const char *s, size_t l);
@@ -51,8 +53,8 @@ class estring
 		return operator += (s);
 	}
 
-	bool operator == (const estring &a) const
-	{ return (a.len == len) && (0 == memcmp(str,a.str,len)); }
+	//bool operator == (const estring &a) const
+	//{ return (a.len == len) && (0 == memcmp(str,a.str,len)); }
 
 	bool operator != (const estring &a) const
 	{ return (a.len != len) || (0 != memcmp(str,a.str,len)); }
@@ -91,6 +93,7 @@ class estring
 
 	friend bool operator < (const estring &, const estring &);
 	friend bool operator <= (const estring &, const estring &);
+	friend bool operator == (const estring &, const estring &);
 	friend bool operator > (const estring &, const estring &);
 	friend bool operator >= (const estring &, const estring &);
 	friend bool operator < (const estring &, const char *);
@@ -103,11 +106,11 @@ class estring
 	private:
 	friend struct estring_cmp;
 	void reserve(size_t);
-	char *str;
+	char *str = 0;
 #if defined CONFIG_IDF_TARGET_ESP8266
-	uint16_t len,alloc;
+	uint16_t len = 0, alloc = 0;
 #else
-	size_t len,alloc;
+	size_t len = 0, alloc = 0;
 #endif
 };
 
@@ -115,65 +118,70 @@ class estring
 struct estring_cmp
 {
 	bool operator () (const estring &l, const estring &r) const
-	{ return strcmp(l.str,r.str) < 0; }
+	{ return strcmp(l.c_str(),r.c_str()) < 0; }
 };
 
 
 inline bool operator < (const estring &l, const estring &r)
 {
-	return strcmp(l.str,r.str) < 0;
+	return strcmp(l.c_str(),r.c_str()) < 0;
 }
 
 
 inline bool operator <= (const estring &l, const estring &r)
 {
-	return strcmp(l.str,r.str) <= 0;
+	return strcmp(l.c_str(),r.c_str()) <= 0;
 }
 
 
 inline bool operator < (const estring &l, const char *rs)
 {
-	return strcmp(l.str,rs) < 0;
+	return strcmp(l.c_str(),rs) < 0;
 }
 
 
 inline bool operator <= (const estring &l, const char *rs)
 {
-	return strcmp(l.str,rs) <= 0;
+	return strcmp(l.c_str(),rs) <= 0;
 }
 
 
 inline bool operator > (const estring &l, const estring &r)
 {
-	return strcmp(l.str,r.str) > 0;
+	return strcmp(l.c_str(),r.c_str()) > 0;
 }
 
 
 inline bool operator >= (const estring &l, const estring &r)
 {
-	return strcmp(l.str,r.str) >= 0;
+	return strcmp(l.c_str(),r.c_str()) >= 0;
 }
 
 
 inline bool operator > (const estring &l, const char *rs)
 {
-	return strcmp(l.str,rs) > 0;
+	return strcmp(l.c_str(),rs) > 0;
 }
 
 
 inline bool operator >= (const estring &l, const char *rs)
 {
-	return strcmp(l.str,rs) >= 0;
+	return strcmp(l.c_str(),rs) >= 0;
+}
+
+inline bool operator == (const estring &l, const estring &r)
+{
+	return strcmp(l.c_str(),r.c_str()) == 0;
 }
 
 inline bool operator == (const estring &l, const char *rs)
 {
-	return strcmp(l.str,rs) == 0;
+	return strcmp(l.c_str(),rs) == 0;
 }
 
 inline bool operator != (const estring &l, const char *rs)
 {
-	return strcmp(l.str,rs) != 0;
+	return strcmp(l.c_str(),rs) != 0;
 }
 
 #endif

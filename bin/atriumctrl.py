@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
 #
-#  Copyright (C) 2018-2023, Thomas Maier-Komor
+#  Copyright (C) 2018-2025, Thomas Maier-Komor
 #  Atrium Firmware Package for ESP
 #
 #  This program is free software: you can redistribute it and/or modify
@@ -41,7 +41,10 @@ def receiver():
             continue
         if addr[0] == localip:
             continue
-        host = socket.gethostbyaddr(addr[0])
+        try:
+            host = socket.gethostbyaddr(addr[0])
+        except:
+            host = ("<unknown>")
         print("%s (%s):\n%s\n" % (host[0], addr[0], msg.decode()))
 
 

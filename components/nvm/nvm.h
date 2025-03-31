@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2022, Thomas Maier-Komor
+ *  Copyright (C) 2022-2025, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -19,6 +19,8 @@
 #ifndef NVM_H
 #define NVM_H
 
+#include "esp_err.h"
+#include "nvs.h"
 
 int nvm_setup();
 void nvm_store_u8(const char *, uint8_t);
@@ -31,9 +33,15 @@ void nvm_store_float(const char *, float);
 float nvm_read_float(const char *, float);
 int nvm_write(const char *name, const uint8_t *buf, size_t s);
 int nvm_read_blob(const char *name, uint8_t **buf, size_t *len);
-int nvm_store_blob(const char *name, const uint8_t *buf, size_t len);
+esp_err_t nvm_store_blob(const char *name, const uint8_t *buf, size_t len);
 const char *nvm_copy_blob(const char *to, const char *from);
 void nvm_erase_key(const char *name);
 void nvm_erase_all();
+#if IDF_VERSION >= 52
+nvs_handle_t nvm_handle();
+esp_err_t nvm_iterate(void (*cb)(const char *name, nvs_type_t type, void *arg), void *arg);
+esp_err_t nvm_iterate_v(void (*cb)(const char *name, nvs_type_t type, va_list), ...);
+const char *nvs_type_str(nvs_type_t t);
+#endif
 
 #endif

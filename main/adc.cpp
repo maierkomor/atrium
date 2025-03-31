@@ -153,7 +153,7 @@ struct AdcSignal : public EnvObject
 	//			v = x * 1750.0 / 4095.0;
 				v = x * 1300.0 / 4095.0;
 				break;
-			case ADC_ATTEN_DB_11:
+			case ADC_ATTEN_DB_12:
 	//			v = x * 2450.0 / 4095.0;
 				v = x * 2500.0 / 4095.0;
 				break;

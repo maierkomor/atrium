@@ -1194,7 +1194,7 @@ void mqtt_setup(void)
 	action_add("mqtt!stop",mqtt_stop,0,"mqtt stop");
 	action_add("mqtt!pub_rtdata",mqtt_pub_rtdata,0,"mqtt publish data");
 	action_add("mqtt!publish",mqtt_publish,0,"publish MQTT a space separated topic/data pair");
-	if (0 == event_callback("wifi`station_up","mqtt!start"))
+	if (0 == event_callback("wifi`got_ip","mqtt!start"))
 		abort();
 	if (!Config.has_mqtt())
 		return;

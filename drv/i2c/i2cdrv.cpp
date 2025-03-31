@@ -504,7 +504,6 @@ int i2c_init(uint8_t port, uint8_t sda, uint8_t scl, unsigned freq, uint8_t xpul
 //	i2c_get_start_timing((i2c_port_t) port, &setup, &hold);
 //	log_dbug(TAG,"start timing: %u setup, %u hold",setup,hold);
 //	i2c_set_start_timing((i2c_port_t) port, setup*4,hold*4);
-	log_info(TAG,"i2c %u: sda=%u,scl=%u %s pull-up",port,sda,scl,xpullup?"extern":"intern");
 	Ports |= (1 << port);
 	// scan bus
 	int n = 0;

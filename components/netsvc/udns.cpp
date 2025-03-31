@@ -1170,7 +1170,7 @@ static inline void mdns_init_fn(void *)
 {
 #if IDF_VERSION >= 50
 	esp_netif_t *nif = 0;
-	while (0 != (nif = esp_netif_next(nif))) {
+	while (0 != (nif = esp_netif_next_unsafe(nif))) {
 		esp_netif_ip_info_t ipconfig;
 		if (esp_err_t e = esp_netif_get_ip_info(nif,&ipconfig)) {
 			log_warn(TAG,"unable to get ip info for interface %p: %s",nif,esp_err_to_name(e));
@@ -1211,7 +1211,7 @@ static inline void mdns_init_fn(void *)
 			log_warn(TAG,"connect 224.0.0.251: %s",strlwiperr(e));
 #if IDF_VERSION >= 50
 		esp_netif_t *nif = 0;
-		while (0 != (nif = esp_netif_next(nif))) {
+		while (0 != (nif = esp_netif_next_unsafe(nif))) {
 			esp_netif_ip_info_t ipconfig;
 			if (esp_err_t e = esp_netif_get_ip_info(nif,&ipconfig)) {
 				log_warn(TAG,"unable to get ip info for interface %p: %s",nif,esp_err_to_name(e));

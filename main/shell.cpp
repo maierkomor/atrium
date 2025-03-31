@@ -906,7 +906,7 @@ const char *mac(Terminal &term, int argc, const char *args[])
 		if (args[1][1] == 'l') {
 #if IDF_VERSION >= 50
 
-			esp_netif_t *nif = esp_netif_next(0);
+			esp_netif_t *nif = esp_netif_next_unsafe(0);
 			while (nif) {
 				char name[8];
 				name[0] = 0;
@@ -915,7 +915,7 @@ const char *mac(Terminal &term, int argc, const char *args[])
 				} else {
 					print_mac(term,name,mac);
 				}
-				nif = esp_netif_next(nif);
+				nif = esp_netif_next_unsafe(nif);
 			}
 #else
 			if (ESP_OK == esp_wifi_get_mac(WIFI_IF_AP,mac))
@@ -1054,6 +1054,8 @@ static const char *parse_xxd(Terminal &term, vector<uint8_t> &buf)
 static const char *xxdMessage(Terminal &t, Message *m)
 {
 	size_t s = m->calcSize();
+	if (0 == s)
+		return "Empty object.";
 	uint8_t *buf = (uint8_t *)malloc(s);
 	if (buf == 0)
 		return "Out of memory.";
@@ -1134,30 +1136,52 @@ static const char *hwconf(Terminal &term, int argc, const char *args[])
 		free(buf);
 #endif
 	} else if ((!strcmp("show",args[1])) || !strcmp("print",args[1])) {
-		if (argc == 2)
-			HWConf.toASCII(term);
-#ifdef HAVE_GET_MEMBER
-		else if (Message *m = HWConf.getMember(args[2]))
-			m->toASCII(term);
-		else
-			return "Invalid argument #2.";
+#ifdef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
+		return "compiled out";
 #else
-		else
-			return "Invalid number of arguments.";
+		bool full = true;
+		unsigned argat = 2;
+		if (argc > 2) {
+			if (0 == strcmp(args[2],"-t")) {
+				full = false;
+				++argat;
+			}
+		}
+		Message *m = &HWConf;
+#ifdef HAVE_GET_MEMBER
+		if (argc > argat) {
+			m = m->getMember(args[argat]);
+			if (0 == m)
+				return "Invalid argument #2.";
+		}
+#endif
+		m->toASCII(term,full);
+		term.println();
+#endif
+	} else if (!strcmp("json",args[1])) {
+#ifdef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
+		bool full = (argc <= 2) || (0 != strcmp(args[2],"-t"));
+		HWConf.toJSON(term,full);
+#else
+		bool full = true;
+		unsigned argat = 2;
+		if (argc > 2) {
+			if (0 == strcmp(args[2],"-t")) {
+				full = false;
+				++argat;
+			}
+		}
+		Message *m = &HWConf;
+#ifdef HAVE_GET_MEMBER
+		if (argc > argat) {
+			m = m->getMember(args[argat]);
+			if (0 == m)
+				return "Invalid argument #2.";
+		}
+#endif
+		m->toASCII(term,full);
 #endif
 		term.println();
-	} else if (!strcmp("json",args[1])) {
-		if (argc == 2)
-			HWConf.toJSON(term);
-#ifdef HAVE_GET_MEMBER
-		else if (Message *m = HWConf.getMember(args[2]))
-			m->toJSON(term);
-		else
-			return "Invalid argument #2.";
-#else
-		else
-			return "Invalid number of arguments.";
-#endif
 	} else if (!strcmp("write",args[1])) {
 		return cfg_store_hwcfg() ? "Failed." : 0;
 #else
@@ -1179,9 +1203,9 @@ static const char *hwconf(Terminal &term, int argc, const char *args[])
 		if (parse_xxd(term,hwcfgbuf))
 			return "Invalid hex input.";
 		term.printf("parsing %u bytes\n",hwcfgbuf.size());
-		HardwareConfig nc = HWConf;
+		HardwareConfig hc = HWConf;
 #ifdef HAVE_GET_MEMBER
-		Message *m = (2 == argc) ? &nc : nc.getMember(args[2]);
+		Message *m = (2 == argc) ? &hc : hc.getMember(args[2]);
 		if (0 == m)
 			return "Invalid argument #2.";
 		int e = m->fromMemory(hwcfgbuf.data(),hwcfgbuf.size());
@@ -1197,20 +1221,22 @@ static const char *hwconf(Terminal &term, int argc, const char *args[])
 		// this would cause different problems otherwise.
 		// Errors above are deliberately ignored here, as
 		// fromMemory could have filled the member partly.
-		size_t l = strlen(args[2]);
-		char member[l+2];
-		memcpy(member,args[2],l);
-		member[l] = '.';
-		member[l+1] = 0;
-		nc.setByName(member,"0");	// this gives an error, but also sets the validbit
+		if (argc > 2) {
+			size_t l = strlen(args[2]);
+			char member[l+2];
+			memcpy(member,args[2],l);
+			member[l] = '.';
+			member[l+1] = 0;
+			hc.setByName(member,"0");	// this gives an error, but also sets the validbit
+		}
 #else
-		int e = nc.fromMemory(hwcfgbuf.data(),hwcfgbuf.size());
+		int e = hc.fromMemory(hwcfgbuf.data(),hwcfgbuf.size());
 #endif
 		if (0 > e) {
 			term.printf("parser error: %d\n",e);
 			return "";
 		}
-		HWConf = nc;
+		HWConf = hc;
 	} else if (!strcmp("writebuf",args[1])) {
 		return nvm_store_blob("hw.cfg",hwcfgbuf.data(),hwcfgbuf.size()) ? "Failed." : 0;
 	} else if (!strcmp("clearbuf",args[1])) {
@@ -1787,7 +1813,7 @@ static const char *font(Terminal &term, int argc, const char *args[])
 			term.printf("%2u %4d %4u %4u %4u %4u %4u %s\n",x,f->minY,f->maxY,f->blOff,f->maxW,f->yAdvance,f->extra+f->last-f->first+1,f->name);
 			++x;
 		}
-	} else if (0 == strcmp(args[1],"print")) {
+	} else if (!strcmp("print",args[1])) {
 		if (argc != 3) 
 			return "Invalid number of arguments.";
 		TextDisplay *t = TextDisplay::getFirst();
@@ -1900,6 +1926,158 @@ static const char *timezone(Terminal &term, int argc, const char *args[])
 }
 
 
+#if IDF_VERSION >= 52 && defined CONFIG_NVSCMD
+static void nvs_iter_cat(const char *id, nvs_type_t type, va_list val)
+{
+	Terminal *term = va_arg(val,Terminal *);
+	const char *arg = va_arg(val,const char *);
+	if (0 != strcmp(id,arg))
+		return;
+	int64_t l;
+	bool islv = false;
+	nvs_handle_t nvs = nvm_handle();
+	esp_err_t e = 0;
+	switch (type) {
+	default:
+		return;
+	case NVS_TYPE_U8:
+		{
+			uint8_t v;
+			e = nvs_get_u8(nvs,id,&v);
+			islv = true;
+			l = v;
+			break;
+		}
+	case NVS_TYPE_I8:
+		{
+			int8_t v;
+			e = nvs_get_i8(nvs,id,&v);
+			islv = true;
+			l = v;
+			break;
+		}
+	case NVS_TYPE_U16:
+		{
+			uint16_t v;
+			e = nvs_get_u16(nvs,id,&v);
+			islv = true;
+			l = v;
+			break;
+		}
+	case NVS_TYPE_I16:
+		{
+			int16_t v;
+			e = nvs_get_i16(nvs,id,&v);
+			islv = true;
+			l = v;
+			break;
+		}
+	case NVS_TYPE_U32:
+		{
+			uint32_t v;
+			e = nvs_get_u32(nvs,id,&v);
+			islv = true;
+			l = v;
+			break;
+		}
+	case NVS_TYPE_I32:
+		{
+			int32_t v;
+			e = nvs_get_i32(nvs,id,&v);
+			islv = true;
+			l = v;
+			break;
+		}
+	case NVS_TYPE_U64:
+		{
+			uint64_t v;
+			e = nvs_get_u64(nvs,id,&v);
+			term->printf("%s: %llu\n",id,v);
+			break;
+		}
+	case NVS_TYPE_I64:
+		{
+			e = nvs_get_i64(nvs,id,&l);
+			islv = true;
+			break;
+		}
+	case NVS_TYPE_STR:
+		{
+			size_t s = 0;
+			e = nvs_get_str(nvs,id,0,&s);
+			if (0 == e) {
+				char *str = (char *) malloc(s);
+				e = nvs_get_str(nvs,id,str,&s);
+				term->printf("%s: '%s'\n",id,str);
+				free(str);
+			}
+			break;
+		}
+	case NVS_TYPE_BLOB:
+		{
+			size_t s = 0;
+			e = nvs_get_blob(nvs,id,0,&s);
+			if (0 == e) {
+				uint8_t *data = (uint8_t *) malloc(s);
+				e = nvs_get_blob(nvs,id,data,&s);
+				if (0 == e) {
+					term->printf("%s: \n",id);
+					term->print_hex(data,s);
+				}
+				free(data);
+			}
+			break;
+		}
+	case NVS_TYPE_ANY:
+		term->println("any: <not supported>");
+		break;
+	}
+	if (e)
+		term->println(esp_err_to_name(e));
+	if (islv)
+		term->printf("%s: %lld\n",id,l);
+}
+
+
+static void nvs_iter_ls(const char *name, nvs_type_t type, void *arg)
+{
+	Terminal *term = (Terminal *)arg;
+	term->printf("%-8s %s\n",nvs_type_str(type),name);
+}
+
+
+static const char *nvs(Terminal &term, int argc, const char *args[])
+{
+	esp_err_t e = 0;
+	if (argc == 1) {
+		return help_cmd(term,args[0]);
+	} else if (2 == argc) {
+		if (0 == strcmp(args[1],"ls")) {
+			e = nvm_iterate(nvs_iter_ls,&term);
+		} else {
+			return "Invalid argument #1.";
+		}
+	} else if (3 == argc) {
+		if (0 == strcmp(args[1],"cat")) {
+			e = nvm_iterate_v(nvs_iter_cat,&term,args[2]);
+		} else if (0 == strcmp(args[1],"rm")) {
+			nvs_handle_t nvs = nvm_handle();
+			e = nvs_erase_key(nvs,args[2]);
+			if (0 == e)
+				e = nvs_commit(nvs);
+		} else {
+			return "Invalid argument #1.";
+		}
+	} else {
+		return "Invalid number of arguments.";
+	}
+	if (e)
+		return esp_err_to_name(e);
+	return 0;
+}
+#endif // IDF_VERSION > 52
+
+
 static const char *config(Terminal &term, int argc, const char *args[])
 {
 	static vector<uint8_t> rtcfgbuf;
@@ -1907,33 +2085,53 @@ static const char *config(Terminal &term, int argc, const char *args[])
 		return help_cmd(term,args[0]);
 	}
 	if (0 == strcmp(args[1],"json")) {
-		if (argc == 2)
-			Config.toJSON(term);
-#ifdef HAVE_GET_MEMBER
-		else if (Message *m = Config.getMember(args[2]))
-			m->toJSON(term);
-		else
-			return "Invalid argument #2.";
-#else
-		else
-			return "Invalid number of arguments.";
-#endif
-		return 0;
-	} else if (0 == strcmp(args[1],"print")) {
 #ifdef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
-		term.println("compiled out");
+		bool full = (argc <= 2) || (0 != strcmp(args[2],"-t"));
+		Config.toJSON(term,full);
 #else
-		if (argc == 2)
-			Config.toASCII(term);
+		bool full = true;
+		unsigned argat = 2;
+		if (argc > 2) {
+			if (0 == strcmp(args[2],"-t")) {
+				full = false;
+				++argat;
+			}
+		}
+		Message *m = &Config;
+		if (argc > argat) {
 #ifdef HAVE_GET_MEMBER
-		else if (Message *m = Config.getMember(args[2]))
-			m->toASCII(term);
-		else
-			return "Invalid argument #2.";
+			m = Config.getMember(args[argat]);
+			if (0 == m)
+				return "Invalid argument #2.";
 #else
-		else
 			return "Invalid number of arguments.";
 #endif
+		}
+		m->toJSON(term,full);
+#endif
+		term.println();
+		return 0;
+	} else if ((!strcmp("show",args[1])) || !strcmp("print",args[1])) {
+#ifdef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
+		return "compiled out";
+#else
+		bool full = true;
+		unsigned argat = 2;
+		if (argc > 2) {
+			if (0 == strcmp(args[2],"-t")) {
+				full = false;
+				++argat;
+			}
+		}
+		Message *m = &Config;
+#ifdef HAVE_GET_MEMBER
+		if (argc > argat) {
+			m = Config.getMember(args[argat]);
+			if (0 == m)
+				return "Invalid argument #2.";
+		}
+#endif
+		m->toASCII(term,full);
 		term.println();
 #endif
 		return 0;
@@ -1992,28 +2190,31 @@ static const char *config(Terminal &term, int argc, const char *args[])
 		term.printf("parsing %u bytes\n",rtcfgbuf.size());
 		NodeConfig nc = Config;
 #ifdef HAVE_GET_MEMBER
-		Message *m = (2 == argc) ? &nc : nc.getMember(args[2]);
-		if (0 == m)
-			return "Invalid argument #2.";
+		Message *m = &nc;
+		if (argc > 2) {
+			m = (2 == argc) ? &nc : nc.getMember(args[2]);
+			if (0 == m)
+				return "Invalid argument #2.";
+			// WORKAROUND:
+			// the following is a hack to tell the parent that this
+			// element is now valid. Otherwise an element that
+			// had the p_validbit in its parent not set, would not
+			// be visible in the tree, as the member would be seen
+			// as invalid/unset. 
+			// The correct solution would be to have the getMember
+			// function set the validbit implicitly, but this would
+			// require duplicating getMember to getMember()const as
+			// this would cause different problems otherwise.
+			// Errors above are deliberately ignored here, as
+			// fromMemory could have filled the member partly.
+			size_t l = strlen(args[2]);
+			char member[l+2];
+			memcpy(member,args[2],l);
+			member[l] = '.';
+			member[l+1] = 0;
+			nc.setByName(member,"0");	// this gives an error, but also sets the validbit
+		}
 		int e = m->fromMemory(rtcfgbuf.data(),rtcfgbuf.size());
-		// WORKAROUND:
-		// the following is a hack to tell the parent that this
-		// element is now valid. Otherwise an element that
-		// had the p_validbit in its parent not set, would not
-		// be visible in the tree, as the member would be seen
-		// as invalid/unset. 
-		// The correct solution would be to have the getMember
-		// function set the validbit implicitly, but this would
-		// require duplicating getMember to getMember()const as
-		// this would cause different problems otherwise.
-		// Errors above are deliberately ignored here, as
-		// fromMemory could have filled the member partly.
-		size_t l = strlen(args[2]);
-		char member[l+2];
-		memcpy(member,args[2],l);
-		member[l] = '.';
-		member[l+1] = 0;
-		nc.setByName(member,"0");	// this gives an error, but also sets the validbit
 #else
 		int e = nc.fromMemory(rtcfgbuf.data(),rtcfgbuf.size());
 #endif
@@ -2469,14 +2670,14 @@ static int flashtest(Terminal &term, int argc, const char *args[])
 #if IDF_VERSION >= 50
 static void print_ipinfo(Terminal &t, esp_netif_t *itf, esp_netif_ip_info_t *i)
 {
-	char name[8], ipstr[32],gwstr[32];
+	char name[12], ipstr[32],gwstr[32];
 	uint8_t mac[6];
 	uint8_t m = 0;
 	uint32_t nm = ntohl(i->netmask.addr);
 	while (nm & (1<<(31-m)))
 		++m;
 	if (esp_netif_get_netif_impl_name(itf,name))
-		return;
+		strcpy(name,"<undef>");
 	t.printf("if%d/%s (%s):\n",esp_netif_get_netif_impl_index(itf),name,esp_netif_get_desc(itf));
 	if (ESP_OK == esp_netif_get_mac(itf,mac))
 		t.printf("\tmac       : %02x:%02x:%02x:%02x:%02x:%02x\n",
@@ -2518,7 +2719,7 @@ static const char *ifconfig(Terminal &term, int argc, const char *args[])
 	}
 #if IDF_VERSION >= 50
 	esp_netif_t *nif = 0;
-	while (0 != (nif = esp_netif_next(nif))) {
+	while (0 != (nif = esp_netif_next_unsafe(nif))) {
 		esp_netif_ip_info_t ipconfig;
 		if (ESP_OK == esp_netif_get_ip_info(nif,&ipconfig))
 			print_ipinfo(term, nif, &ipconfig);
@@ -2606,6 +2807,7 @@ extern const char *udns(Terminal &term, int argc, const char *args[]);
 extern const char *udpc_stats(Terminal &term, int argc, const char *args[]);
 extern const char *udp_stats(Terminal &term, int argc, const char *args[]);
 extern const char *onewire(Terminal &term, int argc, const char *args[]);
+extern const char *xplane(Terminal &term, int argc, const char *args[]);
 extern const char *xluac(Terminal &t, int argc, const char *args[]);
 
 static const char *help(Terminal &term, int argc, const char *args[]);
@@ -2705,6 +2907,9 @@ ExeName ExeNames[] = {
 	{"ns",0,nightsky,"nightsky operation",0},
 #endif
 	{"nslookup",0,nslookup,"lookup hostname in DNS",0},
+#if IDF_VERSION >= 52 && defined CONFIG_NVSCMD
+	{"nvs",0,nvs,"NVS functions",nvs_man},
+#endif
 #ifdef CONFIG_ONEWIRE
 	{"ow",0,onewire,"one-wire driver access",ow_man},
 #endif
@@ -2772,6 +2977,9 @@ ExeName ExeNames[] = {
 	{"wifi",1,wifi,"wifi station/AP mode",wifi_man},
 #ifdef CONFIG_WPS
 	{"wps",1,wps,"wifi configuration with WPS",0},
+#endif
+#ifdef CONFIG_XPLANE
+	{"xplane",0,xplane,"xplane settings",xplane_man},
 #endif
 #ifdef HAVE_FS
 	{"xxd",0,shell_xxd,"hex output of file",0},

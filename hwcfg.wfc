@@ -90,6 +90,8 @@ option esp8266 : esp {
 option esp8285 : esp8266 {
 	BaseClass="";
 	getMember="";
+	toPbt="";
+	toASCII="";
 	enummap=false;
 	/HardwareConfig/max7129:	used = false;
 	/HardwareConfig/display:	used = false;
@@ -536,7 +538,7 @@ message BuzzerConfig
 
 message HardwareConfig
 {
-	fixed32 magic = 0;	// should always be set to 0xAE54EDCB
+	fixed32 magic = 0			[ default = 0xAE54EDCB ];
 	// core hardware
 	SystemConfig system = 1;
 	repeated UartConfig uart = 3;

@@ -66,7 +66,7 @@ sta_mode_t StationMode;
 static bool WifiStarted = false;
 static uint8_t Status = 0;
 static uptime_t StationDownTS = 0;
-event_t StationDownEv = 0, StationUpEv = 0;
+event_t StationDownEv = 0, StationUpEv = 0, GotIpEv = 0;
 static event_t SysWifiEv = 0;
 
 extern "C" {
@@ -81,12 +81,12 @@ esp_err_t system_event_sta_disconnected_handle_default(system_event_t *);	// IDF
 #if IDF_VERSION >= 50
 esp_netif_t *netif_get_station()
 {
-	esp_netif_t *itf = esp_netif_next(0);
+	esp_netif_t *itf = esp_netif_next_unsafe(0);
 	while (itf) {
 		const char *desc = esp_netif_get_desc(itf);
 		if (0 == strcmp(desc,"sta"))
 			return itf;
-		itf = esp_netif_next(itf);
+		itf = esp_netif_next_unsafe(itf);
 	}
 	return 0;
 }
@@ -152,7 +152,7 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
 			WifiRetry = 0;
 			Status |= STATUS_WIFI_UP | STATUS_STATION_UP;
 			StationMode = station_connected;
-			event_trigger(StationUpEv);
+			event_trigger(GotIpEv);
 #if defined CONFIG_LWIP_IPV6
 		} else if (event_id == IP_EVENT_GOT_IP6) {
 			ip_event_got_ip6_t* event = (ip_event_got_ip6_t*) event_data;
@@ -166,7 +166,7 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
 			WifiRetry = 0;
 			Status |= STATUS_WIFI_UP | STATUS_STATION_UP;
 			StationMode = station_connected;
-			event_trigger(StationUpEv);
+			event_trigger(GotIpEv);
 #endif
 		} else if (event_id == IP_EVENT_STA_LOST_IP) {
 			log_info(TAG, "lost IP");
@@ -783,6 +783,7 @@ int wifi_setup()
 	bzero(&IP6LL,sizeof(IP6LL));
 #endif
 	StationMode = station_disconnected;
+	GotIpEv = event_register("wifi`got_ip");
 	StationUpEv = event_id("wifi`station_up");
 	StationDownEv = event_id("wifi`station_down");
 	SysWifiEv = event_register("system`procwifi");

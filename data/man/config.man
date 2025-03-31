@@ -11,7 +11,8 @@ nvsxxd  : xxd in config in NVS
 parsexxd: parse xxd input to RAM
 clearbuf: clear parse buffer
 writebuf: write parsed xxd buffer to NVS
-show    : ASCII output of config
+print   : ASCII output of config (-t for terse mode)
+json    : generate JSON output of config (-t for terse mode)
 size    : print size of config
 backup  : create a backup of the config in NVS
 restore : restore config in NVS from backup

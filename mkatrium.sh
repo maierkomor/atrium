@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #
-#  Copyright (C) 2018-2024, Thomas Maier-Komor
+#  Copyright (C) 2018-2025, Thomas Maier-Komor
 #  Atrium Firmware Package for ESP
 #
 #  This program is free software: you can redistribute it and/or modify
@@ -66,7 +66,7 @@ elif  [ "$CONFIG_IDF_TARGET_ESP32C6" == "y" ]; then
 	export ESP_FAM=32
 	export IDF_TARGET=esp32c6
 elif  [ "$CONFIG_IDF_TARGET_ESP8266" == "y" ]; then
-	PATH="$IDF_PATH/../esp8266-venv:$PATH" make PROJECT=$1 $2
+	PATH="$IDF_ESP8266/../esp8266-venv/bin:$PATH" make PROJECT=$1 $2
 	exit
 else
 	echo Unknown or invalid IDF_TARGET.
@@ -81,6 +81,7 @@ fi
 pushd $IDF_PATH
 IDF_VERSION=`git describe --tags 2>/dev/null | sed 's/\.//;s/v//;s/-.*//;s/\..*//'`
 export IDF_VERSION
+echo IDF_VERSION=$IDF_VERSION
 popd > /dev/null
 
 IDF_PY=$IDF_PATH/tools/idf.py
@@ -91,8 +92,10 @@ fi
 
 eval `python3 $IDF_PATH/tools/idf_tools.py export`
 
-bin/genmemfiles.sh || exit 1
-bin/mkversion.sh main/versions.h || exit 1
+if [ "$BATCHBUILD" != "1" ]; then
+	bin/genmemfiles.sh || exit 1
+	bin/mkversion.sh main/versions.h || exit 1
+fi
 
 if  [ "$CONFIG_IDF_TARGET_ESP32" == "y" ]; then
 	IDF_TARGET=esp32

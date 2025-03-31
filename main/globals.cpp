@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2024, Thomas Maier-Komor
+ *  Copyright (C) 2018-2025, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -73,7 +73,7 @@ struct EnvLocalTime : public EnvElement
 };
 #endif
 
-const char Copyright[] = "\u00a9 2019-2024, T. Maier-Komor";
+const char Copyright[] = "\u00a9 2019-2025, T. Maier-Komor";
 const char License[] = "License: GPLv3";
 
 const char ResetReasons[][12] = {
@@ -121,7 +121,9 @@ static SemaphoreHandle_t Mtx = 0;
 void globals_setup()
 {
 	HWConf.clear();	// initialize defaults
+	HWConf.set_magic(HWConf.magic());
 	Config.clear();
+	Config.set_magic(Config.magic());
 	RTData = new EnvObject(0);
 	RTData->add("version",Version);
 	Mtx = xSemaphoreCreateMutex();
