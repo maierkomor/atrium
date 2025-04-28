@@ -66,7 +66,8 @@ elif  [ "$CONFIG_IDF_TARGET_ESP32C6" == "y" ]; then
 	export ESP_FAM=32
 	export IDF_TARGET=esp32c6
 elif  [ "$CONFIG_IDF_TARGET_ESP8266" == "y" ]; then
-	PATH="$IDF_ESP8266/../esp8266-venv/bin:$PATH" make PROJECT=$1 $2
+	source "$IDF_ESP8266/../esp8266-venv/bin/activate"
+	make PROJECT=$1 $2
 	exit
 else
 	echo Unknown or invalid IDF_TARGET.

@@ -1199,7 +1199,7 @@ static inline void mdns_init_fn(void *)
 			log_warn(TAG,"connect ff02::fb: %s",strlwiperr(e));
 	}
 #endif
-#if defined CONFIG_LWIP_IGMP || defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
+#if defined CONFIG_LWIP_IGMP || defined ESP32
 	if (MPCB == 0) {
 		MPCB = udp_new_ip_type(IPADDR_TYPE_ANY);
 		udp_set_multicast_ttl(MPCB,255);

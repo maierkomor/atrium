@@ -1179,7 +1179,7 @@ static const char *hwconf(Terminal &term, int argc, const char *args[])
 				return "Invalid argument #2.";
 		}
 #endif
-		m->toASCII(term,full);
+		m->toJSON(term,full);
 #endif
 		term.println();
 	} else if (!strcmp("write",args[1])) {

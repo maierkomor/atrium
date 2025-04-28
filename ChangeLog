@@ -1,3 +1,8 @@
+R2504:
+======
+- fix esp82xx OTA build regression
+- fix config write regression
+
 R2503:
 ======
 - fixes for setupenv.sh

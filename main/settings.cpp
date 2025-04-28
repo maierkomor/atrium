@@ -551,7 +551,7 @@ int cfg_store_nodecfg()
 	size_t s = Config.calcSize();
 	if (uint8_t *buf = (uint8_t *) malloc(s)) {
 		Config.toMemory(buf,s);
-		nvm_store_blob("node.cfg",buf,s);
+		r = nvm_store_blob("node.cfg",buf,s);
 		free(buf);
 	} else {
 		r = ESP_ERR_NO_MEM;
