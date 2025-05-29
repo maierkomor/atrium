@@ -79,7 +79,7 @@ XPT2046::XPT2046(uint8_t cs, int8_t intr, spi_device_handle_t hdl)
 	sprintf(tag,"xpt2046@%u",cs);
 	uint16_t data[6];
 	size_t n = sizeof(data);
-	if (0 == nvm_read_blob(tag,(uint8_t**)&data,&n)) {
+	if (0 == nvm_read_blob(tag,(uint8_t*)data,&n)) {
 		m_lx = data[0];
 		m_ux = data[1];
 		m_ly = data[2];

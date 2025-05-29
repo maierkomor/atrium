@@ -48,8 +48,9 @@
 
 
 #ifdef CONFIG_I2C_XDEV 
-static inline void i2c_scan_device(uint8_t bus, uint8_t addr, i2cdrv_t drv, int8_t intr)
+static inline void i2c_scan_device(uint8_t bus, uint8_t addr, i2cdrv_t drv)
 {
+	// addr is in 8bit format
 	switch (drv) {
 	case i2cdrv_invalid:
 		break;
@@ -182,17 +183,23 @@ void i2c_setup(void)
 				log_warn(TAG,"error %d",r);
 #ifdef CONFIG_I2C_XDEV 
 			for (i2cdev_t d : c.devices()) {
-				uint8_t addr = d & 0xff;
+				uint8_t addr = d & 0x7f;	// address in config is in 7bit format
+				log_info(TAG,"config 0x%x for address 0x%x",d,addr);
+				addr <<= 1;
+				I2CDevice *dev = I2CDevice::getByAddr(addr);
+				if (0 == dev) {
+					if (i2cdrv_t drv = (i2cdrv_t)((d >> 8) & 0xff)) {
+						i2c_scan_device(bus,addr,drv);
+						dev = I2CDevice::getByAddr(addr);
+					}
+				}
 				uint8_t intr = (d >> 16) & 0x3f;
-				if (i2cdrv_t drv = (i2cdrv_t)((d >> 8) & 0xff))
-					i2c_scan_device(bus,addr<<1,drv,intr-1);
-				if (intr && addr) {
-					log_info(TAG,"interrupt for %u,%x on GPIO %u",bus,addr,intr-1);
-					I2CDevice *dev = I2CDevice::getByAddr(addr);
-					if (dev)
-						dev->addIntr(intr-1);
-					else
-						log_warn(TAG,"device %u,%x not found",bus,addr,intr-1);
+				if (dev && intr) {
+					--intr;
+					log_info(TAG,"interrupt for %u,%x on GPIO %u",bus,addr,intr);
+					dev->addIntr(intr);
+				} else {
+					log_warn(TAG,"device %u,%x not found",bus,addr,intr);
 				}
 			}
 #endif

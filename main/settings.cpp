@@ -88,58 +88,6 @@ static const char cfg_err[] = "cfg_err";
 static int cfg_set_param(const char *name, const char *value);
 #endif
 
-/*
-static int set_cpu_freq(Terminal &t, const char *v)
-{
-	if (v == 0) {
-		t.printf("%lu\n",Config.cpu_freq());
-		return 0;
-	}
-	if (!strcmp(v,"-c")) {
-		Config.clear_cpu_freq();
-		return 0;
-	}
-	long l = strtol(v,0,0);
-#ifdef CONFIG_IDF_TARGET_ESP8266
-	if ((l != 80) && (l != 160))
-		return 1;
-#elif defined CONFIG_IDF_TARGET_ESP32
-	if ((l != 80) && (l != 160) && (l != 240))
-		return 1;
-#else
-#error unknwon target
-#endif
-	Config.set_cpu_freq(l);
-	return 0;
-}
-*/
-
-
-/*
-static int set_dns_server(const char *v)
-{
-	if (v == 0) {
-#if 0
-		Config.clear_dns_servers();
-#else
-		Config.clear_dns_server();
-#endif
-		return 0;
-	}
-#if 0
-	unsigned a[4];
-	int n = sscanf(v,"%u.%u.%u.%u",a,a+1,a+2,a+3);
-	if ((4 != n) || (a[0] > 255) || (a[1] > 255) || (a[2] > 255) || (a[3] > 255))
-		return 1;
-	uint32_t ip = a[0] | (a[1]<<8) | (a[2]<<16) | (a[3]<<24);
-	Config.add_dns_servers(ip);
-#else
-	Config.set_dns_server(v);
-#endif
-	return 0;
-}
-*/
-
 
 template <typename S>
 int set_string_option(Terminal &t, S *s, const char *v)
@@ -152,124 +100,6 @@ int set_string_option(Terminal &t, S *s, const char *v)
 		*s = v;
 	return 0;
 }
-
-
-#if 0
-static int set_station2ap_time(Terminal &t, const char *v)
-{
-	if (v == 0) {
-		t.printf("%lu\n",Config.station2ap_time());
-		return 0;
-	}
-	if (!strcmp(v,"-c")) {
-		Config.clear_station2ap_time();
-		return 0;
-	}
-	long l = strtol(v,0,0);
-	if (l < 0)
-		return 1;
-	Config.set_station2ap_time(l);
-	return 0;
-}
-
-
-int set_bool_option(Terminal &t, bool *b, const char *v, bool d)
-{
-	if (v == 0)
-		t.printf(b ? "true\n" : "false\n");
-	else if (!strcmp(v,"-c"))
-		*b = d;
-	else if (!strcmp(v,"false"))
-		*b = false;
-	else if (!strcmp(v,"0"))
-		*b = false;
-	else if (!strcmp(v,"true"))
-		*b = true;
-	else if (!strcmp(v,"1"))
-		*b = true;
-	else
-		return 1;
-	return 0;
-}
-
-
-static int set_ap_ssid(Terminal &t, const char *value)
-{
-	return set_string_option(t,Config.mutable_softap()->mutable_ssid(),value);
-}
-
-
-static int set_ap_pass(Terminal &t, const char *value)
-{
-	return set_string_option(t,Config.mutable_softap()->mutable_pass(),value);
-}
-
-
-static int set_station_ssid(Terminal &t, const char *value)
-{
-	return set_string_option(t,Config.mutable_station()->mutable_ssid(),value);
-}
-
-
-static int set_station_pass(Terminal &t, const char *value)
-{
-	return set_string_option(t,Config.mutable_station()->mutable_pass(),value);
-}
-
-
-static int set_syslog_host(Terminal &t, const char *value)
-{
-	return set_string_option(t,Config.mutable_syslog_host(),value);
-}
-
-
-static int set_dns_server(Terminal &t, const char *value)
-{
-	return set_string_option(t,Config.mutable_dns_server(),value);
-}
-
-
-static int set_mqtt_uri(Terminal &t, const char *value)
-{
-	return set_string_option(t,Config.mutable_mqtt()->mutable_uri(),value);
-}
-
-
-static int set_nodename(Terminal &t, const char *value)
-{
-	return set_string_option(t,Config.mutable_nodename(),value);
-}
-
-
-static int set_syslog(Terminal &t, const char *value)
-{
-	return set_string_option(t,Config.mutable_syslog_host(),value);
-}
-
-
-static int set_sntp_server(Terminal &t, const char *value)
-{
-	return set_string_option(t,Config.mutable_sntp_server(),value);
-}
-
-
-static int set_ap_activate(Terminal &t, const char *value)
-{
-	return set_bool_option(t,Config.mutable_softap()->mutable_activate(),value,false);
-}
-
-
-static int set_station_activate(Terminal &t, const char *value)
-{
-	return set_bool_option(t,Config.mutable_station()->mutable_activate(),value,false);
-}
-
-
-static int set_mqtt_enable(Terminal &t, const char *value)
-{
-	return set_bool_option(t,Config.mutable_mqtt()->mutable_enable(),value,false);
-}
-#endif
 
 
 int set_timezone(Terminal &t, const char *value)
@@ -297,28 +127,6 @@ pair<const char *, int (*)(Terminal &t, const char *)> SetFns[] = {
 	{"password", set_password},
 	{"domainname", set_domainname},
 	{"timezone", set_timezone},
-#if 0
-	{"cpu_freq", set_cpu_freq},
-	{"ap_activate", set_ap_activate},
-	{"ap_pass", set_ap_pass},
-	{"ap_ssid", set_ap_ssid},
-	{"dns_server", set_dns_server},
-	{"syslog_host", set_syslog_host},
-	{"mqtt_enable", set_mqtt_enable},
-	{"mqtt_uri", set_mqtt_uri},
-	{"nodename", set_nodename},
-	{"sntp_server", set_sntp_server},
-	{"station2ap_time", set_station2ap_time},
-	{"station_activate", set_station_activate},
-	{"station_pass", set_station_pass},
-	{"station_ssid", set_station_ssid},
-	{"syslog", set_syslog},
-#ifdef CONFIG_LIGHTCTRL
-	{"dim_step", set_dim_step},
-	{"threshold_off", set_threshold_off},
-	{"threshold_on", set_threshold_on},
-#endif
-#endif
 	{0,0},
 };
 
@@ -336,13 +144,6 @@ const char *update_setting(Terminal &t, const char *name, const char *value)
 #else
 	return "Failed.";
 #endif
-}
-
-
-void list_settings(Terminal &t)
-{
-	for (size_t i = 0; SetFns[i].first; ++i)
-		t.println(SetFns[i].first);
 }
 
 
@@ -375,24 +176,6 @@ int cfg_set_hostname(const char *hn)
 	MDNS_up = true;
 #endif
 	return 0;
-}
-
-
-void cfg_set_station(const uint8_t *ssid, const uint8_t *pass)
-{
-	WifiConfig *conf = Config.mutable_station();
-	conf->set_ssid((char*)ssid);
-	conf->set_pass((char*)pass);
-	conf->set_activate(true);
-}
-
-
-const char *cfg_get_domainname()
-{
-	const char *dn = Config.domainname().c_str();
-	if (dn[0] == 0)
-		return 0;
-	return dn;
 }
 
 
@@ -564,9 +347,13 @@ int cfg_read_nodecfg()
 {
 	PROFILE_FUNCTION();
 	const char *name = "node.cfg";
-	size_t s = 0;
-	uint8_t *buf = 0;
-	if (int e = nvm_read_blob(name,&buf,&s)) {
+	size_t s = nvm_blob_size(name);
+	if (0 == s)
+		return 0;
+	uint8_t *buf = (uint8_t*)malloc(s);
+	if (0 == buf)
+		return ESP_ERR_NO_MEM;
+	if (int e = nvm_read_blob(name,buf,&s)) {
 		log_warn(TAG,"error reading %s: %s",name,esp_err_to_name(e));
 		return e;
 	}
@@ -596,10 +383,12 @@ int cfg_read_nodecfg()
 int cfg_read_hwcfg()
 {
 	PROFILE_FUNCTION();
-	size_t s = 0;
-	uint8_t *buf = 0;
 	const char *name = "hw.cfg";
-	if (int e = nvm_read_blob(name,&buf,&s)) {
+	size_t s = nvm_blob_size(name);
+	if (0 == s)
+		return 0;
+	uint8_t *buf = (uint8_t*)malloc(s);
+	if (int e = nvm_read_blob(name,buf,&s)) {
 		log_warn(TAG,"hw.cfg: %s",esp_err_to_name(e));
 		return e;
 	}
@@ -630,7 +419,7 @@ void cfg_init_hwcfg()
 int set_cpu_freq(unsigned mhz)
 {
 #ifdef ESP32
-	if ((mhz == 80) || (mhz == 160) || (mhz == 240)) {
+	if ((80 == mhz) || (160 == mhz) || (240 == mhz) || (320 == mhz) || (480 == mhz)) {
 #ifdef CONFIG_IDF_TARGET_ESP32
 		ets_update_cpu_frequency_rom(mhz);
 #else

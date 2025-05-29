@@ -138,18 +138,16 @@ unsigned OPT3001::cyclic(void *arg)
 
 OPT3001 *OPT3001::create(unsigned bus, unsigned addr)
 {
-	uint8_t data[2];
-	if (esp_err_t e = i2c_w1rd(bus,addr,REG_MANID,data,sizeof(data))) {
+	uint8_t mid[2], did[2];
+	if (esp_err_t e = i2c_w1rd(bus,addr,REG_MANID,mid,sizeof(mid))) {
 		log_warn(TAG,"cannot read manufacturer id: %s",esp_err_to_name(e));
-		return 0;
-	}
-	log_info(TAG,"manufacturer id 0x%x",data[0] | (data[1]<<8));
-	if (esp_err_t e = i2c_w1rd(bus,addr,REG_DEVID,data,sizeof(data))) {
+	} else if (esp_err_t e = i2c_w1rd(bus,addr,REG_DEVID,did,sizeof(did))) {
 		log_warn(TAG,"cannot read device id: %s",esp_err_to_name(e));
-		return 0;
+	} else {
+		log_info(TAG,"manufacturer id 0x%x, device id 0x%x", mid[0]|(mid[1]<<8), did[0]|(did[1]<<8));
+		return new OPT3001(bus,addr);
 	}
-	log_info(TAG,"device id 0x%x",data[0] | (data[1]<<8));
-	return new OPT3001(bus,addr);
+	return 0;
 }
 
 

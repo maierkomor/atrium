@@ -1,3 +1,16 @@
+R2505:
+======
+- added support for INA226
+- fix cyclic race condition
+- new 1-Wire driver using RMT
+- fixes for old 1-wire driver
+- fix an invalid argument SegV in mqtt_publish
+- fix incorrect LED mode output
+- commit WiFi config update directly
+- fix version string in partition information
+- fixes for DS18B20
+- fix backspace handling of UTF-8 characters
+
 R2504:
 ======
 - fix esp82xx OTA build regression

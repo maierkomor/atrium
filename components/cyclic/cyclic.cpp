@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2017-2024, Thomas Maier-Komor
+ *  Copyright (C) 2017-2025, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -91,13 +91,15 @@ extern "C" void busy_set(int on);
 
 int cyclic_add_task(const char *name, unsigned (*loop)(void*), void *arg, unsigned initdelay)
 {
+	if ((0 == name) || (0 == loop))
+		return 1;
 	log_info(TAG,"add subtask %s",name);
 	SubTask *n = new SubTask(name,loop,arg,esp_timer_get_time()+initdelay*1000);
-	Lock lock(Mtx);
+	MLock lock(Mtx);
 	SubTask *s = SubTasks;
 	while (s) {
 		if (0 == strcmp(s->name,name)) {
-			xSemaphoreGive(Mtx);
+			lock.unlock();
 			delete n;
 			log_warn(TAG,"subtask %s already exists",name);
 			return 1;
@@ -112,7 +114,6 @@ int cyclic_add_task(const char *name, unsigned (*loop)(void*), void *arg, unsign
 
 int cyclic_rm_task(const char *name)
 {
-	unsigned r = 1;
 	MLock lock(Mtx);
 	SubTask *s = SubTasks, *p = 0;
 	while (s) {
@@ -124,34 +125,29 @@ int cyclic_rm_task(const char *name)
 			lock.unlock();
 			delete s;
 			log_info(TAG,"removed subtask %s",name);
-			r = 0;
-			break;
+			return 0;
 		}
 		p = s;
 		s = s->next;
 	}
-	return r;
+	return 1;
 }
 
 
 // called from event task, if no dedicated cyclic task is created
 unsigned cyclic_execute()
 {
-	MLock lock(Mtx,__FUNCTION__);
+	Lock lock(Mtx,__FUNCTION__);
 	int64_t start = esp_timer_get_time();
 	int64_t begin = start;
 	unsigned delay = 100;
 	SubTask *t = SubTasks;
+	busy_set(true);
 	while (t) {
 		int32_t off = (int64_t)(t->nextrun - start);
 		if (off <= 0) {
-			lock.unlock();
-//			con_printf("subtask => %s\n",t->name);
-			busy_set(true);
 			unsigned d = t->code(t->arg);
-			busy_set(false);
 			int64_t end = esp_timer_get_time();
-			lock.lock();
 			t->nextrun = end + (uint64_t)d * 1000LL;
 			++t->calls;
 			int64_t dt = end - start;
@@ -166,6 +162,7 @@ unsigned cyclic_execute()
 		}
 		t = t->next;
 	}
+	busy_set(false);
 	int64_t end = esp_timer_get_time();
 	TimeSpent += end-begin;
 	return delay;
@@ -199,9 +196,7 @@ int subtasks(Terminal &term, int argc, const char *args[])
 		term.printf("%8u  %8u%c  %6lu%c  %s\n",s->calls,pt,p[pd],ct,p[cd],s->name);
 		s = s->next;
 	}
-	MLock lock(Mtx,__FUNCTION__);
 	auto tt = TimeSpent;
-	lock.unlock();
 	uint8_t d = 0;
 	while (tt > 30000) {
 		tt /= 1000;

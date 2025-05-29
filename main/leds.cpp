@@ -222,6 +222,7 @@ int LedMode::set_mode(const char *m)
 {
 	for (int i = 0; i < sizeof(ModeNames)/sizeof(ModeNames[0]); ++i) {
 		if (0 == strcmp(ModeNames[i],m)) {
+			log_dbug(TAG,"LED %s set mode %s => %d",name,m,i);
 			set_mode((ledmode_t) i);
 			return 0;
 		}
@@ -302,7 +303,7 @@ static unsigned ledmode_subtask(void *arg)
 	int8_t d = Modes[state];
 	if (d < 0) {
 		state += d;
-		assert(state >= 0);
+		assert((state >= 0) && (state < sizeof(Modes)/sizeof(Modes[0])));
 		ctx->state = state;
 		d = Modes[state];
 	}
@@ -420,12 +421,25 @@ void statusled_set(ledmode_t m)
 }
 
 
+static const char *mode_name(unsigned state)
+{
+	for (unsigned i = 0; i < sizeof(ModeOffset)/sizeof(ModeOffset[0]) - 1; ++i) {
+		if ((ModeOffset[i] <= state) && (state < ModeOffset[i+1]))
+			return ModeNames[i];
+	}
+	return ModeNames[sizeof(ModeOffset)/sizeof(ModeOffset[0]) - 1];
+}
+
+
 const char *led_set(Terminal &term, int argc, const char *args[])
 {
 	if (argc == 1) {
 		LedMode *m = LedMode::First;
 		while (m) {
-			term.printf("%-12s %s\n",m->name,ModeNames[m->mode]);
+			if (m->mode)
+				term.printf("%-12s %s\n",m->name,ModeNames[m->mode]);
+			else
+				term.printf("%-12s %s\n",m->name,mode_name(m->state));
 			m = m->next;
 		}
 		return 0;

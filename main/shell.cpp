@@ -963,27 +963,6 @@ const char *mac(Terminal &term, int argc, const char *args[])
 }
 
 
-#if 0
-static int set(Terminal &t, int argc, const char *args[])
-{
-	if (argc == 1) {
-		return help_cmd(t,args[0]);
-	} else if (argc == 2) {
-		if (0 == strcmp("-l",args[1])) {
-			list_settings(t);
-			return 0;
-		}
-	} else if (argc == 3) {
-		if (0 == strcmp(args[1],"-c"))
-			return update_setting(t,args[2],0);
-		return update_setting(t,args[1],args[2]);
-	} else
-		return "Invalid number of arguments.";
-	return "Invalid argument #1.";
-}
-#endif
-
-
 static const char *hostname(Terminal &term, int argc, const char *args[])
 {
 	if (argc > 2) {
@@ -1028,7 +1007,7 @@ static const char *parse_xxd(Terminal &term, vector<uint8_t> &buf)
 			if (v != buf.size()) {
 				//buf.resize(v);
 				// resize/holes intentionally not supported
-				return "Invalid input.";
+				return "Invalid offset.";
 			}
 			v = 0;
 			valid = false;
@@ -1192,13 +1171,17 @@ static const char *hwconf(Terminal &term, int argc, const char *args[])
 		HWConf.set_magic(0xAE54EDCB);
 #endif
 	} else if (!strcmp("nvxxd",args[1])) {
-		size_t s = 0;
-		uint8_t *buf = 0;
-		if (int e = nvm_read_blob("hw.cfg",&buf,&s)) {
-			return esp_err_to_name(e);
-		}
-		term.print_hex(buf,s);
+		const char *name = "hw.cfg";
+		size_t s = nvm_blob_size(name);
+		if (0 == s)
+			return "Does not exist.";
+		uint8_t *buf = (uint8_t *) malloc(s);
+		int e = nvm_read_blob("hw.cfg",buf,&s);
+		if (0 == e)
+			term.print_hex(buf,s);
 		free(buf);
+		if (e)
+			return esp_err_to_name(e);
 	} else if (!strcmp("parsexxd",args[1])) {
 		if (parse_xxd(term,hwcfgbuf))
 			return "Invalid hex input.";
@@ -1553,23 +1536,34 @@ static const char *station(Terminal &term, int argc, const char *args[])
 			ip4addr_ntoa_r((ip4_addr_t *)&a,ipstr,sizeof(ipstr));
 			term.printf("gw: %s\n",ipstr);
 		}
+		wifi_ap_record_t rec;
+		if (0 == esp_wifi_sta_get_ap_info(&rec)) {
+			term.printf("signal strength %d\n",rec.rssi);
+		}
 	} else if (!strcmp(args[1],"ssid")) {
-		if (argc == 3)
+		if (argc == 3) {
 			s->set_ssid(args[2]);
-		else if (argc == 2)
-			s->clear_ssid();
-		else
+			wifi_stop_station();
+			wifi_start_station(s->ssid().c_str(),s->pass().c_str());
+		} else {
 			term.printf("ssid: '%s'\n",s->ssid().c_str());
+		}
 	} else if (!strcmp(args[1],"pass")) {
-		s->set_pass(args[2]);
+		if (argc == 3) {
+			s->set_pass(args[2]);
+			wifi_stop_station();
+			wifi_start_station(s->ssid().c_str(),s->pass().c_str());
+		} else {
+			term.printf("pass: '%s'\n",s->pass().c_str());
+		}
 	} else if ((!strcmp(args[1],"on")) || (!strcmp(args[1],"up"))) {
 		if (s->has_ssid() && s->has_pass()) {
-			wifi_start_station(s->ssid().c_str(),s->pass().c_str());
 			s->set_activate(true);
+			wifi_start_station(s->ssid().c_str(),s->pass().c_str());
 		} else {
 			return "ssid and pass needed";
 		}
-	} else if (!strcmp(args[1],"off")) {
+	} else if ((!strcmp(args[1],"off")) || (!strcmp(args[1],"down"))) {
 		s->set_activate(false);
 		wifi_stop_station();
 	} else if (!strcmp(args[1],"clear")) {
@@ -2250,12 +2244,17 @@ static const char *config(Terminal &term, int argc, const char *args[])
 		free(buf);
 #endif
 	} else if (!strcmp(args[1],"nvxxd")) {
-		size_t s = 0;
-		uint8_t *buf = 0;
-		if (int e = nvm_read_blob("node.cfg",&buf,&s))
-			return e ? "Failed." : 0;
-		term.print_hex(buf,s);
+		const char *name = "node.cfg";
+		size_t s = nvm_blob_size(name);
+		if (0 == s)
+			return "Does not exist.";
+		uint8_t *buf = (uint8_t*) malloc(s);
+		int e = nvm_read_blob(name,buf,&s);
+		if (0 == e)
+			term.print_hex(buf,s);
 		free(buf);
+		if (e)
+			return esp_err_to_name(e);
 	} else {
 		return "Invalid argument #1.";
 	}
@@ -2400,14 +2399,24 @@ static const char *cpu(Terminal &term, int argc, const char *args[])
 			mhz = 160;
 			break;
 #endif
-#ifdef RTC_CPU_FREQ_XTAL
-		case RTC_CPU_FREQ_XTAL:
-			mhz = rtc_clk_xtal_freq_get();
-			break;
-#endif
 #ifdef RTC_CPU_FREQ_240M
 		case RTC_CPU_FREQ_240M:
 			mhz = 240;
+			break;
+#endif
+#ifdef RTC_CPU_FREQ_320M
+		case RTC_CPU_FREQ_320M:
+			mhz = 320;
+			break;
+#endif
+#ifdef RTC_CPU_FREQ_480M
+		case RTC_CPU_FREQ_480M:
+			mhz = 480;
+			break;
+#endif
+#ifdef RTC_CPU_FREQ_XTAL
+		case RTC_CPU_FREQ_XTAL:
+			mhz = rtc_clk_xtal_freq_get();
 			break;
 #endif
 #ifdef RTC_CPU_FREQ_2M

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2023, Thomas Maier-Komor
+ *  Copyright (C) 2020-2025, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -296,8 +296,6 @@ void Gpio::init(unsigned config)
 			log_warn(TAG,"gpio%d: interrupts only work on inputs",m_gpio);
 		else if (xio_set_intr(m_gpio,isr_handler,this))
 			log_warn(TAG,"failed to add ISR for gpio%d",m_gpio);
-		else if (0 == event_callback(m_intrev,a))
-			log_warn(TAG,"failed to add ISR update handler for gpio%d",m_gpio);
 //		else if (xio_intr_enable(m_gpio))
 //			log_warn(TAG,"failed to enable ISR on gpio%d",m_gpio);
 		else

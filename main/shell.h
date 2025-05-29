@@ -28,7 +28,6 @@ int exe_flags(char *cmd);
 const char *shellexe(Terminal &, char *cmd);
 void shell(Terminal &term, bool prompt = true);
 const char *help_cmd(Terminal &term, const char *arg);
-int arg_bool(const char *v, bool *b);
 
 extern "C"
 #endif

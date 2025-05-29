@@ -7,10 +7,10 @@
  * Source Information:
  * ===================
  * Filename : hwcfg.wfc
- * Copyright: 2018-2024
+ * Copyright: 2018-2025
  * Author   : Thomas Maier-Komor
  * 
- * Code generated on 2025-04-26, 19:32:09 (CET).
+ * Code generated on 2025-05-13, 08:33:00 (CET).
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -5388,6 +5388,229 @@ class BuzzerConfig : public Message
 	int8_t m_gpio = -1;
 	//! Melody melodies, id 2
 	std::vector<Melody> m_melodies;
+};
+
+
+
+
+class INA2xxConfig : public Message
+{
+	public:
+	INA2xxConfig()
+	{
+	}
+	
+	bool operator != (const INA2xxConfig &r) const;
+	bool operator == (const INA2xxConfig &r) const;
+	
+	//! Function for resetting all members to their default values.
+	void clear();
+	
+	/*!
+	* Calculates the required number of bytes for serializing this object.
+	* If member variables of the object are modified, the number of bytes
+	* needed for serialization may change, too.
+	* @return bytes needed for a serialized object representation
+	*/
+	size_t calcSize() const;
+	
+	/*!
+	* Function for parsing serialized data and update this object accordingly.
+	* Member variables that are not in the serialized data are not reset.
+	* @param b buffer of serialized data
+	* @param s number of bytes available in the buffer
+	* @return number of bytes successfully parsed (can be < s)
+	*         or a negative value indicating the error encountered
+	*/
+	ssize_t fromMemory(const void *b, ssize_t s);
+	
+	/*!
+	* Function for serializing the object to memory.
+	* @param b buffer to serialize the object to
+	* @param s number of bytes available in the buffer
+	* @return number of bytes successfully serialized
+	*/
+	ssize_t toMemory(uint8_t *, ssize_t) const;
+	
+	/*!
+	* Serialize the object using a function for transmitting individual bytes.
+	* @param put function to put individual bytes for transmission on the wire
+	*/
+	void toWire(void (*put)(uint8_t)) const;
+	
+	//! Function for serializing the object to a string.
+	void toString(std::string &put) const;
+	
+	/*!
+	* Function for writing a JSON representation of this object to a stream.
+	* @param json stream object the JSON output shall be written to
+	* @indLvl current indention level
+	*/
+	void toJSON(std::ostream &json, bool full = true, unsigned indLvl = 0) const;
+	
+	/*!
+	* Function for writing an ASCII representation of this object to a stream.
+	* @param o output stream
+	* @param indent initial indention level
+	*/
+	void toASCII(std::ostream &o, bool full = true, size_t indent = 0) const;
+	
+	/*!
+	* Function for writing protobuf text representation of this object to a stream.
+	* @param o output stream
+	* @param indent initial indention level
+	*/
+	void toPbt(std::ostream &o, bool full = false, size_t indent = 0) const;
+	
+	/*!
+	* Function for determining the maximum size that the object may need for
+	* its serialized representation
+	* @return maximum number of bytes or SIZE_MAX if no limit can be determined
+	*/
+	static size_t getMaxSize();
+	
+	//! Function for setting a parameter by its ASCII name using an ASCII representation of value.
+	//! @param param parameter name
+	//! @param value ASCII representation of the value
+	//! @return number of bytes parsed from value or negative value if an error occurs
+	int setByName(const char *name, const char *value);
+	
+	// optional fixed16 config, id 1
+	/*!
+	* Function for querying if config has been set.
+	* @return true if config is set.
+	*/
+	bool has_config() const;
+	//! Function to reset config to its default/unset value.
+	void clear_config();
+	//! Get value of config.
+	uint16_t config() const;
+	//! Set config using a constant reference
+	void set_config(uint16_t v);
+	/*!
+	* Provide mutable access to config.
+	* @return pointer to member variable of config.
+	*/
+	uint16_t *mutable_config();
+	
+	// optional fixed16 limit, id 2
+	/*!
+	* Function for querying if limit has been set.
+	* @return true if limit is set.
+	*/
+	bool has_limit() const;
+	//! Function to reset limit to its default/unset value.
+	void clear_limit();
+	//! Get value of limit.
+	uint16_t limit() const;
+	//! Set limit using a constant reference
+	void set_limit(uint16_t v);
+	/*!
+	* Provide mutable access to limit.
+	* @return pointer to member variable of limit.
+	*/
+	uint16_t *mutable_limit();
+	
+	// optional fixed16 mask, id 3
+	/*!
+	* Function for querying if mask has been set.
+	* @return true if mask is set.
+	*/
+	bool has_mask() const;
+	//! Function to reset mask to its default/unset value.
+	void clear_mask();
+	//! Get value of mask.
+	uint16_t mask() const;
+	//! Set mask using a constant reference
+	void set_mask(uint16_t v);
+	/*!
+	* Provide mutable access to mask.
+	* @return pointer to member variable of mask.
+	*/
+	uint16_t *mutable_mask();
+	
+	// optional float res, id 4
+	/*!
+	* Function for querying if res has been set.
+	* @return true if res is set.
+	*/
+	bool has_res() const;
+	//! Function to reset res to its default/unset value.
+	void clear_res();
+	//! Get value of res.
+	float res() const;
+	//! Set res using a constant reference
+	void set_res(float v);
+	/*!
+	* Provide mutable access to res.
+	* @return pointer to member variable of res.
+	*/
+	float *mutable_res();
+	
+	// optional float Ilsb, id 5
+	/*!
+	* Function for querying if Ilsb has been set.
+	* @return true if Ilsb is set.
+	*/
+	bool has_Ilsb() const;
+	//! Function to reset Ilsb to its default/unset value.
+	void clear_Ilsb();
+	//! Get value of Ilsb.
+	float Ilsb() const;
+	//! Set Ilsb using a constant reference
+	void set_Ilsb(float v);
+	/*!
+	* Provide mutable access to Ilsb.
+	* @return pointer to member variable of Ilsb.
+	*/
+	float *mutable_Ilsb();
+	
+	// optional fixed16 interval, id 6
+	/*!
+	* Function for querying if interval has been set.
+	* @return true if interval is set.
+	*/
+	bool has_interval() const;
+	//! Function to reset interval to its default/unset value.
+	void clear_interval();
+	//! Get value of interval.
+	uint16_t interval() const;
+	//! Set interval using a constant reference
+	void set_interval(uint16_t v);
+	/*!
+	* Provide mutable access to interval.
+	* @return pointer to member variable of interval.
+	*/
+	uint16_t *mutable_interval();
+	
+	
+	protected:
+	Message *p_getMember(const char *s, unsigned n);
+	Message *p_getMember(const char *s, unsigned n, unsigned i);
+	//! fixed16 config, id 1
+	uint16_t m_config = 0;
+	//! fixed16 limit, id 2
+	uint16_t m_limit = 0;
+	//! fixed16 mask, id 3
+	uint16_t m_mask = 0;
+	//! float res, id 4
+	float m_res = 0;
+	//! float Ilsb, id 5
+	float m_Ilsb = 0;
+	//! fixed16 interval, id 6
+	uint16_t m_interval = 10;
+	
+	private:
+	enum validbits {
+		vb_config = 0,
+		vb_limit = 1,
+		vb_mask = 2,
+		vb_res = 3,
+		vb_Ilsb = 4,
+		vb_interval = 5,
+	};
+	
+	uint8_t p_validbits = 0;
 };
 
 
@@ -10952,6 +11175,239 @@ inline void BuzzerConfig::set_melodies(unsigned x, const Melody &v)
 inline size_t BuzzerConfig::melodies_size() const
 {
 	return m_melodies.size();
+}
+
+
+
+inline size_t INA2xxConfig::getMaxSize()
+{
+	// optional fixed16 config, id 1 has maximum size 3
+	// optional fixed16 limit, id 2 has maximum size 3
+	// optional fixed16 mask, id 3 has maximum size 3
+	// optional float res, id 4 has maximum size 5
+	// optional float Ilsb, id 5 has maximum size 5
+	// optional fixed16 interval, id 6 has maximum size 3
+	return 22;
+}
+
+inline uint16_t INA2xxConfig::config() const
+{
+	return m_config;
+}
+
+inline bool INA2xxConfig::has_config() const
+{
+	return 0 != (p_validbits & ((uint8_t)1U << vb_config));
+}
+
+/*!
+ * Function for clearing the associated member variable.
+ * It will reset the value to the default value.
+ */
+inline void INA2xxConfig::clear_config()
+{
+	p_validbits &= ~((uint8_t)1U << 0);
+	m_config = 0;
+}
+
+inline uint16_t *INA2xxConfig::mutable_config()
+{
+	if (0 == (p_validbits & ((uint8_t)1U << vb_config))) {
+		p_validbits |= ((uint8_t)1U << 0);
+		m_config = 0;
+	}
+	return &m_config;
+}
+
+inline void INA2xxConfig::set_config(uint16_t v)
+{
+	m_config = v;
+	p_validbits |= ((uint8_t)1U << 0);
+}
+
+
+
+inline uint16_t INA2xxConfig::limit() const
+{
+	return m_limit;
+}
+
+inline bool INA2xxConfig::has_limit() const
+{
+	return 0 != (p_validbits & ((uint8_t)1U << vb_limit));
+}
+
+/*!
+ * Function for clearing the associated member variable.
+ * It will reset the value to the default value.
+ */
+inline void INA2xxConfig::clear_limit()
+{
+	p_validbits &= ~((uint8_t)1U << 1);
+	m_limit = 0;
+}
+
+inline uint16_t *INA2xxConfig::mutable_limit()
+{
+	if (0 == (p_validbits & ((uint8_t)1U << vb_limit))) {
+		p_validbits |= ((uint8_t)1U << 1);
+		m_limit = 0;
+	}
+	return &m_limit;
+}
+
+inline void INA2xxConfig::set_limit(uint16_t v)
+{
+	m_limit = v;
+	p_validbits |= ((uint8_t)1U << 1);
+}
+
+
+
+inline uint16_t INA2xxConfig::mask() const
+{
+	return m_mask;
+}
+
+inline bool INA2xxConfig::has_mask() const
+{
+	return 0 != (p_validbits & ((uint8_t)1U << vb_mask));
+}
+
+/*!
+ * Function for clearing the associated member variable.
+ * It will reset the value to the default value.
+ */
+inline void INA2xxConfig::clear_mask()
+{
+	p_validbits &= ~((uint8_t)1U << 2);
+	m_mask = 0;
+}
+
+inline uint16_t *INA2xxConfig::mutable_mask()
+{
+	if (0 == (p_validbits & ((uint8_t)1U << vb_mask))) {
+		p_validbits |= ((uint8_t)1U << 2);
+		m_mask = 0;
+	}
+	return &m_mask;
+}
+
+inline void INA2xxConfig::set_mask(uint16_t v)
+{
+	m_mask = v;
+	p_validbits |= ((uint8_t)1U << 2);
+}
+
+
+
+inline float INA2xxConfig::res() const
+{
+	return m_res;
+}
+
+inline bool INA2xxConfig::has_res() const
+{
+	return 0 != (p_validbits & ((uint8_t)1U << vb_res));
+}
+
+/*!
+ * Function for clearing the associated member variable.
+ * It will reset the value to the default value.
+ */
+inline void INA2xxConfig::clear_res()
+{
+	p_validbits &= ~((uint8_t)1U << 3);
+	m_res = 0;
+}
+
+inline float *INA2xxConfig::mutable_res()
+{
+	if (0 == (p_validbits & ((uint8_t)1U << vb_res))) {
+		p_validbits |= ((uint8_t)1U << 3);
+		m_res = 0;
+	}
+	return &m_res;
+}
+
+inline void INA2xxConfig::set_res(float v)
+{
+	m_res = v;
+	p_validbits |= ((uint8_t)1U << 3);
+}
+
+
+
+inline float INA2xxConfig::Ilsb() const
+{
+	return m_Ilsb;
+}
+
+inline bool INA2xxConfig::has_Ilsb() const
+{
+	return 0 != (p_validbits & ((uint8_t)1U << vb_Ilsb));
+}
+
+/*!
+ * Function for clearing the associated member variable.
+ * It will reset the value to the default value.
+ */
+inline void INA2xxConfig::clear_Ilsb()
+{
+	p_validbits &= ~((uint8_t)1U << 4);
+	m_Ilsb = 0;
+}
+
+inline float *INA2xxConfig::mutable_Ilsb()
+{
+	if (0 == (p_validbits & ((uint8_t)1U << vb_Ilsb))) {
+		p_validbits |= ((uint8_t)1U << 4);
+		m_Ilsb = 0;
+	}
+	return &m_Ilsb;
+}
+
+inline void INA2xxConfig::set_Ilsb(float v)
+{
+	m_Ilsb = v;
+	p_validbits |= ((uint8_t)1U << 4);
+}
+
+
+
+inline uint16_t INA2xxConfig::interval() const
+{
+	return m_interval;
+}
+
+inline bool INA2xxConfig::has_interval() const
+{
+	return 0 != (p_validbits & ((uint8_t)1U << vb_interval));
+}
+
+/*!
+ * Function for clearing the associated member variable.
+ * It will reset the value to the default value.
+ */
+inline void INA2xxConfig::clear_interval()
+{
+	p_validbits &= ~((uint8_t)1U << 5);
+	m_interval = 10;
+}
+
+inline uint16_t *INA2xxConfig::mutable_interval()
+{
+	if (0 == (p_validbits & ((uint8_t)1U << vb_interval))) {
+		p_validbits |= ((uint8_t)1U << 5);
+		m_interval = 10;
+	}
+	return &m_interval;
+}
+
+inline void INA2xxConfig::set_interval(uint16_t v)
+{
+	m_interval = v;
+	p_validbits |= ((uint8_t)1U << 5);
 }
 
 

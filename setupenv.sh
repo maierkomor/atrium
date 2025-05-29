@@ -155,12 +155,6 @@ if [ ! -d "$VENVDIR" ]; then
 	python3 -m venv "$VENVDIR" || exit 1
 	$VENVDIR/bin/pip install virtualenv
 fi
-if [ ! -d "$HOME/.espressif/python_env/idf3.3_py3.12_env" ]; then
-	python3 -m venv "$HOME/.espressif/python_env/idf3.3_py3.12_env" || exit 1
-fi
-if [ ! -d "$HOME/.espressif/python_env/rtos3.3_py3.12_env" ]; then
-	python3 -m venv "$HOME/.espressif/python_env/rtos3.3_py3.12_env" || exit 1
-fi
 if [ "$IDF_ESP8266" == "" ]; then
 	if [ "$installdir" == "" ]; then
 		echo unable to find ESP8266 IDF
@@ -185,16 +179,18 @@ git reset --hard v3.3 || exit 1
 git submodule deinit -f --all
 git switch release/v3.3
 git submodule update --init
-#patch -p1 < ../../patches/esp8266_python.diff
-echo install tools with $VENVDIR/bin
-PATH="$VENVDIR/bin:$PATH" IDF_PATH=`pwd` python3 tools/idf_tools.py install || exit 1
-PATH="$VENVDIR/bin:$PATH" IDF_PATH=`pwd` python3 tools/idf_tools.py install-python-env || exit 1
-popd > /dev/null
 
+echo install tools with $VENVDIR/bin
+source $VENVDIR/bin/activate || exit 1
+IDF_PATH=`pwd` python3 tools/idf_tools.py install || exit 1
+IDF_PATH=`pwd` python3 tools/idf_tools.py install-python-env || exit 1
 echo settings for $IDF_ESP8266
 pushd "$IDF_ESP8266"
+pip install -r requirements.txt || exit 1
 echo IDF_ESP8266=$IDF_ESP8266 >> $settings
 IDF_PATH="$IDF_ESP8266" python3 "tools/idf_tools.py" export | sed "s/export //g;s/=/_ESP8266=/g;s/;/\n/g;s/\"//g" >> $settings
+popd > /dev/null
+deactivate || exit 1
 popd > /dev/null
 
 echo ===================

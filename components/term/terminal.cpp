@@ -85,6 +85,12 @@ int Terminal::readInput(char *buf, size_t l, bool echo)
 					estr = "\e[D \e[D";
 				--at;
 				--eoi;
+				if ((at > buf) && ((at[-1] & 0xf0) == 0xc0)) {
+					if (eoi != at)
+						memmove(at-1,at,eoi-at);
+					--at;
+					--eoi;
+				}
 			}
 		} else if (c == 0x1b) {
 			// escape sequence

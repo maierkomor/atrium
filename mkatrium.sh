@@ -42,37 +42,28 @@ export FWCFG=$1
 export SDKCONFIG=`pwd`/projects/$1
 export SDKCONFIG_DEFAULTS=$SDKCONFIG
 source $SDKCONFIG
-export CONFIG_INTEGRATED_HELP
 
 
-if [ "$CONFIG_IDF_TARGET_ESP32" == "y" ]; then
-	export IDF_PATH=$IDF_ESP32
-	export ESP_FAM=32
-	export IDF_TARGET=esp32
-elif  [ "$CONFIG_IDF_TARGET_ESP32S2" == "y" ]; then
-	export IDF_PATH=$IDF_ESP32
-	export ESP_FAM=32
-	export IDF_TARGET=esp32s2
-elif  [ "$CONFIG_IDF_TARGET_ESP32S3" == "y" ]; then
-	export IDF_PATH=$IDF_ESP32
-	export ESP_FAM=32
-	export IDF_TARGET=esp32s3
-elif  [ "$CONFIG_IDF_TARGET_ESP32C3" == "y" ]; then
-	export IDF_PATH=$IDF_ESP32
-	export ESP_FAM=32
-	export IDF_TARGET=esp32c3
-elif  [ "$CONFIG_IDF_TARGET_ESP32C6" == "y" ]; then
-	export IDF_PATH=$IDF_ESP32
-	export ESP_FAM=32
-	export IDF_TARGET=esp32c6
-elif  [ "$CONFIG_IDF_TARGET_ESP8266" == "y" ]; then
+if  [ "$CONFIG_IDF_TARGET_ESP8266" == "y" ]; then
 	source "$IDF_ESP8266/../esp8266-venv/bin/activate"
 	make PROJECT=$1 $2
 	exit
+elif [ "$CONFIG_IDF_TARGET_ESP32" == "y" ]; then
+	export IDF_TARGET=esp32
+elif  [ "$CONFIG_IDF_TARGET_ESP32S2" == "y" ]; then
+	export IDF_TARGET=esp32s2
+elif  [ "$CONFIG_IDF_TARGET_ESP32S3" == "y" ]; then
+	export IDF_TARGET=esp32s3
+elif  [ "$CONFIG_IDF_TARGET_ESP32C3" == "y" ]; then
+	export IDF_TARGET=esp32c3
+elif  [ "$CONFIG_IDF_TARGET_ESP32C6" == "y" ]; then
+	export IDF_TARGET=esp32c6
 else
 	echo Unknown or invalid IDF_TARGET.
 	exit 1
 fi
+export IDF_PATH=$IDF_ESP32
+export ESP_FAM=32
 
 if [ ! -d "$IDF_PATH" ]; then
 	echo IDF_PATH is not a directory.
@@ -93,21 +84,11 @@ fi
 
 eval `python3 $IDF_PATH/tools/idf_tools.py export`
 
-if [ "$BATCHBUILD" != "1" ]; then
+if [ "$BATCH_BUILD" == "1" ]; then
+	cp data/version.txt $BUILD_DIR/version.txt
+else
 	bin/genmemfiles.sh || exit 1
 	bin/mkversion.sh main/versions.h || exit 1
-fi
-
-if  [ "$CONFIG_IDF_TARGET_ESP32" == "y" ]; then
-	IDF_TARGET=esp32
-elif  [ "$CONFIG_IDF_TARGET_ESP32S2" == "y" ]; then
-	IDF_TARGET=esp32s2
-elif  [ "$CONFIG_IDF_TARGET_ESP32S3" == "y" ]; then
-	IDF_TARGET=esp32s3
-elif  [ "$CONFIG_IDF_TARGET_ESP32C3" == "y" ]; then
-	IDF_TARGET=esp32c3
-elif  [ "$CONFIG_IDF_TARGET_ESP32C6" == "y" ]; then
-	IDF_TARGET=esp32c6
 fi
 
 export WFC_TARGET=$CONFIG_WFC_TARGET
@@ -116,8 +97,9 @@ ATRIUM_VER=`cat "$BUILD_DIR/version.txt"`
 
 export TIMESTAMP=`date +%s`
 
-if [ "$2" != "" ]; then
-	$IDF_PY -B "$BUILD_DIR" -DIDF_TARGET=$IDF_TARGET -DSDKCONFIG=$SDKCONFIG "-DPROJECT_VER=$ATRIUM_VER" $2
+if [ "$2" == "" ]; then
+	cmd="build"
 else
-	$IDF_PY -B "$BUILD_DIR" -DIDF_TARGET=$IDF_TARGET -DSDKCONFIG=$SDKCONFIG "-DPROJECT_VER=$ATRIUM_VER" build
+	cmd="$2"
 fi
+$IDF_PY -B "$BUILD_DIR" -DIDF_TARGET=$IDF_TARGET -DSDKCONFIG=$SDKCONFIG "-DPROJECT_VER=$ATRIUM_VER" "$cmd"

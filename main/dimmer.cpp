@@ -411,7 +411,6 @@ void dimmer_setup()
 	}
 	if (nleds == 0)
 		return;
-	log_info(TAG,"setup");
 	unsigned freq = 1000;
 	if (Config.has_pwm_freq()) {
 		unsigned f = Config.pwm_freq();
@@ -420,9 +419,9 @@ void dimmer_setup()
 		} else {
 			Period = 1000000 / f;
 			freq = f;
-			log_info(TAG,"frequency %u, period %u",freq,Period);
 		}
 	}
+	log_info(TAG,"frequency %u, period %u",freq,Period);
 #ifdef CONFIG_IDF_TARGET_ESP8266
 	unsigned nch = 0;
 	uint32_t pins[nleds];

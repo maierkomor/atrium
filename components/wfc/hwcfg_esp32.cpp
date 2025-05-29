@@ -7,10 +7,10 @@
  * Source Information:
  * ===================
  * Filename : hwcfg.wfc
- * Copyright: 2018-2024
+ * Copyright: 2018-2025
  * Author   : Thomas Maier-Komor
  * 
- * Code generated on 2025-04-26, 19:32:09 (CET).
+ * Code generated on 2025-05-13, 08:33:00 (CET).
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -9878,6 +9878,379 @@ Message *BuzzerConfig::p_getMember(const char *s, unsigned n, unsigned x)
 	return 0;
 }
 
+void INA2xxConfig::clear()
+{
+	m_config = 0;
+	m_limit = 0;
+	m_mask = 0;
+	m_res = 0;
+	m_Ilsb = 0;
+	m_interval = 10;
+	p_validbits = 0;
+}
+
+void INA2xxConfig::toASCII(stream &o, bool full, size_t indent) const
+{
+	o << "{ // INA2xxConfig";
+	++indent;
+	if (full || has_config()) {
+		ascii_numeric(o, indent, "config", m_config);
+	}
+	if (full || has_limit()) {
+		ascii_numeric(o, indent, "limit", m_limit);
+	}
+	if (full || has_mask()) {
+		ascii_numeric(o, indent, "mask", m_mask);
+	}
+	if (full || has_res()) {
+		ascii_numeric(o, indent, "res", m_res);
+	}
+	if (full || has_Ilsb()) {
+		ascii_numeric(o, indent, "Ilsb", m_Ilsb);
+	}
+	if (full || has_interval()) {
+		ascii_numeric(o, indent, "interval", m_interval);
+	}
+	--indent;
+	gen_indent(o,indent);
+	o << '}';
+}
+
+void INA2xxConfig::toPbt(stream &o, bool full, size_t indent) const
+{
+	o << '{';
+	++indent;
+	if (full || has_config()) {
+		pbt_numeric(o, indent, "config", m_config);
+	}
+	if (full || has_limit()) {
+		pbt_numeric(o, indent, "limit", m_limit);
+	}
+	if (full || has_mask()) {
+		pbt_numeric(o, indent, "mask", m_mask);
+	}
+	if (full || has_res()) {
+		pbt_numeric(o, indent, "res", m_res);
+	}
+	if (full || has_Ilsb()) {
+		pbt_numeric(o, indent, "Ilsb", m_Ilsb);
+	}
+	if (full || has_interval()) {
+		pbt_numeric(o, indent, "interval", m_interval);
+	}
+	--indent;
+	gen_indent(o,indent);
+	o << '}';
+}
+
+ssize_t INA2xxConfig::fromMemory(const void *b, ssize_t s)
+{
+	const uint8_t *a = (const uint8_t *)b;
+	const uint8_t *e = a + s;
+	while (a < e) {
+		varint_t fid;
+		int fn = read_varint(a,e-a,&fid);
+		if (fn <= 0)
+			return -490;
+		a += fn;
+		switch (fid) {
+		case 0xc:	// config id 1, type uint16_t, coding 16bit
+			if ((a+1) >= e)
+				return -491;
+			set_config((uint16_t) read_u16(a));
+			a += 2;
+			break;
+		case 0x14:	// limit id 2, type uint16_t, coding 16bit
+			if ((a+1) >= e)
+				return -492;
+			set_limit((uint16_t) read_u16(a));
+			a += 2;
+			break;
+		case 0x1c:	// mask id 3, type uint16_t, coding 16bit
+			if ((a+1) >= e)
+				return -493;
+			set_mask((uint16_t) read_u16(a));
+			a += 2;
+			break;
+		case 0x25:	// res id 4, type float, coding 32bit
+			if ((a+3) >= e)
+				return -494;
+			set_res(read_float(a));
+			a += 4;
+			break;
+		case 0x2d:	// Ilsb id 5, type float, coding 32bit
+			if ((a+3) >= e)
+				return -495;
+			set_Ilsb(read_float(a));
+			a += 4;
+			break;
+		case 0x34:	// interval id 6, type uint16_t, coding 16bit
+			if ((a+1) >= e)
+				return -496;
+			set_interval((uint16_t) read_u16(a));
+			a += 2;
+			break;
+		default:
+			// unknown field (option unknown=skip)
+			{
+				ssize_t s = skip_content(a,e-a,fid&7);
+				if (s <= 0)
+					return -497;
+				a += s;
+				break;
+			}
+		}
+	}
+	assert((a-(const uint8_t *)b) == s);
+	if (a > e)
+		return -498;
+	return a-(const uint8_t *)b;
+}
+
+ssize_t INA2xxConfig::toMemory(uint8_t *b, ssize_t s) const
+{
+	assert(s >= 0);
+	uint8_t *a = b, *e = b + s;
+	// has config?
+	if (0 != (p_validbits & ((uint8_t)1U << vb_config))) {
+		// 'config': id=1, encoding=16bit, tag=0xc
+		if (3 > (e-a))
+			return -499;
+		*a++ = 0xc;
+		write_u16(a,m_config);
+		a += 2;
+	}
+	// has limit?
+	if (0 != (p_validbits & ((uint8_t)1U << vb_limit))) {
+		// 'limit': id=2, encoding=16bit, tag=0x14
+		if (3 > (e-a))
+			return -500;
+		*a++ = 0x14;
+		write_u16(a,m_limit);
+		a += 2;
+	}
+	// has mask?
+	if (0 != (p_validbits & ((uint8_t)1U << vb_mask))) {
+		// 'mask': id=3, encoding=16bit, tag=0x1c
+		if (3 > (e-a))
+			return -501;
+		*a++ = 0x1c;
+		write_u16(a,m_mask);
+		a += 2;
+	}
+	// has res?
+	if (0 != (p_validbits & ((uint8_t)1U << vb_res))) {
+		// 'res': id=4, encoding=32bit, tag=0x25
+		if (5 > (e-a))
+			return -502;
+		*a++ = 0x25;
+		if ((e-a) < 4)
+			return -503;
+		write_u32(a,mangle_float(m_res));
+		a += 4;
+	}
+	// has Ilsb?
+	if (0 != (p_validbits & ((uint8_t)1U << vb_Ilsb))) {
+		// 'Ilsb': id=5, encoding=32bit, tag=0x2d
+		if (5 > (e-a))
+			return -504;
+		*a++ = 0x2d;
+		if ((e-a) < 4)
+			return -505;
+		write_u32(a,mangle_float(m_Ilsb));
+		a += 4;
+	}
+	// has interval?
+	if (0 != (p_validbits & ((uint8_t)1U << vb_interval))) {
+		// 'interval': id=6, encoding=16bit, tag=0x34
+		if (3 > (e-a))
+			return -506;
+		*a++ = 0x34;
+		write_u16(a,m_interval);
+		a += 2;
+	}
+	assert(a <= e);
+	return a-b;
+}
+
+void INA2xxConfig::toJSON(stream &json, bool full, unsigned indLvl) const
+{
+	char fsep = '{';
+	++indLvl;
+	if (full || has_config()) {
+		fsep = json_indent(json,indLvl,fsep,"config");
+		json << m_config;
+	}
+	if (full || has_limit()) {
+		fsep = json_indent(json,indLvl,fsep,"limit");
+		json << m_limit;
+	}
+	if (full || has_mask()) {
+		fsep = json_indent(json,indLvl,fsep,"mask");
+		json << m_mask;
+	}
+	if (full || has_res()) {
+		fsep = json_indent(json,indLvl,fsep,"res");
+		to_dblstr(json,m_res);
+	}
+	if (full || has_Ilsb()) {
+		fsep = json_indent(json,indLvl,fsep,"Ilsb");
+		to_dblstr(json,m_Ilsb);
+	}
+	if (full || has_interval()) {
+		fsep = json_indent(json,indLvl,fsep,"interval");
+		json << m_interval;
+	}
+	if (fsep == '{')
+		json.put('{');
+	json.put('\n');
+	--indLvl;
+	json_indent(json,indLvl,0);
+	json.put('}');
+	if (indLvl == 0)
+		json.put('\n');
+}
+
+size_t INA2xxConfig::calcSize() const
+{
+	size_t r = 0;	// required size, default is fixed length
+	// optional fixed16 config, id 1
+	if (0 != (p_validbits & ((uint8_t)1U << vb_config))) {
+		r += 3;
+	}
+	// optional fixed16 limit, id 2
+	if (0 != (p_validbits & ((uint8_t)1U << vb_limit))) {
+		r += 3;
+	}
+	// optional fixed16 mask, id 3
+	if (0 != (p_validbits & ((uint8_t)1U << vb_mask))) {
+		r += 3;
+	}
+	// optional float res, id 4
+	if (0 != (p_validbits & ((uint8_t)1U << vb_res))) {
+		r += 5;
+	}
+	// optional float Ilsb, id 5
+	if (0 != (p_validbits & ((uint8_t)1U << vb_Ilsb))) {
+		r += 5;
+	}
+	// optional fixed16 interval, id 6
+	if (0 != (p_validbits & ((uint8_t)1U << vb_interval))) {
+		r += 3;
+	}
+	return r;
+}
+
+bool INA2xxConfig::operator != (const INA2xxConfig &r) const
+{
+	if (p_validbits != r.p_validbits)
+		return true;
+	if (has_config() && (m_config != r.m_config))
+		return true;
+	if (has_limit() && (m_limit != r.m_limit))
+		return true;
+	if (has_mask() && (m_mask != r.m_mask))
+		return true;
+	if (has_res() && (m_res != r.m_res))
+		return true;
+	if (has_Ilsb() && (m_Ilsb != r.m_Ilsb))
+		return true;
+	if (has_interval() && (m_interval != r.m_interval))
+		return true;
+	return false;
+}
+
+
+bool INA2xxConfig::operator == (const INA2xxConfig &r) const
+{
+	return !((*this) != r);
+}
+
+
+/*
+ * Function for setting an element in dot notation with an ASCII value.
+ * It will call the specified parse_ascii function for parsing the value.
+ *
+ * @return number of bytes successfully parsed or negative value indicating
+ *         an error.
+ */
+int INA2xxConfig::setByName(const char *name, const char *value)
+{
+	if (0 == strcmp(name,"config")) {
+		if (value == 0) {
+			clear_config();
+			return 0;
+		}
+		int r = parse_ascii_u16(&m_config,value);
+		if (r > 0)
+			p_validbits |= ((uint8_t)1U << 0);
+		return r;
+	}
+	if (0 == strcmp(name,"limit")) {
+		if (value == 0) {
+			clear_limit();
+			return 0;
+		}
+		int r = parse_ascii_u16(&m_limit,value);
+		if (r > 0)
+			p_validbits |= ((uint8_t)1U << 1);
+		return r;
+	}
+	if (0 == strcmp(name,"mask")) {
+		if (value == 0) {
+			clear_mask();
+			return 0;
+		}
+		int r = parse_ascii_u16(&m_mask,value);
+		if (r > 0)
+			p_validbits |= ((uint8_t)1U << 2);
+		return r;
+	}
+	if (0 == strcmp(name,"res")) {
+		if (value == 0) {
+			clear_res();
+			return 0;
+		}
+		int r = parse_ascii_flt(&m_res,value);
+		if (r > 0)
+			p_validbits |= ((uint8_t)1U << 3);
+		return r;
+	}
+	if (0 == strcmp(name,"Ilsb")) {
+		if (value == 0) {
+			clear_Ilsb();
+			return 0;
+		}
+		int r = parse_ascii_flt(&m_Ilsb,value);
+		if (r > 0)
+			p_validbits |= ((uint8_t)1U << 4);
+		return r;
+	}
+	if (0 == strcmp(name,"interval")) {
+		if (value == 0) {
+			clear_interval();
+			return 0;
+		}
+		int r = parse_ascii_u16(&m_interval,value);
+		if (r > 0)
+			p_validbits |= ((uint8_t)1U << 5);
+		return r;
+	}
+	return -507;
+}
+
+Message *INA2xxConfig::p_getMember(const char *s, unsigned n)
+{
+	// caller guarantee: s[n] == '.'
+	return 0;
+}
+
+Message *INA2xxConfig::p_getMember(const char *s, unsigned n, unsigned x)
+{
+	// caller guarantee: s[n] == '['
+	return 0;
+}
+
 void HardwareConfig::clear()
 {
 	m_magic = 0xAE54EDCB;
@@ -10431,12 +10804,12 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 		varint_t fid;
 		int fn = read_varint(a,e-a,&fid);
 		if (fn <= 0)
-			return -490;
+			return -508;
 		a += fn;
 		switch (fid) {
 		case 0x5:	// magic id 0, type uint32_t, coding 32bit
 			if ((a+3) >= e)
-				return -491;
+				return -509;
 			set_magic((uint32_t) read_u32(a));
 			a += 4;
 			break;
@@ -10446,13 +10819,13 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -492;
+					return -510;
 				if (v != 0) {
 					n = m_system.fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -493;
+						return -511;
 					a += v;
 				}
 			}
@@ -10464,14 +10837,14 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -494;
+					return -512;
 				m_uart.emplace_back();
 				if (v != 0) {
 					n = m_uart.back().fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -495;
+						return -513;
 					a += v;
 				}
 			}
@@ -10482,13 +10855,13 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -496;
+					return -514;
 				if (v != 0) {
 					n = m_adc.fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -497;
+						return -515;
 					a += v;
 				}
 			}
@@ -10501,13 +10874,13 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -498;
+					return -516;
 				if (v != 0) {
 					n = m_touchpad.fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -499;
+						return -517;
 					a += v;
 				}
 			}
@@ -10521,14 +10894,14 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -500;
+					return -518;
 				m_tp_channel.emplace_back();
 				if (v != 0) {
 					n = m_tp_channel.back().fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -501;
+						return -519;
 					a += v;
 				}
 			}
@@ -10540,14 +10913,14 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -502;
+					return -520;
 				m_gpios.emplace_back();
 				if (v != 0) {
 					n = m_gpios.back().fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -503;
+						return -521;
 					a += v;
 				}
 			}
@@ -10559,14 +10932,14 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -504;
+					return -522;
 				m_spibus.emplace_back();
 				if (v != 0) {
 					n = m_spibus.back().fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -505;
+						return -523;
 					a += v;
 				}
 			}
@@ -10579,14 +10952,14 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -506;
+					return -524;
 				m_button.emplace_back();
 				if (v != 0) {
 					n = m_button.back().fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -507;
+						return -525;
 					a += v;
 				}
 			}
@@ -10599,14 +10972,14 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -508;
+					return -526;
 				m_relay.emplace_back();
 				if (v != 0) {
 					n = m_relay.back().fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -509;
+						return -527;
 					a += v;
 				}
 			}
@@ -10619,14 +10992,14 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -510;
+					return -528;
 				m_led.emplace_back();
 				if (v != 0) {
 					n = m_led.back().fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -511;
+						return -529;
 					a += v;
 				}
 			}
@@ -10639,13 +11012,13 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -512;
+					return -530;
 				if (v != 0) {
 					n = m_buzzer.fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -513;
+						return -531;
 					a += v;
 				}
 			}
@@ -10659,13 +11032,13 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -514;
+					return -532;
 				if (v != 0) {
 					n = m_hlw8012.fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -515;
+						return -533;
 					a += v;
 				}
 			}
@@ -10679,13 +11052,13 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -516;
+					return -534;
 				if (v != 0) {
 					n = m_max7219.fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -517;
+						return -535;
 					a += v;
 				}
 			}
@@ -10699,13 +11072,13 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -518;
+					return -536;
 				if (v != 0) {
 					n = m_tlc5947.fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -519;
+						return -537;
 					a += v;
 				}
 			}
@@ -10719,14 +11092,14 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -520;
+					return -538;
 				m_ws2812b.emplace_back();
 				if (v != 0) {
 					n = m_ws2812b.back().fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -521;
+						return -539;
 					a += v;
 				}
 			}
@@ -10739,13 +11112,13 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -522;
+					return -540;
 				if (v != 0) {
 					n = m_dht.fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -523;
+						return -541;
 					a += v;
 				}
 			}
@@ -10759,14 +11132,14 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -524;
+					return -542;
 				m_i2c.emplace_back();
 				if (v != 0) {
 					n = m_i2c.back().fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -525;
+						return -543;
 					a += v;
 				}
 			}
@@ -10779,14 +11152,14 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -526;
+					return -544;
 				m_hcsr04.emplace_back();
 				if (v != 0) {
 					n = m_hcsr04.back().fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -527;
+						return -545;
 					a += v;
 				}
 			}
@@ -10799,13 +11172,13 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -528;
+					return -546;
 				if (v != 0) {
 					n = m_onewire.fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -529;
+						return -547;
 					a += v;
 				}
 			}
@@ -10819,13 +11192,13 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -530;
+					return -548;
 				if (v != 0) {
 					n = m_sx1276.fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -531;
+						return -549;
 					a += v;
 				}
 			}
@@ -10839,14 +11212,14 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -532;
+					return -550;
 				m_iocluster.emplace_back();
 				if (v != 0) {
 					n = m_iocluster.back().fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -533;
+						return -551;
 					a += v;
 				}
 			}
@@ -10859,13 +11232,13 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 				int n = read_varint(a,e-a,&v);
 				a += n;
 				if ((n <= 0) || ((a+v) > e))
-					return -534;
+					return -552;
 				if (v != 0) {
 					n = m_display.fromMemory((const uint8_t*)a,v);
 					if (n < 0)
 						return n;
 					if (n != (ssize_t)v)
-						return -535;
+						return -553;
 					a += v;
 				}
 			}
@@ -10877,7 +11250,7 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 			{
 				ssize_t s = skip_content(a,e-a,fid&7);
 				if (s <= 0)
-					return -536;
+					return -554;
 				a += s;
 				break;
 			}
@@ -10885,7 +11258,7 @@ ssize_t HardwareConfig::fromMemory(const void *b, ssize_t s)
 	}
 	assert((a-(const uint8_t *)b) == s);
 	if (a > e)
-		return -537;
+		return -555;
 	return a-(const uint8_t *)b;
 }
 
@@ -10898,10 +11271,10 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint16_t)1U << vb_magic))) {
 		// 'magic': id=0, encoding=32bit, tag=0x5
 		if (5 > (e-a))
-			return -538;
+			return -556;
 		*a++ = 0x5;
 		if ((e-a) < 4)
-			return -539;
+			return -557;
 		write_u32(a,(uint32_t)m_magic);
 		a += 4;
 	}
@@ -10909,13 +11282,13 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint16_t)1U << vb_system))) {
 		// 'system': id=1, encoding=lenpfx, tag=0xa
 		if (a >= e)
-			return -540;
+			return -558;
 		*a++ = 0xa;
 		ssize_t system_ws = m_system.calcSize();
 		n = write_varint(a,e-a,system_ws);
 		a += n;
 		if ((n <= 0) || (system_ws > (e-a)))
-			return -541;
+			return -559;
 		n = m_system.toMemory(a,e-a);
 		a += n;
 		assert(n == system_ws);
@@ -10923,13 +11296,13 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_uart) {
 		// 'uart': id=3, encoding=lenpfx, tag=0x1a
 		if (a >= e)
-			return -542;
+			return -560;
 		*a++ = 0x1a;
 		ssize_t uart_ws = x.calcSize();
 		n = write_varint(a,e-a,uart_ws);
 		a += n;
 		if ((n <= 0) || (uart_ws > (e-a)))
-			return -543;
+			return -561;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == uart_ws);
@@ -10938,13 +11311,13 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint16_t)1U << vb_adc))) {
 		// 'adc': id=4, encoding=lenpfx, tag=0x22
 		if (a >= e)
-			return -544;
+			return -562;
 		*a++ = 0x22;
 		ssize_t adc_ws = m_adc.calcSize();
 		n = write_varint(a,e-a,adc_ws);
 		a += n;
 		if ((n <= 0) || (adc_ws > (e-a)))
-			return -545;
+			return -563;
 		n = m_adc.toMemory(a,e-a);
 		a += n;
 		assert(n == adc_ws);
@@ -10954,13 +11327,13 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint16_t)1U << vb_touchpad))) {
 		// 'touchpad': id=5, encoding=lenpfx, tag=0x2a
 		if (a >= e)
-			return -546;
+			return -564;
 		*a++ = 0x2a;
 		ssize_t touchpad_ws = m_touchpad.calcSize();
 		n = write_varint(a,e-a,touchpad_ws);
 		a += n;
 		if ((n <= 0) || (touchpad_ws > (e-a)))
-			return -547;
+			return -565;
 		n = m_touchpad.toMemory(a,e-a);
 		a += n;
 		assert(n == touchpad_ws);
@@ -10970,13 +11343,13 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_tp_channel) {
 		// 'tp_channel': id=6, encoding=lenpfx, tag=0x32
 		if (a >= e)
-			return -548;
+			return -566;
 		*a++ = 0x32;
 		ssize_t tp_channel_ws = x.calcSize();
 		n = write_varint(a,e-a,tp_channel_ws);
 		a += n;
 		if ((n <= 0) || (tp_channel_ws > (e-a)))
-			return -549;
+			return -567;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == tp_channel_ws);
@@ -10985,13 +11358,13 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_gpios) {
 		// 'gpios': id=7, encoding=lenpfx, tag=0x3a
 		if (a >= e)
-			return -550;
+			return -568;
 		*a++ = 0x3a;
 		ssize_t gpios_ws = x.calcSize();
 		n = write_varint(a,e-a,gpios_ws);
 		a += n;
 		if ((n <= 0) || (gpios_ws > (e-a)))
-			return -551;
+			return -569;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == gpios_ws);
@@ -11000,13 +11373,13 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_spibus) {
 		// 'spibus': id=8, encoding=lenpfx, tag=0x42
 		if (a >= e)
-			return -552;
+			return -570;
 		*a++ = 0x42;
 		ssize_t spibus_ws = x.calcSize();
 		n = write_varint(a,e-a,spibus_ws);
 		a += n;
 		if ((n <= 0) || (spibus_ws > (e-a)))
-			return -553;
+			return -571;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == spibus_ws);
@@ -11016,14 +11389,14 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_button) {
 		// 'button': id=16, encoding=lenpfx, tag=0x82
 		if (2 > (e-a))
-			return -554;
+			return -572;
 		*a++ = 0x82;
 		*a++ = 0x1;
 		ssize_t button_ws = x.calcSize();
 		n = write_varint(a,e-a,button_ws);
 		a += n;
 		if ((n <= 0) || (button_ws > (e-a)))
-			return -555;
+			return -573;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == button_ws);
@@ -11033,14 +11406,14 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_relay) {
 		// 'relay': id=17, encoding=lenpfx, tag=0x8a
 		if (2 > (e-a))
-			return -556;
+			return -574;
 		*a++ = 0x8a;
 		*a++ = 0x1;
 		ssize_t relay_ws = x.calcSize();
 		n = write_varint(a,e-a,relay_ws);
 		a += n;
 		if ((n <= 0) || (relay_ws > (e-a)))
-			return -557;
+			return -575;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == relay_ws);
@@ -11050,14 +11423,14 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_led) {
 		// 'led': id=18, encoding=lenpfx, tag=0x92
 		if (2 > (e-a))
-			return -558;
+			return -576;
 		*a++ = 0x92;
 		*a++ = 0x1;
 		ssize_t led_ws = x.calcSize();
 		n = write_varint(a,e-a,led_ws);
 		a += n;
 		if ((n <= 0) || (led_ws > (e-a)))
-			return -559;
+			return -577;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == led_ws);
@@ -11068,14 +11441,14 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint16_t)1U << vb_buzzer))) {
 		// 'buzzer': id=19, encoding=lenpfx, tag=0x9a
 		if (2 > (e-a))
-			return -560;
+			return -578;
 		*a++ = 0x9a;
 		*a++ = 0x1;
 		ssize_t buzzer_ws = m_buzzer.calcSize();
 		n = write_varint(a,e-a,buzzer_ws);
 		a += n;
 		if ((n <= 0) || (buzzer_ws > (e-a)))
-			return -561;
+			return -579;
 		n = m_buzzer.toMemory(a,e-a);
 		a += n;
 		assert(n == buzzer_ws);
@@ -11086,14 +11459,14 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint16_t)1U << vb_hlw8012))) {
 		// 'hlw8012': id=20, encoding=lenpfx, tag=0xa2
 		if (2 > (e-a))
-			return -562;
+			return -580;
 		*a++ = 0xa2;
 		*a++ = 0x1;
 		ssize_t hlw8012_ws = m_hlw8012.calcSize();
 		n = write_varint(a,e-a,hlw8012_ws);
 		a += n;
 		if ((n <= 0) || (hlw8012_ws > (e-a)))
-			return -563;
+			return -581;
 		n = m_hlw8012.toMemory(a,e-a);
 		a += n;
 		assert(n == hlw8012_ws);
@@ -11104,14 +11477,14 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint16_t)1U << vb_max7219))) {
 		// 'max7219': id=32, encoding=lenpfx, tag=0x102
 		if (2 > (e-a))
-			return -564;
+			return -582;
 		*a++ = 0x82;
 		*a++ = 0x2;
 		ssize_t max7219_ws = m_max7219.calcSize();
 		n = write_varint(a,e-a,max7219_ws);
 		a += n;
 		if ((n <= 0) || (max7219_ws > (e-a)))
-			return -565;
+			return -583;
 		n = m_max7219.toMemory(a,e-a);
 		a += n;
 		assert(n == max7219_ws);
@@ -11122,14 +11495,14 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint16_t)1U << vb_tlc5947))) {
 		// 'tlc5947': id=33, encoding=lenpfx, tag=0x10a
 		if (2 > (e-a))
-			return -566;
+			return -584;
 		*a++ = 0x8a;
 		*a++ = 0x2;
 		ssize_t tlc5947_ws = m_tlc5947.calcSize();
 		n = write_varint(a,e-a,tlc5947_ws);
 		a += n;
 		if ((n <= 0) || (tlc5947_ws > (e-a)))
-			return -567;
+			return -585;
 		n = m_tlc5947.toMemory(a,e-a);
 		a += n;
 		assert(n == tlc5947_ws);
@@ -11139,14 +11512,14 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_ws2812b) {
 		// 'ws2812b': id=34, encoding=lenpfx, tag=0x112
 		if (2 > (e-a))
-			return -568;
+			return -586;
 		*a++ = 0x92;
 		*a++ = 0x2;
 		ssize_t ws2812b_ws = x.calcSize();
 		n = write_varint(a,e-a,ws2812b_ws);
 		a += n;
 		if ((n <= 0) || (ws2812b_ws > (e-a)))
-			return -569;
+			return -587;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == ws2812b_ws);
@@ -11157,14 +11530,14 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint16_t)1U << vb_dht))) {
 		// 'dht': id=35, encoding=lenpfx, tag=0x11a
 		if (2 > (e-a))
-			return -570;
+			return -588;
 		*a++ = 0x9a;
 		*a++ = 0x2;
 		ssize_t dht_ws = m_dht.calcSize();
 		n = write_varint(a,e-a,dht_ws);
 		a += n;
 		if ((n <= 0) || (dht_ws > (e-a)))
-			return -571;
+			return -589;
 		n = m_dht.toMemory(a,e-a);
 		a += n;
 		assert(n == dht_ws);
@@ -11174,14 +11547,14 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_i2c) {
 		// 'i2c': id=36, encoding=lenpfx, tag=0x122
 		if (2 > (e-a))
-			return -572;
+			return -590;
 		*a++ = 0xa2;
 		*a++ = 0x2;
 		ssize_t i2c_ws = x.calcSize();
 		n = write_varint(a,e-a,i2c_ws);
 		a += n;
 		if ((n <= 0) || (i2c_ws > (e-a)))
-			return -573;
+			return -591;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == i2c_ws);
@@ -11191,14 +11564,14 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_hcsr04) {
 		// 'hcsr04': id=37, encoding=lenpfx, tag=0x12a
 		if (2 > (e-a))
-			return -574;
+			return -592;
 		*a++ = 0xaa;
 		*a++ = 0x2;
 		ssize_t hcsr04_ws = x.calcSize();
 		n = write_varint(a,e-a,hcsr04_ws);
 		a += n;
 		if ((n <= 0) || (hcsr04_ws > (e-a)))
-			return -575;
+			return -593;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == hcsr04_ws);
@@ -11209,14 +11582,14 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint16_t)1U << vb_onewire))) {
 		// 'onewire': id=38, encoding=lenpfx, tag=0x132
 		if (2 > (e-a))
-			return -576;
+			return -594;
 		*a++ = 0xb2;
 		*a++ = 0x2;
 		ssize_t onewire_ws = m_onewire.calcSize();
 		n = write_varint(a,e-a,onewire_ws);
 		a += n;
 		if ((n <= 0) || (onewire_ws > (e-a)))
-			return -577;
+			return -595;
 		n = m_onewire.toMemory(a,e-a);
 		a += n;
 		assert(n == onewire_ws);
@@ -11227,14 +11600,14 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint16_t)1U << vb_sx1276))) {
 		// 'sx1276': id=39, encoding=lenpfx, tag=0x13a
 		if (2 > (e-a))
-			return -578;
+			return -596;
 		*a++ = 0xba;
 		*a++ = 0x2;
 		ssize_t sx1276_ws = m_sx1276.calcSize();
 		n = write_varint(a,e-a,sx1276_ws);
 		a += n;
 		if ((n <= 0) || (sx1276_ws > (e-a)))
-			return -579;
+			return -597;
 		n = m_sx1276.toMemory(a,e-a);
 		a += n;
 		assert(n == sx1276_ws);
@@ -11244,14 +11617,14 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	for (const auto &x : m_iocluster) {
 		// 'iocluster': id=40, encoding=lenpfx, tag=0x142
 		if (2 > (e-a))
-			return -580;
+			return -598;
 		*a++ = 0xc2;
 		*a++ = 0x2;
 		ssize_t iocluster_ws = x.calcSize();
 		n = write_varint(a,e-a,iocluster_ws);
 		a += n;
 		if ((n <= 0) || (iocluster_ws > (e-a)))
-			return -581;
+			return -599;
 		n = x.toMemory(a,e-a);
 		a += n;
 		assert(n == iocluster_ws);
@@ -11262,14 +11635,14 @@ ssize_t HardwareConfig::toMemory(uint8_t *b, ssize_t s) const
 	if (0 != (p_validbits & ((uint16_t)1U << vb_display))) {
 		// 'display': id=50, encoding=lenpfx, tag=0x192
 		if (2 > (e-a))
-			return -582;
+			return -600;
 		*a++ = 0x92;
 		*a++ = 0x3;
 		ssize_t display_ws = m_display.calcSize();
 		n = write_varint(a,e-a,display_ws);
 		a += n;
 		if ((n <= 0) || (display_ws > (e-a)))
-			return -583;
+			return -601;
 		n = m_display.toMemory(a,e-a);
 		a += n;
 		assert(n == display_ws);
@@ -11893,16 +12266,16 @@ int HardwareConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+5,&idxe,0);
 				if ((idxe[0] != ']') || (idxe == (name+5)))
-					return -584;
+					return -602;
 				if (m_uart.size() <= x)
-					return -585;
+					return -603;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_uart.erase(m_uart.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -586;
+				return -604;
 			return m_uart[x].setByName(idxe+2,value);
 		}
 	}
@@ -11943,16 +12316,16 @@ int HardwareConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+11,&idxe,0);
 				if ((idxe[0] != ']') || (idxe == (name+11)))
-					return -587;
+					return -605;
 				if (m_tp_channel.size() <= x)
-					return -588;
+					return -606;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_tp_channel.erase(m_tp_channel.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -589;
+				return -607;
 			return m_tp_channel[x].setByName(idxe+2,value);
 		}
 	}
@@ -11973,16 +12346,16 @@ int HardwareConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+6,&idxe,0);
 				if ((idxe[0] != ']') || (idxe == (name+6)))
-					return -590;
+					return -608;
 				if (m_gpios.size() <= x)
-					return -591;
+					return -609;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_gpios.erase(m_gpios.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -592;
+				return -610;
 			return m_gpios[x].setByName(idxe+2,value);
 		}
 	}
@@ -12003,16 +12376,16 @@ int HardwareConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+7,&idxe,0);
 				if ((idxe[0] != ']') || (idxe == (name+7)))
-					return -593;
+					return -611;
 				if (m_spibus.size() <= x)
-					return -594;
+					return -612;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_spibus.erase(m_spibus.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -595;
+				return -613;
 			return m_spibus[x].setByName(idxe+2,value);
 		}
 	}
@@ -12034,16 +12407,16 @@ int HardwareConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+7,&idxe,0);
 				if ((idxe[0] != ']') || (idxe == (name+7)))
-					return -596;
+					return -614;
 				if (m_button.size() <= x)
-					return -597;
+					return -615;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_button.erase(m_button.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -598;
+				return -616;
 			return m_button[x].setByName(idxe+2,value);
 		}
 	}
@@ -12065,16 +12438,16 @@ int HardwareConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+6,&idxe,0);
 				if ((idxe[0] != ']') || (idxe == (name+6)))
-					return -599;
+					return -617;
 				if (m_relay.size() <= x)
-					return -600;
+					return -618;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_relay.erase(m_relay.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -601;
+				return -619;
 			return m_relay[x].setByName(idxe+2,value);
 		}
 	}
@@ -12096,16 +12469,16 @@ int HardwareConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+4,&idxe,0);
 				if ((idxe[0] != ']') || (idxe == (name+4)))
-					return -602;
+					return -620;
 				if (m_led.size() <= x)
-					return -603;
+					return -621;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_led.erase(m_led.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -604;
+				return -622;
 			return m_led[x].setByName(idxe+2,value);
 		}
 	}
@@ -12171,16 +12544,16 @@ int HardwareConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+8,&idxe,0);
 				if ((idxe[0] != ']') || (idxe == (name+8)))
-					return -605;
+					return -623;
 				if (m_ws2812b.size() <= x)
-					return -606;
+					return -624;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_ws2812b.erase(m_ws2812b.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -607;
+				return -625;
 			return m_ws2812b[x].setByName(idxe+2,value);
 		}
 	}
@@ -12213,16 +12586,16 @@ int HardwareConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+4,&idxe,0);
 				if ((idxe[0] != ']') || (idxe == (name+4)))
-					return -608;
+					return -626;
 				if (m_i2c.size() <= x)
-					return -609;
+					return -627;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_i2c.erase(m_i2c.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -610;
+				return -628;
 			return m_i2c[x].setByName(idxe+2,value);
 		}
 	}
@@ -12244,16 +12617,16 @@ int HardwareConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+7,&idxe,0);
 				if ((idxe[0] != ']') || (idxe == (name+7)))
-					return -611;
+					return -629;
 				if (m_hcsr04.size() <= x)
-					return -612;
+					return -630;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_hcsr04.erase(m_hcsr04.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -613;
+				return -631;
 			return m_hcsr04[x].setByName(idxe+2,value);
 		}
 	}
@@ -12297,16 +12670,16 @@ int HardwareConfig::setByName(const char *name, const char *value)
 			} else {
 				x = strtoul(name+10,&idxe,0);
 				if ((idxe[0] != ']') || (idxe == (name+10)))
-					return -614;
+					return -632;
 				if (m_iocluster.size() <= x)
-					return -615;
+					return -633;
 				if ((idxe[1] == 0) && (value == 0)) {
 					m_iocluster.erase(m_iocluster.begin()+x);
 					return 0;
 				}
 			}
 			if (idxe[1] != '.')
-				return -616;
+				return -634;
 			return m_iocluster[x].setByName(idxe+2,value);
 		}
 	}
@@ -12322,7 +12695,7 @@ int HardwareConfig::setByName(const char *name, const char *value)
 		}
 	}
 	#endif // CONFIG_DISPLAY
-	return -617;
+	return -635;
 }
 
 Message *HardwareConfig::p_getMember(const char *s, unsigned n)

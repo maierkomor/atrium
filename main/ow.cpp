@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2024, Thomas Maier-Komor
+ *  Copyright (C) 2020-2025, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -67,22 +67,57 @@ void ow_setup()
 		return;
 	}
 	const OneWireConfig &cfg = HWConf.onewire();
-	OneWire::create(cfg.gpio(),cfg.pullup(),cfg.power());
-	auto *owdevs = Config.mutable_owdevices();
-	for (const auto &cfg : *owdevs) {
-		if (cfg.has_name()) {
-			OwDevice *d = OwDevice::getDevice(cfg.id());
-			if (d) {
-				d->setName(cfg.name().c_str());
-			} else {
-				OwDevice::create(cfg.id(),cfg.name().c_str());
-				d = OwDevice::getDevice(cfg.id());
+	if (OneWire::create(cfg.gpio(),cfg.pullup(),cfg.power())) {
+		auto *owdevs = Config.mutable_owdevices();
+		for (const auto &cfg : *owdevs) {
+			if (cfg.has_name()) {
+				OwDevice *d = OwDevice::getDevice(cfg.id());
+				if (d) {
+					d->setName(cfg.name().c_str());
+				} else {
+					OwDevice::create(cfg.id(),cfg.name().c_str());
+					d = OwDevice::getDevice(cfg.id());
+				}
+				if (d)
+					d->attach(RTData);
 			}
-			if (d)
-				d->attach(RTData);
 		}
+		log_dbug(TAG,"setup done");
+	} else {
+		log_dbug(TAG,"no bus");
 	}
-	log_dbug(TAG,"setup done");
+}
+
+
+static OwDevice *get_device(const char *arg)
+{
+	uint8_t addr[8];
+	if (8 == sscanf(arg,"%02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx"
+			, addr+0, addr+1, addr+2, addr+3
+			, addr+4, addr+5, addr+6, addr+7)) {
+		uint64_t id
+			= (uint64_t) addr[0]<<0
+			| (uint64_t) addr[1]<<8
+			| (uint64_t) addr[2]<<16
+			| (uint64_t) addr[3]<<24
+			| (uint64_t) addr[4]<<32
+			| (uint64_t) addr[5]<<40
+			| (uint64_t) addr[6]<<48
+			| (uint64_t) addr[7]<<56
+			;
+		return OwDevice::getDevice(id);
+	} else {
+		char *e;
+		long idx = strtol(arg,&e,0);
+		OwDevice *d = OwDevice::firstDevice();
+		while (idx) {
+			--idx;
+			if (0 == d)
+				return 0;
+			d = d->getNext();
+		} 
+		return d;
+	}
 }
 
 
@@ -92,48 +127,54 @@ const char *onewire(Terminal &term, int argc, const char *args[])
 	if (ow == 0) {
 		return "Not configured.";
 	}
-	if (argc != 2)
-		return "Invalid number of arguments.";
-	if (!strcmp(args[1],"scan"))
-		return ow_scan() ? "Failed." : 0;
-	if (!strcmp(args[1],"read"))
-		return ow->readRom() ? "Failed." : 0;
-	if (!strcmp(args[1],"reset"))
-		return ow->resetBus() ? "Failed." : 0;
-	if (!strcmp(args[1],"name")) {
-		if (argc != 4)
-			return "Invalid number of arguments.";
-		uint64_t id = strtoll(args[2],0,0);
-		if (id == 0)
-			return "Invalid argument #2.";
-		OwDevice *d = OwDevice::getDevice(id);
-		for (auto &c : *Config.mutable_owdevices()) {
-			if (c.id() == id) {
-				c.set_name(args[3]);
-				if (d) 
-					d->setName(c.name().c_str());
-				return 0;
+	if (argc == 2) {
+		if (!strcmp(args[1],"scan"))
+			return ow_scan() ? "Failed." : 0;
+		else if (!strcmp(args[1],"read"))
+			return ow->readRom() ? "Failed." : 0;
+		else if (!strcmp(args[1],"reset"))
+			return ow->resetBus() ? "Failed." : 0;
+		else if (!strcmp(args[1],"list")) {
+			OwDevice *d = OwDevice::firstDevice();
+			unsigned idx = 0;
+			while (d) {
+				uint64_t id = d->getId();
+				term.printf("%2u " IDFMT " %-10s %s\n",idx,IDARG(id),d->deviceType(),d->getName());
+				++idx;
+				d = d->getNext();
 			}
+			return 0;
+		} else if (!strcmp(args[1],"power")) {
+			ow->resetBus();
+			ow->writeByte(0xb4);	// read power mode
+			uint8_t b;
+			ow->readBytes(&b,sizeof(b));
+			term.printf("%02x\n",(unsigned)b);
+			return 0;
+		} else {
+			return "Invalid argument #1.";
 		}
-		return "Unknown id.";
-	}
-	if (!strcmp(args[1],"list")) {
-		OwDevice *d = OwDevice::firstDevice();
-		while (d) {
+	} else if (argc == 4) {
+		if (!strcmp(args[1],"name")) {
+			OwDevice *d = get_device(args[2]);
+			if (0 == d)
+				return "Unknown id.";
+			d->setName(args[3]);
 			uint64_t id = d->getId();
-			term.printf(IDFMT " %-10s %s\n",IDARG(id),d->deviceType(),d->getName());
-			d = d->getNext();
+			for (auto &c : *Config.mutable_owdevices()) {
+				if (c.id() == id) {
+					c.set_name(args[3]);
+					return 0;
+				}
+			}
+			return "Failed partially.";
+		} else {
+			return "Invalid argument #1.";
 		}
-		return 0;
+	} else {
+		return "Invalid number of arguments.";
 	}
-	if (!strcmp(args[1],"power")) {
-		ow->resetBus();
-		ow->writeByte(0xb4);	// read power mode
-		uint8_t b = ow->readByte();
-		term.printf("%02x\n",(unsigned)b);
-		return 0;
-	}
-	return "Invalid argument #1.";
+	return 0;
 }
 
 #endif // CONFIG_ONEWIRE

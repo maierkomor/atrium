@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2018-2021, Thomas Maier-Komor
+#  Copyright (C) 2018-2025, Thomas Maier-Komor
 #  Atrium Firmware Package for ESP
 #
 #  This program is free software: you can redistribute it and/or modify
@@ -83,7 +83,7 @@ endif
 
 .PHONY: prepare settings
 
-export BUILD_DIR_BASE CHIP CPPFLAGS PROJECT_NAME IDF_PATH IDF_VER PATH PTABLE PROJECT_ROOT PROJECT SDKCONFIG WFC WFCDIR ESPTOOL_ALL_FLASH_ARGS CXXFLAGS PROJECT_VER MEMFILES CONFIG_INTEGRATED_HELP WFC_TARGET BATCHBUILD
+export BUILD_DIR_BASE CHIP CPPFLAGS PROJECT_NAME IDF_PATH IDF_VER PATH PTABLE PROJECT_ROOT PROJECT SDKCONFIG WFC WFCDIR ESPTOOL_ALL_FLASH_ARGS CXXFLAGS PROJECT_VER MEMFILES CONFIG_INTEGRATED_HELP WFC_TARGET BATCH_BUILD
 
 romfs/%.romfs: prepare
 	bin/mkromfs -c data -o $@ $(ROMFS_FILES) version.txt
@@ -115,6 +115,7 @@ all: prepare
 	+$(MAKE) -f $(CHIP).mk all
 
 app2: prepare
+	-rm $(BUILD_DIR_BASE)/$(PROJECT_NAME).elf $(BUILD_DIR_BASE)/esp8266/*.ld
 	+$(MAKE) -f $(CHIP).mk app2
 
 app-flash: prepare
@@ -127,10 +128,10 @@ fflash:
 	+$(MAKE) -f $(CHIP).mk flash
 
 ota: prepare
-	-rm $(BUILD_DIR_BASE)/$(PROJECT_NAME).elf $(BUILD_DIR_BASE)/esp8266/esp8266_out.ld
+	-rm $(BUILD_DIR_BASE)/$(PROJECT_NAME).elf $(BUILD_DIR_BASE)/esp8266/*.ld
 	+$(MAKE) -f $(CHIP).mk app2
 	cp $(BUILD_DIR_BASE)/$(PROJECT_NAME).bin $(BUILD_DIR_BASE)/$(PROJECT_NAME).app2
-	-rm $(BUILD_DIR_BASE)/$(PROJECT_NAME).elf $(BUILD_DIR_BASE)/esp8266/esp8266_out.ld
+	-rm $(BUILD_DIR_BASE)/$(PROJECT_NAME).elf $(BUILD_DIR_BASE)/esp8266/*.ld
 	+$(MAKE) -f $(CHIP).mk all
 	cp $(BUILD_DIR_BASE)/$(PROJECT_NAME).bin $(BUILD_DIR_BASE)/$(PROJECT_NAME).app1
 

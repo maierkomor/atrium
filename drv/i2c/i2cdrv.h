@@ -58,7 +58,7 @@ class I2CDevice
 	virtual void addIntr(uint8_t gpio);
 
 	static bool hasInstance(const char *);
-	static I2CDevice *getByAddr(uint8_t addr);
+	static I2CDevice *getByAddr(uint8_t addr);	// 8bit address expected!
 
 	protected:
 	I2CDevice(uint8_t bus, uint8_t addr, const char *name);
@@ -68,7 +68,7 @@ class I2CDevice
 	void updateName();
 
 	I2CDevice *m_next;
-	uint8_t m_bus, m_addr;
+	uint8_t m_bus, m_addr;	// m_addr is in 8bit format
 	char m_name[14] = {0};
 	static I2CDevice *m_first;
 };

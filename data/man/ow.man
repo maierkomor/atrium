@@ -1,4 +1,4 @@
-synopsis: ow <cmd> [<id> <name>]
+synopsis: ow <cmd> [<idx> <name>]
 where <cmd> is:
 list : list configured devices
 read : read the ROM ID of a single attached device

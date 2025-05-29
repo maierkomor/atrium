@@ -222,7 +222,29 @@ void nvm_store_float(const char *id, float v)
 }
 
 
-int nvm_read_blob(const char *name, uint8_t **buf, size_t *len)
+size_t nvm_blob_size(const char *name)
+{
+	size_t s;
+	esp_err_t e = nvs_get_blob(NVS,name,0,&s);
+	if (e) {
+		log_warn(TAG,"blob size %s: %s",name,esp_err_to_name(e));
+		s = 0;
+	}
+	return s;
+}
+
+
+esp_err_t nvm_read_blob(const char *name, uint8_t *buf, size_t *s)
+{
+	esp_err_t e = nvs_get_blob(NVS,name,buf,s);
+	if (e)
+		log_warn(TAG,"read blob %s: %s",name,esp_err_to_name(e));
+	return e;
+}
+
+
+/*
+esp_err_t nvm_read_blob(const char *name, uint8_t **buf, size_t *len)
 {
 	esp_err_t e = 0;
 	uint8_t *b = 0;
@@ -251,8 +273,9 @@ int nvm_read_blob(const char *name, uint8_t **buf, size_t *len)
 	if (0 != e) {
 		log_warn(TAG,"read blob %s: %s",name,esp_err_to_name(e));
 	}
-	return 0;
+	return e;
 }
+*/
 
 
 esp_err_t nvm_store_blob(const char *id, const uint8_t *buf, size_t s)
@@ -274,18 +297,20 @@ esp_err_t nvm_store_blob(const char *id, const uint8_t *buf, size_t s)
 
 const char *nvm_copy_blob(const char *to, const char *from)
 {
-	size_t s = 0;
-	uint8_t *buf = 0;
-	esp_err_t e = nvm_read_blob(from,&buf,&s);
+	size_t s = nvm_blob_size(from);
+	if (0 == s)
+		return "Does not exist.";
+	uint8_t *buf = (uint8_t *) malloc(s);
+	esp_err_t e = nvm_read_blob(from,buf,&s);
 	if (0 == e) {
 		e = nvs_set_blob(NVS,to,buf,s);
-		free(buf);
 		if (0 == e) {
 			e = nvs_commit(NVS);
-			if (0 == e)
-				return 0;
 		}
 	}
+	free(buf);
+	if (0 == e)
+		return 0;
 	return esp_err_to_name(e);
 }
 

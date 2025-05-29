@@ -533,8 +533,8 @@ static int xlua_parse_file(const char *fn, const char *n = 0)
 		if (0 == luaL_loadbuffer(LS,buf,s,vn)) {
 			lua_setglobal(LS,vn);
 			Compiled.insert(vn);
-			r = 0;
 			log_info(TAG,"parsed file %s",fn);
+			r = 0;
 		} else {
 			r = 1;
 			log_warn(TAG,"parse %s: %s",fn,lua_tostring(LS,-1));
@@ -554,6 +554,7 @@ static int xlua_parse_file(const char *fn, const char *n = 0)
 	int fd = open(fn,O_RDONLY);
 	if (fd != -1) {
 		struct stat st;
+		const char *err;
 		if (0 == fstat(fd,&st)) {
 			char *buf = (char *) malloc(st.st_size);
 			int n = pread(fd,buf,st.st_size,0);
@@ -569,16 +570,17 @@ static int xlua_parse_file(const char *fn, const char *n = 0)
 					log_info(TAG,"parsed file %s",fn);
 					return 0;
 				}
-				log_warn(TAG,"parse %s: %s",fn,lua_tostring(LS,-1));
+				err = lua_tostring(LS,-1);
 				lua_pop(LS,1);
 			} else {
-				log_warn(TAG,"parse %s: read error",fn);
+				err = "read error";
 			}
 			free(buf);
 		} else {
 			close(fd);
-			log_warn(TAG,"parse %s: stat error",fn);
+			err = "stat error";
 		}
+		log_warn(TAG,"parse %s: %s",fn,err);
 		return 1;
 	}
 #endif // USE_FOPEN
@@ -858,7 +860,6 @@ void xlua_setup()
 			char tmp[fn.size()+8];
 			memcpy(tmp,"/flash/",7);
 			memcpy(tmp+7,f,fn.size()+1);
-			log_info(TAG,"parsing file %s",tmp);
 			xlua_parse_file(tmp);
 		}
 	}

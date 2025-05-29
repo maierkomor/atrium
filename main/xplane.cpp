@@ -383,6 +383,8 @@ void xplane_setup()
 	const XPlaneConfig &c = Config.xplane();
 	if (!c.has_dataport() && !c.has_refport() && c.dataids().empty() && !c.drefs().empty())
 		return;
+	if (!c.has_ip4addr())
+		return;
 	log_info(TAG,"setup");
 	Ctx = new XPlaneCtrl;
 	EnvObject *env = new EnvObject("xplane");

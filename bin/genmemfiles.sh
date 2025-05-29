@@ -18,14 +18,12 @@
 #  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #  
 
-if [ "$BATCHBUILD" == "1" ]; then
-	echo BATCHBUILD set - skipping generation
+if [ "$BATCH_BUILD" == "1" ]; then
+	echo BATCH_BUILD set - skipping generation
 	exit
 fi
 
 ldir=`pwd`/components/memfiles
-
-#echo CONFIG_INTEGRATED_HELP=$CONFIG_INTEGRATED_HELP
 
 # needed to get name of array right
 cd data
@@ -109,7 +107,7 @@ fi
 if [ "$x" == "0" ]; then
 	echo memfiles.h is up-to-date
 	rm $MEMFILES_H
-	if [ ! -f "$lder/CMakeLists.txt" ]; then
+	if [ ! -f "$ldir/CMakeLists.txt" ]; then
 		mv $CMAKELISTS "$ldir/CMakeLists.txt"
 	else
 		rm $CMAKELISTS

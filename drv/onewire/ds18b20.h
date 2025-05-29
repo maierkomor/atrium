@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021-2022, Thomas Maier-Komor
+ *  Copyright (C) 2021-2025, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -19,6 +19,7 @@
 #ifndef DS18B20_H
 #define DS18B20_H
 
+#include "env.h"
 #include "owdevice.h"
 
 
@@ -46,10 +47,11 @@ struct DS18B20 : public OwDevice
 	static void set_res11b(void *);
 	static void set_res12b(void *);
 
-	class EnvNumber *m_json = 0;
+	class EnvNumber m_env;
 	typedef enum state_e { st_idle = 0, st_sample, st_read, st_set9b, st_set10b, st_set11b, st_set12b } state_t;
 	state_t m_st = st_idle;
 	res_t m_res = res_12b;
+	uint8_t m_err = 0;
 };
 
 

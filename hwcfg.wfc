@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2024, Thomas Maier-Komor
+ *  Copyright (C) 2018-2025, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -17,7 +17,7 @@
  */
 
 option author="Thomas Maier-Komor";
-option copyright="2018-2024";
+option copyright="2018-2025";
 
 option common {
 	BaseClass=Message;
@@ -274,7 +274,8 @@ bitset i2cdev_t
 	// Use addr=0 (general call address) to scan all potential addresses.
 	// Address range scan is not supported by all drivers and may
 	// result in misdetections.
-	uint8 addr : 0..6;
+	uint8 addr : 0..6;	// in 7bit format
+	// bit 7 is unused/reserved
 	i2cdrv_t drv : 8..15;
 	uint8 intr : 16..21;	// 0 = no interrupt, >0: (intr-1)=gpio
 }
@@ -533,6 +534,17 @@ message BuzzerConfig
 {
 	sint8 gpio = 1		[ unset = -1 ];
 	repeated Melody melodies = 2;
+}
+
+
+message INA2xxConfig
+{
+	fixed16 config = 1;
+	fixed16 limit = 2;
+	fixed16 mask = 3;
+	float res = 4;
+	float Ilsb = 5;
+	fixed16 interval = 6	[ default = 10 ];
 }
 
 

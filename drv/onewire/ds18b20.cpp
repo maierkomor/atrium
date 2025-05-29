@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2024, Thomas Maier-Komor
+ *  Copyright (C) 2020-2025, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -82,7 +82,8 @@ void DS18B20::set_res12b(void *arg)
 
 
 DS18B20::DS18B20(uint64_t id, const char *name)
-: OwDevice(id,name)
+: OwDevice(id,strdup(name))
+, m_env(m_name,NAN,"\u00b0C")
 {
 	++NumDev;
 	action_add(concat(name,"!sample"),sample,this,"trigger DS18B20 convertion/sampling");
@@ -90,6 +91,7 @@ DS18B20::DS18B20(uint64_t id, const char *name)
 	action_add(concat(name,"!setres10b"),set_res10b,this,"set conversion resolution to 10bit");
 	action_add(concat(name,"!setres11b"),set_res11b,this,"set conversion resolution to 11bit");
 	action_add(concat(name,"!setres12b"),set_res12b,this,"set conversion resolution to 12bit");
+	cyclic_add_task(m_name,cyclic,this,0);
 }
 
 
@@ -105,11 +107,13 @@ int DS18B20::create(uint64_t id, const char *n)
 	OneWire *ow = OneWire::getInstance();
 	if (0 == ow)
 		return 1;
+	if (ow->resetBus())
+		log_warn(TAG,"bus reset not acknoledged");
 	res_t res = res_12b;
 	if (0 == ow->sendCommand(id,DS18B20_READ)) {	// read scratchpad
 		uint8_t sp[5];
-		for (int i = 0; i < sizeof(sp); ++i)
-			sp[i] = ow->readByte();
+		ow->readBytes(sp,sizeof(sp));
+		log_hex(TAG,sp,sizeof(sp),"init read:");
 		if ((sp[4] & 0x9f) == 0x1f) {
 			res = (res_t)((sp[4] >> 5 ) & 3);
 			log_dbug(TAG,"add device " IDFMT ", resolution %ubits",IDARG(id),res+9);
@@ -131,6 +135,7 @@ unsigned DS18B20::cyclic(void *arg)
 	case st_sample:
 		{
 			OneWire *ow = OneWire::getInstance();
+			ow->resetBus();
 			ow->sendCommand(dev->getId(),DS18B20_CONVERT);
 			dev->m_st = st_read;
 		}
@@ -162,34 +167,43 @@ void DS18B20::read()
 {
 	log_dbug(TAG,"%s read",m_name);
 	OneWire *ow = OneWire::getInstance();
+	if (ow->resetBus()) {
+		log_warn(TAG,"device not ready");
+		return;
+	}
 	bool reset = true;
 	if (0 == ow->sendCommand(getId(),DS18B20_READ)) {	// read scratchpad
 		uint8_t sp[9];
-		for (int i = 0; i < sizeof(sp); ++i)
-			sp[i] = ow->readByte();
-		uint8_t crc = OneWire::crc8(sp,8);
-		if (crc != sp[8]) {
-			log_warn(TAG,"read CRC: expected 0x%02x, got 0x%02x",sp[8],crc);
-		} else {
-			log_dbug(TAG,"CRC ok");
-		}
+		ow->readBytes(sp,sizeof(sp));
+		log_hex(TAG,sp,sizeof(sp),"read %s:",m_name);
 		uint16_t v = ((uint16_t)(sp[1] & 0x07) << 8) | (uint16_t)sp[0];
-		if (v != 0x7fff) {
-			reset = false;
+		if ((v&0x7fff) != 0x7fff) {
 			float f = v;
 			if (sp[1] & 0xf8)
 				f -= 2048;
 			f *= 0.0625;
-			if (m_json)
-				m_json->set(f);
-			char tmp[8];
-			float_to_str(tmp,f);
-			log_dbug(TAG,"%s: %s",m_name,tmp);
+			uint8_t crc = OneWire::crc8(sp,8);
+			if (crc == sp[8]) {
+				m_env.set(f);
+				char tmp[8];
+				float_to_str(tmp,f);
+				reset = false;
+				m_err = 0;
+				log_dbug(TAG,"%s: %s",m_name,tmp);
+			} else {
+				log_warn(TAG,"read CRC: received 0x%02x, calculate 0x%02x",sp[8],crc);
+			}
 		}
+	} else {
+		log_warn(TAG,"read %s: send failed",m_name);
 	}
-	if (reset && m_json) {
-		log_dbug(TAG,"%s: NAN",m_name);
-		m_json->set(NAN);
+	if (reset) {
+		++m_err;
+		if (3 <= m_err) {
+			log_dbug(TAG,"%s: NAN",m_name);
+			m_env.set(NAN);
+			m_err = 0;
+		}
 	}
 }
 
@@ -207,10 +221,7 @@ void DS18B20::set_resolution(res_t r)
 
 void DS18B20::attach(EnvObject *o)
 {
-	if (m_json == 0) {
-		if (0 == cyclic_add_task(m_name,cyclic,this,0))
-			m_json = o->add(m_name,NAN,"\u00b0C");
-	}
+	o->add(&m_env);
 }
 
 #endif // CONFIG_ONEWIRE

@@ -58,7 +58,7 @@ BH1750 *BH1750::create(uint8_t bus, uint8_t addr)
 		return 0;
 	}
 	esp_err_t e;
-	log_info(TAG,"looking for BH1750 at 0x%x",addr);
+	log_dbug(TAG,"looking for BH1750 at 0x%x",addr);
 #if 0 //def ESP32
 	// The timeout retry-logic is for handling an esp32-idf v3.3
 	// init-bug, which has a work-around in the atrium i2c init

@@ -18,7 +18,7 @@
 #  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #  
 
-if [ "$BATCHBUILD" == "1" ]; then
+if [ "$BATCH_BUILD" == "1" ]; then
 	exit
 fi
 

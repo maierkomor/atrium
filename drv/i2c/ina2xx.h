@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2022-2024, Thomas Maier-Komor
+ *  Copyright (C) 2022-2025, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -25,6 +25,7 @@
 #define ID_INA219 19
 #define ID_INA220 20
 #define ID_INA226 26
+#define ID_INA236 36
 #define ID_INA260 60
 
 
@@ -42,22 +43,36 @@ struct INA2XX : public I2CDevice
 	static unsigned cyclic(void *);
 	static void trigger(void *arg);
 
-	virtual float getShunt() const
-	{ return 0; }
-	void init();
+	static void read(void *);
+	static void sample(void *);
+	virtual void init();
+	virtual unsigned vcyclic();
 	void updateDelay();
 	virtual void read();
+	void sample();
 	int reset();
 	void setConfig(uint16_t cfg);
 	int setMode(bool cur, bool volt, bool cont);
+	const char *readReg(uint8_t reg, uint16_t &val);
+	const char *writeReg(uint8_t reg, uint16_t val);
 	virtual const char *setNumSamples(unsigned n);
+	virtual const char *setAlert(uint16_t a, uint16_t l);
 	virtual const char *setShunt(float r);
-//	virtual void printConfig(Terminal &term, uint16_t v);
+	virtual void writeConfig();
+	void updateCal();
+	virtual float readBusV();
+	virtual float readCurrent();
+	virtual bool convReady();
+	virtual const char *setCNVR(bool);
 
-	EnvNumber m_volt, m_amp, m_power;
-	uint16_t m_conf = 0;
 	typedef enum mode_e { md_pd = 0, md_tc, md_tv, md_tcv, md_cc, md_cv, md_ccv } mode_t;
 	typedef enum state_e { st_off, st_trigger, st_read, st_cont } state_t;
+
+	EnvNumber m_volt, m_amp, m_power;
+	Action *m_acrd = 0;
+	float m_res = 0, m_Ilsb = 0, m_Blsb = 0, m_Slsb = 0;
+	uint16_t m_conf = 0;
+	uint16_t m_itv = 10;
 	state_t m_st;
 	uint8_t m_type;
 };

@@ -109,9 +109,12 @@ void I2CDevice::setName(const char *n)
 
 I2CDevice *I2CDevice ::getByAddr(uint8_t addr)
 {
+	// address is stored in 8bit format
+	// argument shall also be 8bit format
+	// getAddr returns 7bit format!
 	I2CDevice *dev = m_first;
 	while (dev) {
-		if (dev->getAddr() == addr)
+		if (dev->m_addr == addr)
 			return dev;
 		dev = dev->m_next;
 	}

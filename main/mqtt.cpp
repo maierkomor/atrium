@@ -987,6 +987,10 @@ static void mqtt_pub_rtdata(void *)
 
 static void mqtt_publish(void *arg)
 {
+	if (0 == arg) {
+		log_warn(TAG,"missing argument to mqtt!publish");
+		return;
+	}
 	const char *str = (const char *)arg;
 	RLock lock(Client->mtx,__FUNCTION__);
 	if (Client->pcb != 0) {
