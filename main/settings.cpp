@@ -47,9 +47,7 @@
 #include <lwip/dns.h>
 #include <lwip/inet.h>
 
-#ifdef CONFIG_IDF_TARGET_ESP32
-#include <soc/rtc.h>
-#elif defined CONFIG_IDF_TARGET_ESP8266
+#ifdef CONFIG_IDF_TARGET_ESP8266
 #include <esp_system.h>
 #include <esp_wps.h>
 extern "C" {
@@ -421,6 +419,8 @@ int set_cpu_freq(unsigned mhz)
 #ifdef ESP32
 	if ((80 == mhz) || (160 == mhz) || (240 == mhz) || (320 == mhz) || (480 == mhz)) {
 #ifdef CONFIG_IDF_TARGET_ESP32
+		// for whatever reason ESP32 has only the _rom version
+		// which the other ESP32-* don't have...
 		ets_update_cpu_frequency_rom(mhz);
 #else
 		ets_update_cpu_frequency(mhz);

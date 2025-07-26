@@ -1,0 +1,4 @@
+synopsis: history [-s [<size>]]
+Without arguments the history is printed.
+With argument -s the size of the history buffer for the current terminal
+can be queried and set. 

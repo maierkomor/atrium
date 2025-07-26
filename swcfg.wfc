@@ -80,6 +80,7 @@ option esp8285 : esp8266 {
 	/NodeConfig/functions	: used = false;
 	/NodeConfig/screen	: used = false;
 	/NodeConfig/statemachs	: used = false;
+	/NodeConfig/history	: used = false;
 	/EnvConfig		: used = false;
 	/ScreenConfig		: used = false;
 	/FunctionConfig		: used = false;
@@ -415,6 +416,7 @@ message NodeConfig
 	FtpHttpConfig httpd = 25			[ ifdef=CONFIG_HTTP ];
 	string otasrv = 26;
 	ScreenConfig screen = 27			[ ifdef=CONFIG_DISPLAY ];
+	unsigned history = 28				[ default = 256 ];
 
 	// event timer/timefuse
 	repeated EventTimer timefuses = 30;

@@ -50,10 +50,6 @@
 #include <float.h>
 #include <sstream>
 
-#ifdef ESP32
-#include <esp_core_dump.h>
-#endif
-
 #include <esp_image_format.h>
 #include <esp_system.h>
 #include <esp_ota_ops.h>
@@ -62,6 +58,7 @@
 #include <esp_wifi.h>
 
 #if IDF_VERSION >= 50
+#include <esp_core_dump.h>
 #include <spi_flash_mmap.h>
 #include <esp_chip_info.h>
 #include <rom/ets_sys.h>
@@ -90,13 +87,12 @@
 #include <freertos/FreeRTOSConfig.h>
 #include <freertos/task.h>
 
-#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
+#if IDF_VERSION >= 50
 #include <lwip/err.h>
 #include <lwip/dns.h>
+#include <soc/rtc.h>
 #elif defined CONFIG_IDF_TARGET_ESP8266
-#if IDF_VERSION > 32
-#include <driver/rtc.h>	// post v3.2
-#endif
+#include <driver/rtc.h>
 #include <driver/hw_timer.h>
 extern "C" {
 #include <esp_clk.h>
@@ -106,22 +102,6 @@ extern "C" {
 #include <netdb.h>
 
 #include <driver/uart.h>
-
-#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
-#if IDF_VERSION >= 40
-extern "C" {
-//#include <esp32/clk.h>
-}
-#include <soc/rtc.h>
-#else
-extern "C" {
-#include <esp_clk.h>
-}
-#include <soc/rtc.h>
-#endif
-#elif defined CONFIG_IDF_TARGET_ESP8266
-//#include <driver/gpio.h>
-#endif
 
 extern "C" {
 #include <dirent.h>
@@ -202,18 +182,11 @@ static const char *action(Terminal &t, int argc, const char *args[])
 }
 
 
-static void print_mac(Terminal &t, const char *i, uint8_t mac[])
-{
-	t.printf("%-8s: %02x:%02x:%02x:%02x:%02x:%02x\n",i,mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
-}
-
-
 static int get_ip(const char *str, uint8_t *ip)
 {
 	unsigned a[5];
 	// %hhu does not work on ESP8266 nano-formating library!
 	int n = sscanf(str,"%u.%u.%u.%u/%u",&a[0],&a[1],&a[2],&a[3],&a[4]);
-//	con_printf("%u.%u.%u.%u/%u",a[0],a[1],a[2],a[3],a[4]);
 	int x = 0;
 	while (x < n) {
 		if (a[x] > 0xff)
@@ -895,74 +868,6 @@ static const char *mem(Terminal &term, int argc, const char *args[])
 }
 
 
-const char *mac(Terminal &term, int argc, const char *args[])
-{
-	uint8_t mac[6];
-	if (argc == 1) {
-		return help_cmd(term,args[0]);
-	} else if ((args[1][0] != '-') || args[1][2]) {
-		return "Invalid argument #1.";
-	} else if (argc == 2) {
-		if (args[1][1] == 'l') {
-#if IDF_VERSION >= 50
-
-			esp_netif_t *nif = esp_netif_next_unsafe(0);
-			while (nif) {
-				char name[8];
-				name[0] = 0;
-				if (esp_netif_get_mac(nif,mac)) {
-				} else if (esp_netif_get_netif_impl_name(nif,name)) {
-				} else {
-					print_mac(term,name,mac);
-				}
-				nif = esp_netif_next_unsafe(nif);
-			}
-#else
-			if (ESP_OK == esp_wifi_get_mac(WIFI_IF_AP,mac))
-				print_mac(term,"softap",mac);
-			if (ESP_OK == esp_wifi_get_mac(WIFI_IF_STA,mac))
-				print_mac(term,"station",mac);
-			return 0;
-#endif
-		}
-	}
-	if (0 == term.getPrivLevel())
-		return "Access denied.";
-	// priveleged commands
-	if (argc == 2) {
-		if (args[1][1] == 'c') {
-			Config.mutable_station()->clear_mac();
-			Config.mutable_softap()->clear_mac();
-			return 0;
-		}
-	} else if (argc == 3) {
-		unsigned inp[6];
-		if (6 != sscanf(args[2],"%x:%x:%x:%x:%x:%x",inp+0,inp+1,inp+2,inp+3,inp+4,inp+5))
-			return "Invalid argument #2.";
-		for (int i = 0; i < 6; ++i) {
-			if (inp[i] > 0xff)
-				return "Invalid argument #2.";
-			mac[i] = inp[i];
-		}
-		wifi_interface_t w;
-		if (args[1][1] == 's') {
-			w = WIFI_IF_AP;
-			Config.mutable_station()->set_mac(mac,6);
-		} else if (args[1][1] == 'a') {
-			w = WIFI_IF_AP;
-			Config.mutable_softap()->set_mac(mac,6);
-		} else {
-			return "Invalid argument #1.";
-		}
-		if (esp_err_t e = esp_wifi_set_mac(w,mac)) {
-			return esp_err_to_name(e);
-		}
-		return 0;
-	}
-	return "Invalid argument #1.";
-}
-
-
 static const char *hostname(Terminal &term, int argc, const char *args[])
 {
 	if (argc > 2) {
@@ -987,14 +892,19 @@ static const char *parse_xxd(Terminal &term, vector<uint8_t> &buf)
 	// accepted format:
 	// <offset>: <byte> <byte> <byte>
 	uint32_t v = 0;
-	bool nl = false, valid = false;
+	bool cr = false, nl = false, valid = false;
 	char c;
 	while (term.get_ch(&c) == 1) {
 		if (c == '\r') {
+			if (cr)
+				return 0;
+			cr = true;
+		} else if (c == '\n') {
 			if (nl)
 				return 0;
 			nl = true;
 		} else {
+			cr = false;
 			nl = false;
 		}
 		if ((c == ' ') || (c == '\t') || (c == '\n') || (c == '\r')) {
@@ -1007,6 +917,7 @@ static const char *parse_xxd(Terminal &term, vector<uint8_t> &buf)
 			if (v != buf.size()) {
 				//buf.resize(v);
 				// resize/holes intentionally not supported
+				log_warn(TAG,"expected offset 0x%x, given offset 0x%x",buf.size(),v);
 				return "Invalid offset.";
 			}
 			v = 0;
@@ -1183,8 +1094,8 @@ static const char *hwconf(Terminal &term, int argc, const char *args[])
 		if (e)
 			return esp_err_to_name(e);
 	} else if (!strcmp("parsexxd",args[1])) {
-		if (parse_xxd(term,hwcfgbuf))
-			return "Invalid hex input.";
+		if (const char *err = parse_xxd(term,hwcfgbuf))
+			return err;
 		term.printf("parsing %u bytes\n",hwcfgbuf.size());
 		HardwareConfig hc = HWConf;
 #ifdef HAVE_GET_MEMBER
@@ -1265,7 +1176,44 @@ static void ms_to_timestr(char *buf, unsigned long ms)
 		b += sprintf(b,"%u:%02u",m,s);
 	else
 		b += sprintf(b,"%u",s);
-	b += sprintf(b,".%03lu",ms);
+	if (ms || ((0 == m) && (0 == h)))
+		b += sprintf(b,".%03lu",ms);
+}
+
+
+static const char *timers_print(Terminal &term)
+{
+	timefuse_t t = timefuse_iterator();
+	// active timers cannot be queried for repeat!
+#ifdef ESP32
+	term.printf(" id %-10s interval state   repeat\n","name");
+#else
+	term.printf(" id %-10s interval state\n","name");
+#endif
+	while (t) {
+		char buf[20];
+		int on = timefuse_active(t);
+		ms_to_timestr(buf,timefuse_interval_get(t));
+#ifdef ESP32
+		bool rep = timefuse_repeat_get(t);
+		term.printf("%3u %-10s %-8s %-7s %s\n"
+				,t
+				,timefuse_name(t)
+				,buf
+				,on==0?"dormant":on==1?"active":"unknown"
+				,rep?"true":"false"
+			   );
+#else
+		term.printf("%3u %-10s %-8s %-7s\n"
+				,t
+				,timefuse_name(t)
+				,buf
+				,on==0?"dormant":on==1?"active":"unknown"
+			   );
+#endif
+		t = timefuse_next(t);
+	}
+	return 0;
 }
 
 
@@ -1278,37 +1226,7 @@ static const char *timefuse(Terminal &term, int argc, const char *args[])
 	char optchr = args[1][1];
 	if (argc == 2) {
 		if ('l' == optchr) {
-			timefuse_t t = timefuse_iterator();
-			// active timers cannot be queried for repeat!
-#ifdef ESP32
-			term.printf(" id %-10s interval state   repeat\n","name");
-#else
-			term.printf(" id %-10s interval state\n","name");
-#endif
-			while (t) {
-				char buf[20];
-				int on = timefuse_active(t);
-				ms_to_timestr(buf,timefuse_interval_get(t));
-#ifdef ESP32
-				bool rep = timefuse_repeat_get(t);
-				term.printf("%3u %-10s %-8s %-7s %s\n"
-						,t
-						,timefuse_name(t)
-						,buf
-						,on==0?"dormant":on==1?"active":"unknown"
-						,rep?"true":"false"
-						);
-#else
-				term.printf("%3u %-10s %-8s %-7s\n"
-						,t
-						,timefuse_name(t)
-						,buf
-						,on==0?"dormant":on==1?"active":"unknown"
-						);
-#endif
-				t = timefuse_next(t);
-			}
-			return 0;
+			return timers_print(term);
 		}
 		return "Invalid argument #1.";
 	}
@@ -1628,7 +1546,7 @@ static const char *accesspoint(Terminal &term, int argc, const char *args[])
 		} else {
 			return "ssid needed";
 		}
-	} else if (!strcmp(args[1],"off")) {
+	} else if ((!strcmp(args[1],"off")) || (!strcmp(args[1],"down"))) {
 		ap->set_activate(false);
 		wifi_stop_softap();
 	} else if (!strcmp(args[1],"clear")) {
@@ -2179,8 +2097,8 @@ static const char *config(Terminal &term, int argc, const char *args[])
 			return "Invalid number of arguments.";
 		nvm_erase_key("node.cfg");
 	} else if (!strcmp("parsexxd",args[1])) {
-		if (parse_xxd(term,rtcfgbuf))
-			return "Invalid hex input.";
+		if (const char *err = parse_xxd(term,rtcfgbuf))
+			return err;
 		term.printf("parsing %u bytes\n",rtcfgbuf.size());
 		NodeConfig nc = Config;
 #ifdef HAVE_GET_MEMBER
@@ -2375,6 +2293,40 @@ static const char *getuptime(Terminal &term, int argc, const char *args[])
 	term.printf("%u days, %d:%02u:%02u\n",d,h,m,s);
 	return 0;
 }
+
+
+#ifndef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
+static const char *history(Terminal &term, int argc, const char *args[])
+{
+	if (1 == argc) {
+		int h = -1;
+		while (const char *str = term.getHistory(h)) {
+			term.println(str);
+			--h;
+		}
+	} else if (2 == argc) {
+		if (0 == strcmp(args[1],"-s")) {
+			term.printf("%u/%u\n",term.getHistoryUsed(),term.getHistorySize());
+		} else {
+			return "Invalid argument #1.";
+		}
+	} else if (3 == argc) {
+		if (0 == strcmp(args[1],"-s")) {
+			char *e;
+			long l = strtol(args[2],&e,0);
+			if (*e)
+				return "Invalid argument #2.";
+			if (term.setHistorySize(l))
+				return "Out of memory.";
+		} else {
+			return "Invalid argument #1.";
+		}
+	} else {
+		return "Invalid number of arguments.";
+	}
+	return 0;
+}
+#endif
 
 
 static const char *cpu(Terminal &term, int argc, const char *args[])
@@ -2677,20 +2629,26 @@ static int flashtest(Terminal &term, int argc, const char *args[])
 
 
 #if IDF_VERSION >= 50
+static bool netif_filter(esp_netif_t *itf, void *ctx)
+{
+	uint64_t *ret = (uint64_t *) ctx;
+	int idx = esp_netif_get_netif_impl_index(itf);
+	if ((idx < 0) || (idx > 63))
+		return false;
+	if (0 == (*ret & (1<<idx))) {
+		*ret |= 1ULL<<idx;
+		return true;
+	}
+	return false;
+}
+
 static void print_ipinfo(Terminal &t, esp_netif_t *itf, esp_netif_ip_info_t *i)
 {
-	char name[12], ipstr[32],gwstr[32];
-	uint8_t mac[6];
+	char ipstr[32],gwstr[32];
 	uint8_t m = 0;
 	uint32_t nm = ntohl(i->netmask.addr);
 	while (nm & (1<<(31-m)))
 		++m;
-	if (esp_netif_get_netif_impl_name(itf,name))
-		strcpy(name,"<undef>");
-	t.printf("if%d/%s (%s):\n",esp_netif_get_netif_impl_index(itf),name,esp_netif_get_desc(itf));
-	if (ESP_OK == esp_netif_get_mac(itf,mac))
-		t.printf("\tmac       : %02x:%02x:%02x:%02x:%02x:%02x\n",
-			mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
 	ip4addr_ntoa_r((ip4_addr_t *)&i->ip.addr,ipstr,sizeof(ipstr));
 	ip4addr_ntoa_r((ip4_addr_t *)&i->gw.addr,gwstr,sizeof(gwstr));
 	t.printf("\tipv4      : %s/%d, gw: %s, %s\n",ipstr,m,gwstr,esp_netif_is_netif_up(itf) ? "up":"down");
@@ -2727,12 +2685,26 @@ static const char *ifconfig(Terminal &term, int argc, const char *args[])
 		return "Invalid number of arguments.";
 	}
 #if IDF_VERSION >= 50
-	esp_netif_t *nif = 0;
-	while (0 != (nif = esp_netif_next_unsafe(nif))) {
+	uint64_t ctx = 0;
+	while (esp_netif_t *nif = esp_netif_find_if(netif_filter,&ctx)) {
+		uint8_t mac[6];
+		char name[8] = "<undef>";
+		esp_netif_get_netif_impl_name(nif,name);
+		term.printf("if%d/%s (%s):\n",esp_netif_get_netif_impl_index(nif),name,esp_netif_get_desc(nif));
+		if (ESP_OK == esp_netif_get_mac(nif,mac))
+			term.printf("\tmac       : %02x:%02x:%02x:%02x:%02x:%02x\n",
+					mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
 		esp_netif_ip_info_t ipconfig;
 		if (ESP_OK == esp_netif_get_ip_info(nif,&ipconfig))
 			print_ipinfo(term, nif, &ipconfig);
-	} 
+		else
+			term.println("IP not configured");
+	}
+	/*
+	esp_netif_t *nif = 0;
+	while (0 != (nif = esp_netif_next_unsafe(nif))) {
+	}
+	*/
 #else
 	tcpip_adapter_ip_info_t ipconfig;
 	if (ESP_OK == tcpip_adapter_get_ip_info(TCPIP_ADAPTER_IF_STA, &ipconfig))
@@ -2878,6 +2850,9 @@ ExeName ExeNames[] = {
 	{"hall",0,hall,"hall sensor",0},
 #endif
 	{"help",0,help,"help",0},
+#ifndef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
+	{"history",0,history,"history of commands",history_man},
+#endif
 #ifdef CONFIG_HOLIDAYS
 	{"holiday",0,holiday,"holiday settings",holiday_man},
 #endif
@@ -2897,9 +2872,6 @@ ExeName ExeNames[] = {
 #ifdef CONFIG_LUA
 	{"lua",0,xluac,"run a lua script",lua_man},
 	{"luac",0,xluac,"compile lua script",luac_man},
-#endif
-#if IDF_VERSION < 50
-	{"mac",0,mac,"MAC addresses",mac_man},
 #endif
 	{"mem",0,mem,"RAM statistics",mem_man},
 #ifdef CONFIG_FATFS

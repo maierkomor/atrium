@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2021, Thomas Maier-Komor
+ *  Copyright (C) 2020-2025, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -30,13 +30,13 @@
 #include <freertos/task.h>
 #include <driver/uart.h>
 
-#if IDF_VERSION > 32 || defined CONFIG_IDF_TARGET_ESP32
+//#if IDF_VERSION > 32 || defined CONFIG_IDF_TARGET_ESP32
 #define DRIVER_ARG 0,0
-#else
-#define DRIVER_ARG 0
-#endif
+//#else
+//#define DRIVER_ARG 0
+//#endif
 
-#ifdef CONFIG_IDF_TARGET_ESP32
+#ifdef ESP32
 #include <soc/io_mux_reg.h>
 #endif
 
@@ -145,11 +145,10 @@ void uart_setup()
 			uc.parity = (uart_parity_t) c.config_p();
 			uc.flow_ctrl = (uart_hw_flowcontrol_t) ((c.config_cts()<<1)|c.config_rts());
 #if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2
-#if IDF_VERSION >= 44
+			// There are different MOD_CLK sources available
+			// on the different uCs.
+			// Maybe this interface needs an update...
 			uc.source_clk = c.config_ref_tick() ? UART_SCLK_REF_TICK : UART_SCLK_APB;
-#else
-			uc.use_ref_tick = c.config_ref_tick();
-#endif
 #endif
 		} else {
 			// default: 8N1
@@ -158,11 +157,7 @@ void uart_setup()
 			uc.stop_bits = UART_STOP_BITS_1;
 			uc.flow_ctrl = UART_HW_FLOWCTRL_DISABLE;
 #if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2
-#if IDF_VERSION >= 44
 			uc.source_clk = UART_SCLK_APB;
-#else
-			uc.use_ref_tick = false;
-#endif
 #endif
 		}
 		static const char *stop_bits[] = {"","1","1.5","2"};
@@ -172,7 +167,6 @@ void uart_setup()
 			log_info(TAG,"uart%d is console",port);
 		} else if (esp_err_t e = uart_param_config(port,&uc)) {
 			log_error(TAG,"uart%d config: %s",port,esp_err_to_name(e));
-#ifndef CONFIG_IDF_TARGET_ESP32
 		} else {
 			unsigned rx_buf = c.has_rx_bufsize() ? c.rx_bufsize() : 256;
 			if (rx_buf <= 128)
@@ -180,10 +174,9 @@ void uart_setup()
 			unsigned tx_buf = c.has_tx_bufsize() ? c.tx_bufsize() : (256+128);
 			if (esp_err_t e = uart_driver_install(port,rx_buf,tx_buf,0,DRIVER_ARG))
 				log_error(TAG,"uart%d driver: %s",port,esp_err_to_name(e));
-#endif
 		}
 	}
-#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2
+#ifdef ESP32
 	// pin setting must be done after param-config and befor driver install!
 	uint8_t uarts = 0;
 	for (const auto &c : HWConf.uart()) {

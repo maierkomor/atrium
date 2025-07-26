@@ -1,8 +1,34 @@
-com_stb_dref="sim/cockpit/radios/com1_stdby_freq_hz"
-com_act_dref="sim/cockpit/radios/com1_freq_hz"
-nav_stb_dref="sim/cockpit/radios/nav1_stdby_freq_hz"
-nav_act_dref="sim/cockpit/radios/nav1_freq_hz"
-com_values = {0,20,50,70}
+comnav=1
+
+if comnav == 1 then
+	com_stb_dref="sim/cockpit/radios/com1_stdby_freq_hz"
+	com_act_dref="sim/cockpit/radios/com1_freq_hz"
+	nav_stb_dref="sim/cockpit/radios/nav1_stdby_freq_hz"
+	nav_act_dref="sim/cockpit/radios/nav1_freq_hz"
+	com_crs_up="sim/radios/stby_com1_coarse_up"
+	com_crs_dwn="sim/radios/stby_com1_coarse_down"
+	com_fn_up="sim/radios/stby_com1_fine_up"
+	com_fn_dwn="sim/radios/stby_com1_fine_down"
+	nav_crs_up="sim/radios/stby_nav1_coarse_up"
+	nav_crs_dwn="sim/radios/stby_nav1_coarse_down"
+	nav_fn_up="sim/radios/stby_nav1_fine_up"
+	nav_fn_dwn="sim/radios/stby_nav1_fine_down"
+elseif comnav == 2 then
+	com_stb_dref="sim/cockpit/radios/com2_stdby_freq_hz"
+	com_act_dref="sim/cockpit/radios/com2_freq_hz"
+	nav_stb_dref="sim/cockpit/radios/nav2_stdby_freq_hz"
+	nav_act_dref="sim/cockpit/radios/nav2_freq_hz"
+	com_crs_up="sim/radios/stby_com2_coarse_up"
+	com_crs_dwn="sim/radios/stby_com2_coarse_down"
+	com_fn_up="sim/radios/stby_com2_fine_up"
+	com_fn_dwn="sim/radios/stby_com2_fine_down"
+	nav_crs_up="sim/radios/stby_nav2_coarse_up"
+	nav_crs_dwn="sim/radios/stby_nav2_coarse_down"
+	nav_fn_up="sim/radios/stby_nav2_fine_up"
+	nav_fn_dwn="sim/radios/stby_nav2_fine_down"
+else
+	return
+end
 
 com_act = 0
 com_stb = 0
@@ -17,13 +43,6 @@ nav_stb_h = 110
 nav_stb_l = 850
 nav_act_h = 110
 nav_act_l = 550
-
-com_freq_min = 118
-com_freq_max = 136
-com_step = 10
-nav_freq_min = 108
-nav_freq_max = 117
-nav_step = 50
 
 yield = 0
 timeout = 0
@@ -65,19 +84,28 @@ function comnav_update()
 		yield = yield - 1
 		return
 	end
-	com_act = var_get("xplane.com_act")
+	if comnav == 1 then
+		com_act = var_get("xplane.com1act")
+		com_stb = var_get("xplane.com1stb")
+		nav_act = var_get("xplane.nav1act")
+		nav_stb = var_get("xplane.nav1stb")
+	elseif comnav == 2 then
+		com_act = var_get("xplane.com2act")
+		com_stb = var_get("xplane.com2stb")
+		nav_act = var_get("xplane.nav2act")
+		nav_stb = var_get("xplane.nav2stb")
+	else
+		return
+	end
 	if 0 == com_act or nil == com_act then
 		return
 	end
-	com_act_h = com_act//100
-	com_act_l = (com_act%100) * 10
-	com_stb = var_get("xplane.com_stb")
-	com_stb_h = com_stb//100
-	com_stb_l = (com_stb%100) * 10
-	nav_act = var_get("xplane.nav_act")
+	com_act_h = com_act//1000
+	com_act_l = com_act%1000
+	com_stb_h = com_stb//1000
+	com_stb_l = com_stb%1000
 	nav_act_h = nav_act//100
 	nav_act_l = (nav_act%100) * 10
-	nav_stb = var_get("xplane.nav_stb")
 	nav_stb_h = nav_stb//100
 	nav_stb_l = (nav_stb%100) * 10
 	com_update(false)
@@ -162,81 +190,28 @@ function nav_swap()
 	yield = 2
 end
 
-function wrap_com_low(x)
-	if x < 0 then
-		x = 1000-com_step
-	elseif x >= 1000 then
-		x = 0
-	end
-	return x
-end
-
-function wrap_com_high(x)
-	if x < com_freq_min then
-		x = com_freq_max
-	elseif x > com_freq_max then
-		x = com_freq_min
-	end
-	return x
-end
-
 function com_a_left()
-	com_stb_h = wrap_com_high(com_stb_h - 1)
-	com_update(true)
+	xplane_command(com_crs_dwn)
 end
 function com_a_right()
-	com_stb_h = wrap_com_high(com_stb_h + 1)
-	com_update(true)
+	xplane_command(com_crs_up)
 end
 function com_b_left()
-	com_stb_l = wrap_com_low(com_stb_l - com_step)
-	local m = com_stb_l%100
-	if (40 == m) or (45 == m) or (70 == m) or (95 == m) then
-		com_stb_l = com_stb_l - com_step
-	end
-	com_update(true)
+	xplane_command(com_fn_dwn)
 end
 function com_b_right()
-	com_stb_l = wrap_com_low(com_stb_l + com_step)
-	local m = com_stb_l%100
-	if (40 == m) or (45 == m) or (70 == m) or (95 == m) then
-		com_stb_l = com_stb_l + com_step
-	end
-	com_update(true)
+	xplane_command(com_fn_up)
 end
-
-function wrap_nav_low(x)
-	if x < 0 then
-		x = 1000-nav_step
-	elseif x >= 1000 then
-		x = 0
-	end
-	return x
-end
-
-function wrap_nav_high(x)
-	if x < nav_freq_min then
-		x = nav_freq_max
-	elseif x > nav_freq_max then
-		x = nav_freq_min
-	end
-	return x
-end
-
 function nav_a_left()
-	nav_stb_h = wrap_nav_high(nav_stb_h - 1)
-	nav_update(true)
+	xplane_command(nav_crs_dwn)
 end
 function nav_a_right()
-	nav_stb_h = wrap_nav_high(nav_stb_h + 1)
-	nav_update(true)
+	xplane_command(nav_crs_up)
 end
 function nav_b_left()
-	nav_stb_l = wrap_nav_low(nav_stb_l - nav_step)
-	nav_update(true)
+	xplane_command(nav_fn_dwn)
 end
 function nav_b_right()
-	nav_stb_l = wrap_nav_low(nav_stb_l + nav_step)
-	nav_update(true)
+	xplane_command(nav_fn_up)
 end
 

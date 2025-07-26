@@ -56,9 +56,8 @@ while getopts "d:fnh" opt; do
 	esac
 done
 
-cmds="git " #make wget g++ flex bison gperf pip"
+cmds="git cmake python3 pip3"
 
-#echo $cmds
 IFS=' '
 for i in $cmds
 do

@@ -66,7 +66,7 @@ class OneWire
 	int writeBits(uint8_t b);
 	int readBit(bool = true);
 	void sendBytes(uint8_t *b, size_t n);
-	uint64_t searchId(uint64_t &xid, std::vector<uint64_t> &coll);
+	int searchId(uint64_t &xid, std::vector<uint64_t> &coll);
 
 	xio_t m_bus, m_pwr;
 	bool m_pwron = false;

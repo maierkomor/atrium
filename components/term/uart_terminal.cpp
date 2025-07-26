@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2020, Thomas Maier-Komor
+ *  Copyright (C) 2018-2025, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -22,7 +22,9 @@
 #define CONFIG_CONSOLE_UART_NUM CONFIG_ESP_CONSOLE_UART_NUM
 #endif
 
+#include "globals.h"
 #include "log.h"
+#include "swcfg.h"
 #include "uart_terminal.h"
 
 #include <freertos/FreeRTOS.h>
@@ -79,6 +81,10 @@ UartTerminal::UartTerminal(bool crnl)
 , m_uart_tx(UART_NUM_MAX)
 {
 	memcpy(m_name,"uart",5);
+#ifndef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
+	if (unsigned h = Config.history())
+		setHistorySize(h);
+#endif
 }
 
 

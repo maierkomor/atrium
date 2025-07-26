@@ -28,8 +28,8 @@
 ifeq ("$(wildcard settings.mk)","settings.mk")
 include settings.mk
 else
-$(error run setupenv.sh or create settings.mk with IDF_ESP8266,IDF_ESP32,XTOOLS_ESP8266,XTOOLS_ESP32,WFC)
-exit
+#$(error run setupenv.sh or create settings.mk with IDF_ESP8266,IDF_ESP32,XTOOLS_ESP8266,XTOOLS_ESP32,WFC)
+#exit
 endif
 
 #####
@@ -76,6 +76,7 @@ ROMFS_PARTITION	=storage
 CFG_CXX		=tools/atriumcfg.cpp components/wfc/hwcfg_pc.cpp components/wfc/swcfg_pc.cpp components/wfc/wfccore_pc.cpp
 PATH		:=$(PATH_$(CHIP)):$(PATH)
 IDF_PYTHON_ENV_PATH	=$(IDF_PYTHON_ENV_PATH_$(CHIP))
+IDF_TOOLS_PATH		=$(IDF_TOOLS_PATH_$(CHIP))
 
 ifneq ($(ROMFS_FILES),)
 ESPTOOL_ALL_FLASH_ARGS=$(ROMFS_ADDR) build.$(PROJECT)/romfs.bin
@@ -83,7 +84,7 @@ endif
 
 .PHONY: prepare settings
 
-export BUILD_DIR_BASE CHIP CPPFLAGS PROJECT_NAME IDF_PATH IDF_VER PATH PTABLE PROJECT_ROOT PROJECT SDKCONFIG WFC WFCDIR ESPTOOL_ALL_FLASH_ARGS CXXFLAGS PROJECT_VER MEMFILES CONFIG_INTEGRATED_HELP WFC_TARGET BATCH_BUILD
+export BUILD_DIR_BASE CHIP CPPFLAGS PROJECT_NAME IDF_PATH IDF_VER PATH PTABLE PROJECT_ROOT PROJECT SDKCONFIG WFC WFCDIR ESPTOOL_ALL_FLASH_ARGS CXXFLAGS PROJECT_VER MEMFILES CONFIG_INTEGRATED_HELP WFC_TARGET BATCH_BUILD IDF_PYTHON_ENV_PATH	
 
 romfs/%.romfs: prepare
 	bin/mkromfs -c data -o $@ $(ROMFS_FILES) version.txt

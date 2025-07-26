@@ -102,10 +102,10 @@ static void sendout(uint16_t port, uint8_t *data, size_t s)
 
 static void send_cmd(const char *cmd)
 {
-	size_t l = strlen(cmd) + 1;
-	uint8_t packet[4+l];
+	size_t l = strlen(cmd);
+	uint8_t packet[5+l];
 	uint8_t *at = packet;
-	memcpy(at,"CMND0",5);
+	memcpy(at,"CMND",5);
 	at += 5;
 	memcpy(at,cmd,l);
 	sendout(Ctx->dref_port,packet,sizeof(packet));
@@ -268,7 +268,8 @@ static void req_dref(unsigned id, unsigned freq, const char *dref)
 	=> size 413
 	*/
 	log_dbug(TAG,"req dref %s",dref);
-	char buf[413];
+	size_t l = strlen(dref) + 1;
+	char buf[5+2*sizeof(uint32_t)+l]; //[413];
 	memset(buf,sizeof(buf),' ');
 	char *at = buf;
 	memcpy(at,"RREF",5);	// including \0!
@@ -277,7 +278,8 @@ static void req_dref(unsigned id, unsigned freq, const char *dref)
 	at += sizeof(uint32_t);
 	memcpy(at,&id,sizeof(uint32_t));
 	at += sizeof(uint32_t);
-	strncpy(at,dref,400);
+	//strncpy(at,dref,400);
+	memcpy(at,dref,l);
 	sendout(Ctx->dref_port,(uint8_t*)buf,sizeof(buf));
 }
 
@@ -304,7 +306,7 @@ int XPlaneCtrl::addDref(const char *alias, const char *dref, unsigned freq)
 
 void connect(void *)
 {
-	log_info(TAG,"connect");
+	log_dbug(TAG,"connect");
 	const XPlaneConfig &c = Config.xplane();
 	unsigned id = 0;
 	for (auto dref : c.drefs()) {

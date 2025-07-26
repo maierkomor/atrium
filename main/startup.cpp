@@ -159,14 +159,17 @@ static void system_info()
 		mhz = 160;
 		break;
 #endif
-
-#ifdef CONFIG_IDF_TARGET_ESP32
+#ifdef RTC_CPU_FREQ_XTAL
 	case RTC_CPU_FREQ_XTAL:
 		mhz = rtc_clk_xtal_freq_get();
 		break;
+#endif
+#ifdef RTC_CPU_FREQ_240M
 	case RTC_CPU_FREQ_240M:
 		mhz = 240;
 		break;
+#endif
+#ifdef RTC_CPU_FREQ_2M
 	case RTC_CPU_FREQ_2M:
 		mhz = 2;
 		break;

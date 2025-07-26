@@ -134,6 +134,19 @@ static const rmt_bytes_encoder_config_t BencCfg = {
 #endif
 
 
+uint64_t bswap_64(uint64_t v)
+{
+	uint64_t r = v >> 56;
+	r |= (v >> 40) & 0x000000000000ff00;
+	r |= (v >> 24) & 0x0000000000ff0000;
+	r |= (v >>  8) & 0x00000000ff000000;
+	r |= (v <<  8) & 0x000000ff00000000;
+	r |= (v << 24) & 0x0000ff0000000000;
+	r |= (v << 40) & 0x00ff000000000000;
+	r |= (v << 56);
+	return r;
+}
+
 /* 
  * imported from OneWireNg, BSD-2 license
  */
@@ -335,28 +348,22 @@ void OneWire::setPower(bool on)
 
 int OneWire::scanBus()
 {
-	if (resetBus())
-		log_warn(TAG,"no response on reset");
+	// bus reset happens at the beginning of each searchRom
 	vector<uint64_t> collisions;
 	uint64_t id = 0;
 	do {
-		log_devel(TAG,"searchRom(" IDFMT ",%d)",IDARG(id),collisions.size());
 		int e = searchRom(id,collisions);
-		if (e > 0) {
-			log_warn(TAG,"searchRom(" IDFMT ",%d):%d",IDARG(id),collisions.size(),e);
-			return 1;	// error occured
-		}
 		if (e < 0)
-			log_dbug(TAG,"no response");
-		if (id)
+			log_dbug(TAG,"id %016llx not found",bswap_64(id));
+		else if (id)
 			addDevice(id);
 		if (collisions.empty()) {
 			id = 0;
 		} else {
 			id = collisions.back();
 			collisions.pop_back();
-			vTaskDelay(10);
 		}
+		vTaskDelay(10);
 	} while (id);
 	return 0;
 }
@@ -505,45 +512,37 @@ int IRAM_ATTR OneWire::queryBits(bool x, bool v)
 }
 
 
-IRAM_ATTR uint64_t OneWire::searchId(uint64_t &xid, vector<uint64_t> &coll)
+IRAM_ATTR int OneWire::searchId(uint64_t &xid, vector<uint64_t> &coll)
 {
-	uint64_t x0 = 0, x1 = 0, id = xid;
+	uint64_t id = xid;
 	int r = 0;
-	log_dbug(TAG,"searchId %llu",xid);
-	bool pv = false;
 	int bits = queryBits(false,false);
 	bits <<= 1;
 	for (unsigned b = 0; b < 64; ++b) {
 		uint8_t t0 = (bits >> 1) & 1;
 		uint8_t t1 = (bits >> 2) & 1;
-//		log_dbug(TAG,"t0=%u,t1=%u",t0,t1);
 		if (t0 & t1) {
 			r = -1;	// no response
 			break;
 		}
-		x0 |= (uint64_t)t0 << b;
-		x1 |= (uint64_t)t1 << b;
 		if (t0) {
-			id |= 1LL<<b;
+			// t0=1 means there is either only an id=1
+			// device or no device at all
+			id |= 1ULL<<b;
 		}
 		if ((t1|t0) == 0) {
-			// collision
-//			log_dbug(TAG,"collision id %x",id|1<<b);
-			if ((id >> b) & 1) {	// collision seen before
-				pv = true;
-			} else {
-				coll.push_back(id|1<<b);
-				pv = false;
+			// t0=0 and t1=1 means there is a bit collision.
+			// For collisions we start checking with a 0-bit
+			// and put a 1-bit id into the collision vector.
+			if (0 == ((id >> b) & 1)) {
+				// collision not seen before
+				coll.push_back(id|1ULL<<b);
 			}
-		} else if (t0) {
-			pv = true;
-		} else {
-			pv = false;
 		}
+		bool pv = ((id >> b) & 1) != 0;
 		bits = queryBits(true,pv);
 	}
 	xid = id;
-//	log_dbug(TAG,"x0=%016lx, x1=%016lx",x0,x1);
 	return r;
 }
 
@@ -596,40 +595,40 @@ IRAM_ATTR int OneWire::writeBits(uint8_t byte)
 }
 
 
-uint64_t OneWire::searchId(uint64_t &xid, vector<uint64_t> &coll)
+int OneWire::searchId(uint64_t &xid, vector<uint64_t> &coll)
 {
-	uint64_t x0 = 0, x1 = 0, id = xid;
+	// no log_* from here: delays after reset causes problems...
+	uint64_t id = xid;
 	int r = 0;
 	ENTER_CRITICAL();
 	for (unsigned b = 0; b < 64; ++b) {
 		uint8_t t0 = xmitBit(m_bus, 1);
 		uint8_t t1 = xmitBit(m_bus, 1);
-//		log_dbug(TAG,"t0=%u,t1=%u",t0,t1);
 		if (t0 & t1) {
 			r = -1;	// no response
 			break;
 		}
-		x0 |= (uint64_t)t0 << b;
-		x1 |= (uint64_t)t1 << b;
 		if (t0) {
-			id |= 1LL<<b;
-		}
-		if ((t1|t0) == 0) {
-			// collision
-//			log_dbug(TAG,"collision id %x",id|1<<b);
-			if ((id >> b) & 1) {	// collision seen before
-				xmitBit(m_bus, 1);
-			} else {
-				coll.push_back(id|1<<b);
-				xmitBit(m_bus, 0);
+			// t0=1 means there is either only an id=1
+			// device or no device at all
+			id |= 1ULL<<b;
+		} else if ((t1|t0) == 0) {
+			// t0=0 and t1=1 means there is a bit collision.
+			// For collisions we start checking with a 0-bit
+			// and put a 1-bit id into the collision vector.
+			if (0 == ((id >> b) & 1)) {
+				// collision not seen before;
+				// add 1-bit id for later check
+				coll.push_back(id|1ULL<<b);
 			}
-		} else {
-			xmitBit(m_bus, t0);
 		}
+		uint8_t bit = (id >> b) & 1;
+		uint8_t t2 = xmitBit(m_bus, bit);
+		if (t2 != bit)
+			log_warn(TAG,"unexpected id feedback");
 	}
 	EXIT_CRITICAL();
 	xid = id;
-//	log_dbug(TAG,"x0=%016lx, x1=%016lx",x0,x1);
 	return r;
 }
 #endif
@@ -637,6 +636,8 @@ uint64_t OneWire::searchId(uint64_t &xid, vector<uint64_t> &coll)
 
 int OneWire::searchRom(uint64_t &id, vector<uint64_t> &coll)
 {
+	vTaskDelay(50);
+	log_dbug(TAG,"searchRom(%016llx,[%u])",bswap_64(id),coll.size());
 	if (resetBus()) {
 		log_warn(TAG,"reset failed");
 		return OW_PRESENCE_ERR;
@@ -648,16 +649,16 @@ int OneWire::searchRom(uint64_t &id, vector<uint64_t> &coll)
 		return 1;
 	}
 	size_t nc = coll.size();
-	log_dbug(TAG,"search id %lx",id);
 	int r = searchId(id,coll);
 	setPower(true);
 	if (Modules[TAG]) {
+		if (0 == r)
+			log_dbug(TAG,"found id %016llx",bswap_64(id));
 		while (nc < coll.size()) {
 			uint64_t c = coll[nc++];
-			log_dbug(TAG,"collision %08lx%08lx",(uint32_t)(c>>32),(uint32_t)c);
+			log_dbug(TAG,"collision %016llx",bswap_64(c));
 		}
 	}
-//	log_dbug(TAG,"x0=%016lx, x1=%016lx",x0,x1);
 	return r;
 }
 
@@ -755,8 +756,8 @@ int OneWire::resetBus(void)
 	EXIT_CRITICAL();
 	if (r)
 		log_warn(TAG,"reset: no response");
-	else
-		log_dbug(TAG,"reset ok");
+	//else
+		//log_dbug(TAG,"reset ok");
 	return r;
 #endif
 }
@@ -774,11 +775,11 @@ uint8_t OneWire::writeByte(uint8_t byte)
 void OneWire::readBytes(uint8_t *b, size_t n)
 {
 	// read by sending 0xff
-	while (n) {
-		--n;
-		*b++ = writeBits(0xFF);
+	uint8_t *at = b;
+	for (size_t i = 0; i < n; ++i) {
+		*at++ = writeBits(0xFF);
 	}
-	//log_dbug(TAG,"readByte() = 0x%02x",r);
+	log_hex(TAG,b,n,"readByte(*,%u)",n);
 }
 #endif
 

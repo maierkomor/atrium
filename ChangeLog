@@ -1,3 +1,13 @@
+R2507:
+======
+- added history buffer to command line
+- fix XPlane command support
+- fix regression regarding soft-AP
+- terminal compatibility update for Windows
+- fix ASCII output for melody configs
+- fix non-RMT 1-wire regression for scanning
+- added Dockerfile for build environment generation
+
 R2505:
 ======
 - added support for INA226

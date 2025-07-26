@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2022, Thomas Maier-Komor
+ *  Copyright (C) 2018-2025, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -26,6 +26,29 @@
 
 #include "stream.h"
 #include "estring.h"
+#include <vector>
+
+
+class HistBuf
+{
+	public:
+	explicit HistBuf(size_t s = 0);
+
+	void add(const estring &str);
+	void add(const char *str, size_t s = 0);
+	int resize(size_t size);
+	size_t numEntries() const;
+	const char *get(int i) const;
+	unsigned getSize() const
+	{ return m_end - m_buf; }
+	unsigned getUsed() const
+	{ return m_in - m_buf; }
+
+	private:
+	int reserve(size_t);
+
+	char *m_buf = 0, *m_in = 0, *m_end = 0;
+};
 
 
 class Terminal : public stream
@@ -33,7 +56,6 @@ class Terminal : public stream
 	public:
 	explicit Terminal(bool crnl = false, uint8_t plvl = 0)
 	: stream(crnl)
-	, m_error(0)
 	, m_plvl(plvl)
 	{ }
 
@@ -70,6 +92,20 @@ class Terminal : public stream
 
 	void print_hex(const uint8_t *b, size_t s, size_t off = 0);
 
+#ifndef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
+	unsigned getHistoryUsed() const
+	{ return m_hist.getUsed(); }
+
+	unsigned getHistorySize() const
+	{ return m_hist.getSize(); }
+
+	int setHistorySize(unsigned s)
+	{ return m_hist.resize(s); }
+
+	const char *getHistory(int h) const
+	{ return m_hist.get(h); }
+#endif
+
 	protected:
 	const char *m_error = 0;
 	estring m_pwd;
@@ -77,6 +113,9 @@ class Terminal : public stream
 	private:
 	Terminal(const Terminal &);
 	Terminal &operator = (const Terminal &);
+#ifndef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
+	HistBuf m_hist;
+#endif
 	uint8_t	m_plvl;
 	bool m_synced = true;
 };

@@ -124,6 +124,10 @@ class Telnet : public Terminal
 	, m_cin(m_cmd)
 	, m_error(0)
 	{
+#ifndef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
+		if (unsigned h = Config.history())
+			setHistorySize(h);
+#endif
 		c->setSync(false);
 		write(ConSetup,sizeof(ConSetup));
 	}

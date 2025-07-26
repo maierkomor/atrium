@@ -41,19 +41,10 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <freertos/event_groups.h>
-#ifdef CONFIG_IDF_TARGET_ESP32
-#include <mbedtls/base64.h>
-#include <sys/socket.h>
-#elif defined CONFIG_IDF_TARGET_ESP8266
-extern "C" {
-#include <esp_base64.h>
-}
 #include <lwip/err.h>
 #include <lwip/inet.h>
 #include <lwip/ip_addr.h>
 #include <lwip/ip6.h>
-#endif
-#include <mbedtls/base64.h>
 
 #include <lwip/dns.h>
 #include <lwip/udp.h>
@@ -63,6 +54,14 @@ extern "C" {
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+#ifdef CONFIG_IDF_TARGET_ESP8266
+extern "C" {
+#include <esp_base64.h>
+}
+#else
+#include <mbedtls/base64.h>
+#endif
 
 #define TFTP_PORT 	69
 #define TFTP_RRQ	1
@@ -187,7 +186,6 @@ static const char *socket_to_x(Terminal &t, LwTcp &P, const char *(*sink)(Termin
 	}
 	if (const char *cl = strstr(buf+8,"Content-Length:")) {
 		contlen = strtol(cl+16,0,0);
-		t.printf("content-length %u\n",contlen);
 	}
 	if (contlen == 0)
 		goto done;
@@ -309,13 +307,14 @@ static const char *tftp_to(Terminal &t, uri_t *uri, const char *(*sink)(Terminal
 			const char *blksize = (const char *)memmem(x.buf+2,x.size-2,"blksize",8);
 			if (blksize && ((blksize[-1] == 0) || (blksize-x.buf == 2))) {
 				long l = strtol(blksize+8,0,0);
+				const char *valid = "";
 				if ((l >= 8) && (l <= reqsize)) {
 					blocksize = l;
-					log_dbug(TAG,"blksize=%ld",l);
 				} else {
-					log_dbug(TAG,"invalid blksize=%ld",l);
 					error = true;
+					valid = " invalid";
 				}
+				log_dbug(TAG,"blksize=%ld%s",l,valid);
 			}
 			const char *tsize = (const char *)memmem(x.buf+2,x.size-2,"tsize",6);
 			if (tsize && ((tsize-x.buf == 2) || (tsize[-1] == 0))) {
@@ -453,7 +452,7 @@ static const char *ftp_to(Terminal &t, uri_t *uri, const char *(*sink)(Terminal 
 	log_dbug(TAG,"send 'PASV'");
 	n = P.read(tmp,sizeof(tmp),5000/portTICK_PERIOD_MS);
 	if (n < 0) {
-		t.printf("send PASV: %s",P.error());
+		t.printf("read PASV: %s",P.error());
 		return "";
 	}
 	log_dbug(TAG,"rcvd '%.*s'",n,tmp);

@@ -90,6 +90,17 @@ esp_netif_t *netif_get_station()
 	}
 	return 0;
 }
+esp_netif_t *netif_get_ap()
+{
+	esp_netif_t *itf = esp_netif_next_unsafe(0);
+	while (itf) {
+		const char *desc = esp_netif_get_desc(itf);
+		if (0 == strcmp(desc,"softap"))
+			return itf;
+		itf = esp_netif_next_unsafe(itf);
+	}
+	return 0;
+}
 #endif
 
 #if IDF_VERSION >= 40
@@ -103,7 +114,7 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
 			WifiRetry = 0;
 			StationMode = station_starting;
 		} else if (event_id == WIFI_EVENT_STA_CONNECTED) {
-#if defined CONFIG_LWIP_IPV6 //|| defined ESP32
+#if defined CONFIG_LWIP_IPV6
 #if IDF_VERSION >= 50
 			if (esp_netif_t *itf = netif_get_station()) {
 				if (esp_err_t e = esp_netif_create_ip6_linklocal(itf))
@@ -525,6 +536,10 @@ bool eth_isup()
 
 bool wifi_start_station(const char *ssid, const char *pass)
 {
+	if ((ssid == 0) || (0 == ssid[0]))
+		return false;
+	if ((pass == 0) || (0 == pass[0]))
+		return false;
 	//if (station_starting == StationMode)
 		//return true;
 //	if (ESP_OK != esp_wifi_start())
@@ -625,10 +640,10 @@ bool wifi_stop_station()
 
 bool wifi_start_softap(const char *ssid, const char *pass)
 {
-	if (ssid == 0)
-		ssid = Config.nodename().c_str();
-	if (pass == 0)
-		pass = "";
+	if ((ssid == 0) || (0 == ssid[0]))
+		return false;
+	if ((pass == 0) || (0 == pass[0]))
+		return false;
 	log_info(TAG, "start AP: SSID '%s', pass '%s'",ssid,pass);
 	wifi_mode_t m = WIFI_MODE_NULL;
 	if (esp_err_t e = esp_wifi_get_mode(&m))
@@ -697,8 +712,6 @@ bool wifi_stop_softap()
 #ifdef CONFIG_WPS
 void wifi_wps_start(void *)
 {
-//	if (WifiEvents == 0)
-//		wifi_setup();
 	log_info(TAG,"starting wps");
 	wifi_mode_t m;
 	esp_wifi_get_mode(&m);
@@ -711,11 +724,6 @@ void wifi_wps_start(void *)
 	esp_wps_config_t config;
 	bzero(&config,sizeof(config));
 	config.wps_type = WPS_TYPE_PBC;
-#ifdef CONFIG_IDF_TARGET_ESP32
-#if IDF_VERSION < 44
-	config.crypto_funcs = &g_wifi_default_wps_crypto_funcs;
-#endif
-#endif
 	const SystemConfig &cfg = HWConf.system();
 	if (cfg.has_manufacturer())
 		strcpy(config.factory_info.manufacturer,cfg.manufacturer().c_str());
@@ -793,6 +801,7 @@ int wifi_setup()
 	esp_netif_init();
 	esp_event_loop_create_default();
 	esp_netif_create_default_wifi_sta();
+	esp_netif_create_default_wifi_ap();
 #if IDF_VERSION >= 50
 	wifi_init_config_t wcfg = WIFI_INIT_CONFIG_DEFAULT();
 	if (esp_err_t e = esp_wifi_init(&wcfg))
