@@ -406,6 +406,13 @@ config BMP388
 	help
 		I2C driver for BMP388 air sensor (temperature, pressure)
 
+config BMP581
+	depends on I2C
+	bool "BMP581"
+	default false
+	help
+		I2C driver for BMP581 air sensor (temperature, pressure)
+
 config BME680
 	depends on I2C
 	bool "BME680"
@@ -425,21 +432,35 @@ config HDC1000
 	bool "HDC1000"
 	default true
 	help
-		I2C driver for HDC1000 sensor (temperature,humidity)
+		I2C driver for HDC1000 sensor (temperature, humidity)
 
 config APDS9930
 	depends on I2C
 	bool "APDS9930"
 	default true
 	help
-		I2C driver for APDS-9930 sensor (lux,proximity)
+		I2C driver for APDS-9930 sensor (lux, proximity)
 
 config SGP30
 	depends on I2C
 	bool "SGP30"
 	default false
 	help
-		I2C driver for SGP30 sensor (TVOC,CO2)
+		I2C driver for SGP30 sensor (TVOC, CO2)
+
+config SGP41
+	depends on I2C
+	bool "SGP41"
+	default false
+	help
+		I2C driver for SGP41 sensor (TVOC, CO2)
+
+config SHT4X
+	depends on I2C
+	bool "SHT4X"
+	default false
+	help
+		I2C driver for SHT4X sensor (temperature, humidity);
 
 config CCS811B
 	depends on I2C
@@ -517,6 +538,13 @@ config MCP2301X
 	default true
 	help
 		I2C driver for MCP2301x devices (16-port GPIO expander)
+
+config HUSB238
+	depends on DEVEL
+	bool "husb238"
+	default false
+	help
+		I2C driver for HUSB238A devices (USB trigger, ALPHA, untested)
 
 config SPI
 	bool "SPI"

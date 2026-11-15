@@ -128,6 +128,12 @@ int CoreIO::config(uint8_t num, xio_cfg_t cfg)
 		gpio_pad_select_gpio(num);
 		GPIO.enable_w1ts = x;
 		GPIO.pin[num].driver = 1;	// 1=open-drain
+	} else if (cfg.cfg_io == xio_cfg_io_tristate) {
+		// init like input
+		log_dbug(TAG,"%u tri-state",num);
+		gpio_pad_select_gpio(num);
+		GPIO.enable_w1tc = x;
+		GPIO.pin[num].driver = 0;	// 1=open-drain
 	} else if (cfg.cfg_io != xio_cfg_io_keep) {
 		return -EINVAL;
 	}

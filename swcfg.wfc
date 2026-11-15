@@ -33,7 +33,6 @@ option pc : common {
 	toSink="";
 	toASCII=toASCII;
 	optimize=speed;
-	//header="pcconfig.h";
 	header="support.h";
 	cfgdefs=all;
 }
@@ -43,6 +42,7 @@ option esp : common {
 	toString="";
 	toSink="";
 	toWire="";
+	toPbt="";
 	toASCII=toASCII;
 	intsize=32;
 	varintbits=32;
@@ -70,7 +70,6 @@ option esp8266 : esp {
 option esp8285 : esp8266 {
 	BaseClass="";
 	getMember="";
-	toPbt="";
 	toASCII="";
 	// toJSON is needed for web configuration support
 	enumnames=false;

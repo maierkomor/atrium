@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021-2024, Thomas Maier-Komor
+ *  Copyright (C) 2021-2026, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -23,6 +23,7 @@
 #include "globals.h"
 #include "ads1x1x.h"
 #include "ahtxx.h"
+#include "husb238.h"
 #include "hwcfg.h"
 #include "ht16k33.h"
 #include "i2cdrv.h"
@@ -48,120 +49,146 @@
 
 
 #ifdef CONFIG_I2C_XDEV 
-static inline void i2c_scan_device(uint8_t bus, uint8_t addr, i2cdrv_t drv)
+static inline void i2c_scan_bus(uint8_t bus, i2cdrv_t drv)
 {
+	// these scans only on request, as they may misdetect other device
+	switch (drv) {
+	case i2cdrv_sh1106:
+		sh1106_scan(bus);
+		break;
+	case i2cdrv_ssd1306:
+		ssd1306_scan(bus);
+		break;
+	default:
+		break;
+	}
+}
+
+
+static inline I2CDevice *i2c_scan_device(uint8_t bus, uint8_t addr, i2cdrv_t drv)
+{
+	// address in use checking must be performed in xx::create
 	// addr is in 8bit format
+	i2c_stop(bus);
 	switch (drv) {
 	case i2cdrv_invalid:
 		break;
 #ifdef CONFIG_PCF8574
 	case i2cdrv_pcf8574:
-		PCF8574::create(bus,addr);
-		break;
+		return PCF8574::create(bus,addr);
 #endif
 #ifdef CONFIG_MCP2300X
 	case i2cdrv_mcp2300x:
-		MCP2300X::create(bus,addr);
-		break;
+		return MCP2300X::create(bus,addr);
 #endif
 #ifdef CONFIG_MCP2301X
 	case i2cdrv_mcp2301x:
-		MCP2301X::create(bus,addr);
-		break;
+		return MCP2301X::create(bus,addr);
 #endif
 #ifdef CONFIG_HT16K33
 	case i2cdrv_ht16k33:
-		HT16K33::create(bus,addr);
-		break;
+		return HT16K33::create(bus,addr);
 #endif
 #ifdef CONFIG_PCA9685
 	case i2cdrv_pca9685:
-		PCA9685::create(bus,addr,true,false);
-		break;
+		return PCA9685::create(bus,addr,true,false);
 	case i2cdrv_pca9685_npn:
-		PCA9685::create(bus,addr,false,true);
-		break;
+		return PCA9685::create(bus,addr,false,true);
 	case i2cdrv_pca9685_pnp:
-		PCA9685::create(bus,addr,true,true);
-		break;
+		return PCA9685::create(bus,addr,true,true);
 	case i2cdrv_pca9685_xclk:
-		PCA9685::create(bus,addr,true,false,true);
-		break;
+		return PCA9685::create(bus,addr,true,false,true);
 	case i2cdrv_pca9685_xclk_npn:
-		PCA9685::create(bus,addr,false,true,true);
-		break;
+		return PCA9685::create(bus,addr,false,true,true);
 	case i2cdrv_pca9685_xclk_pnp:
-		PCA9685::create(bus,addr,true,true,true);
-		break;
+		return PCA9685::create(bus,addr,true,true,true);
 #endif
 #ifdef CONFIG_TCA9555
 	case i2cdrv_tca9555:
-		TCA9555::create(bus,addr);
-		break;
+		return TCA9555::create(bus,addr);
 #endif
 #ifdef CONFIG_INA2XX
 	case i2cdrv_ina219:
-		INA2XX::create(bus,addr,ID_INA219);
-		break;
+		return INA2XX::create(bus,addr,ID_INA219);
 	case i2cdrv_ina220:
-		INA2XX::create(bus,addr,ID_INA220);
-		break;
+		return INA2XX::create(bus,addr,ID_INA220);
 #endif
 #ifdef CONFIG_SI7021
 	case i2cdrv_si7021:
-		SI7021::create(bus,addr);
-		break;
+		return SI7021::create(bus,addr);
 #endif
 #ifdef CONFIG_ADS1X1X
 	case i2cdrv_ads1013:
-		ADS1x1x::create(bus,addr,ADS1x1x::ads1013);
-		break;
+		return ADS1x1x::create(bus,addr,ADS1x1x::ads1013);
 	case i2cdrv_ads1014:
-		ADS1x1x::create(bus,addr,ADS1x1x::ads1014);
-		break;
+		return ADS1x1x::create(bus,addr,ADS1x1x::ads1014);
 	case i2cdrv_ads1015:
-		ADS1x1x::create(bus,addr,ADS1x1x::ads1015);
-		break;
+		return ADS1x1x::create(bus,addr,ADS1x1x::ads1015);
 	case i2cdrv_ads1113:
-		ADS1x1x::create(bus,addr,ADS1x1x::ads1113);
-		break;
+		return ADS1x1x::create(bus,addr,ADS1x1x::ads1113);
 	case i2cdrv_ads1114:
-		ADS1x1x::create(bus,addr,ADS1x1x::ads1114);
-		break;
+		return ADS1x1x::create(bus,addr,ADS1x1x::ads1114);
 	case i2cdrv_ads1115:
-		ADS1x1x::create(bus,addr,ADS1x1x::ads1115);
-		break;
+		return ADS1x1x::create(bus,addr,ADS1x1x::ads1115);
 #endif
 #ifdef CONFIG_SSD1306
 	case i2cdrv_ssd1306:
-		if (addr)
-			SSD1306::create(bus,addr);
-		else
-			ssd1306_scan(bus);
+		return SSD1306::create(bus,addr);
 		break;
 #endif
 #ifdef CONFIG_SH1106
 	case i2cdrv_sh1106:
-		if (addr)
-			SH1106::create(bus,addr);
-		else
-			sh1106_scan(bus);
-		break;
+		return SH1106::create(bus,addr);
 #endif
 #ifdef CONFIG_AHTXX
 	case i2cdrv_aht10:
-		aht_scan(bus,AHTXX::aht10);
-		break;
+		return AHTXX::create(bus,AHTXX::aht10);
 	case i2cdrv_aht20:
-		aht_scan(bus,AHTXX::aht20);
-		break;
+		return AHTXX::create(bus,AHTXX::aht20);
 	case i2cdrv_aht30:
-		aht_scan(bus,AHTXX::aht30);
-		break;
+		return AHTXX::create(bus,AHTXX::aht30);
+#endif
+#ifdef CONFIG_HUSB238
+	case i2cdrv_husb238:
+		return HUSB238::create(bus,addr);
 #endif
 	default:
 		log_warn(TAG,"unsupported I2C config %d at %u,0x%x",drv,bus,addr);
 	}
+	return 0;
+}
+#endif
+
+
+#ifdef CONFIG_I2C_XDEV 
+static void setup_device(uint8_t bus, i2cdev_t d)
+{
+	uint8_t addr = d & 0x7f;	// address in config is in 7bit format
+	log_info(TAG,"config 0x%x for address 0x%x",d,addr);
+	addr <<= 1;
+	I2CDevice *dev = I2CDevice::getByAddr(bus,addr);
+	if (0 == dev) {
+		i2cdrv_t drv = (i2cdrv_t)((d >> 8) & 0xff);
+		if (drv) {
+			if (addr) {
+				dev = i2c_scan_device(bus,addr,drv);
+			} else {
+				i2c_scan_bus(bus,drv);
+				//dev = I2CDevice::getByDrv(bus,drv);
+				// currently no interrupt set support
+				// for devices without address
+				return;
+			}
+		}
+		if (0 == dev)
+			return;
+	}
+	if (uint8_t intr = (d >> 16) & 0x3f) {
+		--intr;
+		log_info(TAG,"interrupt for %u,%x on GPIO %u",bus,addr>>1,intr);
+		dev->addIntr(intr);
+	}
+
 }
 #endif
 
@@ -180,27 +207,10 @@ void i2c_setup(void)
 			int r = i2c_init(bus,c.sda(),c.scl(),c.freq(),xpullup);
 #endif
 			if (r < 0) 
-				log_warn(TAG,"error %d",r);
-#ifdef CONFIG_I2C_XDEV 
+				log_warn(TAG,"i2c_init: %d",r);
+#ifdef CONFIG_I2C_XDEV
 			for (i2cdev_t d : c.devices()) {
-				uint8_t addr = d & 0x7f;	// address in config is in 7bit format
-				log_info(TAG,"config 0x%x for address 0x%x",d,addr);
-				addr <<= 1;
-				I2CDevice *dev = I2CDevice::getByAddr(addr);
-				if (0 == dev) {
-					if (i2cdrv_t drv = (i2cdrv_t)((d >> 8) & 0xff)) {
-						i2c_scan_device(bus,addr,drv);
-						dev = I2CDevice::getByAddr(addr);
-					}
-				}
-				uint8_t intr = (d >> 16) & 0x3f;
-				if (dev && intr) {
-					--intr;
-					log_info(TAG,"interrupt for %u,%x on GPIO %u",bus,addr,intr);
-					dev->addIntr(intr);
-				} else {
-					log_warn(TAG,"device %u,%x not found",bus,addr,intr);
-				}
+				setup_device(bus,d);
 			}
 #endif
 		}
@@ -230,20 +240,19 @@ const char *i2c(Terminal &term, int argc, const char *args[])
 		return 0;
 	}
 #ifdef CONFIG_I2C_XCMD
-	char *e;
-	long l = strtol(args[0],&e,0);
-	if (*e == 0) {
-		if ((l < 0) || (l > UINT8_MAX))
-			return "Invalid bus id.";
-		uint8_t bus = l;
-		if (0 == strcmp(args[1],"reset")) {
-			uint8_t cmd[] = { 0x00, 0x06 };	// get serial ID
-			if (esp_err_t e = i2c_write(bus,cmd,sizeof(cmd),false,true))
-				term.printf("error: %s\n",esp_err_to_name(e));
-			return 0;
-		} else {
-			return "Invalid bus command.";
+	if (0 == strcmp(args[1],"reset")) {
+		uint8_t bus = 0;
+		if (argc > 2) {
+			char *e;
+			long l = strtol(args[2],&e,0);
+			if ((l < 0) || (l > UINT8_MAX))
+				return "Invalid bus id.";
+			bus = l;
 		}
+		uint8_t cmd[] = { 0x00, 0x06 };	// general call reset (cannot be ack'ed)
+		if (esp_err_t e = i2c_write_nostop(bus,cmd,sizeof(cmd)))
+			return esp_err_to_name(e);
+		return 0;
 	}
 	while (s) {
 		if (0 == strcmp(s->getName(),args[1]))
@@ -251,6 +260,66 @@ const char *i2c(Terminal &term, int argc, const char *args[])
 		s = s->getNext();
 	}
 #endif
-	return "Invalid argument #1.";;
+#ifndef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
+	if (0 == strcmp("-w",args[1])) {
+		if (argc < 5)
+			return "Invalid number of arguments.";
+		char *e;
+		long l = strtol(args[2],&e,0);
+		if ((l < 0) || (l > UINT8_MAX))
+			return "Invalid bus id.";
+		uint8_t bus = l;
+		l = strtol(args[3],&e,0);
+		if ((l < 0) || (l > 0x7f))
+			return "Invalid address.";
+		uint8_t addr = l<<1;
+		uint8_t data[argc - 4];
+		data[0] = addr<<1;
+		for (int x = 4; x < argc; ++x) {
+			long l = strtol(args[x],&e,0);
+			if ((l < 0) || (l > UINT8_MAX))
+				return "Invalid hex.";
+			data[x-3] = l;
+		}
+		if (esp_err_t e = i2c_write(bus,data,sizeof(data)))
+			term.printf("error: %s\n",esp_err_to_name(e));
+	} else if (0 == strcmp("-r",args[1])) {
+		if (argc < 5)
+			return "Invalid number of arguments.";
+		char *e;
+		long l = strtol(args[2],&e,0);
+		if ((l < 0) || (l > UINT8_MAX))
+			return "Invalid bus id.";
+		uint8_t bus = l;
+		l = strtol(args[3],&e,0);
+		if ((l < 0) || (l > 0x7f))
+			return "Invalid address.";
+		uint8_t addr = l<<1;
+		l = strtol(args[4],&e,0);
+		if ((l < 0) || (l > 0x10))
+			return "Invalid size.";
+		uint8_t din[l];
+		memset(din,0,sizeof(din));
+		if (argc == 6) {
+			l = strtol(args[5],&e,0);
+			if ((l < 0) || (l > UINT8_MAX))
+				return "Invalid register.";
+			uint8_t reg = l;
+			if (esp_err_t e = i2c_w1rd(bus,addr,reg,din,sizeof(din)))
+				return esp_err_to_name(e);
+			else
+				term.print_hex(din,sizeof(din));
+
+		} else {
+			if (esp_err_t e = i2c_read(bus,addr,din,sizeof(din)))
+				return esp_err_to_name(e);
+			else
+				term.print_hex(din,sizeof(din));
+		}
+	} else {
+		return "Invalid argument #1.";;
+	}
+#endif
+	return 0;
 }
 #endif

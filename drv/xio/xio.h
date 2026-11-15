@@ -54,6 +54,7 @@ typedef enum xio_cfg_io_e {
 	xio_cfg_io_in,
 	xio_cfg_io_out,
 	xio_cfg_io_od,
+	xio_cfg_io_tristate,
 	xio_cfg_io_keep,
 } xio_cfg_io_t;
 
@@ -88,14 +89,15 @@ typedef enum xio_cfg_wakeup_e {
 typedef enum xio_cfg_initlvl_e {
 	xio_cfg_initlvl_low,
 	xio_cfg_initlvl_high,
+	xio_cfg_initlvl_hiz,
 	xio_cfg_initlvl_keep,
 } xio_cfg_initlvl_t;
 
 
 typedef struct xio_cfg
 {
-	xio_cfg_io_t cfg_io : 2;
-	uint8_t reserve0 : 2;
+	xio_cfg_io_t cfg_io : 3;
+	uint8_t reserve0 : 1;
 	xio_cfg_pull_t cfg_pull : 3;
 	uint8_t reserve1 : 1;
 	xio_cfg_intr_t cfg_intr : 3;

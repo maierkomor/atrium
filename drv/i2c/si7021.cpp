@@ -109,10 +109,11 @@ unsigned SI7021::cyclic(void *arg)
 	case st_triggerh:
 		{
 			uint8_t cmd[] = {SI7021_ADDR, CMD_MHUM_NACK};
-			if (0 == i2c_write(dev->m_bus,cmd,sizeof(cmd),0,1)) {
+			if (0 == i2c_write_nostop(dev->m_bus,cmd,sizeof(cmd))) {
 				dev->m_st = st_readh;
 				d = MeasureTime[dev->m_mode];
 			} else {
+				i2c_stop(dev->m_bus);
 				dev->m_st = st_off;
 			}
 		}
@@ -120,10 +121,11 @@ unsigned SI7021::cyclic(void *arg)
 	case st_triggert:
 		{
 			uint8_t cmd[] = {SI7021_ADDR, CMD_MTEM_NACK};
-			if (0 == i2c_write(dev->m_bus,cmd,sizeof(cmd),0,1)) {
+			if (0 == i2c_write_nostop(dev->m_bus,cmd,sizeof(cmd))) {
 				dev->m_st = st_readt;
 				d = MeasureTime[dev->m_mode];
 			} else {
+				i2c_stop(dev->m_bus);
 				dev->m_st = st_off;
 			}
 		}
@@ -169,7 +171,7 @@ int SI7021::setHeater(bool on)
 	else
 		v &= ~HEATER_BIT;
 	uint8_t data[] = { SI7021_ADDR,CMD_WR_UR1,v };
-	return i2c_write(m_bus,data,sizeof(data),1,1);
+	return i2c_write(m_bus,data,sizeof(data));
 }
 
 
@@ -233,7 +235,7 @@ const char *SI7021::exeCmd(struct Terminal &term, int argc, const char **args)
 					return "Invalid argument #1.";
 				uint8_t v = (uint8_t) f;
 				uint8_t data[] = {SI7021_ADDR,CMD_WR_HCR,v};
-				if (esp_err_t e = i2c_write(m_bus,data,sizeof(data),1,1)) {
+				if (esp_err_t e = i2c_write(m_bus,data,sizeof(data))) {
 					term.printf("com error: %s\n",esp_err_to_name(e));
 					return "";
 				}
@@ -257,7 +259,7 @@ const char *SI7021::exeCmd(struct Terminal &term, int argc, const char **args)
 				uc |= 1;
 			m_uc1 = uc;
 			uint8_t data[] = { SI7021_ADDR, CMD_WR_UR1, uc };
-			if (esp_err_t e = i2c_write(m_bus,data,sizeof(data),1,1)) {
+			if (esp_err_t e = i2c_write(m_bus,data,sizeof(data))) {
 				term.printf("com error: %s\n",esp_err_to_name(e));
 				return "";
 			}
@@ -280,7 +282,7 @@ const char *SI7021::exeCmd(struct Terminal &term, int argc, const char **args)
 				uc |= 1;
 			m_uc1 = uc;
 			uint8_t data[] = { SI7021_ADDR, CMD_WR_UR1, uc };
-			if (esp_err_t e = i2c_write(m_bus,data,sizeof(data),1,1))
+			if (esp_err_t e = i2c_write(m_bus,data,sizeof(data)))
 				return esp_err_to_name(e);
 		} else {
 			return "Invalid argument #1.";
@@ -318,7 +320,8 @@ SI7021 *SI7021::create(uint8_t bus, uint8_t addr)
 	}
 	vTaskDelay(20);
 	uint8_t data[] = { SI7021_ADDR, 0xfa, 0x0f };
-	if (esp_err_t e = i2c_write(bus,data,sizeof(data),0,1)) {
+	if (esp_err_t e = i2c_write_nostop(bus,data,sizeof(data))) {
+		i2c_stop(bus);
 		log_dbug(TAG,"no response: %s",esp_err_to_name(e));
 		return 0;
 	}
@@ -330,7 +333,8 @@ SI7021 *SI7021::create(uint8_t bus, uint8_t addr)
 	log_dbug(TAG,"id0: %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x",id0[0],id0[1],id0[2],id0[3],id0[4],id0[5],id0[6],id0[7]);
 	data[1] = 0xfc;
 	data[2] = 0xc9;
-	if (i2c_write(bus,data,sizeof(data),0,1)) {
+	if (i2c_write_nostop(bus,data,sizeof(data))) {
+		i2c_stop(bus);
 		log_dbug(TAG,"req id1 failed");
 		return 0;
 	}
@@ -345,7 +349,8 @@ SI7021 *SI7021::create(uint8_t bus, uint8_t addr)
 	data[1] = 0x84;
 	data[2] = 0xb8;
 	bool havever = false;
-	if (i2c_write(bus,data,sizeof(data),0,1)) {
+	if (i2c_write_nostop(bus,data,sizeof(data))) {
+		i2c_stop(bus);
 		log_dbug(TAG,"req fwver failed");
 	} else if (i2c_read(bus,SI7021_ADDR,&fwver,1)) {
 		log_warn(TAG,"read fwver failed");

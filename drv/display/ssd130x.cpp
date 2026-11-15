@@ -512,20 +512,3 @@ int SSD130X::clearRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h)
 }
 
 
-/*
-int SSD130X::writeHex(uint8_t h, bool comma)
-{
-	log_dbug(TAG,"writeHex %x",h);
-	char c = h;
-	if (h < 10)
-		c += '0';
-	else
-		c += 'A' - 10;
-	drawChar(c);
-	if (comma)
-		drawChar('.');
-	return 0;
-}
-*/
-
-

@@ -205,7 +205,7 @@ int PCA9685::setCh(int8_t led, uint16_t duty, uint16_t off)
 		data[4] = duty & 0xff;
 		data[5] = (uint8_t)(duty >> 8);
 	}
-	return i2c_write(m_bus,data,sizeof(data),1,1);
+	return i2c_write(m_bus,data,sizeof(data));
 }
 
 

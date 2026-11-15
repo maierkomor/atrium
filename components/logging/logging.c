@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2024, Thomas Maier-Komor
+ *  Copyright (C) 2018-2026, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -277,24 +277,26 @@ void log_common(log_level_t l, logmod_t m, const char *f, va_list val)
 	char *at = buf + 8;
 	int p = 8;
 	struct timeval tv;
-	const char *a = ModNames+ModNameOff[m];
-	if ((-1 == gettimeofday(&tv,0)) || (tv.tv_sec < 1E6)) {
+	if (m) {
+		const char *a = ModNames+ModNameOff[m];
+		if ((-1 == gettimeofday(&tv,0)) || (tv.tv_sec < 1E6)) {
 #ifdef CONFIG_IDF_TARGET_ESP8266
 #ifdef CONFIG_NEWLIB_LIBRARY_LEVEL_NORMAL
-		p += sprintf(at," (%6f) %s: ",(double)((float)clock()/(float)CLOCKS_PER_SEC+(float)Start),a);
+			p += sprintf(at," (%6f) %s: ",(double)((float)clock()/(float)CLOCKS_PER_SEC+(float)Start),a);
 #else
-		p += sprintf(at," (%6lu) %s: ",clock()*1000/CLOCKS_PER_SEC+Start,a);
+			p += sprintf(at," (%6lu) %s: ",clock()*1000/CLOCKS_PER_SEC+Start,a);
 #endif
 #else
-		struct timespec ts;
-		clock_gettime(CLOCK_REALTIME,&ts);
-		p += sprintf(at," (%llu.%03u) %s: ",ts.tv_sec,(unsigned)(ts.tv_nsec/1E6),a);
+			struct timespec ts;
+			clock_gettime(CLOCK_REALTIME,&ts);
+			p += sprintf(at," (%llu.%03u) %s: ",ts.tv_sec,(unsigned)(ts.tv_nsec/1E6),a);
 #endif
-	} else {
-		struct tm tm;
-		localtime_r(&tv.tv_sec,&tm);
-		p += sprintf(at, " %02d:%02d:%02d.%03lu %s: "
-			, (int)tm.tm_hour, (int)tm.tm_min, (int)tm.tm_sec, tv.tv_usec/1000,a);
+		} else {
+			struct tm tm;
+			localtime_r(&tv.tv_sec,&tm);
+			p += sprintf(at, " %02d:%02d:%02d.%03lu %s: "
+				, (int)tm.tm_hour, (int)tm.tm_min, (int)tm.tm_sec, tv.tv_usec/1000,a);
+		}
 	}
 	int s = vsnprintf(buf+p,sizeof(buf)-p,f,val);
 	if (s <= 0)
@@ -313,17 +315,19 @@ void log_common(log_level_t l, logmod_t m, const char *f, va_list val)
 	buf[s++] = '\n';
 	if (LogUart >= 0) {
 		if (pdTRUE != xSemaphoreTake(UartLock,MUTEX_ABORT_TIMEOUT))
-			abort_on_mutex(UartLock,__BASE_FILE__);
+			abort_on_mutex(UartLock,__FUNCTION__);
 		if (0 <= uart_write_bytes((uart_port_t)LogUart,buf,s)) {
-#ifndef CONFIG_DEVEL
-			if (l <= ll_warn)
-#endif
+			if (ll_error == l)
 				uart_wait_tx_done((uart_port_t)LogUart,portMAX_DELAY);
 		} else {
 			LogUart = -1;
 		}
 		xSemaphoreGive(UartLock);
 	}
+#ifdef CONFIG_USB_DIAGLOG
+	if (UsbDiag)
+		usb_serial_jtag_write_bytes(buf,s,0);
+#endif
 #ifdef HAVE_FS
 	if (LogFile >= 0) {
 		xSemaphoreTake(FileLock,portMAX_DELAY);
@@ -333,11 +337,7 @@ void log_common(log_level_t l, logmod_t m, const char *f, va_list val)
 #endif
 #ifdef CONFIG_SYSLOG
 	if ((m != MODULE_LOG) && (m != MODULE_LWTCP))
-		log_syslog(l,m,buf+p,s-p-2,&tv);
-#endif
-#ifdef CONFIG_USB_DIAGLOG
-	if (UsbDiag)
-		usb_serial_jtag_write_bytes(buf,s,0);
+		log_syslog(l,m,buf+p,s-p-2,m?&tv:0);
 #endif
 #if 0 // defined CONFIG_USB_CONSOLE && defined CONFIG_TINYUSB_CDC_ENABLED
 //	Logging to CDC would only work if driver is ready.
@@ -364,12 +364,26 @@ void log_directv(log_level_t ll, logmod_t m, const char *f, va_list val)
 }
 
 
+void failure(const char *f, ...)
+{
+	va_list val;
+	va_start(val,f);
+	con_printv(f,val);
+	log_common(ll_error,0,f,val);
+	va_end(val);
+	vTaskDelay(5000);
+	abort();
+}
+
+
 void log_fatal(logmod_t m, const char *f, ...)
 {
 	va_list val;
 	va_start(val,f);
+	con_printv(f,val);
 	log_common(ll_error,m,f,val);
 	va_end(val);
+	vTaskDelay(5000);
 	abort();
 }
 

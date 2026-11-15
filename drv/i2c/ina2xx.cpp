@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2025, Thomas Maier-Komor
+ *  Copyright (C) 2018-2026, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -1203,7 +1203,9 @@ const char *INA260::setNumSamples(unsigned n)
 esp_err_t INA2XX::reset()
 {
 	esp_err_t err = i2c_write3(m_bus,m_addr,INA_REG_CONF,0x80,0x00);
-	if (0 == err) {
+	if (err) {
+		log_warn(TAG,"reset failed: %s",esp_err_to_name(err));
+	} else {
 		if (const char *e = readReg(INA_REG_CONF,m_conf))
 			log_warn(TAG,"config register not readable after reset: %s",e);
 		else
@@ -1230,11 +1232,11 @@ const char *INA2XX::exeCmd(Terminal &term, int argc, const char **args)
 			"ict <t>  : set current conversion time\n"
 			"           <t> in {140,204,332,588,1100,2116,4156,8244}\n"
 			"cnvr <b> : en-/disable read on conversion ready interrupt\n"
-			"pol <l>  : set power over limit\n"
-			"sol <l>  : set shunt over limit\n"
-			"sul <l>  : set shunt under limit\n"
-			"bol <l>  : set bus over limit\n"
-			"bul <l>  : set bus under limit\n"
+			"pol <l>  : set power over limit (unsigned 16bit(\n"
+			"sol <l>  : set shunt over limit (signed 16bit)\n"
+			"sul <l>  : set shunt under limit (signed 16bit)\n"
+			"bol <l>  : set bus over limit (unsigned 15bit)\n"
+			"bul <l>  : set bus under limit (unsigned 15bit)\n"
 			"Imax <c> : set maximum current (used for calibration)\n"
 			"Ilsb <c> : set current LSB (set either Imax or Ilsb)\n"
 			"nolimit  : disable alerts\n"
@@ -1423,20 +1425,23 @@ const char *INA2XX::exeCmd(Terminal &term, int argc, const char **args)
 			}
 			setConfig(v);
 		} else if (0 == strcasecmp(args[0],"bul")) {
-			if ((l < 0) || (l > UINT16_MAX))
+			// bus voltage is unsigned 15 bit
+			if ((l < 0) || (l > 0x3fff))
 				return "Argument out of range.";
 			return setAlert(BIT_BUL,l);
 		} else if (0 == strcasecmp(args[0],"bol")) {
-			if ((l < 0) || (l > UINT16_MAX))
+			if ((l < 0) || (l > 0x3fff))
 				return "Argument out of range.";
 			return setAlert(BIT_BOL,l);
 		} else if (0 == strcasecmp(args[0],"sul")) {
-			if ((l < 0) || (l > UINT16_MAX))
+			// shunt voltage is signed!
+			if ((l < INT16_MIN) || (l > INT16_MAX))
 				return "Argument out of range.";
 			return setAlert(BIT_SUL,l);
 		} else if (0 == strcasecmp(args[0],"sol")) {
+			// shunt voltage is signed!
 			//float f = strtof(args[1],&e);
-			if ((l < 0) || (l > UINT16_MAX))
+			if ((l < INT16_MIN) || (l > INT16_MAX))
 				return "Argument out of range.";
 			return setAlert(BIT_SOL,l);
 		} else if (0 == strcasecmp(args[0],"pol")) {

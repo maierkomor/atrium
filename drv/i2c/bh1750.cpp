@@ -41,6 +41,9 @@
 #define CMD_MTIME_H	0x40
 #define CMD_MTIME_L	0x42
 
+#define ADDR_LOW 0b01000110
+#define ADDR_HIGH 0b10111000
+
 #define TAG MODULE_BH1750
 
 
@@ -53,10 +56,8 @@ BH1750::BH1750(uint8_t b, uint8_t a)
 
 BH1750 *BH1750::create(uint8_t bus, uint8_t addr)
 {
-	if ((addr != 0b10111000) && (addr != 0b01000110)) {
-		log_warn(TAG,"invalid address 0x%x",addr);
+	if (0 != I2CDevice::getByAddr(bus,addr))
 		return 0;
-	}
 	esp_err_t e;
 	log_dbug(TAG,"looking for BH1750 at 0x%x",addr);
 #if 0 //def ESP32
@@ -76,7 +77,7 @@ BH1750 *BH1750::create(uint8_t bus, uint8_t addr)
 #else
 	e = i2c_write1(bus,addr,CMD_POWER_ON);
 	if (e) {
-		log_dbug(TAG,"%u,0x%x not responding: %s",bus,addr>>1,esp_err_to_name(e));
+		log_warn(TAG,"%u,0x%x not responding: %s",bus,addr>>1,esp_err_to_name(e));
 		return 0;
 	}
 #endif
@@ -271,9 +272,9 @@ int bh1750_scan(uint8_t bus)
 {
 	// auto-scan does not work reliable
 	unsigned ret = 0;
-	if (BH1750::create(bus,0b01000110))
+	if (BH1750::create(bus,ADDR_LOW))
 		++ret;
-	if (BH1750::create(bus,0b10111000))
+	if (BH1750::create(bus,ADDR_HIGH))
 		++ret;
 	return ret;
 }

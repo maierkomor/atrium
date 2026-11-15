@@ -826,6 +826,39 @@ int json_config(char *args)
 }
 
 
+int pbt_config(char *args)
+{
+	Message *m = 0;
+	bool full = true;
+	if (args) {
+		char *save = 0;
+		char *arg = strtok_r(args," \t",&save);
+		while (arg) {
+			if (0 == strcmp(arg,"-t")) {
+				full = false;
+			} else if (0 == strcmp(arg,"hw")) {
+				m = &HwCfg;
+			} else if (0 == strcmp(arg,"sw")) {
+				m = &NodeCfg;
+			} else if (Software) {
+				m = NodeCfg.getMember(arg);
+			} else {
+				m = HwCfg.getMember(arg);
+			}
+			arg = strtok_r(0," \t",&save);
+		}
+	}
+	if (0 == m)
+		m = Software ? (Message*)&NodeCfg : (Message*)&HwCfg;
+	stringstream ss;
+	m->toPbt(ss,full);
+	string s = ss.str();
+	write(STDOUT_FILENO,s.data(),s.size());
+	write(STDOUT_FILENO,"\n",1);
+	return 0;
+}
+
+
 int set_config(char *key)
 {
 	if (key == 0)
@@ -1177,6 +1210,7 @@ FuncDesc Functions[] = {
 	{ "hw",		to_hw,		"switch to hardware configuration" },
 	{ "idf",	set_idf,	"set directory of IDF to <path>" },
 	{ "json",	json_config,	"output current config as JSON" },
+	{ "pbt",	pbt_config,	"output current config as protobuf text" },
 	{ "nvsaddr",	nvsaddr,	"set address of NVS partition" },
 	{ "parsexxd",	parse_xxd,	"parse xxd file" },
 	{ "passwd",	set_password,	"-c to clear password hash, otherwise calc hash from <pass>" },

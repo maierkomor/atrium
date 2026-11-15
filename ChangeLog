@@ -1,3 +1,19 @@
+R2611:
+======
+- added draft driver for HUSB238A
+- added driver for SGP41
+- added driver for SHT4x
+- added driver for BMP581
+- added GPIO tri-state support
+- terminal update to support home/end keys
+- shell ls layout update
+- minor infrastructure updates
+- timer interval update must be possible without config
+- init hostname fix
+- fix dmesg resize out of range crash
+- I2C address-in-use checks
+- update to ESP32 IDF v5.3.6
+
 R2507:
 ======
 - added history buffer to command line

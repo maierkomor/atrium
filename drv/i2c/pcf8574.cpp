@@ -96,9 +96,7 @@ int PCF8574::write(uint8_t v)
 int PCF8574::write(uint8_t *v, unsigned n)
 {
 	log_dbug(TAG,"write(%p,%u)",v,n);
-	if (i2c_write(m_bus,&m_addr,1,0,1))
-		return -1;
-	if (i2c_write(m_bus,v,n,1,0))
+	if (i2c_writen(m_bus,m_addr,v,n))
 		return -1;
 	m_data = v[n-1];
 	return 0;

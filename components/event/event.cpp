@@ -52,12 +52,12 @@ using namespace std;
 
 // WARNING: no debug support on 1MB devices!!!
 #ifdef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
-#define log_dbug(...)
-#define busy_set(...)
+#define log_dbug(...) {}
+#define busy_set(...) {}
 #elif defined CONFIG_LEDS
 extern "C" void busy_set(int on);
 #else
-#define busy_set(...)
+#define busy_set(...) {}
 #endif
 
 #ifndef CONFIG_EVENT_STACK_SIZE
@@ -372,10 +372,11 @@ void event_trigger_arg(event_t id, void *arg)
 		if (!EventHandlers[id].callbacks.empty()) {
 			Event e(id,arg);
 			BaseType_t r = xQueueSend(EventsQ,&e,1000);
-			if (r != pdTRUE)
+			if (r != pdTRUE) {
 				++Lost;
-			else
+			} else {
 				log_dbug(TAG,"trigger %d %p",id,arg);
+			}
 			return;
 		}
 		++Discarded;

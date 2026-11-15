@@ -285,11 +285,14 @@ CONFIG_I2C=y
 # CONFIG_AHTXX is not set
 CONFIG_BMX280=y
 # CONFIG_BMP388 is not set
+# CONFIG_BMP581 is not set
 # CONFIG_BME680 is not set
 # CONFIG_BQ25601D is not set
 # CONFIG_HDC1000 is not set
 # CONFIG_APDS9930 is not set
 # CONFIG_SGP30 is not set
+# CONFIG_SGP41 is not set
+# CONFIG_SHT4X is not set
 # CONFIG_CCS811B is not set
 # CONFIG_BH1750 is not set
 # CONFIG_I2C_XCMD is not set

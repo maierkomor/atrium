@@ -55,7 +55,6 @@ if  [ "$CONFIG_IDF_TARGET_ESP8266" == "y" ]; then
 	if [ -n "$IDF_ESP8266_VENV" ]; then
 		source $IDF_ESP8266_VENV/bin/activate
 	fi
-	source $IDF_ESP8266/export.sh
 	make PROJECT=$1 $2
 	exit
 elif [ "$CONFIG_IDF_TARGET_ESP32" == "y" ]; then

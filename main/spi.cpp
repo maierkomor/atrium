@@ -92,6 +92,9 @@ int SDCard::init()
 		.max_files = 4,
 		.allocation_unit_size = 16 << 10,
 		.disk_status_check_enable = false,
+#if IDF_VERSION >= 53
+		.use_one_fat = 0,
+#endif
 	};
 	if (esp_err_t e = esp_vfs_fat_sdspi_mount("/sdcard", &sdh, &sdspi, &mnt, &m_card)) {
 		log_warn(TAG,"mount failed: %s",esp_err_to_name(e));

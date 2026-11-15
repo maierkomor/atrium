@@ -559,7 +559,7 @@ static int8_t set_gas_config(struct bme680_dev *dev)
 			, BME680_RES_HEAT0_ADDR, calc_heater_res(dev->gas_sett.heatr_temp, dev)
 			, BME680_GAS_WAIT0_ADDR, calc_heater_dur(dev->gas_sett.heatr_dur)
 			};
-		rslt = i2c_write(dev->bus, cmd, sizeof(cmd), 1, 1);
+		rslt = i2c_write(dev->bus, cmd, sizeof(cmd));
 	} else {
 		rslt = BME680_W_DEFINE_PWR_MODE;
 	}

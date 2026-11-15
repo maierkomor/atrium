@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2025, Thomas Maier-Komor
+ *  Copyright (C) 2020-2026, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -118,6 +118,9 @@ static const rmt_symbol_word_t Sym1 = {
 static const rmt_receive_config_t RxCfg = {	// valid times are 1-600us
 	.signal_range_min_ns =   1000,
 	.signal_range_max_ns = 600000,
+	.flags = {
+		.en_partial_rx = 0,
+	},
 };
 static const rmt_transmit_config_t TxCfg = {
 	.loop_count = 1,
@@ -252,12 +255,12 @@ OneWire *OneWire::create(unsigned bus, bool pullup, int8_t pwr)
 		.clk_src = RMT_CLK_SRC_DEFAULT,
 		.resolution_hz = OW_BASE_FREQ,
 		.mem_block_symbols = CONFIG_SOC_RMT_MEM_WORDS_PER_CHANNEL, //32,//480, // for 10*8 of DS18B20, multiple of 48 for C3
+		.intr_priority = 0,
 		.flags = {
 			.invert_in = 0,
 			.with_dma = 1,
 			.io_loop_back = 1,
 		},
-		.intr_priority = 0,
 	};
 	if (esp_err_t e = rmt_new_rx_channel(&rxccfg,&rx)) {
 		if ((ESP_ERR_NOT_SUPPORTED == e) || (ESP_ERR_NOT_FOUND == e)) {
@@ -286,6 +289,7 @@ OneWire *OneWire::create(unsigned bus, bool pullup, int8_t pwr)
 			.with_dma = 1,
 			.io_loop_back = 1,
 			.io_od_mode = 1,
+			.init_level = 0,
 		}
 	};
 	if (esp_err_t e = rmt_new_tx_channel(&txccfg,&tx)) {

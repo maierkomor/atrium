@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2023, Thomas Maier-Komor
+ *  Copyright (C) 2020-2026, Thomas Maier-Komor
  *
  *  This source file belongs to Wire-Format-Compiler.
  *
@@ -25,6 +25,11 @@
 #include <stdint.h>
 #include <string.h>
 
+#if defined CONFIG_IDF_TARGET_ESP8266
+#define ESTRING_ALLOC_LIMIT 4096
+#else
+#define ESTRING_ALLOC_LIMIT UINT16_MAX
+#endif
 
 class estring
 {
@@ -107,7 +112,7 @@ class estring
 	friend struct estring_cmp;
 	void reserve(size_t);
 	char *str = 0;
-#if defined CONFIG_IDF_TARGET_ESP8266
+#if ESTRING_ALLOC_LIMIT <= UINT16_MAX
 	uint16_t len = 0, alloc = 0;
 #else
 	size_t len = 0, alloc = 0;

@@ -88,7 +88,7 @@ int CCS811B::init()
 		// sample every second
 		// no thresholds, no interrupts
 		uint8_t cmd[] = { m_addr, REG_MODE, 0x10 };
-		if (i2c_write(m_bus,cmd,sizeof(cmd),1,1))
+		if (i2c_write(m_bus,cmd,sizeof(cmd)))
 			return 1;
 		if (status() & STATUS_FLAG_ERROR) {
 			log_warn(TAG,"setup failed, error %x",m_err);
@@ -173,7 +173,7 @@ unsigned CCS811B::updateHumidity()
 		uint16_t ti = (uint16_t)rint((t+25) * 512);
 		if ((hi != m_humid) || (ti != m_temp)) {
 			uint8_t cmd[] = { m_addr, REG_ENV_DATA, (uint8_t)(hi >> 8), (uint8_t)(hi & 0xff), (uint8_t)(ti >> 8), (uint8_t)(ti & 0xff) };
-			if (i2c_write(m_bus,cmd,sizeof(cmd),true,true)) {
+			if (i2c_write(m_bus,cmd,sizeof(cmd))) {
 				log_dbug(TAG,"error updating humidity");
 			} else if ((status() & STATUS_FLAG_ERROR) == 0) {
 				log_dbug(TAG,"updated humidity");
@@ -264,9 +264,11 @@ unsigned ccs811b_scan(uint8_t bus)
 	unsigned n = 0;
 	for (uint8_t addr = DEV_ADDR_MIN; addr <= DEV_ADDR_MAX; addr+=2) {
 		uint8_t hwid;
+		if (0 != I2CDevice::getByAddr(bus,addr))
+			continue;
 		/*
 		uint8_t cmd[] = { addr, REG_HW_ID };
-		if (i2c_write(bus,cmd,sizeof(cmd),true,true))
+		if (i2c_write(bus,cmd,sizeof(cmd)))
 			continue;
 		if (i2c_read(bus,addr,&hwid,1))
 			continue;

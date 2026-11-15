@@ -141,6 +141,7 @@ void xplane_setup();
 void settings_setup();
 
 
+#ifndef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 static void system_info()
 {
 #if IDF_VERSION >= 50
@@ -192,7 +193,6 @@ static void system_info()
 		log_info(TAG,"%ukB SPI RAM",spiram>>10);
 #endif
 	log_info(TAG,"%s reset",ResetReasons[(int)esp_reset_reason()]);
-
 #ifdef ESP_IF_ETH
 	uint8_t eth[6];
 	if (ESP_OK == esp_wifi_get_eth(ESP_IF_ETH,eth)) {
@@ -210,6 +210,7 @@ static void system_info()
 	}
 #endif
 }
+#endif // CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 
 
 static int count_name(EnvObject *o, const char *name)
@@ -290,10 +291,11 @@ void app_main()
 		cfg_init_hwcfg();
 	verify_heap();
 
-	log_info(TAG,"Atrium Firmware for ESP based systems");
+	log_info(TAG,"Atrium Firmware Version %s, IDF %s",Version,esp_get_idf_version());
 	log_info(TAG,"%s, %s",Copyright,License);
-	log_info(TAG,"Version %s, IDF %s",Version,esp_get_idf_version());
+#ifndef CONFIG_ESPTOOLPY_FLASHSIZE_1MB
 	system_info();
+#endif
 #ifdef CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH
 	esp_core_dump_init();
 #endif

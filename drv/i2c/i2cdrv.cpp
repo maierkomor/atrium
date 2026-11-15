@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021-2024, Thomas Maier-Komor
+ *  Copyright (C) 2021-2026, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -20,9 +20,14 @@
 
 #ifdef CONFIG_I2C
 
+// disable assert()s
+#define NDEBUG
+
 #include "bmx.h"
 #include "bmp388.h"
+#include "bmp581.h"
 #include "bq25601d.h"
+#include "sht4x.h"
 #include "i2cdrv.h"
 #include "log.h"
 
@@ -32,12 +37,13 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
-#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
+#if defined ESP32
 extern "C" esp_err_t i2c_hw_fsm_reset(i2c_port_t);
 #endif
 
 extern int bmx_scan(uint8_t);
 extern int sgp30_scan(uint8_t);
+extern int sgp41_scan(uint8_t);
 extern int ccs811b_scan(uint8_t);
 extern int ti_scan(uint8_t);
 extern int apds9930_scan(uint8_t);
@@ -107,14 +113,14 @@ void I2CDevice::setName(const char *n)
 }
 
 
-I2CDevice *I2CDevice ::getByAddr(uint8_t addr)
+I2CDevice *I2CDevice::getByAddr(uint8_t bus, uint8_t addr)
 {
 	// address is stored in 8bit format
 	// argument shall also be 8bit format
 	// getAddr returns 7bit format!
 	I2CDevice *dev = m_first;
 	while (dev) {
-		if (dev->m_addr == addr)
+		if ((dev->m_bus == bus) && (dev->m_addr == addr))
 			return dev;
 		dev = dev->m_next;
 	}
@@ -175,37 +181,19 @@ int i2c_read(uint8_t port, uint8_t addr, uint8_t *d, uint8_t n)
 {
 	Lock lock(Mtx);
 	i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-	int r = -2;
+	int r;
 	char p = 0;
-	r = i2c_master_start(cmd);
-	if (r) {
-		p = 'S';
-		goto done;
-	}
-	r = i2c_master_write_byte(cmd, addr|I2C_MASTER_READ, true);
-	if (r) {
+	if ((r = i2c_master_start(cmd))) {
+		p = 's';
+	} else if ((r = i2c_master_write_byte(cmd,addr|I2C_MASTER_READ,true))) {
 		p = 'a';
-		goto done;
-	}
-	if (n == 1)
-		r = i2c_master_read_byte(cmd, d, I2C_MASTER_LAST_NACK);
-	else
-		r = i2c_master_read(cmd, d, n, I2C_MASTER_LAST_NACK);
-	if (r) {
+	} else if ((r = i2c_master_read(cmd,d,n,I2C_MASTER_LAST_NACK))) {
 		p = 'r';
-		goto done;
-	}
-	r = i2c_master_stop(cmd);
-	if (r) {
+	} else if ((r = i2c_master_stop(cmd))) {
 		p = 'p';
-		goto done;
-	}
-	r = i2c_master_cmd_begin((i2c_port_t)port, cmd, 1000 / portTICK_PERIOD_MS);
-	if (r) {
+	} else if ((r = i2c_master_cmd_begin((i2c_port_t)port, cmd, 1000 / portTICK_PERIOD_MS))) {
 		p = 'x';
-		goto done;
 	}
-done:
 	log_hex(TAG,d,n,"i2c_read(%u,0x%x,*,%u)=%s %c",port,addr>>1,n,esp_err_to_name(r),p);
 	i2c_cmd_link_delete(cmd);
 	return r;
@@ -214,47 +202,27 @@ done:
 
 int i2c_w1rd(uint8_t port, uint8_t addr, uint8_t w, uint8_t *d, uint8_t n)
 {
-	int r = -2;
+	int r;
 	char p = 0;
 	Lock lock(Mtx);
 	i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-	r = i2c_master_start(cmd);
-	if (r) {
+	if ((r = i2c_master_start(cmd))) {
 		p = 's';
-		goto done;
-	}
-	r = i2c_master_write_byte(cmd, addr|I2C_MASTER_WRITE, true);
-	if (r) {
+	} else if ((r = i2c_master_write_byte(cmd, addr|I2C_MASTER_WRITE, true))) {
 		p = 'w';
-		goto done;
-	}
-	r = i2c_master_write_byte(cmd, w, true);
-	if (r) {
+	} else if ((r = i2c_master_write_byte(cmd, w, true))) {
 		p = 'n';
-		goto done;
-	}
-	r = i2c_master_start(cmd);
-	if (r) {
+	} else if ((r = i2c_master_start(cmd))) {
 		p = 'S';
-		goto done;
-	}
-	r = i2c_master_write_byte(cmd, addr|I2C_MASTER_READ, true);
-	if (r) {
+	} else if ((r = i2c_master_write_byte(cmd, addr|I2C_MASTER_READ, true))) {
 		p = 'W';
-		goto done;
-	}
-	r = i2c_master_read(cmd, d, n, I2C_MASTER_LAST_NACK);
-	if (r) {
+	} else if ((r = i2c_master_read(cmd, d, n, I2C_MASTER_LAST_NACK))) {
 		p = 'r';
-		goto done;
-	}
-	r = i2c_master_stop(cmd);
-	if (r) {
+	} else if ((r = i2c_master_stop(cmd))) {
 		p = 't';
-		goto done;
+	} else if ((r = i2c_master_cmd_begin((i2c_port_t)port, cmd, 1000 / portTICK_PERIOD_MS))) {
+		p = 'x';
 	}
-	r = i2c_master_cmd_begin((i2c_port_t)port, cmd, 1000 / portTICK_PERIOD_MS);
-done:
 	i2c_cmd_link_delete(cmd);
 	log_hex(TAG,d,n,"i2c_w1rd(%u,0x%02x,0x%02x,...,%u)=%s %c",port,addr>>1,w,n,esp_err_to_name(r),p);
 	return r;
@@ -297,12 +265,21 @@ int i2c_write1(uint8_t port, uint8_t addr, uint8_t r)
 
 int i2c_write2(uint8_t port, uint8_t addr, uint8_t r, uint8_t v)
 {
+	esp_err_t e;
 	Lock lock(Mtx);
 	i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-	i2c_master_start(cmd);
-	uint8_t data[] = { (uint8_t)(addr|I2C_MASTER_WRITE), r, v };
-	i2c_master_write(cmd, data, sizeof(data), true);
-	i2c_master_stop(cmd);
+	e = i2c_master_start(cmd);
+	assert(e == 0);
+	//uint8_t data[] = { (uint8_t)(addr|I2C_MASTER_WRITE), r, v };
+	//e = i2c_master_write(cmd, data, sizeof(data), true);
+	e = i2c_master_write_byte(cmd, addr, true);
+	assert(e == 0);
+	e = i2c_master_write_byte(cmd, r, true);
+	assert(e == 0);
+	e = i2c_master_write_byte(cmd, v, true);
+	assert(e == 0);
+	e = i2c_master_stop(cmd);
+	assert(e == 0);
 	int ret = i2c_master_cmd_begin((i2c_port_t) port, cmd, 1000 / portTICK_PERIOD_MS);
 	i2c_cmd_link_delete(cmd);
 	log_dbug(TAG,"i2c_write2(%u,0x%x<<1,0x%x,0x%x)=%s",port,addr>>1,r,v,esp_err_to_name(ret));
@@ -310,7 +287,7 @@ int i2c_write2(uint8_t port, uint8_t addr, uint8_t r, uint8_t v)
 }
 
 
-/*
+#if 0
 int i2c_read(uint8_t port, uint8_t addr, uint8_t reg, uint8_t *d, uint8_t n)
 {
 	uint8_t data[] = { (uint8_t)(addr|I2C_MASTER_WRITE), reg };
@@ -323,7 +300,7 @@ int i2c_read2(uint8_t port, uint8_t addr, uint8_t reg0, uint8_t reg1, uint8_t *d
 	uint8_t data[] = { (uint8_t)(addr|I2C_MASTER_WRITE), reg0, reg1 };
 	return i2c_readback((i2c_port_t)port,data,sizeof(data),d,n);
 }
-*/
+#endif
 
 
 int i2c_write3(uint8_t port, uint8_t addr, uint8_t r0, uint8_t v0, uint8_t v1)
@@ -343,6 +320,7 @@ int i2c_write3(uint8_t port, uint8_t addr, uint8_t r0, uint8_t v0, uint8_t v1)
 }
 
 
+#if 0
 int i2c_write4(uint8_t port, uint8_t addr, uint8_t r0, uint8_t v0, uint8_t r1, uint8_t v1)
 {
 	i2c_cmd_handle_t cmd = i2c_cmd_link_create();
@@ -359,6 +337,7 @@ int i2c_write4(uint8_t port, uint8_t addr, uint8_t r0, uint8_t v0, uint8_t r1, u
 	log_dbug(TAG,"i2c_write4(%u,0x%x,0x%x<<1,0x%x,0x%x,0x%x)=%d",port,addr>>1,r0,v0,r1,v1,ret);
 	return ret;
 }
+#endif
 
 
 int i2c_writen(uint8_t port, uint8_t addr, const uint8_t *d, unsigned n)
@@ -381,6 +360,7 @@ int i2c_writen(uint8_t port, uint8_t addr, const uint8_t *d, unsigned n)
 }
 
 
+#if 0
 int i2c_writex(uint8_t port, const uint8_t *d, unsigned n)
 {
 	i2c_cmd_handle_t cmd = i2c_cmd_link_create();
@@ -400,7 +380,6 @@ int i2c_writex(uint8_t port, const uint8_t *d, unsigned n)
 }
 
 
-/*
 int i2c_write1(uint8_t port, uint8_t d, bool stop)
 {
 	i2c_cmd_handle_t cmd = i2c_cmd_link_create();
@@ -416,29 +395,76 @@ int i2c_write1(uint8_t port, uint8_t d, bool stop)
 	}
 	return ret;
 }
-*/
+#endif
 
 
-int i2c_write(uint8_t port, const uint8_t *d, unsigned n, uint8_t stop, uint8_t start)
+int i2c_write_ard(uint8_t port, uint8_t addr, uint8_t reg, const uint8_t *d, unsigned n)
 {
 	Lock lock(Mtx);
 	i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-	if (start)
-		i2c_master_start(cmd);
+	i2c_master_start(cmd);
+	i2c_master_write(cmd, &addr, 1, true);
+	i2c_master_write(cmd, &reg, 1, true);
 #ifdef CONFIG_IDF_TARGET_ESP8266
 	i2c_master_write(cmd, (uint8_t*)d, n, true);
 #else
 	i2c_master_write(cmd, d, n, true);
 #endif
-	if (stop)
-		i2c_master_stop(cmd);
+	i2c_master_stop(cmd);
 	int ret = i2c_master_cmd_begin((i2c_port_t) port, cmd, 1000 / portTICK_PERIOD_MS);
 	i2c_cmd_link_delete(cmd);
-	log_hex(TAG,d,n,"i2c_write(%u,0x%p,%u,%d,%d)=%s",port,d,n,stop,start,esp_err_to_name(ret));
+	log_hex(TAG,d,n,"i2c_write_ard(%u,0x%x,0x%x,0x%p,%u)=%s",port,addr,reg,d,n,esp_err_to_name(ret));
 	return ret;
 }
 
 
+int i2c_write(uint8_t port, const uint8_t *d, unsigned n)
+{
+	Lock lock(Mtx);
+	i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+	i2c_master_start(cmd);
+#ifdef CONFIG_IDF_TARGET_ESP8266
+	i2c_master_write(cmd, (uint8_t*)d, n, true);
+#else
+	i2c_master_write(cmd, d, n, true);
+#endif
+	i2c_master_stop(cmd);
+	int ret = i2c_master_cmd_begin((i2c_port_t) port, cmd, 1000 / portTICK_PERIOD_MS);
+	i2c_cmd_link_delete(cmd);
+	log_hex(TAG,d,n,"i2c_write(%u,0x%p,%u)=%s",port,d,n,esp_err_to_name(ret));
+	return ret;
+}
+
+
+int i2c_write_nostop(uint8_t port, const uint8_t *d, unsigned n)
+{
+	Lock lock(Mtx);
+	i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+	i2c_master_start(cmd);
+#ifdef CONFIG_IDF_TARGET_ESP8266
+	i2c_master_write(cmd, (uint8_t*)d, n, true);
+#else
+	i2c_master_write(cmd, d, n, true);
+#endif
+	int ret = i2c_master_cmd_begin((i2c_port_t) port, cmd, 1000 / portTICK_PERIOD_MS);
+	i2c_cmd_link_delete(cmd);
+	log_hex(TAG,d,n,"i2c_write_nostop(%u,...,%u)=%s",port,d,esp_err_to_name(ret));
+	return ret;
+}
+
+
+void i2c_stop(uint8_t port)
+{
+	Lock lock(Mtx);
+	i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+	i2c_master_stop(cmd);
+	int ret = i2c_master_cmd_begin((i2c_port_t) port, cmd, 1000 / portTICK_PERIOD_MS);
+	i2c_cmd_link_delete(cmd);
+	log_dbug(TAG,"i2c_stop: %s",esp_err_to_name(ret));
+}
+
+
+#if 0
 int i2c_write_nack(uint8_t port, uint8_t *d, unsigned n, uint8_t stop, uint8_t start)
 {
 	Lock lock(Mtx);
@@ -453,6 +479,7 @@ int i2c_write_nack(uint8_t port, uint8_t *d, unsigned n, uint8_t stop, uint8_t s
 	log_hex(TAG,d,n,"i2c_write_nack(%u,0x%p,%u,%d,%d)=%s",port,d,n,stop,start,esp_err_to_name(ret));
 	return ret;
 }
+#endif
 
 
 int i2c_init(uint8_t port, uint8_t sda, uint8_t scl, unsigned freq, uint8_t xpullup)
@@ -463,14 +490,12 @@ int i2c_init(uint8_t port, uint8_t sda, uint8_t scl, unsigned freq, uint8_t xpul
 		log_error(TAG,"duplicate port %d",port);
 		return -1;
 	}
+#ifdef ESP8266
 	i2c_config_t conf;
 	bzero(&conf,sizeof(conf));
 	conf.mode = I2C_MODE_MASTER;
 	conf.sda_io_num = (gpio_num_t) sda;
 	conf.scl_io_num = (gpio_num_t) scl;
-#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
-	conf.clk_flags = I2C_SCLK_SRC_FLAG_FOR_NOMAL;
-#endif
 	if (xpullup) {
 		conf.sda_pullup_en = GPIO_PULLUP_DISABLE;
 		conf.scl_pullup_en = GPIO_PULLUP_DISABLE;
@@ -478,20 +503,28 @@ int i2c_init(uint8_t port, uint8_t sda, uint8_t scl, unsigned freq, uint8_t xpul
 		conf.sda_pullup_en = GPIO_PULLUP_ENABLE;
 		conf.scl_pullup_en = GPIO_PULLUP_ENABLE;
 	}
-#ifdef ESP32
-	conf.master.clk_speed = freq;
-	// IRAM ISR placements seems to be unsupported on IDF v4.4.x
-//	esp_err_t e = i2c_driver_install((i2c_port_t) port, conf.mode, 0, 0, ESP_INTR_FLAG_IRAM);
-	esp_err_t e = i2c_driver_install((i2c_port_t) port, conf.mode, 0, 0, 0);
-#else
-	esp_err_t e = i2c_driver_install((i2c_port_t) port, conf.mode);
-#endif
-	if (e) {
-		log_error(TAG,esp_err_to_name(e));
+	if (esp_err_t e = i2c_driver_install((i2c_port_t) port, conf.mode)) {
+		log_error(TAG,"i2c driver install: %s",esp_err_to_name(e));
 		return -1;
 	}
-	e = i2c_param_config((i2c_port_t) port, &conf);
-	if (e) {
+#else
+	i2c_config_t conf = {
+		.mode = I2C_MODE_MASTER,
+		.sda_io_num = (gpio_num_t) sda,
+		.scl_io_num = (gpio_num_t) scl,
+		.sda_pullup_en = (xpullup == 0),
+		.scl_pullup_en = (xpullup == 0),
+		.master = {
+			.clk_speed = freq,
+		},
+		.clk_flags = I2C_SCLK_SRC_FLAG_FOR_NOMAL,
+	};
+	if (esp_err_t e = i2c_driver_install((i2c_port_t) port, conf.mode, 0, 0, ESP_INTR_FLAG_IRAM)) {
+		log_error(TAG,"i2c driver install: %s",esp_err_to_name(e));
+		return -1;
+	}
+#endif
+	if (esp_err_t e = i2c_param_config((i2c_port_t) port, &conf)) {
 		log_error(TAG,"config: %s",esp_err_to_name(e));
 		return -1;
 	}
@@ -513,12 +546,7 @@ int i2c_init(uint8_t port, uint8_t sda, uint8_t scl, unsigned freq, uint8_t xpul
 	// For some reason the first bus access may result in a
 	// bus-timeout. The BH1750 drivers deals with that situation, so
 	// keep it the first in the scan!
-#if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32C3
-#if IDF_VERSION < 50
-	esp_err_t r = i2c_hw_fsm_reset((i2c_port_t)port);
-	assert(r == 0);
-#endif
-#endif
+	n += ti_scan(port);
 #ifdef CONFIG_CCS811B
 	log_info(TAG,"search ccs811b");
 	n += ccs811b_scan(port);
@@ -536,18 +564,30 @@ int i2c_init(uint8_t port, uint8_t sda, uint8_t scl, unsigned freq, uint8_t xpul
 	log_info(TAG,"search bmp388");
 	n += bmp388_scan(port);
 #endif
+#ifdef CONFIG_BMP581
+	log_info(TAG,"search bmp581");
+	n += bmp581_scan(port);
+#endif
 #ifdef CONFIG_SGP30
 	log_info(TAG,"search sgp30");
 	n += sgp30_scan(port);
+#endif
+#ifdef CONFIG_SGP41
+	log_info(TAG,"search sgp41");
+	n += sgp41_scan(port);
 #endif
 #ifdef CONFIG_APDS9930
 	log_info(TAG,"search apds9930");
 	n += apds9930_scan(port);
 #endif
 #ifdef CONFIG_BQ25601D
+	log_info(TAG,"search bq25601d");
 	BQ25601D::scan(port);
 #endif
-	n += ti_scan(port);
+#ifdef CONFIG_SHT4X
+	log_info(TAG,"search sht4x");
+	n += sht4x_scan(port);
+#endif
 	return n;
 }
 

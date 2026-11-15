@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2025, Thomas Maier-Komor
+ *  Copyright (C) 2018-2026, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -31,7 +31,7 @@
 #ifdef CONFIG_IDF_TARGET_ESP8266
 #define LOG_MAXLEN 95
 #else
-#define LOG_MAXLEN 130
+#define LOG_MAXLEN 120
 #endif
 
 //#define MUTEX_ABORT_TIMEOUT portMAX_DELAY
@@ -182,6 +182,7 @@ void con_printf(const char *f, ...);
 void con_printv(const char *f, va_list val);
 void con_write(const char *str, ssize_t l);
 
+void failure(const char *f, ...);
 void log_fatal(logmod_t m, const char *f, ...);
 void log_error(logmod_t m, const char *f, ...);
 void log_warn(logmod_t m, const char *f, ...);

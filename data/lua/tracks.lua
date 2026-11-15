@@ -3,10 +3,10 @@ function track_switch(tr)
 	local tidn = string.sub(tr,1,-2)
 	local tid = tmr_getid(tidn)
 	if tid == 0 then
-		tid = tmr_create(tidn,250)
+		tid = tmr_create(tidn,400)
 		print("timer "..tid)
 		event_attach(tidn..'`timeout','lua!run','track_switch_off("'..tidn..'")')
-		print("attached"..tidn)
+		print("attached "..tidn)
 	end
 	gpio_set(tr,1)
 	tmr_start(tid)

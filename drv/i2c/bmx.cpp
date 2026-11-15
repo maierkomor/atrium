@@ -366,7 +366,7 @@ int BMP280::sample()
 	// bit 1,0: sensor mode			00: sleep, 01/10: force, 11: normal
 	// ctrl_meas: t*1, p*1, force
 	uint8_t cmd[] = { m_addr, BME280_REG_CTRLMEAS, m_sampmod };
-	return i2c_write(m_bus, cmd, sizeof(cmd), true, true);
+	return i2c_write(m_bus, cmd, sizeof(cmd));
 }
 
 
@@ -404,7 +404,7 @@ int BME280::sample()
 		 // bit 1,0: sensor mode		00: sleep, 01/10: force, 11: normal
 		, BME280_REG_CTRLMEAS, 0b00100101
 	};
-	return i2c_write(m_bus, cmd, sizeof(cmd), true, true);
+	return i2c_write(m_bus, cmd, sizeof(cmd));
 }
 
 
@@ -666,13 +666,15 @@ unsigned bmx_scan(uint8_t port)
 	unsigned num = 0;
 	uint8_t addr = BME_ADDR_MIN;
 	do {
-		uint8_t id = 0;
-		int r = i2c_w1rd(port,addr,BME_REG_ID,&id,sizeof(id));
-		// esp32 i2c stack has a bug and reports timeout
-		// although data was received correctly...
-		// so ignore return codes > 0
-		if ((r >= 0) && (id != 0))
-			num += create_device(port,addr,id);
+		if (0 == I2CDevice::getByAddr(port,addr)) {
+			uint8_t id = 0;
+			int r = i2c_w1rd(port,addr,BME_REG_ID,&id,sizeof(id));
+			// esp32 i2c stack has a bug and reports timeout
+			// although data was received correctly...
+			// so ignore return codes > 0
+			if ((r >= 0) && (id != 0))
+				num += create_device(port,addr,id);
+		}
 		addr += 2;
 	} while (addr <= BME_ADDR_MAX);
 	return num;

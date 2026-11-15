@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2024, Thomas Maier-Komor
+ *  Copyright (C) 2024-2026, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -22,6 +22,7 @@
 
 #include "actions.h"
 #include "ahtxx.h"
+#include "crc8.h"
 #include "cyclic.h"
 #include "log.h"
 #include "terminal.h"
@@ -175,22 +176,6 @@ int AHTXX::getStatus()
 }
 
 
-static uint8_t calc_crc8(const uint8_t *data, size_t n)
-{
-	uint8_t crc = 0xff;
-	for (unsigned b = 0; b < n; ++b) {
-		crc &= data[b];
-		for (unsigned i = 8; i > 0; --i) {
-			if (crc & 0x80)
-				crc = (crc<<1)^31;
-			else
-				crc <<= 1;
-		}
-	}
-	return crc;
-}
-
-
 int AHTXX::read()
 {
 	uint8_t data[6+(aht30 == m_dev)];
@@ -208,7 +193,7 @@ int AHTXX::read()
 	m_temp.set((float)t/((float)(1<<20))*200.0-50.0);
 	log_hex(TAG,data,sizeof(data),"rh=%u, t=%u",rh,t);
 	if (aht30 == m_dev) {
-		uint8_t crc = calc_crc8(data,6);
+		uint8_t crc = crc8_0x31(data,6);
 		if (crc != data[6])
 			log_warn(TAG,"crc 0x%02x, calculated 0x%02x",data[6],crc);
 	}
@@ -251,30 +236,29 @@ void AHTXX::trigger()
 }
 
 
-int aht_scan(uint8_t bus, AHTXX::ahtdev_t type)
+AHTXX *AHTXX::create(uint8_t bus, ahtdev_t type)
 {
-	int n = 0;
-	log_info(TAG,"scan");
+	if (I2CDevice::getByAddr(bus,AHTXX_ADDR))
+		return 0;
 	if (AHTXX::aht30 == type) {
 		uint8_t data[7];
 		if (0 == i2c_read(bus,AHTXX_ADDR,data,sizeof(data))) {
-			new AHTXX(bus,AHTXX_ADDR,type);
-			++n;
+			return new AHTXX(bus,AHTXX_ADDR,type);
 		}
 	} else if (0 == i2c_write1(bus,AHTXX_ADDR,AHTXX_RST)) {
-		log_dbug(TAG,"reset ok");
 		vTaskDelay(30);
 		// init sequence of AHT10 fails
 		// AHT10 responds ok to AHT20 init sequence - why?
 		// seems also to work without init sequence
 		// therefore, failures are ignored
 		AHTXX::init(bus,type);
-		new AHTXX(bus,AHTXX_ADDR,type);
-		++n;
+		return new AHTXX(bus,AHTXX_ADDR,type);
 	} else {
-		log_warn(TAG,"reset failed");
+		log_dbug(TAG,"not an AHT device");
 	}
-	return n;
+	return 0;
+
 }
+
 
 #endif // CONFIG_AHT

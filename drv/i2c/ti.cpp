@@ -75,7 +75,7 @@ static unsigned scan_addr(uint8_t bus, uint8_t addr)
 		}
 	}
 #endif
-	log_warn(TAG,"no driver for device id 0x%04x",id);
+	log_warn(TAG,"no driver for id 0x%04x",id);
 	return 0;
 
 }
@@ -83,10 +83,13 @@ static unsigned scan_addr(uint8_t bus, uint8_t addr)
 
 unsigned ti_scan(uint8_t bus)
 {
+	log_info(TAG,"scan TI devices on bus %u",bus);
+	i2c_stop(bus);	// bus reset
 	unsigned n = 0;
-	log_info(TAG,"search TI devices on bus %u",bus);
-	for (uint8_t addr = DEV_ADDR_LOW; addr <= DEV_ADDR_HIGH; addr += 2)
-		scan_addr(bus,addr);
+	for (uint8_t addr = DEV_ADDR_LOW; addr <= DEV_ADDR_HIGH; addr += 2) {
+		if (0 == I2CDevice::getByAddr(bus,addr))
+			scan_addr(bus,addr);
+	}
 	return n;
 }
 

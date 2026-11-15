@@ -1,13 +1,16 @@
 set(COMPONENT_SRCDIRS
-	tlc5947
-	max7219
+	button
 	dht
-	ws8212b
-	tlc5916
+	display
 	hc-sr04
-	bme280
+	hlw8012
+	i2c
+	max7219
+	onewire
+	relay
+	spi
+	tlc5916
+	tlc5947
+	ws8212b
+	xio
 )
-set(COMPONENT_PRIV_INCLUDEDIRS ../components/logging)
-register_component(
-	INCLUDE_DIRS "dht"
-	)

@@ -842,6 +842,12 @@ int wifi_setup()
 		log_warn(TAG,"esp_wifi_set_storage failed: %s",esp_err_to_name(e));
 		return 1;
 	}
+	if (Config.nodename().empty()) {
+		char hostname[16];
+		int n = sprintf(hostname,"node%02x%02x%02x",mac[3],mac[4],mac[5]);
+		sethostname(hostname,n);
+		Config.set_nodename(hostname);
+	}
 	esp_wifi_set_mode(WIFI_MODE_NULL);
 	return 0;
 }

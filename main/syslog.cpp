@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2023, Thomas Maier-Komor
+ *  Copyright (C) 2018-2026, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -48,6 +48,10 @@
 #define PBUF_SIZE 256
 #define MAX_FRAME_SIZE 1472
 
+#if LOG_MAXLEN > 255
+#error LOG_MAXLEN too large
+#endif
+
 #define STRINGLIT_CONCAT(a,b) a b
 
 #if 0
@@ -89,12 +93,11 @@ struct Syslog
 	event_t ev;
 	bool triggered = false;
 	LogMsg *create_msg();
-	void resize(size_t);
+	int resize(size_t);
 
 	private:
 	Syslog(const Syslog &);
 	Syslog& operator = (const Syslog &);
-	void shrink();
 };
 
 #define TAG MODULE_LOG
@@ -105,14 +108,14 @@ static Syslog *Ctx = 0;
 static void syslog_start(void*);
 
 
-Syslog::Syslog(size_t s)
+Syslog::Syslog(size_t n)
 : unsent(0), overwr(0), lost(0)
+, num(n)
 , ev(event_id("syslog`msg"))
 {
-	if ((s > 0) && (s < 512))
-		s = 512;
-	num = s / sizeof(LogMsg);
 	msgs = (LogMsg *) calloc(num,sizeof(LogMsg));
+	if (0 == msgs)
+		num = 0;
 }
 
 
@@ -126,29 +129,39 @@ Syslog::~Syslog()
 }
 
 
-void Syslog::shrink()
+// n is number of LogMsg
+int Syslog::resize(size_t n)
 {
-	--num;
-	if (at != num)
-		memmove(msgs+at,msgs+at+1,sizeof(LogMsg)*(num-at));
-	msgs = (LogMsg *)realloc(msgs,num*sizeof(LogMsg));
-}
-
-
-void Syslog::resize(size_t s)
-{
-	unsigned n = (s-sizeof(Syslog))/sizeof(LogMsg);
-//	log_local(TAG,"resize (%u-%u)/%u=%u, using %u",s,sizeof(Syslog),sizeof(LogMsg),s/sizeof(LogMsg),sizeof(Syslog)+n*sizeof(LogMsg));
+	if (n == num)
+		return 0;
+	int r = 0;
 	if (n < num) {
-		do {
-			shrink();
-		} while (n < num);
-	} else if (n > num) {
-		int delta = n - num;
-		msgs = (LogMsg *)realloc(msgs, n * sizeof(LogMsg));
-		bzero(msgs+num,delta*sizeof(LogMsg));
+		size_t delta = num - n;
+		size_t to = at;
+		size_t from = num-1;
+		while ((to < from) && (0 != delta)) {
+			if ((msgs[to].flags & sent_flag) == 0)
+				++overwr;
+			msgs[to] = msgs[from];
+			++to;
+			--from;
+			--delta;
+		}
 	}
-	num = n;
+	LogMsg *l = (LogMsg *)realloc(msgs, n * sizeof(LogMsg));
+	if (n > num) {
+		int delta = n - num;
+		if (l) {
+			bzero(l+num,delta*sizeof(LogMsg));
+		}
+	}
+	if (0 == l) {
+		r = 1;
+	} else {
+		msgs = l;
+		num = n;
+	}
+	return r;
 }
 
 
@@ -333,7 +346,7 @@ void log_syslog(log_level_t lvl, logmod_t module, const char *msg, size_t ml, st
 	if (ml > INT8_MAX)	// could be UINT8_MAX, reserved for now
 		ml = INT8_MAX;
 	if (pdTRUE != xSemaphoreTake(Mtx,MUTEX_ABORT_TIMEOUT))
-		abort_on_mutex(Mtx,__BASE_FILE__);
+		abort_on_mutex(Mtx,__FUNCTION__);
 	bool trigger = false;
 	if (LogMsg *m = Ctx->create_msg()) {
 		m->flags = lvl;
@@ -379,8 +392,9 @@ const char *dmesg(Terminal &term, int argc, const char *args[])
 		}
 		if (((l > 0) && (l < 512)) || (l > UINT16_MAX))
 			return "Invalid argument #1.";
+		if (dmesg_resize(l))
+			return "Failed.";
 		Config.set_dmesg_size(l);
-		dmesg_resize(l);
 		return 0;
 	}
 	if (Ctx == 0) {
@@ -390,7 +404,7 @@ const char *dmesg(Terminal &term, int argc, const char *args[])
 	LogMsg *at = Ctx->msgs+Ctx->at;
 	LogMsg *m = at;
 #ifdef ESP32
-	term.printf("%u queued, %u overwritten, %u sent, %u lost\n",Ctx->unsent.load(),Ctx->overwr.load(),Ctx->sent,Ctx->lost.load());
+	term.printf("size %u, %u queued, %u overwritten, %u sent, %u lost\n",Ctx->num*sizeof(LogMsg),Ctx->unsent.load(),Ctx->overwr.load(),Ctx->sent,Ctx->lost.load());
 #else
 	term.printf("%u queued, %u overwritten, %u sent, %u lost\n",Ctx->unsent,Ctx->overwr,Ctx->sent,Ctx->lost);
 #endif
@@ -435,20 +449,24 @@ void dmesg_setup()
 }
 
 
-void dmesg_resize(size_t ds)
+int dmesg_resize(size_t ds)
 {
+	int r = 0;
+	ds /= sizeof(LogMsg);	// translate into number of log messages
 	Lock lock(Mtx,__FUNCTION__);
 	if (Ctx == 0) {
 		if (ds)
 			Ctx = new Syslog(ds);
 	} else {
 		if (ds) {
-			Ctx->resize(ds);
+			r = Ctx->resize(ds);
 		} else {
-			delete Ctx;
+			Syslog *s = Ctx;
 			Ctx = 0;
+			delete s;
 		}
 	}
+	return r;
 }
 
 

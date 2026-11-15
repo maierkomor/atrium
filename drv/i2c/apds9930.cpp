@@ -141,7 +141,7 @@ int APDS9930::init()
 	m_far = event_register(m_name,"`far");
 	m_lux = new EnvNumber("illuminance","lux","%4.0f");
 	m_prox = new EnvNumber("proximity","","%4.0f");
-	return i2c_write(m_bus,cmd,sizeof(cmd),1,1);
+	return i2c_write(m_bus,cmd,sizeof(cmd));
 }
 
 
@@ -300,7 +300,7 @@ const char *APDS9930::exeCmd(Terminal &t, int argc, const char **argv)
 			t.printf("%u\n",v);
 		} else if (e && (*e == 0) && (l >= 0) & (l <= UINT16_MAX)) {
 			uint8_t data[] = { m_addr, REG_AILTL, (uint8_t) (l & 0xff), (uint8_t)(l>>8) };
-			if (esp_err_t e = i2c_write(m_bus,data,sizeof(data),1,1))
+			if (esp_err_t e = i2c_write(m_bus,data,sizeof(data)))
 				return esp_err_to_name(e);
 		} else
 			return "Invalid argument #2.";
@@ -313,7 +313,7 @@ const char *APDS9930::exeCmd(Terminal &t, int argc, const char **argv)
 			t.printf("%u\n",v);
 		} else if (e && (*e == 0) && (l >= 0) & (l <= UINT16_MAX)) {
 			uint8_t data[] = { m_addr, REG_AIHTL, (uint8_t) (l & 0xff), (uint8_t)(l>>8) };
-			if (esp_err_t e = i2c_write(m_bus,data,sizeof(data),1,1))
+			if (esp_err_t e = i2c_write(m_bus,data,sizeof(data)))
 				return esp_err_to_name(e);
 		} else
 			return "Invalid argument #2.";
@@ -326,7 +326,7 @@ const char *APDS9930::exeCmd(Terminal &t, int argc, const char **argv)
 			t.printf("%u\n",v);
 		} else if (e && (*e == 0) && (l >= 0) & (l <= UINT16_MAX)) {
 			uint8_t data[] = { m_addr, REG_PILTL, (uint8_t) (l & 0xff), (uint8_t)(l>>8) };
-			if (esp_err_t e = i2c_write(m_bus,data,sizeof(data),1,1))
+			if (esp_err_t e = i2c_write(m_bus,data,sizeof(data)))
 				return esp_err_to_name(e);
 		} else
 			return "Invalid argument #2.";
@@ -339,7 +339,7 @@ const char *APDS9930::exeCmd(Terminal &t, int argc, const char **argv)
 			t.printf("%u\n",v);
 		} else if (e && (*e == 0) && (l >= 0) & (l <= UINT16_MAX)) {
 			uint8_t data[] = { m_addr, REG_PIHTL, (uint8_t) (l & 0xff), (uint8_t)(l>>8) };
-			if (esp_err_t e = i2c_write(m_bus,data,sizeof(data),1,1))
+			if (esp_err_t e = i2c_write(m_bus,data,sizeof(data)))
 				return esp_err_to_name(e);
 		} else
 			return "Invalid argument #2.";
@@ -355,10 +355,12 @@ int apds9930_scan(uint8_t bus)
 	log_dbug(TAG,"scan");
 	int n = 0;
 	uint8_t id;
-	if (0 == i2c_w1rd(bus,APDS9930_ADDR, REG_ID, &id, 1)) {
-		if (id == 0x39) {
-			new APDS9930(bus);
-			++n;
+	if (0 == I2CDevice::getByAddr(bus,APDS9930_ADDR)) {
+		if (0 == i2c_w1rd(bus,APDS9930_ADDR, REG_ID, &id, 1)) {
+			if (id == 0x39) {
+				new APDS9930(bus);
+				++n;
+			}
 		}
 	}
 	return n;

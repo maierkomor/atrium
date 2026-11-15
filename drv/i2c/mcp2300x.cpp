@@ -217,7 +217,7 @@ int MCP2300X::set_intr(uint8_t io, xio_cfg_intr_t intr)
 int MCP2300X::set_pullups(uint8_t pullups)
 {
 	uint8_t data[] = { m_addr, REG_GPPU, pullups };
-	return i2c_write(m_bus,data,sizeof(data),true,true);
+	return i2c_write(m_bus,data,sizeof(data));
 }
 
 

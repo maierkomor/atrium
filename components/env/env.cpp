@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2025, Thomas Maier-Komor
+ *  Copyright (C) 2020-2026, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -51,19 +51,20 @@ size_t EnvElement::getPath(char *path, char sep)
 	if (m_parent) {
 		n = m_parent->getPath(path,sep);
 		if (n) {
+
 			if (path)
 				path[n] = sep;
 			++n;
 		}
 	}
-	size_t nl = 0;
 	if (m_name) {
 		// root has no name
-		nl = strlen(m_name);
+		size_t nl = strlen(m_name);
 		if (path)
 			memcpy(path+n,m_name,nl+1);
+		n += nl;
 	}
-	return n + nl;
+	return n;
 }
 
 
@@ -401,7 +402,8 @@ EnvElement *EnvObject::find(const char *n) const
 EnvObject *EnvObject::add(const char *n)
 {
 	EnvObject *r = new EnvObject(n);
-	append(r);
+	if (r)
+		append(r);
 	return r;
 }
 
@@ -409,7 +411,8 @@ EnvObject *EnvObject::add(const char *n)
 EnvBool *EnvObject::add(const char *n, bool v, const char *dim)
 {
 	EnvBool *r = new EnvBool(n,v,dim);
-	append(r);
+	if (r)
+		append(r);
 	return r;
 }
 
@@ -417,15 +420,20 @@ EnvBool *EnvObject::add(const char *n, bool v, const char *dim)
 EnvNumber *EnvObject::add(const char *n, double v, const char *dim, const char *fmt)
 {
 	EnvNumber *r = new EnvNumber(n,v,dim,fmt);
-	append(r);
+	if (r)
+		append(r);
 	return r;
 }
 
 
 EnvString *EnvObject::add(const char *n, const char *v, const char *dim)
 {
-	EnvString *r = new EnvString(n,v,dim);
-	append(r);
+	EnvString *r = 0;
+	if (n && v) {
+		r = new EnvString(n,v,dim);
+		if (r)
+			append(r);
+	}
 	return r;
 }
 

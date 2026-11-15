@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021-2024, Thomas Maier-Komor
+ *  Copyright (C) 2021-2026, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -58,7 +58,13 @@ class I2CDevice
 	virtual void addIntr(uint8_t gpio);
 
 	static bool hasInstance(const char *);
-	static I2CDevice *getByAddr(uint8_t addr);	// 8bit address expected!
+
+	// 8bit address search (7bit << 1)
+	static I2CDevice *getByAddr(uint8_t bus, uint8_t addr);
+
+	// all derived classes should implement a
+	// I2CDevice * XX::create(bus,addr,variant)
+	// that performs a address used check
 
 	protected:
 	I2CDevice(uint8_t bus, uint8_t addr, const char *name);
@@ -79,15 +85,34 @@ extern "C" {
 
 int i2c_init(uint8_t bus, uint8_t sda, uint8_t scl, unsigned freq, uint8_t xpullup);
 int i2c_read(uint8_t bus, uint8_t addr, uint8_t *d, uint8_t n);
-int i2c_read2(uint8_t port, uint8_t addr, uint8_t reg0, uint8_t reg1, uint8_t *d, uint8_t n);
-int i2c_write0(uint8_t port, uint8_t addr);
+//int i2c_read2(uint8_t bus, uint8_t addr, uint8_t reg0, uint8_t reg1, uint8_t *d, uint8_t n);
+int i2c_write0(uint8_t bus, uint8_t addr);
 int i2c_write1(uint8_t bus, uint8_t addr, uint8_t r);
 int i2c_write2(uint8_t bus, uint8_t addr, uint8_t r, uint8_t v);
+
+// write address, register, and 2 values
 int i2c_write3(uint8_t bus, uint8_t addr, uint8_t r, uint8_t v0, uint8_t v1);
-int i2c_write4(uint8_t bus, uint8_t addr, uint8_t r0, uint8_t v0, uint8_t r1, uint8_t v1);
+
+// write address, register, and 4 values
+//int i2c_write4(uint8_t bus, uint8_t addr, uint8_t r0, uint8_t v0, uint8_t r1, uint8_t v1);
+
+// write address, data, with start and stop
 int i2c_writen(uint8_t bus, uint8_t addr, const uint8_t *d, unsigned n);
-int i2c_writex(uint8_t port, const uint8_t *d, unsigned n);
-int i2c_write(uint8_t bus, const uint8_t *d, unsigned n, uint8_t stop, uint8_t start);
+
+// write address, register, data, with start and stop
+int i2c_write_ard(uint8_t bus, uint8_t addr, uint8_t reg, const uint8_t *d, unsigned n);
+
+
+// write data, with start and stop
+//int i2c_writex(uint8_t port, const uint8_t *d, unsigned n);
+
+// write data with start, optional stop
+int i2c_write(uint8_t bus, const uint8_t *d, unsigned n);
+int i2c_write_nostop(uint8_t bus, const uint8_t *d, unsigned n);
+void i2c_stop(uint8_t bus);
+
+// write data without start, optional stop
+int i2c_write_ns(uint8_t bus, const uint8_t *d, unsigned n, uint8_t stop);	// write without start-bit
 int i2c_write_nack(uint8_t port, uint8_t *d, unsigned n, uint8_t stop, uint8_t start);
 int i2c_w1rd(uint8_t port, uint8_t addr, uint8_t w, uint8_t *d, uint8_t n);
 int i2c_bus_valid(uint8_t bus);

@@ -284,7 +284,7 @@ int MCP2301X::set_intr(uint8_t io, xio_cfg_intr_t intr)
 int MCP2301X::set_pullups(uint16_t pullups)
 {
 	uint8_t data[] = { m_addr, REG0_GPPUA, (uint8_t)pullups, (uint8_t)(pullups>>8) };
-	return i2c_write(m_bus,data,sizeof(data),true,true);
+	return i2c_write(m_bus,data,sizeof(data));
 }
 
 
@@ -350,7 +350,7 @@ int MCP2301X::get_in(uint16_t *p)
 int MCP2301X::set_out(uint16_t p)
 {
 	uint8_t data[] = { m_addr, REG0_GPIOA, (uint8_t)p, (uint8_t)(p>>8) };
-	return i2c_write(m_bus,data,sizeof(data),true,true);
+	return i2c_write(m_bus,data,sizeof(data));
 }
 
 
@@ -400,7 +400,7 @@ int MCP2301X::setm(uint32_t values,uint32_t mask)
 	data[3] |= values>>8;
 	data[1] = REG0_GPIOA;
 	data[0] = m_addr;
-	return i2c_write(m_bus,data,sizeof(data),true,true);
+	return i2c_write(m_bus,data,sizeof(data));
 }
 
 

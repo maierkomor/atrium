@@ -73,7 +73,7 @@ struct EnvLocalTime : public EnvElement
 };
 #endif
 
-const char Copyright[] = "\u00a9 2019-2025, T. Maier-Komor";
+const char Copyright[] = "\u00a9 2019-2026, T. Maier-Komor";
 const char License[] = "License: GPLv3";
 
 const char ResetReasons[][12] = {

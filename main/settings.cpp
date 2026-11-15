@@ -253,33 +253,6 @@ void set_cfg_err(uint8_t v)
 }
 
 
-static void initNodename()
-{
-	uint8_t mac[6];
-	esp_err_t e;
-#if IDF_VERSION >= 50
-	e = ESP_ERR_NOT_FOUND;
-	if (esp_netif_t *nif = esp_netif_next_unsafe(0))
-		e = esp_netif_get_mac(nif,mac);
-#else
-	e = esp_wifi_get_mac(WIFI_IF_STA,mac);
-	if (ESP_OK != e)
-		e = esp_wifi_get_mac(WIFI_IF_AP,mac);
-#endif
-	if (ESP_OK != e) {
-		log_warn(TAG,"no MAC address: %s",esp_err_to_name(e));
-		uint32_t r = esp_random();
-		mac[0] = r & 0xff;
-		mac[1] = (r >> 8) & 0xff;
-		mac[2] = (r >> 16) & 0xff;
-	}
-	char hostname[16];
-	int n = snprintf(hostname,sizeof(hostname),"node%02x%02x%02x",mac[2],mac[1],mac[0]);
-	Config.set_nodename(hostname);
-	sethostname(hostname,n);
-}
-
-
 void cfg_init_defaults()
 {
 	log_info(TAG,"init defaults");
@@ -288,7 +261,7 @@ void cfg_init_defaults()
 	Config.set_actions_enable(true);
 	Config.set_sntp_server("0.pool.ntp.org");
 	Config.mutable_softap()->set_activate(true);
-	initNodename();
+	// node name is initialized at WiFi startup
 	Config.mutable_softap()->set_ssid(Config.nodename().c_str());
 	setenv("TZ","C",1);
 }
@@ -363,8 +336,6 @@ int cfg_read_nodecfg()
 		return r;
 	}
 	log_info(TAG,"%s: %u bytes",name,s);
-	if (!Config.has_nodename())
-		initNodename();
 	const auto &nn = Config.nodename();
 	RTData->add("node",nn.c_str());
 	cfg_set_hostname(nn.c_str());
@@ -482,12 +453,12 @@ void cfg_activate()
 
 	if (Config.has_timezone())
 		setenv("TZ",Config.timezone().c_str(),1);
-	if (!Config.has_nodename()) 
-		initNodename();
 	if (Config.has_domainname()) {
 		const auto dn = Config.domainname();
 		setdomainname(dn.c_str(),dn.size());
 	}
+	if (Config.has_nodename())
+		sethostname(Config.nodename().c_str(),Config.nodename().size());
 	bool softap = false;
 	if (Config.has_softap() && Config.softap().has_ssid() && Config.softap().activate()) {
 		wifi_start_softap(Config.softap().ssid().c_str(),Config.softap().has_pass() ? Config.softap().pass().c_str() : "");

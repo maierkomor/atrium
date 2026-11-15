@@ -32,7 +32,7 @@ struct BMP388 : public I2CDevice
 	{ return "bmp388"; }
 
 	void addIntr(uint8_t intr) override;
-	void attach(class EnvObject *);
+	void attach(class EnvObject *) override;
 #ifdef CONFIG_I2C_XCMD
 	const char *exeCmd(struct Terminal &, int argc, const char **argv) override;
 #endif

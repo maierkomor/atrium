@@ -40,7 +40,7 @@ template<typename T>
 void ip4_to_ascii(T &o, uint32_t ip)
 {
 	char buf[16];
-	sprintf(buf,"%d.%d.%d.%d"
+	sprintf(buf,"\"%d.%d.%d.%d\""
 		, (ip & 0xff)
 		, ((ip >> 8) & 0xff)
 		, ((ip >> 16) & 0xff)
@@ -54,7 +54,7 @@ template<typename T>
 void min_of_day_to_ascii(T &o, uint16_t m)
 {
 	char buf[8];
-	sprintf(buf,"%02u:%02u",(m / 60),(m % 60));
+	sprintf(buf,"\"%02u:%02u\"",(m / 60),(m % 60));
 	o << buf;
 }
 

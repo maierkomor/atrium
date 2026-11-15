@@ -344,7 +344,7 @@ timefuse_t timefuse_create(const char *n, unsigned d_ms, bool repeat)
 	unsigned t = 0;
 	Lock lock(Mtx);
 	if (0 != timefuse_get_nl(n)) {
-		log_warn(TAG,"%s already defined",n);
+		log_warn(TAG,"%s redefined",n);
 	} else {
 		log_dbug(TAG,"create %s, id %u",n,NumTimers+1);
 		if (NumTimers+1 >= NumAlloc) {
@@ -361,8 +361,8 @@ timefuse_t timefuse_create(const char *n, unsigned d_ms, bool repeat)
 		Timers[t].timeout = timeout;
 		Timers[t].id = xTimerCreate(0,pdMS_TO_TICKS(d_ms),repeat,(void*)(int)timeout,trigger_timeout);
 		memcpy(Timers[t].name,n,nl+1);
-		action_add(concat(n,"!start"),start_action,(void*)t,"start this timefuse");
-		action_add(concat(n,"!stop"),stop_action,(void*)t,"stop this timefuse");
+		action_add(concat(n,"!start"),start_action,(void*)t,"start timer");
+		action_add(concat(n,"!stop"),stop_action,(void*)t,"stop timer");
 	}
 	return t;
 }

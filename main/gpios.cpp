@@ -110,6 +110,7 @@ class Gpio
 	static void action_sample(void *);
 	static void action_set0(void *);
 	static void action_set1(void *);
+	static void action_setz(void *);
 	static void action_toggle(void *);
 #ifdef ESP32
 	static void action_hold(void *);
@@ -217,6 +218,15 @@ void Gpio::action_set1(void *arg)
 }
 
 
+void Gpio::action_setz(void *arg)
+{
+	Gpio *gpio = (Gpio *)arg;
+	xio_set_hiz(gpio->m_gpio);
+	gpio->m_env.set(true);
+	log_dbug(TAG,"%s <= Z",gpio->name());
+}
+
+
 void Gpio::action_toggle(void *arg)
 {
 	Gpio *gpio = (Gpio *)arg;
@@ -274,6 +284,7 @@ void Gpio::init(unsigned config)
 	} else if (config & 0x3) {	// not input, not disabled
 		// configured as output
 		log_dbug(TAG,"gpio output actions");
+		action_add(concat(name,"!set_z"),Gpio::action_setz,(void*)this,"set gpio hi-impedance");
 		action_add(concat(name,"!set_1"),Gpio::action_set1,(void*)this,"set gpio high");
 		action_add(concat(name,"!set_0"),Gpio::action_set0,(void*)this,"set gpio low");
 		action_add(concat(name,"!toggle"),Gpio::action_toggle,(void*)this,"toggle gpio");

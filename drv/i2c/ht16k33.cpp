@@ -96,14 +96,11 @@ static uint8_t HexMap[] = {
 };
 
 
-void HT16K33::create(uint8_t bus, uint8_t addr)
+HT16K33 *HT16K33::create(uint8_t bus, uint8_t addr)
 {
-	if (addr == 0) {
-		for (uint8_t a = DEV_ADDR_MIN; a <= DEV_ADDR_MAX; a += 2)
-			create(bus,a);
-	} else if ((addr < DEV_ADDR_MIN) || (addr > DEV_ADDR_MAX)) {
+	if ((addr < DEV_ADDR_MIN) || (addr > DEV_ADDR_MAX)) {
 		log_warn(TAG,"invalid address 0x%x",(unsigned)addr);
-	} else {
+	} else if (0 == I2CDevice::getByAddr(bus,addr)) {
 		log_dbug(TAG,"power up");
 		if (i2c_write1(bus,addr,CMD_SYS_ON))
 			log_warn(TAG,"HT16k33 at %u,0x%x did not answer",bus,(unsigned)addr);
@@ -116,8 +113,10 @@ void HT16K33::create(uint8_t bus, uint8_t addr)
 			}
 #endif
 			Instances = dev;
+			return dev;
 		}
 	}
+	return 0;
 }
 
 
@@ -233,7 +232,7 @@ int HT16K33::clear()
 {
 	uint8_t data[18] = { 0 };
 	data[0] = m_addr;
-	int r = i2c_write(m_bus,data,sizeof(data),true,true);
+	int r = i2c_write(m_bus,data,sizeof(data));
 	log_dbug(TAG,"clear: %d",r);
 	m_pos = 0;
 	bzero(m_data,sizeof(m_data));
@@ -261,7 +260,7 @@ int HT16K33::write(uint8_t v)
 	uint8_t off = m_pos;
 	if (m_data[off] != v) {
 		uint8_t data[] = { m_addr, (uint8_t)off, v };
-		int r = i2c_write(m_bus,data,sizeof(data),true,true);
+		int r = i2c_write(m_bus,data,sizeof(data));
 		log_dbug(TAG,"write 0x%x: %d",v,r);
 		if (r)
 			return -1;
@@ -283,7 +282,7 @@ int HT16K33::write(uint8_t *v, unsigned n)
 	if (0 != memcmp(m_data+off,v,n)) {
 		uint8_t data[n+2] = { m_addr , (uint8_t)off };
 		memcpy(data+2,v,n);
-		int r = i2c_write(m_bus,data,sizeof(data),true,true);
+		int r = i2c_write(m_bus,data,sizeof(data));
 		log_hex(TAG,v,n,"write %d",r);
 		if (r)
 			return -1;
@@ -566,6 +565,17 @@ static const LuaFn Functions[] = {
 static void ht16k33_init_lua()
 {
 	xlua_add_funcs("ht16k33",Functions);
+}
+
+
+unsigned ht16k33_scan(uint8_t bus)
+{
+	unsigned n = 0;
+	for (uint8_t a = DEV_ADDR_MIN; a <= DEV_ADDR_MAX; a += 2) {
+		if (HT16K33::create(bus,a))
+			++n;
+	}
+	return n;
 }
 #endif // CONFIG_LUA
 

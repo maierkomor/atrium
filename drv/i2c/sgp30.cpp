@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2021-2023, Thomas Maier-Komor
+ *  Copyright (C) 2021-2026, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -20,6 +20,7 @@
 
 #ifdef CONFIG_SGP30
 
+#include "crc8.h"
 #include "cyclic.h"
 #include "i2cdrv.h"
 #include "env.h"
@@ -46,7 +47,7 @@
 #define REG_SET_HUMID	0x61
 
 
-#define TAG MODULE_SGP30
+#define TAG MODULE_SGP
 
 
 static const char *States[] = {
@@ -65,21 +66,6 @@ static const char *States[] = {
 	"measure",
 	"error",
 };
-
-
-static uint8_t crc8_0x31(uint8_t *data, unsigned len, uint8_t crc = 0xff)
-{
-	do {
-		crc ^= *data++;
-		for (int i = 0; i < 8; ++i) {
-			uint8_t x = crc & 0x80;
-			crc <<= 1;
-			if (x)
-				crc ^= 0x31;
-		}
-	} while (--len);
-	return crc;
-}
 
 
 static inline float relHumid2abs(float temp, float humid)
@@ -249,14 +235,18 @@ const char *SGP30::exeCmd(Terminal &term, int argc, const char **args)
 		term.printf("error: %s\n",esp_err_to_name(m_err));
 	} else if (0 == strcmp("id",args[0])) {
 		uint8_t cmd[] = { SGP30_ADDR, 0x36, 0x82 };	// get serial ID
-		if (esp_err_t e = i2c_write(m_bus,cmd,sizeof(cmd),false,true))
+		if (esp_err_t e = i2c_write_nostop(m_bus,cmd,sizeof(cmd))) {
+			i2c_stop(m_bus);
 			return esp_err_to_name(e);
+		}
 		// 0.5ms delay before read required
 		vTaskDelay(1/portTICK_PERIOD_MS);
 		uint8_t data[6];
 		if (esp_err_t e = i2c_read(m_bus,SGP30_ADDR,data,sizeof(data)))
 			return esp_err_to_name(e);
-		term.printf("serial id %02x.%02x.%02x.%02x.%02x.%02x\n",data[0],data[1],data[2],data[3],data[4],data[5]);
+		term.printf("serial id ");
+		term.print_hex(data,sizeof(data));
+		term.println();
 	} else if (0 == strcmp("reset",args[0])) {
 		m_state = st_init;
 	} else if (0 == strcmp("stop",args[0])) {
@@ -293,8 +283,9 @@ int SGP30::init_airq()
 int SGP30::get_serial()
 {
 	uint8_t cmd[] = { SGP30_ADDR, 0x36, 0x82 };	// get serial ID
-	esp_err_t e = i2c_write(m_bus,cmd,sizeof(cmd),false,true);
+	esp_err_t e = i2c_write_nostop(m_bus,cmd,sizeof(cmd));
 	if (e) {
+		i2c_stop(m_bus);
 		log_dbug(TAG,"get serial id: %s",esp_err_to_name(e));
 	}
 	return 0;
@@ -304,8 +295,9 @@ int SGP30::get_serial()
 int SGP30::get_version()
 {
 	uint8_t vercmd[] = { SGP30_ADDR, REG_BASE, REG_GET_VERS };
-	esp_err_t e = i2c_write(m_bus,vercmd,sizeof(vercmd),false,true);
+	esp_err_t e = i2c_write_nostop(m_bus,vercmd,sizeof(vercmd));
 	if (e) {
+		i2c_stop(m_bus);
 		log_warn(TAG,"get version: %s",esp_err_to_name(e));
 	} else {
 		log_dbug(TAG,"get version");
@@ -318,9 +310,9 @@ int SGP30::read_serial()
 {
 	esp_err_t e = i2c_read(m_bus,SGP30_ADDR,m_serial,sizeof(m_serial));
 	if (e) {
-		log_dbug(TAG,"read serial id: %s",esp_err_to_name(e));
+		log_warn(TAG,"read serial id: %s",esp_err_to_name(e));
 	} else {
-		log_info(TAG,"serial id %02x.%02x.%02x.%02x.%02x.%02x",m_serial[0],m_serial[1],m_serial[2],m_serial[3],m_serial[4],m_serial[5]);
+		log_hex(TAG,m_serial,sizeof(m_serial),"serial id ");
 	}
 	return e;
 }
@@ -353,8 +345,9 @@ int SGP30::read_version()
 int SGP30::selftest_start()
 {
 	uint8_t cmd[] = { SGP30_ADDR, REG_BASE, REG_MEAS_TEST };
-	esp_err_t e = i2c_write(m_bus,cmd,sizeof(cmd),false,true);
+	esp_err_t e = i2c_write_nostop(m_bus,cmd,sizeof(cmd));
 	if (e) {
+		i2c_stop(m_bus);
 		log_warn(TAG,"selftest failed");
 	} else {
 		log_dbug(TAG,"selftest started");
@@ -428,7 +421,7 @@ int SGP30::updateHumidity()
 	m_ahumid = humid;
 	uint8_t cmd[] = { SGP30_ADDR, REG_BASE, REG_SET_HUMID, (uint8_t)(humid >> 8), (uint8_t)(humid & 0xff), 0 };
 	cmd[sizeof(cmd)-1] = crc8_0x31(cmd+3,2);
-	if (esp_err_t e = i2c_write(m_bus,cmd,sizeof(cmd),true,true)) {
+	if (esp_err_t e = i2c_write(m_bus,cmd,sizeof(cmd))) {
 		log_warn(TAG,"set humidity failed");
 		return e;
 	}
@@ -484,9 +477,13 @@ int SGP30::read()
 
 unsigned sgp30_scan(uint8_t bus)
 {
-	uint8_t vercmd[] = { SGP30_ADDR, REG_BASE, REG_GET_VERS };
-	if (0 != i2c_write(bus,vercmd,sizeof(vercmd),false,true))
+	if (I2CDevice::getByAddr(bus,SGP30_ADDR))
 		return 0;
+	uint8_t vercmd[] = { SGP30_ADDR, REG_BASE, REG_GET_VERS };
+	if (0 != i2c_write_nostop(bus,vercmd,sizeof(vercmd))) {
+		i2c_stop(bus);
+		return 0;
+	}
 	vTaskDelay(5);
 	uint8_t version[3];
 	if (0 != i2c_read(bus,SGP30_ADDR,version,sizeof(version)))

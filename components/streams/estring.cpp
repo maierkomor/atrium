@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2021, Thomas Maier-Komor
+ *  Copyright (C) 2020-2026, Thomas Maier-Komor
  *
  *  This source file belongs to Wire-Format-Compiler.
  *
@@ -19,14 +19,33 @@
 
 #include "estring.h"
 
-#include <assert.h>
 #include <stdlib.h>
+
+extern "C" void failure(const char *, ...);
+
+/************************
+ * IMPLEMENTATION CONCEPT:
+ * - buffer str can be zero after init or movement operation
+ * ::reserve()
+ * 	- handles all out-of-memory situations:
+ * 	- allocates at minimum requested size + 1 for the trailing \0
+ * 	- reports all out of memory situations with failure()
+ * - all operating functions call reserve() once with the needed size
+ * - estring objects may be initialized without allocation
+ * - the terminating \0 byte is inserted in c_str()
+ * - other functions do not need to care about the terminating \0
+ */
+
+// This value is the minimum allocation size.
+// Must be > 0!
+#define ESTRING_MIN_ALLOC 16
 
 #if 1
 #define con_print(...)
 #define con_printf(...)
 #else
 #include <rom/ets_sys.h>
+#include <assert.h>
 #include <stdarg.h>
 #include <stdio.h>
 #define con_print log_x
@@ -86,73 +105,59 @@ void log_str(size_t l, const char *s)
 #endif
 #endif
 
-//estring::estring()
-//: str(0) //: str((char*)malloc(8))
-//, len(0)
-//, alloc(0) //, alloc(8)
-//{
-//	con_print("estring() %p",this);
-//}
-
-
 estring::estring(size_t l, char c)
-: str((char*)malloc(l+1))
-, len(l)
-, alloc(l+1)
 {
-	con_printf("estring(%u,'\\0%02o')",l,c);
-	memset(str,c,l);
+	if (l) {
+		reserve(l);
+		con_printf("estring(%u,'\\0%02o')",l,c);
+		memset(str,c,l);
+		len = l;
+	}
 }
 
 
 estring::estring(const char *s)
-: len(strlen(s))
 {
 	con_printf("estring(s) %p: \"%s\"",this,s);
-	if (len) {
-		str = strdup(s);
-		alloc = len+1;
-	} else {
-		str = 0;
-		alloc = 0;
+	if (s) {
+		size_t l = strlen(s);
+		reserve(l);
+		memcpy(str,s,l);
+		len = l;
 	}
 }
 
 
 estring::estring(const char *s, size_t l)
-: str(0)
-, len(l)
-, alloc(0)
 {
 	con_printf("estring('%.*s',%d) %p",l,s,l,this);
 	if (l) {
 		reserve(l);
 		memcpy(str,s,l);
+		len = l;
 	}
 }
 
 
 estring::estring(const char *s, const char *e)
-: str(0)
-, alloc(0)
 {
 	con_printf("estring(s,e) %p %.*s",this,e-s,s);
-	reserve(e-s);
-	len = e-s;
-	memcpy(str,s,len);
+	if ((0 != s) && (s < e)) {
+		reserve(e-s);
+		len = e-s;
+		memcpy(str,s,len);
+	}
 }
 
 
 estring::estring(const estring &a)
-: len(a.len)
-, alloc(a.alloc)
 {
 	con_printf("estring(const estring &) %p<=%p %d:%.*s",this,&a,(int)a.len,(int)a.len,a.str);
-	if (alloc) {
-		str = (char*)malloc(a.alloc);
+	if (a.len) {
+		if (a.len >= alloc)
+			reserve(a.len);
+		len = a.len;
 		memcpy(str,a.str,len);
-	} else {
-		str = 0;
 	}
 }
 
@@ -179,42 +184,44 @@ estring::~estring()
 
 void estring::reserve(size_t ns)
 {
-	assert(ns <= 0xffff);
 	if (ns < alloc)
 		return;
+	if (ns > ESTRING_ALLOC_LIMIT)
+		failure("Too large allocation. Requested %u bytes.",ns);
 	// must always allocate ns+1 byte at minimum for trailing \0
-	alloc = (ns+16) & ~15;	// reserve ns + [1..16]
-	con_printf("estring %p::reserve(%d) %d %d",this,ns,alloc,(int)len);
-	if (str) {
-		char *n = (char *)realloc(str,alloc);
-		assert(n);
-		str = n;
-	} else {
-		str = (char *)malloc(alloc);
-	}
+	size_t a = (ns+16) & ~15;	// reserve ns + [1..16]
+	if (a < ESTRING_MIN_ALLOC)
+		a = ESTRING_MIN_ALLOC;
+	con_printf("estring %p::reserve(%d) %d %d",this,ns,a,(int)len);
+	str = (char *) realloc(str,a);
+	if (0 == str)
+		failure("out of memory");
+	alloc = a;
 }
 
 
 estring &estring::operator = (const estring &a)
 {
 	con_printf("operator =(const estring &) %p %.*s",this,a.len,a.str);
-	if (a.len) {
-		reserve(a.len);
-		memcpy(str,a.str,a.len+1);
+	if (0 != a.len) {
+		if (a.len >= alloc)
+			reserve(a.len);
+		memcpy(str,a.str,a.len);
+		len = a.len;
+	} else {
+		len = 0;
 	}
-	len = a.len;
 	return *this;
 }
 
 
 estring &estring::operator += (const estring &a)
 {
-	if (a.len) {
+	if (0 != a.len) {
 		con_printf("operator += %p %d:%.*s",this,(int)a.len,(int)a.len,a.str);
 		size_t nl = len + a.len;
 		reserve(nl);
-		if (a.str)
-		memcpy(str+len,a.str,a.len+1);
+		memcpy(str+len,a.str,a.len);
 		len = nl;
 	}
 	return *this;
@@ -253,47 +260,10 @@ estring &estring::operator += (char c)
 }
 
 
-/*
-bool estring::operator == (const char *s) const
-{
-	con_printf("operator == %p '%.*s' == '%s'",this,(int)len,str,s);
-	assert(s);
-	assert(this);
-	return (str == 0) ? (*s == 0) : (0 == strcmp(str,s));
-}
-
-
-const char *estring::c_str() const
-{
-	if (str == 0) {
-		str = (char *) malloc(4);
-//		alloc = 4;
-	} else {
-		assert(len < alloc);
-	}
-	con_printf("c_str %p %d:'%.*s'",this,(int)len,(int)len,str);
-	str[len] = 0;
-	return str;
-}
-*/
-
-
-/*
-void estring::clear()
-{
-//	con_printf("clear %p %.*s",this,len,str);
-	con_printf("clear %p %d",this,(int)len);
-	if (str)
-		str[0] = 0;
-	len = 0;
-}
-*/
-
-
 void estring::push_back(char c)
 {
 	con_printf("push_back %p '%c'",this,c);
-	if (len + 2 >= alloc)
+	if (len + 1 >= alloc)
 		reserve(len+1);
 	str[len] = c;
 	++len;
@@ -303,12 +273,14 @@ void estring::push_back(char c)
 void estring::assign(const char *m, size_t s)
 {
 	con_printf("assign(%.*s,%u) %p",s,m,s,this);
-	if (s) {
-		if (s > alloc)
+	if ((0 != m) && (0 != s)) {
+		if (s >= alloc)
 			reserve(s);
 		memcpy(str,m,s);
+		len = s;
+	} else {
+		len = 0;
 	}
-	len = s;
 	con_printf("assign %p = '%.*s'",this,(int)len,str);
 }
 
@@ -316,10 +288,12 @@ void estring::assign(const char *m, size_t s)
 void estring::append(const char *m, size_t s)
 {
 	con_printf("append(%.*s,%u) %p",s,m,s,this);
-	if (s) {
-		reserve(len+s);
+	if ((0 != m) && (0 != s)) {
+		size_t ns = len + s;
+		if (ns >= alloc)
+			reserve(ns);
 		memcpy(str+len,m,s);
-		len += s;
+		len = ns;
 	}
 }
 
@@ -327,7 +301,8 @@ void estring::append(const char *m, size_t s)
 void estring::resize(size_t s, char c)
 {
 	con_printf("resize %p %d",this,s);
-	reserve(s);
+	if (s >= alloc)
+		reserve(s);
 	if (s > len)
 		memset(str+len,c,s-len);
 	len = s;

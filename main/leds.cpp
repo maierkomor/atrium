@@ -540,13 +540,20 @@ int leds_setup()
 	for (const LedConfig &c : HWConf.led()) {
 		if ((c.gpio() == -1) || (c.pwm_ch() != -1))	// these are handled in the dimmer
 			continue;
+		xio_t gpio = (xio_t) c.gpio();
 		const auto &n = c.name();
-		const char *name = n.c_str();
+		size_t nl = n.size();
+		if (nl < 7)
+			nl = 7;
+		char name[nl+1];
+		if (n.empty())
+			sprintf(name,"led@%u",gpio);
+		else
+			strcpy(name,n.c_str());
 		bool initlvl = c.config_init_high();
 		xio_cfg_t cfg = XIOCFG_INIT;
 		cfg.cfg_io = c.config_open_drain() ? xio_cfg_io_od : xio_cfg_io_out;
 		cfg.cfg_initlvl = initlvl ? xio_cfg_initlvl_high : xio_cfg_initlvl_low;
-		xio_t gpio = (xio_t) c.gpio();
 		if (0 > xio_config(gpio,cfg)) {
 			log_warn(TAG,"failed to configure xio%u",gpio);
 			continue;
@@ -586,7 +593,7 @@ int leds_setup()
 #endif
 		}
 		if (ctx)
-			cyclic_add_task(name,ledmode_subtask,(void*)ctx);
+			cyclic_add_task(strdup(name),ledmode_subtask,(void*)ctx);
 		log_info(TAG,"added %s at %u",name,gpio);
 		++numled;
 	}

@@ -29,6 +29,7 @@ struct AHTXX: public I2CDevice
 	AHTXX(uint8_t bus, uint8_t addr, ahtdev_t d);
 
 	void attach(class EnvObject *) override;
+	static AHTXX *create(uint8_t bus, ahtdev_t);
 	const char *drvName() const override;
 #ifdef CONFIG_I2C_XCMD
 	const char *exeCmd(struct Terminal &, int argc, const char **argv) override;
@@ -47,7 +48,7 @@ struct AHTXX: public I2CDevice
 	static void sample(void *);
 	static int init(uint8_t, ahtdev_t);
 
-	friend int aht_scan(uint8_t,ahtdev_t);
+	//friend int aht_scan(uint8_t,ahtdev_t);
 
 	typedef enum { st_idle, st_trigger, st_read } state_t;
 	EnvNumber m_temp, m_humid;

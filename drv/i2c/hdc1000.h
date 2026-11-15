@@ -31,7 +31,7 @@ struct HDC1000 : public I2CDevice
 	const char *drvName() const
 	{ return m_drvname; }
 
-	void attach(class EnvObject *);
+	void attach(class EnvObject *) override;
 	unsigned cyclic();
 
 	static HDC1000 *create(uint8_t bus, uint8_t addr, uint16_t id);

@@ -106,7 +106,7 @@ void OPT3001::addIntr(uint8_t gpio)
 	} else {
 		m_cfg |= BITS_LATCH;
 		uint8_t out[] = { m_addr, REG_LOWLIM, 0xc0, 0x00 };
-		i2c_write(m_bus,out,sizeof(out),1,1);
+		i2c_write(m_bus,out,sizeof(out));
 		read();
 	}
 }
@@ -299,7 +299,7 @@ const char *OPT3001::exeCmd(Terminal &term, int argc, const char **args)
 			int v = float_to_fx16(f);
 			if (v >= 0) {
 				uint8_t out[] = { m_addr, REG_LOWLIM, (uint8_t)(v>>8), (uint8_t)(v&0xff) };
-				if (i2c_write(m_bus,out,sizeof(out),1,1))
+				if (i2c_write(m_bus,out,sizeof(out)))
 					return "I2C error.";
 				return 0;
 			} else {
@@ -311,7 +311,7 @@ const char *OPT3001::exeCmd(Terminal &term, int argc, const char **args)
 			int v = float_to_fx16(f);
 			if (v >= 0) {
 				uint8_t out[] = { m_addr, REG_HIGHLIM, (uint8_t)(v>>8), (uint8_t)(v&0xff) };
-				if (i2c_write(m_bus,out,sizeof(out),1,1))
+				if (i2c_write(m_bus,out,sizeof(out)))
 					return "I2C error.";
 				return 0;
 			} else {
@@ -381,7 +381,7 @@ int OPT3001::read(bool force)
 int OPT3001::updateConfig(uint16_t cfg)
 {
 	uint8_t out[] = { m_addr, REG_CONFIG, (uint8_t)(cfg>>8), (uint8_t)(cfg&0xff) };
-	if (esp_err_t e = i2c_write(m_bus,out,sizeof(out),1,1)) {
+	if (esp_err_t e = i2c_write(m_bus,out,sizeof(out))) {
 		log_warn(TAG,"failed to update config");
 		return e;
 	}

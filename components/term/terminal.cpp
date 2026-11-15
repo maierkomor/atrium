@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018-2025, Thomas Maier-Komor
+ *  Copyright (C) 2018-2026, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -17,6 +17,7 @@
  */
 
 #include "terminal.h"
+#include "log.h"
 #include <cassert>
 #include <string.h>
 #include <stdarg.h>
@@ -254,7 +255,7 @@ int Terminal::readInput(char *buf, size_t l, bool echo)
 			// escape sequence
 			if (0 > get_ch(&c))
 				return -1;
-			if (c != '[')
+			if ((c != 0x4f) && (c != 0x5b))
 				continue;
 			if (0 > get_ch(&c))
 				return -1;
@@ -280,13 +281,12 @@ int Terminal::readInput(char *buf, size_t l, bool echo)
 					hidx = 0;
 				}
 				strncpy(buf,he,l);
-				estr = "\e[3G\e[K";	// move to 3rd culomn of line, clear till end of line
-				write(estr,strlen(estr));
+				// move to 3rd culomn of line, clear till end of line
+				write("\e[3G\e[K",7);
 				size_t hl = strlen(he);
 				write(he,hl);
 				eoi = buf + hl;
 				at = eoi;
-				estr = 0;
 			} else if (c == 'B') {
 				// cursor down
 				++hidx;
@@ -296,13 +296,31 @@ int Terminal::readInput(char *buf, size_t l, bool echo)
 					hidx = 0;
 				}
 				strncpy(buf,he,l);
-				estr = "\e[3G\e[K";	// move to 3rd culomn of line, clear till end of line
-				write(estr,strlen(estr));
+				// move to 3rd culomn of line, clear till end of line
+				write("\e[3G\e[K",7);
 				size_t hl = strlen(he);
 				write(he,hl);
 				eoi = buf + hl;
 				at = eoi;
-				estr = 0;
+			} else if (c == 0x31) {
+				// cursore home
+				if (0 > get_ch(&c))
+					return -1;
+				if (c != '~')
+					continue;
+				// move to 3rd culomn of line, clear till end of line
+				write("\e[3G",4);
+				at = buf;
+			} else if (c == 0x34) {
+				// cursore end
+				if (0 > get_ch(&c))
+					return -1;
+				if (c != '~')
+					continue;
+				char tmp[8];
+				size_t n = sprintf(tmp,"\e[%uG",(eoi-buf)+3);
+				write(tmp,n);
+				at = eoi;
 #endif
 			} else if (c == '3') {
 				if (0 > get_ch(&c))
@@ -316,6 +334,9 @@ int Terminal::readInput(char *buf, size_t l, bool echo)
 					rewrite = true;
 					estr = "\e7\e[K";
 				}
+			} else {
+				estr = "\a";
+				//con_printf("unhandled escape 0x%x",c);
 			}
 		} else  {
 			// regular character

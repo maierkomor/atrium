@@ -37,6 +37,7 @@
 #define CTRL_CMDN	0x80	// command with more commands
 #define CTRL_CMDC	0xc0	// continuation command
 #define CTRL_DATA	0x00	// data only
+#define CTRL_DISP_ST	0x40	// set display start line to page0/col0
 
 #define SSD1306_ADDR0	0x3c
 #define SSD1306_ADDR1	0x3d
@@ -64,11 +65,13 @@ int SSD1306::init(uint16_t maxx, uint16_t maxy, uint8_t hwcfg)
 	m_width = maxx;
 	m_height = maxy;
 	uint32_t dsize = maxx * maxy;
-	m_disp = (uint8_t *) malloc(dsize); // two dimensional array of n pages each of n columns.
-	if (m_disp == 0) {
+	m_buf = (uint8_t *) malloc(dsize+2); // two dimensional array of n pages each of n columns.
+	if (m_buf == 0) {
 		log_error(TAG,"out of memory");
 		return 1;
 	}
+	m_buf[0] = m_addr;
+	m_buf[1] = CTRL_DISP_ST;
 	uint8_t setup[] = {
 		m_addr,
 		0x00,				// command
@@ -89,7 +92,7 @@ int SSD1306::init(uint16_t maxx, uint16_t maxy, uint8_t hwcfg)
 		0xa6,				// normal mode, a7=inverse
 		0x2e,				// no scrolling
 	};
-	if (i2c_write(m_bus,setup,sizeof(setup),1,1))
+	if (i2c_write(m_bus,setup,sizeof(setup)))
 		return 1;
 	clear();
 	flush();
@@ -104,7 +107,7 @@ int SSD1306::setOn(bool on)
 	log_dbug(TAG,"setOn(%d)",on);
 	uint8_t cmd_on[] = { m_addr, 0x00, 0x8d, 0x1f, 0xaf };
 	uint8_t cmd_off[] = { m_addr, 0x00, 0xae, 0x8d, 0x10 };
-	return i2c_write(m_bus,on ? cmd_on : cmd_off,sizeof(cmd_on),1,1);
+	return i2c_write(m_bus,on ? cmd_on : cmd_off,sizeof(cmd_on));
 }
 
 int SSD1306::setInvert(bool inv)
@@ -113,14 +116,14 @@ int SSD1306::setInvert(bool inv)
 	uint8_t cmd[3] = { m_addr, 0x00, 0xa6 };
 	if (inv)
 		cmd[2] |= 1;
-	return i2c_write(m_bus,cmd,sizeof(cmd),1,1);
+	return i2c_write(m_bus,cmd,sizeof(cmd));
 }
 
 
 int SSD1306::setBrightness(uint8_t contrast)
 {
 	uint8_t cmd[] = { m_addr, 0x00, 0x81, contrast };
-	return i2c_write(m_bus,cmd,sizeof(cmd),1,1);
+	return i2c_write(m_bus,cmd,sizeof(cmd));
 }
 
 
@@ -130,20 +133,17 @@ void SSD1306::flush()
 		return;
 	PROFILE_FUNCTION();
 	uint8_t cmd[] = { m_addr, 0x00, 0xb0, 0x21, 0x00, (uint8_t)(m_width-1) };
-	uint8_t pfx[] = { m_addr, 0x40 };
 	uint8_t numpg = m_height / 8 + ((m_height & 7) != 0);
 	unsigned pgs = m_width;
 	if (pgs == 128) {
 		if (m_dirty == 0xff) {
-			i2c_write(m_bus,cmd,sizeof(cmd),1,1);
-			i2c_write(m_bus,pfx,sizeof(pfx),0,1);
-			i2c_write(m_bus,m_disp,128*8,1,0);
+			i2c_write(m_bus,cmd,sizeof(cmd));
+			i2c_write(m_bus,m_buf,2+128*8);
 			log_dbug(TAG,"sync 0-7");
 			m_dirty = 0;
 		} else if (m_dirty == 0xf) {
-			i2c_write(m_bus,cmd,sizeof(cmd),1,1);
-			i2c_write(m_bus,pfx,sizeof(pfx),0,1);
-			i2c_write(m_bus,m_disp,128*4,1,0);
+			i2c_write(m_bus,cmd,sizeof(cmd));
+			i2c_write(m_bus,m_buf,2+128*4);
 			log_dbug(TAG,"sync 0-3");
 			m_dirty = 0;
 		}
@@ -158,9 +158,8 @@ void SSD1306::flush()
 				++p;
 			}
 			if (n) {
-				i2c_write(m_bus,cmd,sizeof(cmd),1,1);
-				i2c_write(m_bus,pfx,sizeof(pfx),0,1);
-				i2c_write(m_bus,m_disp+f*pgs,n*pgs,1,0);
+				i2c_write(m_bus,cmd,sizeof(cmd));
+				i2c_write_ard(m_bus,m_addr,CTRL_DISP_ST,m_disp+f*pgs,n*pgs);
 				log_dbug(TAG,"sync %u-%u",f,p);
 			}
 			++p;
@@ -172,21 +171,10 @@ void SSD1306::flush()
 
 SSD1306 *SSD1306::create(uint8_t bus, uint8_t addr)
 {
-	uint8_t cmd[] = { (uint8_t)addr, CMD_NOP };
-	if (0 == i2c_write(bus,cmd,sizeof(cmd),1,1)) {
-		return new SSD1306(bus,addr);
-	}
-	return 0;
-}
-
-
-static int ssd1306_test(uint8_t bus, uint8_t addr)
-{
-	if (0 == i2c_write1(bus,addr,CMD_NOP)) {
-		new SSD1306(bus,addr);
-		return 1;
-	} else {
-		log_dbug(TAG,"no SSD1306 at 0x%x",addr);
+	if (0 == I2CDevice::getByAddr(bus,addr)) {
+		if (0 == i2c_write1(bus,addr,CMD_NOP)) {
+			return new SSD1306(bus,addr);
+		}
 	}
 	return 0;
 }
@@ -195,12 +183,13 @@ static int ssd1306_test(uint8_t bus, uint8_t addr)
 unsigned ssd1306_scan(uint8_t bus)
 {
 	log_dbug(TAG,"searching for SSD1306");
+	unsigned n = 0;
 	uint8_t addrs[] = { 0x3c<<1, 0x3d<<1 };
 	for (uint8_t addr : addrs) {
-		if (ssd1306_test(bus,addr<<1))
-			return 1;
+		if (SSD1306::create(bus,addr))
+			++n;
 	}
-	return 0;
+	return n;
 }
 
 #endif

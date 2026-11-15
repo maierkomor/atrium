@@ -576,7 +576,8 @@ void BQ25601D::processIntr(void *arg)
 
 BQ25601D *BQ25601D::scan(uint8_t bus)
 {
-	log_dbug(TAG,"scan bq25601d");
+	if (I2CDevice::getByAddr(bus,DEV_ADDR))
+		return 0;
 	uint8_t data[NUM_REGS];
 	if (esp_err_t e = i2c_w1rd(bus,DEV_ADDR,0x0,data,sizeof(data))) {
 		log_dbug(TAG,"device scan failed: %s",esp_err_to_name(e));

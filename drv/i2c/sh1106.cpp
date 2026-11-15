@@ -95,7 +95,7 @@ int SH1106::init(uint16_t maxx, uint16_t maxy, uint8_t hwcfg)
 		0xa6,				// normal mode, a7=inverse
 		0x2e,				// no scrolling
 	};
-	if (i2c_write(m_bus,setup,sizeof(setup),1,1))
+	if (i2c_write(m_bus,setup,sizeof(setup)))
 		return 1;
 		*/
 	xmitCmd(CMD_DISP_OFF);
@@ -134,7 +134,7 @@ int SH1106::setOn(bool on)
 	/*
 	uint8_t cmd_on[] = { m_addr, 0x00, 0xaf };
 	uint8_t cmd_off[] = { m_addr, 0x00, 0xae };
-	return i2c_write(m_bus,on ? cmd_on : cmd_off,sizeof(cmd_on),1,1);
+	return i2c_write(m_bus,on ? cmd_on : cmd_off,sizeof(cmd_on));
 	*/
 }
 
@@ -146,7 +146,7 @@ int SH1106::setInvert(bool inv)
 	uint8_t cmd[3] = { m_addr, 0x00, 0xa6 };
 	if (inv)
 		cmd[2] |= 1;
-	return i2c_write(m_bus,cmd,sizeof(cmd),1,1);
+	return i2c_write(m_bus,cmd,sizeof(cmd));
 	*/
 }
 
@@ -154,7 +154,7 @@ int SH1106::setInvert(bool inv)
 int SH1106::setBrightness(uint8_t contrast)
 {
 	uint8_t cmd[] = { m_addr, 0x00, 0x81, contrast };
-	return i2c_write(m_bus,cmd,sizeof(cmd),1,1);
+	return i2c_write(m_bus,cmd,sizeof(cmd));
 }
 
 
@@ -164,7 +164,6 @@ void SH1106::flush()
 		return;
 	PROFILE_FUNCTION();
 	uint8_t cmd[] = { m_addr, 0x00, 0x00, 0x10, 0xb0 };
-	uint8_t pfx[] = { m_addr, 0x40 };
 	uint8_t numpg = m_height / 8 + ((m_height & 7) != 0);
 	unsigned pgs = m_width;
 	if (m_dirty) {
@@ -172,9 +171,8 @@ void SH1106::flush()
 		for (uint8_t p = 0; p < numpg; p++) {
 			if (m_dirty & (1<<p)) {
 				cmd[4] = 0xb0 + p;
-				i2c_write(m_bus,cmd,sizeof(cmd),1,1);
-				i2c_write(m_bus,pfx,sizeof(pfx),0,1);
-				i2c_write(m_bus,m_disp+p*pgs,pgs,1,0);
+				i2c_write(m_bus,cmd,sizeof(cmd));
+				i2c_write_ard(m_bus,m_addr,0x40,m_disp+p*pgs,pgs);
 				log_dbug(TAG,"sync %u",p);
 			}
 		}
@@ -185,9 +183,17 @@ void SH1106::flush()
 
 SH1106 *SH1106::create(uint8_t bus, uint8_t addr)
 {
-	uint8_t cmd[] = { (uint8_t)addr, 0x00, CMD_NOP };
-	if (0 == i2c_write(bus,cmd,sizeof(cmd),1,1)) {
-		return new SH1106(bus,addr);
+	if ((addr != (0x3c<<1)) && (addr != (0x3d<<1))) {
+		log_warn(TAG,"invalid address %x for SH1106",addr>>1);
+		return 0;
+	}
+	if (0 == I2CDevice::getByAddr(bus,addr)) {
+		if (esp_err_t e = i2c_write2(bus,addr,0x00,CMD_NOP)) {
+			log_warn(TAG,"no device at %d/%02x: %s",bus,addr,esp_err_to_name(e));
+		} else {
+			log_info(TAG,"device at %d/%02x",bus,addr);
+			return new SH1106(bus,addr);
+		}
 	}
 	return 0;
 }
@@ -196,12 +202,13 @@ SH1106 *SH1106::create(uint8_t bus, uint8_t addr)
 unsigned sh1106_scan(uint8_t bus)
 {
 	log_dbug(TAG,"searching for SH1106");
+	unsigned n = 0;
 	uint8_t addrs[] = { 0x3c<<1, 0x3d<<1 };
 	for (uint8_t addr : addrs) {
 		if (SH1106::create(bus,addr))
-			return 1;
+			++n;
 	}
-	return 0;
+	return n;
 }
 
 #endif

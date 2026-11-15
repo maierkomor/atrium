@@ -91,6 +91,7 @@ class EnvElement
 	void setSkip(bool s = true)
 	{ m_skip = s; }
 
+	// pass path=0 to get path length for allocation
 	size_t getPath(char *path, char sep);
 
 	protected:

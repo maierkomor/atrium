@@ -89,18 +89,19 @@ void id64_to_ascii(stream &o, uint64_t id)
 		, (unsigned) (id>>56)&0xff
 		);
 	*/
-	o.printf("%02x",id&0xff);
+	o.printf("\"%02x",id&0xff);
 	for (int i = 0; i < 7; ++i) {
 		id >>= 8;
 		o.printf(":%02x",id&0xff);
 	}
+	o << '"';
 
 }
 
 
 void ip4_to_ascii(stream &o, uint32_t ip)
 {
-	o.printf("%d.%d.%d.%d"
+	o.printf("\"%d.%d.%d.%d\""
 		, (ip & 0xff)
 		, ((ip >> 8) & 0xff)
 		, ((ip >> 16) & 0xff)
@@ -111,7 +112,7 @@ void ip4_to_ascii(stream &o, uint32_t ip)
 
 void min_of_day_to_ascii(stream &o, uint16_t m)
 {
-	o.printf("%02u:%02u",(m / 60),(m % 60));
+	o.printf("\"%02u:%02u\"",(m / 60),(m % 60));
 }
 
 
@@ -119,8 +120,9 @@ void degC_to_ascii(stream &o, float f)
 {
 	char buf[16];
 	float_to_str(buf,f);
+	o << '"';
 	o << buf;
-	o << " \u00b0C";
+	o << " \u00b0C\"";
 }
 
 
@@ -128,8 +130,9 @@ void humid_to_ascii(stream &o, float f)
 {
 	char buf[16];
 	float_to_str(buf,f);
+	o << '"';
 	o << buf;
-	o << " %";
+	o << " %\"";
 }
 
 
@@ -137,8 +140,9 @@ void press_to_ascii(stream &o, float f)
 {
 	char buf[16];
 	float_to_str(buf,f);
+	o << '"';
 	o << buf;
-	o << " hPa";
+	o << " hPa\"";
 }
 
 

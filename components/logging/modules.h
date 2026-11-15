@@ -59,6 +59,7 @@ typedef enum logmod_e {
 	logmod_hlw8012,
 	logmod_ht16k33,
 	logmod_http,
+	logmod_husb238,
 	logmod_i2c,
 	logmod_ili9341,
 	logmod_ina2xx,
@@ -84,8 +85,9 @@ typedef enum logmod_e {
 	logmod_rgbleds,
 	logmod_romfs,
 	logmod_screen,
-	logmod_sgp30,
+	logmod_sgp,
 	logmod_shell,
+	logmod_sht4x,
 	logmod_si7021,
 	logmod_sm,
 	logmod_sntp,
@@ -142,6 +144,7 @@ typedef enum logmod_e {
 #define MODULE_HLW8012         logmod_hlw8012
 #define MODULE_HT16K33         logmod_ht16k33
 #define MODULE_HTTP            logmod_http
+#define MODULE_HUSB238         logmod_husb238
 #define MODULE_I2C             logmod_i2c
 #define MODULE_ILI9341         logmod_ili9341
 #define MODULE_INA2XX          logmod_ina2xx
@@ -167,8 +170,9 @@ typedef enum logmod_e {
 #define MODULE_RGBLEDS         logmod_rgbleds
 #define MODULE_ROMFS           logmod_romfs
 #define MODULE_SCREEN          logmod_screen
-#define MODULE_SGP30           logmod_sgp30
+#define MODULE_SGP             logmod_sgp
 #define MODULE_SHELL           logmod_shell
+#define MODULE_SHT4X           logmod_sht4x
 #define MODULE_SI7021          logmod_si7021
 #define MODULE_SM              logmod_sm
 #define MODULE_SNTP            logmod_sntp
@@ -192,8 +196,8 @@ typedef enum logmod_e {
 #define MODULE_XIO             logmod_xio
 #define MODULE_XPLANE          logmod_xplane
 #define MODULE_XPT2046         logmod_xpt2046
-#define MAX_MODULE_ID           80
-#define NUM_MODULES             81
+#define MAX_MODULE_ID           82
+#define NUM_MODULES             83
 
 #ifdef USE_MODULE
 #define TAG USE_MODULE

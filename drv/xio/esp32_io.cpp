@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2022-2023, Thomas Maier-Komor
+ *  Copyright (C) 2022-2026, Thomas Maier-Komor
  *  Atrium Firmware Package for ESP
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -192,6 +192,10 @@ int CoreIO0::config(uint8_t num, xio_cfg_t cfg)
 		gpio_matrix_out(num, SIG_GPIO_OUT_IDX, false, false);
 		GPIO.pin[num].pad_driver = 1;
 		log_dbug(TAG,"open-drain %u",num);
+	} else if (cfg.cfg_io == xio_cfg_io_tristate) {
+		gpio_pad_select_gpio(num);
+		gpio_set_direction((gpio_num_t)num,GPIO_MODE_INPUT);
+		log_dbug(TAG,"tri-state %u",num);
 	} else if (cfg.cfg_io != xio_cfg_io_keep) {
 		return -EINVAL;
 	}
@@ -257,6 +261,8 @@ int CoreIO0::config(uint8_t num, xio_cfg_t cfg)
 		set_lo(num);
 	} else if (cfg.cfg_initlvl == xio_cfg_initlvl_high) {
 		set_hi(num);
+	} else if (cfg.cfg_initlvl == xio_cfg_initlvl_hiz) {
+		set_hiz(num);
 	} else {
 		return -EINVAL;
 	}
@@ -293,6 +299,12 @@ int CoreIO1::config(uint8_t num, xio_cfg_t cfg)
 		GPIO.enable1_w1ts.data = (1 << num);
 		gpio_matrix_out(xnum, SIG_GPIO_OUT_IDX, false, false);
 		GPIO.pin[xnum].pad_driver = 1;
+	} else if (cfg.cfg_io == xio_cfg_io_tristate) {
+		// like input, but no input enable
+		gpio_pad_select_gpio(xnum);
+		GPIO.enable1_w1tc.data = (1 << num);
+		GPIO.pin[xnum].pad_driver = 0;
+		REG_WRITE(GPIO_FUNC0_OUT_SEL_CFG_REG + (xnum * 4), SIG_GPIO_OUT_IDX);
 	} else if (cfg.cfg_io != xio_cfg_io_keep) {
 		return -EINVAL;
 	}
@@ -363,6 +375,8 @@ int CoreIO1::config(uint8_t num, xio_cfg_t cfg)
 		set_lo(num);
 	} else if (cfg.cfg_initlvl == xio_cfg_initlvl_high) {
 		set_hi(num);
+	} else if (cfg.cfg_initlvl == xio_cfg_initlvl_hiz) {
+		set_hiz(num);
 	} else {
 		return -EINVAL;
 	}

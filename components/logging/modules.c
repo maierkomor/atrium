@@ -19,7 +19,7 @@
 #include "modules.h"
 
 const char ModNames[] =
-	"<undef>\0action\0adc\0ads1x\0aht\0alarms\0apds\0bh1750\0bmx\0bq25\0button\0buzzer\0cam\0ccs811b\0cfg\0con\0cyclic\0dht\0dim\0disp\0ds18b20\0event\0fs\0ftpd\0gpio\0hcsr04\0hd44780u\0hdc1000\0hlw8012\0ht16k33\0http\0i2c\0ili9341\0ina2xx\0influx\0init\0led\0ledc\0log\0lua\0lwtcp\0max7219\0mcp230xx\0mqtt\0nightsky\0ns\0nvm\0opt3001\0ota\0owb\0pca9685\0pcf8574\0relay\0rgbleds\0romfs\0screen\0sgp30\0shell\0si7021\0sm\0sntp\0spi\0ssd130x\0sx1276\0tca9555\0telnet\0ti\0timefuse\0tlc5916\0tlc5947\0tp\0uart\0udns\0udpctrl\0usb\0wlan\0ws2812\0www\0xio\0xplane\0xpt2046\0";
+	"<undef>\0action\0adc\0ads1x\0aht\0alarms\0apds\0bh1750\0bmx\0bq25\0button\0buzzer\0cam\0ccs811b\0cfg\0con\0cyclic\0dht\0dim\0disp\0ds18b20\0event\0fs\0ftpd\0gpio\0hcsr04\0hd44780u\0hdc1000\0hlw8012\0ht16k33\0http\0husb238\0i2c\0ili9341\0ina2xx\0influx\0init\0led\0ledc\0log\0lua\0lwtcp\0max7219\0mcp230xx\0mqtt\0nightsky\0ns\0nvm\0opt3001\0ota\0owb\0pca9685\0pcf8574\0relay\0rgbleds\0romfs\0screen\0sgp\0shell\0sht4x\0si7021\0sm\0sntp\0spi\0ssd130x\0sx1276\0tca9555\0telnet\0ti\0timefuse\0tlc5916\0tlc5947\0tp\0uart\0udns\0udpctrl\0usb\0wlan\0ws2812\0www\0xio\0xplane\0xpt2046\0";
 
 const uint16_t ModNameOff[] = {
 	0,
@@ -53,54 +53,56 @@ const uint16_t ModNameOff[] = {
 	162,	// hlw8012
 	170,	// ht16k33
 	178,	// http
-	183,	// i2c
-	187,	// ili9341
-	195,	// ina2xx
-	202,	// influx
-	209,	// init
-	214,	// led
-	218,	// ledc
-	223,	// log
-	227,	// lua
-	231,	// lwtcp
-	237,	// max7219
-	245,	// mcp230xx
-	254,	// mqtt
-	259,	// nightsky
-	268,	// ns
-	271,	// nvm
-	275,	// opt3001
-	283,	// ota
-	287,	// owb
-	291,	// pca9685
-	299,	// pcf8574
-	307,	// relay
-	313,	// rgbleds
-	321,	// romfs
-	327,	// screen
-	334,	// sgp30
-	340,	// shell
-	346,	// si7021
-	353,	// sm
-	356,	// sntp
-	361,	// spi
-	365,	// ssd130x
-	373,	// sx1276
-	380,	// tca9555
-	388,	// telnet
-	395,	// ti
-	398,	// timefuse
-	407,	// tlc5916
-	415,	// tlc5947
-	423,	// tp
-	426,	// uart
-	431,	// udns
-	436,	// udpctrl
-	444,	// usb
-	448,	// wlan
-	453,	// ws2812
-	460,	// www
-	464,	// xio
-	468,	// xplane
-	475,	// xpt2046
+	183,	// husb238
+	191,	// i2c
+	195,	// ili9341
+	203,	// ina2xx
+	210,	// influx
+	217,	// init
+	222,	// led
+	226,	// ledc
+	231,	// log
+	235,	// lua
+	239,	// lwtcp
+	245,	// max7219
+	253,	// mcp230xx
+	262,	// mqtt
+	267,	// nightsky
+	276,	// ns
+	279,	// nvm
+	283,	// opt3001
+	291,	// ota
+	295,	// owb
+	299,	// pca9685
+	307,	// pcf8574
+	315,	// relay
+	321,	// rgbleds
+	329,	// romfs
+	335,	// screen
+	342,	// sgp
+	346,	// shell
+	352,	// sht4x
+	358,	// si7021
+	365,	// sm
+	368,	// sntp
+	373,	// spi
+	377,	// ssd130x
+	385,	// sx1276
+	392,	// tca9555
+	400,	// telnet
+	407,	// ti
+	410,	// timefuse
+	419,	// tlc5916
+	427,	// tlc5947
+	435,	// tp
+	438,	// uart
+	443,	// udns
+	448,	// udpctrl
+	456,	// usb
+	460,	// wlan
+	465,	// ws2812
+	472,	// www
+	476,	// xio
+	480,	// xplane
+	487,	// xpt2046
 };

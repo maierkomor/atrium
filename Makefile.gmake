@@ -61,7 +61,7 @@ FLASH_PORT	:=$(CONFIG_ESPTOOLPY_PORT)
 ROMFS		=
 ROMFS_LST	=romfs/$(ROMFS).lst
 ROMFS_FILE	=$(ROMFS_LST:%.lst=%.romfs)
-ROMFS_FILES	=$(shell cat $(ROMFS_LST) 2>/dev/null)
+ROMFS_FILES	:=$(shell cat $(ROMFS_LST) 2>/dev/null)
 ROMFS_ADDR	=$(CONFIG_ROMFS_ADDR)
 IDF_VER		:=$(shell cd $(IDF_PATH); git describe --tags 2>/dev/null | sed 's/\.//;s/v//;s/-.*//;s/\..*//')
 # shell call to remove ""
@@ -70,8 +70,8 @@ CPPFLAGS	=-DIDF_VERSION=$(IDF_VER) -D$(CHIP) -DFWCFG=\"$(PROJECT)\" -DWFC_TARGET
 BUILD_DIR_BASE	=$(PWD)/build.$(PROJECT)
 PROJECT_ROOT	=$(PWD)
 WFCINC		=$(WFCDIR)/include
-PROJECT_VER	=$(shell bin/mkversion.sh)
-MEMFILES	=$(shell cd data; ls -1 man/*.man)
+PROJECT_VER	:=$(shell bin/mkversion.sh)
+MEMFILES	:=$(shell cd data; ls -1 man/*.man)
 ROMFS_PARTITION	=storage
 CFG_CXX		=tools/atriumcfg.cpp components/wfc/hwcfg_pc.cpp components/wfc/swcfg_pc.cpp components/wfc/wfccore_pc.cpp
 PATH		:=$(PATH_$(CHIP)):$(PATH)

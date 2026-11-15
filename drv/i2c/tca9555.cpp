@@ -80,17 +80,17 @@ TCA9555 *TCA9555::create(uint8_t bus, uint8_t addr)
 		uint8_t pol1[] = { addr, REG_POL_1, 0x0 };
 		uint8_t cfg0[] = { addr, REG_CFG_0, 0xff };
 		uint8_t cfg1[] = { addr, REG_CFG_1, 0xff };
-		if (i2c_write(bus,out0,sizeof(out0),1,1))
+		if (i2c_write(bus,out0,sizeof(out0)))
 			err = true;
-		else if (i2c_write(bus,out1,sizeof(out1),1,1))
+		else if (i2c_write(bus,out1,sizeof(out1)))
 			err = true;
-		else if (i2c_write(bus,pol0,sizeof(pol0),1,1))
+		else if (i2c_write(bus,pol0,sizeof(pol0)))
 			err = true;
-		else if (i2c_write(bus,pol1,sizeof(pol1),1,1))
+		else if (i2c_write(bus,pol1,sizeof(pol1)))
 			err = true;
-		else if (i2c_write(bus,cfg0,sizeof(cfg0),1,1))
+		else if (i2c_write(bus,cfg0,sizeof(cfg0)))
 			err = true;
-		else if (i2c_write(bus,cfg1,sizeof(cfg1),1,1))
+		else if (i2c_write(bus,cfg1,sizeof(cfg1)))
 			err = true;
 		if (err) {
 			log_warn(TAG,"reset failed");
@@ -140,7 +140,7 @@ int TCA9555::write(uint16_t v)
 	log_dbug(TAG,"write(%x)",v);
 	if (m_out != v) {
 		uint8_t data[] = { m_addr, REG_OUT_0, (uint8_t)v, (uint8_t)(v >> 8) };
-		if (i2c_write(m_bus,data,sizeof(data),1,1))
+		if (i2c_write(m_bus,data,sizeof(data)))
 			return -1;
 		m_out = v;
 	}
@@ -151,10 +151,7 @@ int TCA9555::write(uint16_t v)
 int TCA9555::write(uint8_t *v, unsigned n)
 {
 	log_dbug(TAG,"write(%p,%u)",v,n);
-	uint8_t data[] = { m_addr, REG_OUT_0 };
-	if (i2c_write(m_bus,data,sizeof(data),0,1))
-		return -1;
-	if (i2c_write(m_bus,v,sizeof(v),1,0))
+	if (i2c_write_ard(m_bus,m_addr,REG_OUT_0,v,sizeof(v)))
 		return -1;
 	m_out = v[n-1];
 	return 0;
@@ -206,7 +203,7 @@ int TCA9555::set_hi(uint8_t io)
 		(uint8_t)(io & 8 ? REG_OUT_1 : REG_OUT_0),
 		(uint8_t)(io & 8 ? m_out >> 8 : m_out),
 	};
-	return i2c_write(m_bus,data,sizeof(data),1,1);
+	return i2c_write(m_bus,data,sizeof(data));
 }
 
 
@@ -223,7 +220,7 @@ int TCA9555::set_lo(uint8_t io)
 		(uint8_t)(io & 8 ? REG_OUT_1 : REG_OUT_0),
 		(uint8_t)(io & 8 ? m_out >> 8 : m_out)
 	};
-	return i2c_write(m_bus,data,sizeof(data),1,1);
+	return i2c_write(m_bus,data,sizeof(data));
 }
 
 
@@ -246,7 +243,7 @@ int TCA9555::config(uint8_t io, xio_cfg_t cfg)
 			(uint8_t)(io & 8 ? REG_OUT_1 : REG_OUT_0),
 			(uint8_t)(io & 8 ? m_out >> 8 : m_out)
 		};
-		i2c_write(m_bus,data,sizeof(data),1,1);
+		i2c_write(m_bus,data,sizeof(data));
 	} else if (cfg.cfg_initlvl == xio_cfg_initlvl_high) {
 		log_dbug(TAG,"init-high");
 		m_out |= 1 << io;
@@ -255,7 +252,7 @@ int TCA9555::config(uint8_t io, xio_cfg_t cfg)
 			(uint8_t)(io & 8 ? REG_OUT_1 : REG_OUT_0),
 			(uint8_t)(io & 8 ? m_out >> 8 : m_out)
 		};
-		i2c_write(m_bus,data,sizeof(data),1,1);
+		i2c_write(m_bus,data,sizeof(data));
 	}
 	if (cfg.cfg_io == xio_cfg_io_keep) {
 		log_dbug(TAG,"io keep");
@@ -268,7 +265,7 @@ int TCA9555::config(uint8_t io, xio_cfg_t cfg)
 				(uint8_t)(io & 8 ? m_cfg >> 8 : m_cfg)
 			};
 			log_dbug(TAG,"io in");
-			i2c_write(m_bus,data,sizeof(data),1,1);
+			i2c_write(m_bus,data,sizeof(data));
 		}
 	} else if (cfg.cfg_io == xio_cfg_io_out) {
 		if ((m_cfg & (1 << io)) != 0) {
@@ -279,7 +276,7 @@ int TCA9555::config(uint8_t io, xio_cfg_t cfg)
 				(uint8_t)(io & 8 ? m_cfg >> 8 : m_cfg)
 			};
 			log_dbug(TAG,"io out");
-			i2c_write(m_bus,data,sizeof(data),1,1);
+			i2c_write(m_bus,data,sizeof(data));
 		}
 	} else if (cfg.cfg_io == xio_cfg_io_od) {
 		return -1;

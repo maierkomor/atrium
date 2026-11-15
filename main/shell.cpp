@@ -489,11 +489,11 @@ static const char *ls_print_dir(Terminal &term, const char *dir)
 		memcpy(fn+dl,e->d_name,el+1);
 		struct stat st;
 		if (stat(fn,&st) != 0)
-			term.printf("%-15s [%s]\n",e->d_name,strerror(errno));
+			term.printf("[%7s] %s\n",strerror(errno),e->d_name);
 		else if ((st.st_mode & S_IFDIR) == S_IFDIR)
-			term.printf("%-15s  <DIR>\n",e->d_name);
+			term.printf("  <DIR>  %s\n",e->d_name);
 		else
-			term.printf("%-15s %6u\n",e->d_name,st.st_size);
+			term.printf("%9u %s\n",st.st_size,e->d_name);
 	}
 	closedir(d);
 	return 0;
@@ -961,24 +961,7 @@ static const char *hwconf(Terminal &term, int argc, const char *args[])
 {
 	static vector<uint8_t> hwcfgbuf;
 	if (argc == 1) {
-		term.printf(
-				"Available commands:\n"
-#ifdef CONFIG_HWCONF_DYNAMIC
-				"add <device>\n"
-				"set <device>[<id>].<param> <value>\n"
-				"add <arrayname>\n"
-				"clear\n"
-				"reset\n"
-				"xxd\n"
-				"print\n"
-				"json\n"
-				"write\n"
-#endif
-				"writebuf\n"
-				"parsexxd\n"
-				"clearbuf\n"
-				"nvxxd\n"
-			   );
+		return help_cmd(term,"hwconf");
 #ifdef CONFIG_HWCONF_DYNAMIC
 	} else if (!strcmp("add",args[1])) {
 		if (argc < 3)
@@ -1329,12 +1312,12 @@ static const char *timefuse(Terminal &term, int argc, const char *args[])
 	}
 	if ('i' == optchr) {
 		for (auto &t : *Config.mutable_timefuses()) {
-			if (t.name() == args[2]) {
+			if (0 == strcmp(t.name().c_str(),args[2])) {
 				t.set_time((unsigned)ms);
-				return timefuse_interval_set(args[2],ms) ? "Failed." : 0;
+				break;
 			}
 		}
-		return "Invalid argument #1.";
+		return timefuse_interval_set(args[2],ms) ? "Failed." : 0;
 	}
 	if ('c' != optchr)
 		return "Invalid argument #1.";

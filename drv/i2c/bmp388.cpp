@@ -181,7 +181,7 @@ void BMP388::attach(EnvObject *root)
 
 #ifdef CONFIG_I2C_XCMD
 
-int osr_value(uint8_t v)
+static int osr_value(uint8_t v)
 {
 	if (v == 0)
 		return -1;
@@ -348,7 +348,7 @@ int BMP388::sample()
 {
 	log_dbug(TAG,"sample");
 	uint8_t cmd[] = { m_addr, REG_PWR_CTRL, BIT_PWR_FORCE|BIT_PWR_TON|BIT_PWR_PON};
-	return i2c_write(m_bus, cmd, sizeof(cmd), true, true);
+	return i2c_write(m_bus, cmd, sizeof(cmd));
 }
 
 
@@ -468,15 +468,14 @@ unsigned bmp388_scan(uint8_t bus)
 	unsigned num = 0;
 	uint8_t addr = ADDR_MIN;
 	do {
-		uint8_t id = 0;
-		int r = i2c_w1rd(bus,addr,REG_ID,&id,sizeof(id));
-		// esp32 i2c stack has a bug and reports timeout
-		// although data was received correctly...
-		// so ignore return codes > 0
-		log_dbug(TAG,"scan BMP388 at 0x%x: %d, id=0x%x",addr,r,id);
-		if ((r >= 0) && (id == 0x50)) {
-			new BMP388(bus,addr);
-			num = 1;
+		if (0 == I2CDevice::getByAddr(bus,addr)) {
+			uint8_t id = 0;
+			int r = i2c_w1rd(bus,addr,REG_ID,&id,sizeof(id));
+			log_dbug(TAG,"scan BMP388 at 0x%x: %d, id=0x%x",addr>>1,r,id);
+			if ((r >= 0) && (id == 0x50)) {
+				new BMP388(bus,addr);
+				++num;
+			}
 		}
 		addr += 2;
 	} while (addr <= ADDR_MAX);

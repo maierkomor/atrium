@@ -25,7 +25,7 @@
 class HT16K33 : public LedCluster, public I2CDevice
 {
 	public:
-	static void create(uint8_t,uint8_t);
+	static HT16K33 *create(uint8_t,uint8_t);
 
 	int cfgIntr(bool on, bool act_high = false);
 	int setPower(bool);
@@ -65,5 +65,6 @@ class HT16K33 : public LedCluster, public I2CDevice
 	bool m_disp = 0;	// bit0: off/on, bits2..1: blink 0..3
 };
 
+unsigned ht16k33_scan(uint8_t);
 
 #endif

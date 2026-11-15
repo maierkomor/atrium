@@ -51,6 +51,9 @@ class SSD1306 : public SSD130X, public I2CDevice
 	{ return 255; }
 
 	private:
+	uint8_t *m_buf = 0;	// buffer for transfering display data on I2C
+				// parts of this buffer are mapped to
+				// m_disp
 	static SSD1306 *Instance;
 };
 

@@ -879,7 +879,7 @@ static void query_fn(void *a)
 			q->cnt = (r == 0);
 			pbuf_free(pb);		/// TODO/BUG? is this the problem?
 		} else {
-			log_warn(TAG,"no socket for multi-cast query");
+			log_dbug(TAG,"no socket for multi-cast query");
 		}
 	} else {
 		++Id;
@@ -1003,7 +1003,7 @@ int udns_query(const char *hn, ip_addr_t *ip, void (*cb)(const char *, const ip_
 			c = (r == 0);
 			pbuf_free(pb);
 		} else {
-			log_warn(TAG,"no socket for multi-cast query");
+			log_dbug(TAG,"no socket for multi-cast query");
 		}
 	} else {
 		++Id;
